@@ -7,7 +7,7 @@ workflow:
 
 synthesis:
   provider: synopsys
-  ownership: external
+  integration_mode: external_interface
   implementation_in_multigent: false
   result_schema: multigent/schemas/synthesis_result.schema.json
   rule: never_estimate_missing_eda_metrics
