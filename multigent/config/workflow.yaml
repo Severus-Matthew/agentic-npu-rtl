@@ -1,0 +1,10 @@
+workflow:
+  max_repair_iterations: 5
+  max_ppa_iterations: 3
+  require_full_regression_after_rtl_change: true
+  require_synthesis_for_success: true
+  checkpoint_each_stage: true
+
+paths:
+  workspace: multigent/workspace
+  skills: Skills/npu_multiagent_skills/skills
