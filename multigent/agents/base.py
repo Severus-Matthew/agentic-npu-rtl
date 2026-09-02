@@ -28,9 +28,9 @@ NPU_AGENT_REASONING_EFFORT
     Optional reasoning effort for Responses API requests when supported.
 NPU_AGENT_TRUST_ENV
     Whether the HTTP client should inherit HTTP_PROXY/HTTPS_PROXY/ALL_PROXY and
-    related networking environment variables. Defaults to true. Set to false
-    when a cluster has malformed/unwanted proxy variables and direct egress is
-    available.
+    related networking environment variables. Defaults to false because many HPC
+    login environments inject malformed/unwanted proxy settings. Set to true only
+    if the cluster requires those proxy variables for outbound HTTPS.
 """
 
 from __future__ import annotations
@@ -59,7 +59,6 @@ class AgentRuntimeError(RuntimeError):
     """Raised when an API-backed agent cannot produce a valid structured result."""
 
 
-# Backwards-compatible name for code written during the initial CLI scaffold.
 CodexRuntimeError = AgentRuntimeError
 
 
@@ -93,8 +92,6 @@ class APIAgent:
         return SKILL_ROOT / self.config.role_skill / "SKILL.md"
 
     def load_instructions(self) -> str:
-        """Load global invariants first and role instructions second."""
-
         missing = [
             path
             for path in (self.project_contract_path, self.role_skill_path)
@@ -115,8 +112,6 @@ class APIAgent:
         )
 
     def build_prompt(self, task: str) -> str:
-        """Create the complete role prompt passed to the configured model."""
-
         return (
             f"{self.load_instructions()}\n\n"
             "# RUNTIME RULES\n\n"
@@ -132,7 +127,7 @@ class APIAgent:
 
     @staticmethod
     def _trust_env() -> bool:
-        value = os.getenv("NPU_AGENT_TRUST_ENV", "true").strip().lower()
+        value = os.getenv("NPU_AGENT_TRUST_ENV", "false").strip().lower()
         return value not in {"0", "false", "no", "off"}
 
     def _client(self) -> OpenAI:
@@ -155,8 +150,6 @@ class APIAgent:
 
     @staticmethod
     def _structured_format(schema: Mapping[str, Any], name: str) -> dict[str, Any]:
-        """Build a Structured Outputs format accepted by modern OpenAI APIs."""
-
         normalized = dict(schema)
         normalized.pop("$schema", None)
         return {
@@ -173,8 +166,6 @@ class APIAgent:
         schema_path: Path,
         log_name: str | None = None,
     ) -> dict[str, Any]:
-        """Call the configured API and return schema-constrained JSON output."""
-
         if not schema_path.is_file():
             raise FileNotFoundError(f"Output schema does not exist: {schema_path}")
 
@@ -278,8 +269,6 @@ CodexAgent = APIAgent
 
 
 def load_json_schema(name: str) -> Mapping[str, Any]:
-    """Load one schema from ``multigent/schemas``."""
-
     path = SCHEMA_ROOT / name
     if not path.is_file():
         raise FileNotFoundError(path)
