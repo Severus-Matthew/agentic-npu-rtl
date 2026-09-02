@@ -5,10 +5,11 @@ from pathlib import Path
 import yaml
 
 from multigent.agents.architect import ArchitectAgent
+from multigent.intake.request_builder import build_architect_intake
 
 
 class FakeArchitectAgent(ArchitectAgent):
-    """Avoid a live Codex call while testing artifact ownership/writing."""
+    """Avoid a live API call while testing artifact ownership/writing."""
 
     def run_structured(self, **_: object) -> dict:
         return {
@@ -21,9 +22,9 @@ class FakeArchitectAgent(ArchitectAgent):
                     "description": "test architecture",
                 },
                 "operation": {
-                    "kind": "GEMM",
-                    "equation": "C=A*B",
-                    "description": "dense integer GEMM",
+                    "kind": "GEMM_BIAS_RELU",
+                    "equation": "C=ReLU(A*B+bias)",
+                    "description": "dense integer GEMM with bias and ReLU",
                 },
                 "numeric": {
                     "activation_width": 8,
@@ -87,19 +88,42 @@ class FakeArchitectAgent(ArchitectAgent):
         }
 
 
+def test_intake_keeps_architecture_choices_out_of_user_input() -> None:
+    request = "design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type"
+    intake = build_architect_intake(request)
+
+    assert intake["user_request"] == request
+    assert intake["provenance"]["user_supplied_fields"] == ["user_request"]
+
+    # Fixed policy may be injected by software.
+    assert intake["project_constraints"]["rtl_constraints"]["language"] == "SystemVerilog"
+    assert (
+        intake["project_constraints"]["verification_policy"][
+            "randomized_transactions_minimum"
+        ]
+        == 100
+    )
+
+    # Genuine architecture choices are delegated to the Architect, not silently
+    # inserted as if the user requested them.
+    decisions = intake["architect_must_decide_when_unspecified"]
+    assert "array_dimensions" in decisions
+    assert "interface_protocol" in decisions
+    assert "reset_style" in decisions
+    assert "overflow_semantics" in decisions
+
+
 def test_architect_writes_only_architecture_artifacts(tmp_path: Path) -> None:
+    architecture_dir = tmp_path / "architecture"
     agent = FakeArchitectAgent()
     result = agent.run(
-        {
-            "operation": {"type": "GEMM"},
-            "numeric": {"activation": {"width": 8}},
-        },
-        output_dir=tmp_path,
+        "design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type",
+        output_dir=architecture_dir,
         run_id="unit",
     )
 
     assert result["status"] == "READY"
-    assert sorted(path.name for path in tmp_path.iterdir()) == [
+    assert sorted(path.name for path in architecture_dir.iterdir()) == [
         "acceptance_criteria.yaml",
         "architect_result.json",
         "architecture_contract.yaml",
@@ -107,8 +131,13 @@ def test_architect_writes_only_architecture_artifacts(tmp_path: Path) -> None:
         "module_manifest.json",
     ]
 
+    intake_path = tmp_path / "specs" / "request-unit.yaml"
+    assert intake_path.is_file()
+    intake = yaml.safe_load(intake_path.read_text(encoding="utf-8"))
+    assert intake["provenance"]["user_supplied_fields"] == ["user_request"]
+
     contract = yaml.safe_load(
-        (tmp_path / "architecture_contract.yaml").read_text(encoding="utf-8")
+        (architecture_dir / "architecture_contract.yaml").read_text(encoding="utf-8")
     )
     assert contract["compute"]["mac_count"] == 64
-    assert not list(tmp_path.glob("*.sv"))
+    assert not list(architecture_dir.glob("*.sv"))
