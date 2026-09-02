@@ -2,8 +2,15 @@ workflow:
   max_repair_iterations: 5
   max_ppa_iterations: 3
   require_full_regression_after_rtl_change: true
-  require_synthesis_for_success: true
+  require_synthesis_for_final_success: true
   checkpoint_each_stage: true
+
+synthesis:
+  provider: synopsys
+  ownership: external
+  implementation_in_multigent: false
+  result_schema: multigent/schemas/synthesis_result.schema.json
+  rule: never_estimate_missing_eda_metrics
 
 paths:
   workspace: multigent/workspace
