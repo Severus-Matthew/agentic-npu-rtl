@@ -1,0 +1,19 @@
+agents:
+  architect:
+    shared_skill: project_contract
+    role_skill: architect
+  rtl_generator:
+    shared_skill: project_contract
+    role_skill: rtl_generator
+  verifier:
+    shared_skill: project_contract
+    role_skill: verifier
+  debugger:
+    shared_skill: project_contract
+    role_skill: debugger
+  ppa_judge:
+    shared_skill: project_contract
+    role_skill: ppa_judge
+  experiment_evaluator:
+    shared_skill: project_contract
+    role_skill: experiment_evaluator
