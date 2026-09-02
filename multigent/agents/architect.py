@@ -4,9 +4,9 @@ The normal user-facing input is intentionally minimal natural language, e.g.:
 
     design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type
 
-A deterministic intake layer adds fixed project policy. The Architect itself
-chooses unspecified microarchitecture details and freezes them into contracts for
-independent RTL-generation and verification agents. The Architect never writes RTL.
+A deterministic intake layer adds fixed technical policy. The Architect chooses
+unspecified microarchitecture details and freezes them into contracts for
+independent RTL generation and verification. The Architect never writes RTL.
 """
 
 from __future__ import annotations
@@ -47,12 +47,7 @@ class ArchitectAgent(APIAgent):
         output_dir: Path | None = None,
         run_id: str = "manual",
     ) -> dict[str, Any]:
-        """Create and persist architecture contracts for ``request``.
-
-        ``request`` should normally be a natural-language string. Mapping input is
-        retained for legacy benchmarks/tests, but is wrapped as user-provided legacy
-        input rather than treated as project policy.
-        """
+        """Create and persist architecture contracts for ``request``."""
 
         target = output_dir or (WORKSPACE_ROOT / "architecture")
         target.mkdir(parents=True, exist_ok=True)
@@ -117,40 +112,48 @@ class ArchitectAgent(APIAgent):
 
 INPUT AUTHORITY
 ---------------
-The envelope deliberately separates three things:
+1. ``user_request`` (and only for legacy runs, ``legacy_user_specification``)
+   contains explicit user requirements.
+2. ``project_constraints`` contains mandatory technical runtime policy.
+3. ``architect_must_decide_when_unspecified`` lists architecture choices you must
+   resolve when the user leaves them unspecified.
 
-1. ``user_request`` (and, only for legacy runs, ``legacy_user_specification``)
-   contains what the USER actually requested.
-2. ``project_constraints`` contains fixed runtime policy injected by software.
-   These are mandatory but are not evidence that the user chose an architecture.
-3. ``architect_must_decide_when_unspecified`` lists choices that YOU own whenever
-   the user did not specify them.
+Do not treat a short request as an error. Choose simple, technically justified,
+synthesizable defaults for unspecified architecture choices and record them in
+``open_assumptions``. Return ``SPEC_CONFLICT`` only for genuinely contradictory
+explicit requirements.
 
-Do not turn unspecified architecture choices into SPEC_CONFLICT merely because
-only a short natural-language request was supplied. Make technically justified,
-simple, synthesizable baseline decisions and record them in the contract and
-``open_assumptions`` where appropriate. A true contradiction between explicit
-requirements should still produce SPEC_CONFLICT.
-
-Your output is a CONTRACT, not RTL. Do not generate SystemVerilog and do not
-claim synthesis/PPA results. Another team member owns the external Synopsys flow.
-The contract must be precise enough that an independent RTL Generator and an
-independent Verifier can consume it without hidden side conversations.
+Your output is a CONTRACT, not RTL. Do not generate SystemVerilog. Synthesis/PPA
+metrics are valid only when supplied by the deterministic Synopsys integration;
+do not infer or fabricate timing, area, power, frequency, or utilization values.
 
 Required design work:
-1. Interpret the requested operation and datatypes; resolve exact arithmetic,
-   signedness, product width, accumulation width, bias/activation semantics, and
-   overflow behavior.
-2. Choose the compute organization, array dimensions, parameterization, and
-   dataflow when the user leaves them unspecified.
-3. Choose and define buffering, pipeline stages, control behavior, and reset.
-4. Choose and fully specify the external interface/handshake when unspecified.
-5. Decompose the design into modules with explicit responsibilities/dependencies.
-6. State architectural invariants downstream agents may not silently change.
-7. Build acceptance criteria that incorporate the fixed project RTL and
-   verification policies.
-8. Define exactly what verified artifacts are handed to the external Synopsys flow.
-9. Never invent timing, area, power, frequency, utilization, or other PPA values.
+1. Resolve the exact operation, tensor shapes, signedness, product width,
+   accumulation width, bias semantics, activation semantics, overflow behavior,
+   extension rules, and output datatype.
+2. Choose compute organization, array dimensions, parameterization, supported
+   runtime dimension bounds, and dataflow when unspecified.
+3. Close operand-reuse semantics. For every operand, state whether it is supplied
+   once per job, once per tile, or repeatedly. If an operand is reused, define the
+   storage/replay mechanism that makes that reuse possible.
+4. Make buffer capacities consistent with dimension bounds and reuse strategy.
+   Do not introduce arbitrary fixed depths unless the corresponding supported
+   dimension bound makes them sufficient.
+5. Define pipeline stages, exact valid/stall behavior, control, reset, and any
+   flush/drain behavior.
+6. Fully define the external interface, ordering, framing, and ready/valid
+   semantics. No interface behavior may depend on unstated host behavior.
+7. Decompose the design into modules with explicit responsibilities/dependencies.
+8. State architectural invariants downstream agents may not silently change.
+9. Build deterministic functional, verification, RTL, and Synopsys handoff
+   acceptance criteria from the technical project policy.
+10. Check parameter edge cases. Signal widths and counters must remain legal for
+    minimum supported parameter values; avoid zero-width ``$clog2`` expressions.
+11. Reset control/state deterministically without requiring bulk memory clearing
+    unless the computation actually depends on cleared memory contents.
+12. Before returning READY, perform a consistency pass across arithmetic,
+    dimensions, dataflow, storage, interface, module manifest, and acceptance
+    criteria. The RTL Generator must not need to guess missing architectural facts.
 
 ARCHITECT INTAKE ENVELOPE
 -------------------------
@@ -173,8 +176,6 @@ ARCHITECT INTAKE ENVELOPE
 
 
 def load_legacy_spec(path: Path) -> dict[str, Any]:
-    """Load the old YAML/JSON benchmark format for backwards compatibility."""
-
     raw = path.read_text(encoding="utf-8")
     if path.suffix.lower() == ".json":
         value = json.loads(raw)
@@ -204,25 +205,21 @@ def main() -> None:
     source.add_argument(
         "--spec",
         type=Path,
-        help="Legacy YAML/JSON structured specification (not recommended for new runs)",
+        help="Legacy YAML/JSON structured specification",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
         default=WORKSPACE_ROOT / "architecture",
-        help="Architect-owned artifact directory",
+        help="Architect artifact directory",
     )
     parser.add_argument("--run-id", default="manual")
-    parser.add_argument(
-        "--model",
-        default=None,
-        help="Override NPU_AGENT_MODEL for this run",
-    )
+    parser.add_argument("--model", default=None, help="Override NPU_AGENT_MODEL")
     parser.add_argument(
         "--api-mode",
         choices=["responses", "chat_completions"],
         default=None,
-        help="Override NPU_AGENT_API_MODE for this run",
+        help="Override NPU_AGENT_API_MODE",
     )
     args = parser.parse_args()
 
