@@ -26,6 +26,11 @@ NPU_AGENT_API_MODE
     ``responses`` (default) or ``chat_completions``.
 NPU_AGENT_REASONING_EFFORT
     Optional reasoning effort for Responses API requests when supported.
+NPU_AGENT_TRUST_ENV
+    Whether the HTTP client should inherit HTTP_PROXY/HTTPS_PROXY/ALL_PROXY and
+    related networking environment variables. Defaults to true. Set to false
+    when a cluster has malformed/unwanted proxy variables and direct egress is
+    available.
 """
 
 from __future__ import annotations
@@ -36,7 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from openai import OpenAI
+from openai import DefaultHttpx2Client, OpenAI
 from openai import OpenAIError
 
 
@@ -125,6 +130,11 @@ class APIAgent:
             f"{task}\n"
         )
 
+    @staticmethod
+    def _trust_env() -> bool:
+        value = os.getenv("NPU_AGENT_TRUST_ENV", "true").strip().lower()
+        return value not in {"0", "false", "no", "off"}
+
     def _client(self) -> OpenAI:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -137,6 +147,7 @@ class APIAgent:
         kwargs: dict[str, Any] = {
             "api_key": api_key,
             "timeout": float(self.config.timeout_seconds),
+            "http_client": DefaultHttpx2Client(trust_env=self._trust_env()),
         }
         if base_url:
             kwargs["base_url"] = base_url.rstrip("/") + "/"
@@ -146,7 +157,6 @@ class APIAgent:
     def _structured_format(schema: Mapping[str, Any], name: str) -> dict[str, Any]:
         """Build a Structured Outputs format accepted by modern OpenAI APIs."""
 
-        # `$schema` is useful in repository files but is not needed by the model.
         normalized = dict(schema)
         normalized.pop("$schema", None)
         return {
@@ -264,8 +274,6 @@ class APIAgent:
             ) from exc
 
 
-# Keep the original class name as an alias so existing role wrappers/tests do not
-# need an all-at-once rename. New code should import APIAgent.
 CodexAgent = APIAgent
 
 
