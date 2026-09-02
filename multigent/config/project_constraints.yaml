@@ -14,12 +14,12 @@ verification_policy:
   require_reset_tests: true
   require_backpressure_tests: true
 
-external_synopsys_handoff:
-  required: true
-  owner: external_team_member
-  note: >-
-    The multi-agent runtime must hand off verified RTL and must not fabricate
-    synthesis, timing, power, or area metrics.
+synthesis_policy:
+  provider: synopsys
+  requires_verified_rtl: true
+  result_schema: multigent/schemas/synthesis_result.schema.json
+  authoritative_metrics_source: deterministic_tool_report
+  prohibit_metric_estimation: true
 
 architect_must_decide_when_unspecified:
   - design_name
@@ -29,11 +29,15 @@ architect_must_decide_when_unspecified:
   - overflow_semantics
   - compute_organization
   - array_dimensions
+  - supported_dimension_bounds
   - parameterization
   - dataflow
+  - operand_reuse_strategy
+  - operand_storage_strategy
   - buffering
   - pipeline_structure
   - interface_protocol
+  - input_ordering
   - backpressure_behavior
   - reset_style
   - reset_polarity
