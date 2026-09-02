@@ -1,19 +1,31 @@
+runtime:
+  harness: codex_cli
+  model: gpt-5.3-codex
+  sandbox: read-only
+  structured_outputs: true
+
 agents:
   architect:
     shared_skill: project_contract
     role_skill: architect
+    model: gpt-5.3-codex
   rtl_generator:
     shared_skill: project_contract
     role_skill: rtl_generator
+    model: gpt-5.3-codex
   verifier:
     shared_skill: project_contract
     role_skill: verifier
+    model: gpt-5.3-codex
   debugger:
     shared_skill: project_contract
     role_skill: debugger
+    model: gpt-5.3-codex
   ppa_judge:
     shared_skill: project_contract
     role_skill: ppa_judge
+    model: gpt-5.3-codex
   experiment_evaluator:
     shared_skill: project_contract
     role_skill: experiment_evaluator
+    model: gpt-5.3-codex
