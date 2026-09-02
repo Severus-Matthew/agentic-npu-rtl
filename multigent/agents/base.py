@@ -7,9 +7,9 @@ Design principles
 * The model returns schema-constrained JSON; Python owns filesystem writes.
 * Agents do not receive unrestricted write access to the repository.
 * API credentials are read only from environment variables and are never logged.
-* The backend supports both the OpenAI Responses API and Chat Completions API so
-  the project can run against OpenAI-hosted models or compatible university
-  gateways.
+* The backend supports both the OpenAI Responses API and Chat Completions API.
+* A legacy HTTPX client is injected deliberately because some HPC environments
+  currently fail inside the newer HTTPX2 transport before reaching the API.
 
 Required environment variables
 ------------------------------
@@ -27,10 +27,8 @@ NPU_AGENT_API_MODE
 NPU_AGENT_REASONING_EFFORT
     Optional reasoning effort for Responses API requests when supported.
 NPU_AGENT_TRUST_ENV
-    Whether the HTTP client should inherit HTTP_PROXY/HTTPS_PROXY/ALL_PROXY and
-    related networking environment variables. Defaults to false because many HPC
-    login environments inject malformed/unwanted proxy settings. Set to true only
-    if the cluster requires those proxy variables for outbound HTTPS.
+    Whether the injected HTTPX client should inherit HTTP_PROXY/HTTPS_PROXY and
+    related environment variables. Defaults to false for HPC reliability.
 """
 
 from __future__ import annotations
@@ -39,10 +37,10 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
-from openai import DefaultHttpx2Client, OpenAI
-from openai import OpenAIError
+import httpx
+from openai import OpenAI, OpenAIError
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -139,10 +137,15 @@ class APIAgent:
             )
 
         base_url = os.getenv("OPENAI_BASE_URL")
+        http_client = httpx.Client(
+            timeout=float(self.config.timeout_seconds),
+            trust_env=self._trust_env(),
+            follow_redirects=True,
+        )
         kwargs: dict[str, Any] = {
             "api_key": api_key,
             "timeout": float(self.config.timeout_seconds),
-            "http_client": DefaultHttpx2Client(trust_env=self._trust_env()),
+            "http_client": cast(Any, http_client),
         }
         if base_url:
             kwargs["base_url"] = base_url.rstrip("/") + "/"
