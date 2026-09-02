@@ -8,9 +8,11 @@ Optional:
 
     python -m multigent.scripts.check_api --list-models
 
-The checker also diagnoses malformed cluster proxy variables before attempting an
-API request. Set NPU_AGENT_TRUST_ENV=false to ignore inherited proxy variables
-when direct outbound HTTPS is available.
+The checker diagnoses malformed cluster proxy variables before attempting an API
+request. By default the NPU runtime ignores inherited proxy variables because
+HPC/login environments often inject proxies that are invalid for Python HTTPX.
+Set NPU_AGENT_TRUST_ENV=true only when the cluster explicitly requires its proxy
+for outbound HTTPS.
 """
 
 from __future__ import annotations
@@ -33,7 +35,7 @@ PROXY_VARIABLES = (
 
 
 def trust_env_enabled() -> bool:
-    value = os.getenv("NPU_AGENT_TRUST_ENV", "true").strip().lower()
+    value = os.getenv("NPU_AGENT_TRUST_ENV", "false").strip().lower()
     return value not in {"0", "false", "no", "off"}
 
 
@@ -100,8 +102,7 @@ def main() -> None:
             print(f"  - {warning}")
         print(
             "\nThis can cause HTTPX/OpenAI to fail before contacting the API.\n"
-            "Either fix/unset the malformed proxy variable(s), or, if this node has "
-            "direct outbound HTTPS access, set:\n\n"
+            "Either fix/unset the malformed proxy variable(s), or set:\n\n"
             "    NPU_AGENT_TRUST_ENV=false\n"
         )
         raise SystemExit(2)
