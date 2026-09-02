@@ -1,0 +1,60 @@
+design:
+  name: dense_gemm_8x8_int8
+  description: >-
+    Baseline dense NPU compute engine for the first multi-agent milestone.
+
+operation:
+  type: GEMM_BIAS_RELU
+  equation: C = ReLU(A * B + bias)
+
+numeric:
+  activation:
+    width: 8
+    signed: true
+  weight:
+    width: 8
+    signed: true
+  accumulator:
+    width: 32
+    signed: true
+  overflow: twos_complement_wrap
+
+compute:
+  array_rows: 8
+  array_columns: 8
+  parameterizable: true
+
+interface:
+  protocol: ready_valid_stream
+  backpressure: true
+
+reset:
+  synchronous: true
+  active_high: true
+
+features:
+  bias: true
+  relu: true
+
+rtl_constraints:
+  language: SystemVerilog
+  synthesizable_only: true
+  forbidden_constructs:
+    - real
+    - shortreal
+    - delay_statements
+    - force_release
+    - classes
+
+verification:
+  exact_integer_match: true
+  randomized_transactions_minimum: 100
+  require_reset_tests: true
+  require_backpressure_tests: true
+
+external_synopsys_handoff:
+  required: true
+  owner: external_team_member
+  note: >-
+    The multi-agent runtime must hand off verified RTL and must not fabricate
+    synthesis, timing, power, or area metrics.
