@@ -1,0 +1,14 @@
+interface:
+  display_name: autonomous npu rtl engineering
+  short_description: This skill governs an autonomous multi-agent hardware-engineering
+    workflow that transforms a structured NPU specification into functionally verified,
+    synthesizable, and optionally PPA-optimized RTL.
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true
