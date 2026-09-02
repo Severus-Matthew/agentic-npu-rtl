@@ -7,14 +7,53 @@ Run from the repository root:
 Optional:
 
     python -m multigent.scripts.check_api --list-models
+
+The checker also diagnoses malformed cluster proxy variables before attempting an
+API request. Set NPU_AGENT_TRUST_ENV=false to ignore inherited proxy variables
+when direct outbound HTTPS is available.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+from urllib.parse import urlsplit
 
-from openai import OpenAI, OpenAIError
+from openai import DefaultHttpx2Client, OpenAI, OpenAIError
+
+
+PROXY_VARIABLES = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+)
+
+
+def trust_env_enabled() -> bool:
+    value = os.getenv("NPU_AGENT_TRUST_ENV", "true").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
+def proxy_diagnostics() -> list[str]:
+    """Return human-readable warnings without exposing proxy credentials."""
+
+    warnings: list[str] = []
+    for name in PROXY_VARIABLES:
+        value = os.getenv(name)
+        if not value:
+            continue
+        parsed = urlsplit(value)
+        if not parsed.scheme:
+            warnings.append(
+                f"{name} is set but has no URL scheme (expected e.g. "
+                "http://proxy.example.edu:PORT)."
+            )
+        elif parsed.scheme not in {"http", "https", "socks5", "socks5h"}:
+            warnings.append(f"{name} uses unexpected proxy scheme {parsed.scheme!r}.")
+    return warnings
 
 
 def build_client() -> OpenAI:
@@ -24,7 +63,11 @@ def build_client() -> OpenAI:
             "OPENAI_API_KEY is missing. Copy .env.example to .env and set your key."
         )
 
-    kwargs = {"api_key": api_key, "timeout": 60.0}
+    kwargs = {
+        "api_key": api_key,
+        "timeout": 60.0,
+        "http_client": DefaultHttpx2Client(trust_env=trust_env_enabled()),
+    }
     base_url = os.getenv("OPENAI_BASE_URL")
     if base_url:
         kwargs["base_url"] = base_url.rstrip("/") + "/"
@@ -43,10 +86,25 @@ def main() -> None:
     model = os.getenv("NPU_AGENT_MODEL", "gpt-5.3-codex")
     mode = os.getenv("NPU_AGENT_API_MODE", "responses")
     base_url = os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1"
+    trust_env = trust_env_enabled()
 
     print(f"Base URL : {base_url}")
     print(f"API mode : {mode}")
     print(f"Model    : {model}")
+    print(f"Trust env: {trust_env}")
+
+    warnings = proxy_diagnostics()
+    if trust_env and warnings:
+        print("\nProxy environment problem detected:")
+        for warning in warnings:
+            print(f"  - {warning}")
+        print(
+            "\nThis can cause HTTPX/OpenAI to fail before contacting the API.\n"
+            "Either fix/unset the malformed proxy variable(s), or, if this node has "
+            "direct outbound HTTPS access, set:\n\n"
+            "    NPU_AGENT_TRUST_ENV=false\n"
+        )
+        raise SystemExit(2)
 
     client = build_client()
 
@@ -86,8 +144,8 @@ def main() -> None:
     except OpenAIError as exc:
         raise RuntimeError(
             f"API request failed for mode={mode!r}, model={model!r}: {exc}\n"
-            "If your university gateway does not implement /responses, set "
-            "NPU_AGENT_API_MODE=chat_completions and retry."
+            "If the transport connects successfully but the provider rejects the "
+            "endpoint, then try NPU_AGENT_API_MODE=chat_completions."
         ) from exc
 
     print(f"\nProvider response: {output}")
