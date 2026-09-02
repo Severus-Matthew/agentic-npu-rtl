@@ -1,0 +1,405 @@
+{
+  "status": "READY",
+  "conflicts": [],
+  "architecture_contract": {
+    "design": {
+      "name": "int8_gemm_bias_relu_npu",
+      "version": "1.0",
+      "description": "Parameterizable dense GEMM engine with optional per-output-channel bias add and ReLU, using INT8 activations and weights with INT32 accumulation/output."
+    },
+    "operation": {
+      "kind": "GEMM_BIAS_RELU",
+      "equation": "Y[m,n] = ReLU( sum_{k=0..K-1}( A[m,k] * B[k,n] ) + bias[n] )",
+      "description": "Matrix multiply A[MxK] by B[KxN], add bias per output column n, apply ReLU clamp at zero. Bias path is mandatory for this design profile."
+    },
+    "numeric": {
+      "activation_width": 8,
+      "activation_signed": true,
+      "weight_width": 8,
+      "weight_signed": true,
+      "accumulator_width": 32,
+      "accumulator_signed": true,
+      "overflow_semantics": "Two's-complement wrap on 32-bit accumulator overflow during accumulation/add-bias; ReLU then outputs max(value,0) in INT32 domain.",
+      "rounding_semantics": "Exact integer arithmetic; no rounding, no quantization/truncation at output."
+    },
+    "compute": {
+      "organization": "Output-stationary parallel MAC array with time-multiplexed K dimension",
+      "rows": 4,
+      "columns": 4,
+      "mac_count": 16,
+      "parameterization": "Top-level parameters: M_MAX, N_MAX, K_MAX, ARRAY_ROWS=4, ARRAY_COLS=4, ACT_W=8, WGT_W=8, ACC_W=32. Runtime dimensions M,N,K provided per job and must satisfy 1<=M<=M_MAX, 1<=N<=N_MAX, 1<=K<=K_MAX."
+    },
+    "dataflow": "Output-stationary tiled GEMM: each tile computes up to ARRAY_ROWS x ARRAY_COLS outputs. For each tile, accumulators reset to zero, consume K products, then bias add and ReLU, then stream out results. A and B are provided as element streams; internal address generators map elements to tile lanes.",
+    "pipeline": [
+      {
+        "stage": "S0_INPUT_ACCEPT",
+        "responsibility": "Accept input elements/metadata on ready-valid channels into ingress FIFOs and job registers.",
+        "registered": true,
+        "valid_behavior": "Transfers only on in_valid && in_ready. Payload must remain stable while in_valid=1 and in_ready=0."
+      },
+      {
+        "stage": "S1_OPERAND_FETCH_ALIGN",
+        "responsibility": "Read/align A and B elements for active tile lanes; sign-extend INT8 operands.",
+        "registered": true,
+        "valid_behavior": "Lane-valid derived from active row/col masks and k-progress; stalls when downstream not ready."
+      },
+      {
+        "stage": "S2_MUL",
+        "responsibility": "Compute signed INT8xINT8 products (16-bit signed).",
+        "registered": true,
+        "valid_behavior": "Per-lane product_valid follows aligned lane-valid with one-cycle latency."
+      },
+      {
+        "stage": "S3_ACCUMULATE",
+        "responsibility": "Accumulate products into INT32 per-lane accumulators across K iterations.",
+        "registered": true,
+        "valid_behavior": "Accumulator update occurs when lane_valid=1; hold state under stall."
+      },
+      {
+        "stage": "S4_POSTPROC",
+        "responsibility": "Add bias[n] (INT32) and apply ReLU.",
+        "registered": true,
+        "valid_behavior": "Executed once per output element after final K accumulation for that element."
+      },
+      {
+        "stage": "S5_OUTPUT_STREAM",
+        "responsibility": "Emit INT32 outputs with coordinates under ready-valid backpressure.",
+        "registered": true,
+        "valid_behavior": "out_valid stays asserted with stable payload until out_ready handshake."
+      }
+    ],
+    "buffers": [
+      {
+        "name": "a_fifo",
+        "role": "Ingress buffering for A stream elements",
+        "implementation_hint": "small sync FIFO (register/LUTRAM inferred)",
+        "depth": 32,
+        "element_width": 8
+      },
+      {
+        "name": "b_fifo",
+        "role": "Ingress buffering for B stream elements",
+        "implementation_hint": "small sync FIFO (register/LUTRAM inferred)",
+        "depth": 32,
+        "element_width": 8
+      },
+      {
+        "name": "bias_mem",
+        "role": "Stores N bias values per job",
+        "implementation_hint": "register file or LUTRAM",
+        "depth": 256,
+        "element_width": 32
+      },
+      {
+        "name": "accumulator_file",
+        "role": "Holds partial sums for active output tile lanes",
+        "implementation_hint": "register array",
+        "depth": 16,
+        "element_width": 32
+      },
+      {
+        "name": "out_fifo",
+        "role": "Decouple compute from output backpressure",
+        "implementation_hint": "sync FIFO",
+        "depth": 32,
+        "element_width": 32
+      }
+    ],
+    "control": "Single centralized FSM with phases: IDLE->LOAD_CFG->LOAD_BIAS->COMPUTE_TILE(loop over tile_m,tile_n,k)->POSTPROC->DRAIN_OUT->DONE. Internal counters: m_idx,n_idx,k_idx,tile indices. Backpressure-aware: compute launch gated by output space availability and operand availability.",
+    "reset": {
+      "style": "synchronous",
+      "polarity": "active_high",
+      "required_state": "On reset assertion: FSM=IDLE, all valids deasserted, ready signals driven per empty-buffer policy, counters cleared, accumulators cleared, FIFOs logically emptied."
+    },
+    "latency_model": "Variable latency by M,N,K and backpressure. For a single output element without stalls, minimum datapath latency from final contributing operand acceptance to output valid is 4 cycles (S2-S5). Total job latency includes stream ingress, tiled K loop, and output draining.",
+    "architectural_invariants": [
+      "Computation semantics fixed to Y=ReLU(A*B+bias) with per-column bias index n.",
+      "A and B operands are signed INT8; products are signed INT16; accumulation/postproc in signed INT32.",
+      "Accumulator overflow behavior is wrap (two's complement), not saturation.",
+      "Output datatype is signed INT32 after ReLU (thus non-negative representable INT32).",
+      "Handshake transfer condition is always ready && valid; no sideband transfer without handshake.",
+      "Under backpressure, output payload and coordinates remain stable while out_valid=1 and out_ready=0.",
+      "Architecture is output-stationary tiled parallel MAC array; downstream agents may not change to different algorithmic semantics without architecture revision.",
+      "Reset is synchronous active-high and must deterministically clear control/valid state."
+    ],
+    "open_assumptions": [
+      "Bias is required for GEMM_BIAS_RELU path and provided as exactly N signed INT32 values per job.",
+      "Top-level stream ordering: A elements arrive row-major by (m,k), B elements arrive row-major by (k,n), outputs emitted row-major by (m,n).",
+      "Default array size chosen as 4x4 for baseline simplicity and synthesizability; parameterizable constants permit future retargeting.",
+      "Single-clock domain design with one global clk; no CDC support in this milestone.",
+      "No sparsity/compression/quantized output path included in this phase."
+    ]
+  },
+  "interface_contract": {
+    "protocol": "ready_valid",
+    "clock": "clk (single rising-edge domain)",
+    "reset": "rst (synchronous, active-high)",
+    "signals": [
+      {
+        "name": "clk",
+        "direction": "input",
+        "width": "1",
+        "signed": false,
+        "semantic": "Global clock.",
+        "reset_value": "N/A"
+      },
+      {
+        "name": "rst",
+        "direction": "input",
+        "width": "1",
+        "signed": false,
+        "semantic": "Synchronous active-high reset.",
+        "reset_value": "asserted drives module to required reset state"
+      },
+      {
+        "name": "cfg_valid",
+        "direction": "input",
+        "width": "1",
+        "signed": false,
+        "semantic": "Configuration channel valid for {M,N,K}.",
+        "reset_value": "0"
+      },
+      {
+        "name": "cfg_ready",
+        "direction": "output",
+        "width": "1",
+        "signed": false,
+        "semantic": "Configuration channel ready.",
+        "reset_value": "1 when idle"
+      },
+      {
+        "name": "cfg_M",
+        "direction": "input",
+        "width": "$clog2(M_MAX+1)",
+        "signed": false,
+        "semantic": "Rows of A / Y.",
+        "reset_value": "0"
+      },
+      {
+        "name": "cfg_N",
+        "direction": "input",
+        "width": "$clog2(N_MAX+1)",
+        "signed": false,
+        "semantic": "Columns of B / Y.",
+        "reset_value": "0"
+      },
+      {
+        "name": "cfg_K",
+        "direction": "input",
+        "width": "$clog2(K_MAX+1)",
+        "signed": false,
+        "semantic": "Shared reduction dimension.",
+        "reset_value": "0"
+      },
+      {
+        "name": "bias_valid",
+        "direction": "input",
+        "width": "1",
+        "signed": false,
+        "semantic": "Bias stream valid.",
+        "reset_value": "0"
+      },
+      {
+        "name": "bias_ready",
+        "direction": "output",
+        "width": "1",
+        "signed": false,
+        "semantic": "Bias stream ready.",
+        "reset_value": "0"
+      },
+      {
+        "name": "bias_data",
+        "direction": "input",
+        "width": "32",
+        "signed": true,
+        "semantic": "Bias value for next n index.",
+        "reset_value": "0"
+      },
+      {
+        "name": "a_valid",
+        "direction": "input",
+        "width": "1",
+        "signed": false,
+        "semantic": "A operand stream valid.",
+        "reset_value": "0"
+      },
+      {
+        "name": "a_ready",
+        "direction": "output",
+        "width": "1",
+        "signed": false,
+        "semantic": "A operand stream ready.",
+        "reset_value": "0"
+      },
+      {
+        "name": "a_data",
+        "direction": "input",
+        "width": "8",
+        "signed": true,
+        "semantic": "A[m,k] element stream.",
+        "reset_value": "0"
+      },
+      {
+        "name": "b_valid",
+        "direction": "input",
+        "width": "1",
+        "signed": false,
+        "semantic": "B operand stream valid.",
+        "reset_value": "0"
+      },
+      {
+        "name": "b_ready",
+        "direction": "output",
+        "width": "1",
+        "signed": false,
+        "semantic": "B operand stream ready.",
+        "reset_value": "0"
+      },
+      {
+        "name": "b_data",
+        "direction": "input",
+        "width": "8",
+        "signed": true,
+        "semantic": "B[k,n] element stream.",
+        "reset_value": "0"
+      },
+      {
+        "name": "out_valid",
+        "direction": "output",
+        "width": "1",
+        "signed": false,
+        "semantic": "Output stream valid.",
+        "reset_value": "0"
+      },
+      {
+        "name": "out_ready",
+        "direction": "input",
+        "width": "1",
+        "signed": false,
+        "semantic": "Output stream ready.",
+        "reset_value": "0"
+      },
+      {
+        "name": "out_data",
+        "direction": "output",
+        "width": "32",
+        "signed": true,
+        "semantic": "Y[m,n] output value.",
+        "reset_value": "0"
+      },
+      {
+        "name": "out_m",
+        "direction": "output",
+        "width": "$clog2(M_MAX)",
+        "signed": false,
+        "semantic": "Output row index m for out_data.",
+        "reset_value": "0"
+      },
+      {
+        "name": "out_n",
+        "direction": "output",
+        "width": "$clog2(N_MAX)",
+        "signed": false,
+        "semantic": "Output column index n for out_data.",
+        "reset_value": "0"
+      },
+      {
+        "name": "job_done",
+        "direction": "output",
+        "width": "1",
+        "signed": false,
+        "semantic": "Pulse when all MxN outputs for accepted job have transferred.",
+        "reset_value": "0"
+      }
+    ],
+    "handshake": {
+      "transfer_condition": "A transfer occurs iff valid && ready on that channel in the same cycle.",
+      "stall_behavior": "When receiver deasserts ready, sender must hold valid asserted (if data pending) and keep payload stable until transfer.",
+      "backpressure_supported": true,
+      "ordering": "In-order per stream; no reordering allowed for cfg, bias, A, B, or output channels."
+    }
+  },
+  "module_manifest": {
+    "top": "gemm_bias_relu_npu_top",
+    "modules": [
+      {
+        "name": "gemm_bias_relu_npu_top",
+        "responsibility": "Top integration, external I/O, module wiring, parameter exposure.",
+        "dependencies": [
+          "npu_controller",
+          "operand_ingress",
+          "mac_array",
+          "postproc_unit",
+          "output_egress"
+        ],
+        "stateful": true
+      },
+      {
+        "name": "npu_controller",
+        "responsibility": "Global FSM, dimension counters, tile scheduling, handshake orchestration.",
+        "dependencies": [
+          "operand_ingress",
+          "mac_array",
+          "postproc_unit",
+          "output_egress"
+        ],
+        "stateful": true
+      },
+      {
+        "name": "operand_ingress",
+        "responsibility": "Implements cfg/bias/A/B ready-valid acceptance and buffering; provides aligned operands to compute fabric.",
+        "dependencies": [],
+        "stateful": true
+      },
+      {
+        "name": "mac_array",
+        "responsibility": "4x4 parallel signed multipliers and accumulator file updates for K-loop.",
+        "dependencies": [],
+        "stateful": true
+      },
+      {
+        "name": "postproc_unit",
+        "responsibility": "Bias fetch/add and ReLU application on completed accumulations.",
+        "dependencies": [
+          "mac_array"
+        ],
+        "stateful": false
+      },
+      {
+        "name": "output_egress",
+        "responsibility": "Output packing with indices, out FIFO, ready-valid hold under backpressure, job_done pulse generation.",
+        "dependencies": [],
+        "stateful": true
+      }
+    ]
+  },
+  "acceptance_criteria": {
+    "functional": [
+      "For all tested legal M,N,K and operand/bias values, output Y exactly matches integer reference Y=ReLU(A*B+bias) with signed INT8 operands and signed INT32 accumulation/wrap semantics.",
+      "Per-column bias indexing correctness: bias[n] applied to every Y[m,n].",
+      "ReLU correctness: all negative post-bias accumulations map to 0; non-negative unchanged.",
+      "Protocol correctness: no data loss/duplication under arbitrary ready deassertion on output; payload stability while stalled.",
+      "Input handshake correctness on cfg/bias/A/B channels using ready&&valid transfer rule.",
+      "Reset correctness: from any active state, asserting rst produces required reset state on next active clock edge and prevents spurious output transfers.",
+      "Supported-dimension correctness for boundary cases including minimum (1,1,1) and configured maxima (M_MAX,N_MAX,K_MAX)."
+    ],
+    "verification": [
+      "Deterministic directed tests include at least: sanity 1x1x1, non-square shapes, full-tile and partial-tile cases, negative/positive mixed values, overflow-exercising accumulations, zero-K disallowed check.",
+      "Randomized transactions: minimum 100 jobs with randomized legal dimensions/data/backpressure patterns.",
+      "Independent reference model must derive expected results from contract semantics, not RTL internals.",
+      "Backpressure tests required with prolonged out_ready low bursts.",
+      "Reset tests required including reset during idle and mid-job behavior per reset policy."
+    ],
+    "rtl": [
+      "RTL must be SystemVerilog synthesizable subset only; forbidden constructs: real, shortreal, delay statements, force/release, classes.",
+      "No unsized ambiguous signed arithmetic in datapath; explicit casting/sign-extension required.",
+      "All state-holding elements must have deterministic reset behavior per contract.",
+      "Module boundaries and top-level interface must match interface_contract and module_manifest."
+    ],
+    "synopsys_handoff": [
+      "Handoff package must include: verified RTL sources, frozen architecture artifacts, independent reference model, testbench/regression suite, functional verification report with deterministic PASS evidence.",
+      "External Synopsys flow is owned by designated external team member; this architecture stage provides no fabricated synthesis/timing/power/area metrics.",
+      "Any RTL change after functional PASS (including optimization) requires rerun of required regression before handoff refresh."
+    ]
+  }
+}

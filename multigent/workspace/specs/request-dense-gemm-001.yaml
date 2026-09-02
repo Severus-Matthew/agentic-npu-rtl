@@ -1,0 +1,46 @@
+user_request: design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type
+project_constraints:
+  rtl_constraints:
+    language: SystemVerilog
+    synthesizable_only: true
+    forbidden_constructs:
+    - real
+    - shortreal
+    - delay_statements
+    - force_release
+    - classes
+  verification_policy:
+    exact_integer_match: true
+    randomized_transactions_minimum: 100
+    require_reset_tests: true
+    require_backpressure_tests: true
+  external_synopsys_handoff:
+    required: true
+    owner: external_team_member
+    note: The multi-agent runtime must hand off verified RTL and must not fabricate
+      synthesis, timing, power, or area metrics.
+architect_must_decide_when_unspecified:
+- design_name
+- design_description
+- exact_arithmetic_semantics
+- signedness
+- overflow_semantics
+- compute_organization
+- array_dimensions
+- parameterization
+- dataflow
+- buffering
+- pipeline_structure
+- interface_protocol
+- backpressure_behavior
+- reset_style
+- reset_polarity
+- control_strategy
+- latency_model
+- module_decomposition
+provenance:
+  user_supplied_fields:
+  - user_request
+  runtime_injected_fields:
+  - project_constraints
+  - architect_must_decide_when_unspecified

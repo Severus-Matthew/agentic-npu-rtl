@@ -1,0 +1,40 @@
+functional:
+- For all tested legal M,N,K and operand/bias values, output Y exactly matches integer
+  reference Y=ReLU(A*B+bias) with signed INT8 operands and signed INT32 accumulation/wrap
+  semantics.
+- 'Per-column bias indexing correctness: bias[n] applied to every Y[m,n].'
+- 'ReLU correctness: all negative post-bias accumulations map to 0; non-negative unchanged.'
+- 'Protocol correctness: no data loss/duplication under arbitrary ready deassertion
+  on output; payload stability while stalled.'
+- Input handshake correctness on cfg/bias/A/B channels using ready&&valid transfer
+  rule.
+- 'Reset correctness: from any active state, asserting rst produces required reset
+  state on next active clock edge and prevents spurious output transfers.'
+- Supported-dimension correctness for boundary cases including minimum (1,1,1) and
+  configured maxima (M_MAX,N_MAX,K_MAX).
+verification:
+- 'Deterministic directed tests include at least: sanity 1x1x1, non-square shapes,
+  full-tile and partial-tile cases, negative/positive mixed values, overflow-exercising
+  accumulations, zero-K disallowed check.'
+- 'Randomized transactions: minimum 100 jobs with randomized legal dimensions/data/backpressure
+  patterns.'
+- Independent reference model must derive expected results from contract semantics,
+  not RTL internals.
+- Backpressure tests required with prolonged out_ready low bursts.
+- Reset tests required including reset during idle and mid-job behavior per reset
+  policy.
+rtl:
+- 'RTL must be SystemVerilog synthesizable subset only; forbidden constructs: real,
+  shortreal, delay statements, force/release, classes.'
+- No unsized ambiguous signed arithmetic in datapath; explicit casting/sign-extension
+  required.
+- All state-holding elements must have deterministic reset behavior per contract.
+- Module boundaries and top-level interface must match interface_contract and module_manifest.
+synopsys_handoff:
+- 'Handoff package must include: verified RTL sources, frozen architecture artifacts,
+  independent reference model, testbench/regression suite, functional verification
+  report with deterministic PASS evidence.'
+- External Synopsys flow is owned by designated external team member; this architecture
+  stage provides no fabricated synthesis/timing/power/area metrics.
+- Any RTL change after functional PASS (including optimization) requires rerun of
+  required regression before handoff refresh.

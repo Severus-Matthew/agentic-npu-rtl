@@ -1,0 +1,54 @@
+{
+  "top": "gemm_bias_relu_npu_top",
+  "modules": [
+    {
+      "name": "gemm_bias_relu_npu_top",
+      "responsibility": "Top integration, external I/O, module wiring, parameter exposure.",
+      "dependencies": [
+        "npu_controller",
+        "operand_ingress",
+        "mac_array",
+        "postproc_unit",
+        "output_egress"
+      ],
+      "stateful": true
+    },
+    {
+      "name": "npu_controller",
+      "responsibility": "Global FSM, dimension counters, tile scheduling, handshake orchestration.",
+      "dependencies": [
+        "operand_ingress",
+        "mac_array",
+        "postproc_unit",
+        "output_egress"
+      ],
+      "stateful": true
+    },
+    {
+      "name": "operand_ingress",
+      "responsibility": "Implements cfg/bias/A/B ready-valid acceptance and buffering; provides aligned operands to compute fabric.",
+      "dependencies": [],
+      "stateful": true
+    },
+    {
+      "name": "mac_array",
+      "responsibility": "4x4 parallel signed multipliers and accumulator file updates for K-loop.",
+      "dependencies": [],
+      "stateful": true
+    },
+    {
+      "name": "postproc_unit",
+      "responsibility": "Bias fetch/add and ReLU application on completed accumulations.",
+      "dependencies": [
+        "mac_array"
+      ],
+      "stateful": false
+    },
+    {
+      "name": "output_egress",
+      "responsibility": "Output packing with indices, out FIFO, ready-valid hold under backpressure, job_done pulse generation.",
+      "dependencies": [],
+      "stateful": true
+    }
+  ]
+}
