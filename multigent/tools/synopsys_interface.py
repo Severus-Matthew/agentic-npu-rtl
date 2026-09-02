@@ -1,17 +1,16 @@
-"""External Synopsys synthesis/PPA integration boundary.
+"""Synopsys synthesis/PPA integration boundary.
 
-The multi-agent team does not own the Synopsys implementation. Another project
-member will provide the executable integration. This module defines the stable
-contract that the LangGraph workflow will consume.
+This module defines the stable technical interface consumed by the multi-agent
+workflow. The Synopsys executable adapter is outside this repository.
 
-Expected responsibility of the external implementation:
-- accept a verified RTL workspace and synthesis configuration;
-- run the agreed Synopsys flow;
+The integration must:
+- accept a functionally verified RTL workspace and synthesis configuration;
+- run the configured Synopsys flow;
 - emit a JSON report matching ``schemas/synthesis_result.schema.json``;
 - preserve raw logs/reports for provenance.
 
-No agent may fabricate synthesis, timing, power, or area values when this
-interface has not returned a real tool-generated report.
+No agent may fabricate synthesis, timing, power, area, frequency, or utilization
+values when no real tool-generated report is available.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ from typing import Any, Mapping, Protocol
 
 
 class SynopsysBackend(Protocol):
-    """Protocol implemented by the externally owned Synopsys adapter."""
+    """Interface implemented by a configured Synopsys adapter."""
 
     def run(
         self,
@@ -37,7 +36,7 @@ class SynopsysBackend(Protocol):
 
 @dataclass(frozen=True)
 class SynopsysRequest:
-    """Tool-independent request passed to the external Synopsys implementation."""
+    """Request passed to the Synopsys integration."""
 
     rtl_dir: Path
     output_dir: Path
@@ -46,16 +45,16 @@ class SynopsysRequest:
 
 
 class SynopsysIntegrationUnavailable(RuntimeError):
-    """Raised when the externally owned Synopsys backend is not configured."""
+    """Raised when no Synopsys backend is configured."""
 
 
 def run_synopsys(*_: Any, **__: Any) -> Mapping[str, Any]:
-    """Placeholder entry point until the external Synopsys adapter is supplied.
+    """Placeholder entry point until a Synopsys adapter is configured.
 
-    Failing explicitly is intentional: the workflow must never replace missing
-    EDA evidence with an LLM estimate.
+    Failing explicitly prevents missing EDA evidence from being replaced by an
+    LLM estimate.
     """
 
     raise SynopsysIntegrationUnavailable(
-        "Synopsys integration is externally owned and has not been configured."
+        "Synopsys integration is not configured."
     )
