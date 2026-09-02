@@ -68,7 +68,8 @@ class ArchitectAgent(APIAgent):
                 "legacy_user_specification"
             )
 
-        persist_intake(intake, run_id=run_id)
+        intake_dir = WORKSPACE_ROOT / "specs" if output_dir is None else target.parent / "specs"
+        persist_intake(intake, run_id=run_id, output_dir=intake_dir)
         task = self._build_architecture_task(intake)
         result = self.run_structured(
             task=task,
