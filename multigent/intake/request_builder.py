@@ -4,10 +4,10 @@ The user should describe only computational intent, for example:
 
     design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type
 
-This module does not invent architecture. It adds only fixed project constraints
-and records which unspecified choices belong to the Architect. Downstream agent
-context is then assembled deterministically from the original request, the fixed
-project constraints, and frozen Architect artifacts.
+This module does not invent architecture. It adds only fixed technical project
+constraints and records which unspecified choices belong to the Architect.
+Downstream context is assembled deterministically from the original request,
+those fixed constraints, and the frozen Architect artifacts.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def load_project_constraints(path: Path = PROJECT_CONSTRAINTS_PATH) -> dict[str,
 
 
 def build_architect_intake(user_request: str) -> dict[str, Any]:
-    """Combine raw user intent with fixed project policy for the Architect.
+    """Combine raw user intent with fixed technical policy for the Architect.
 
     No microarchitecture defaults are injected here. Anything under
     ``architect_must_decide_when_unspecified`` is explicitly delegated to the
@@ -49,7 +49,7 @@ def build_architect_intake(user_request: str) -> dict[str, Any]:
         "project_constraints": {
             "rtl_constraints": project["rtl_constraints"],
             "verification_policy": project["verification_policy"],
-            "external_synopsys_handoff": project["external_synopsys_handoff"],
+            "synthesis_policy": project["synthesis_policy"],
         },
         "architect_must_decide_when_unspecified": project[
             "architect_must_decide_when_unspecified"
@@ -87,12 +87,11 @@ def build_rtl_context(
     user_request: str,
     architecture_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Assemble the complete deterministic context for the future RTL Agent.
+    """Assemble the deterministic context for the RTL Generator.
 
-    The RTL agent should not require the user to restate any project policy.
-    It will receive:
+    The RTL generator receives:
       1. the original natural-language request,
-      2. fixed runtime/project constraints, and
+      2. fixed RTL/synthesis constraints, and
       3. the frozen Architect artifacts.
     """
 
@@ -118,6 +117,6 @@ def build_rtl_context(
     return {
         "user_request": user_request.strip(),
         "fixed_rtl_constraints": project["rtl_constraints"],
+        "synthesis_policy": project["synthesis_policy"],
         "frozen_architecture": artifacts,
-        "external_synopsys_handoff": project["external_synopsys_handoff"],
     }
