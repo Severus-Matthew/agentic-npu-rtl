@@ -1,4 +1,4 @@
-"""Codex-backed Architect Agent.
+"""API-backed Architect Agent.
 
 This is the first executable LLM node in the workflow. It converts an NPU
 specification into a frozen implementation contract for downstream RTL and
@@ -9,26 +9,28 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any, Mapping
 
 import yaml
 
-from .base import AgentConfig, CodexAgent, SCHEMA_ROOT, WORKSPACE_ROOT
+from .base import APIAgent, AgentConfig, SCHEMA_ROOT, WORKSPACE_ROOT
 
 
 ARCHITECT_OUTPUT_SCHEMA = SCHEMA_ROOT / "architect_output.schema.json"
 
 
-class ArchitectAgent(CodexAgent):
+class ArchitectAgent(APIAgent):
     """Produce architecture contracts from a structured NPU specification."""
 
-    def __init__(self, *, model: str = "gpt-5.3-codex") -> None:
+    def __init__(self, *, model: str | None = None, api_mode: str | None = None) -> None:
         super().__init__(
             AgentConfig(
                 name="architect",
                 role_skill="architect",
-                model=model,
+                model=model or os.getenv("NPU_AGENT_MODEL", "gpt-5.3-codex"),
+                api_mode=api_mode or os.getenv("NPU_AGENT_API_MODE", "responses"),
             )
         )
 
@@ -41,7 +43,7 @@ class ArchitectAgent(CodexAgent):
     ) -> dict[str, Any]:
         """Create and persist the architecture contract for ``spec``.
 
-        Files are written by this Python wrapper rather than by Codex itself.
+        Files are written by this Python wrapper rather than by the model itself.
         This enforces the Architect's ownership boundary mechanically.
         """
 
@@ -52,7 +54,7 @@ class ArchitectAgent(CodexAgent):
         result = self.run_structured(
             task=task,
             schema_path=ARCHITECT_OUTPUT_SCHEMA,
-            log_name=f"architect-{run_id}.jsonl",
+            log_name=f"architect-{run_id}.json",
         )
 
         if result["status"] == "SPEC_CONFLICT":
@@ -147,7 +149,7 @@ def load_spec(path: Path) -> dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the Codex NPU Architect Agent")
+    parser = argparse.ArgumentParser(description="Run the NPU Architect Agent")
     parser.add_argument("--spec", required=True, type=Path, help="YAML/JSON NPU spec")
     parser.add_argument(
         "--output-dir",
@@ -156,10 +158,20 @@ def main() -> None:
         help="Architect-owned artifact directory",
     )
     parser.add_argument("--run-id", default="manual")
-    parser.add_argument("--model", default="gpt-5.3-codex")
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Override NPU_AGENT_MODEL for this run",
+    )
+    parser.add_argument(
+        "--api-mode",
+        choices=["responses", "chat_completions"],
+        default=None,
+        help="Override NPU_AGENT_API_MODE for this run",
+    )
     args = parser.parse_args()
 
-    agent = ArchitectAgent(model=args.model)
+    agent = ArchitectAgent(model=args.model, api_mode=args.api_mode)
     result = agent.run(
         load_spec(args.spec),
         output_dir=args.output_dir,
