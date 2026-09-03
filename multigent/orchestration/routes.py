@@ -7,8 +7,17 @@ from typing import Literal
 from .state import HardwareDesignState
 
 
+StartRoute = Literal["architect", "rtl_generator"]
 ArchitectRoute = Literal["rtl_generator", "failed"]
 RTLRoute = Literal["architect", "verification", "failed"]
+
+
+def route_start(state: HardwareDesignState) -> StartRoute:
+    """Reuse an explicitly supplied frozen RTL context instead of rerunning Architect."""
+
+    if state.get("architecture_status") == "READY" and state.get("rtl_context"):
+        return "rtl_generator"
+    return "architect"
 
 
 def route_after_architect(state: HardwareDesignState) -> ArchitectRoute:
