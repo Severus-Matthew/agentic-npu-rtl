@@ -7,7 +7,19 @@ from typing import Literal
 from .state import HardwareDesignState
 
 
+ArchitectRoute = Literal["rtl_generator", "failed"]
 RTLRoute = Literal["architect", "verification", "failed"]
+
+
+def route_after_architect(state: HardwareDesignState) -> ArchitectRoute:
+    """Continue only when Architect produced a validated READY contract."""
+
+    status = state.get("architecture_status")
+    if status == "READY":
+        return "rtl_generator"
+    if status == "SPEC_CONFLICT":
+        return "failed"
+    raise ValueError(f"Cannot route unknown architecture_status={status!r}")
 
 
 def route_after_rtl(state: HardwareDesignState) -> RTLRoute:
