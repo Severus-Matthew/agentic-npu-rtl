@@ -37,6 +37,7 @@
         "design",
         "operations",
         "data_types",
+        "data_objects",
         "dimensions",
         "parameters",
         "compute",
@@ -103,6 +104,32 @@
             }
           }
         },
+        "data_objects": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "role",
+              "data_type",
+              "dimensions",
+              "producer",
+              "consumers",
+              "external"
+            ],
+            "properties": {
+              "name": {"type": "string"},
+              "role": {"type": "string"},
+              "data_type": {"type": "string"},
+              "dimensions": {"type": "array", "items": {"type": "string"}},
+              "producer": {"type": "string"},
+              "consumers": {"type": "array", "items": {"type": "string"}},
+              "external": {"type": "boolean"}
+            }
+          }
+        },
         "dimensions": {
           "type": "array",
           "items": {
@@ -158,10 +185,9 @@
             "additionalProperties": false,
             "required": [
               "name",
-              "stores",
+              "stored_objects",
               "capacity_expression",
-              "maximum_elements",
-              "element_width_bits",
+              "capacity_at_default_parameters",
               "access_pattern",
               "port_requirements",
               "implementation_hint",
@@ -170,10 +196,9 @@
             ],
             "properties": {
               "name": {"type": "string"},
-              "stores": {"type": "string"},
+              "stored_objects": {"type": "array", "items": {"type": "string"}},
               "capacity_expression": {"type": "string"},
-              "maximum_elements": {"type": "integer", "minimum": 1},
-              "element_width_bits": {"type": "integer", "minimum": 1},
+              "capacity_at_default_parameters": {"type": "integer", "minimum": 1},
               "access_pattern": {"type": "string"},
               "port_requirements": {"type": "string"},
               "implementation_hint": {"type": "string"},
@@ -200,12 +225,13 @@
         "control": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["strategy", "state_progression", "counters", "error_behavior"],
+          "required": ["strategy", "state_progression", "counters", "error_behavior", "error_recovery"],
           "properties": {
             "strategy": {"type": "string"},
             "state_progression": {"type": "string"},
             "counters": {"type": "array", "items": {"type": "string"}},
-            "error_behavior": {"type": "string"}
+            "error_behavior": {"type": "string"},
+            "error_recovery": {"type": "string"}
           }
         },
         "reset": {
@@ -242,11 +268,22 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "direction", "purpose", "framing", "ordering", "backpressure"],
+            "required": [
+              "name",
+              "direction",
+              "purpose",
+              "data_objects",
+              "metadata",
+              "framing",
+              "ordering",
+              "backpressure"
+            ],
             "properties": {
               "name": {"type": "string"},
               "direction": {"type": "string", "enum": ["input", "output"]},
               "purpose": {"type": "string"},
+              "data_objects": {"type": "array", "items": {"type": "string"}},
+              "metadata": {"type": "array", "items": {"type": "string"}},
               "framing": {"type": "string"},
               "ordering": {"type": "string"},
               "backpressure": {"type": "string"}
