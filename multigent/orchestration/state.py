@@ -31,8 +31,13 @@ class HardwareDesignState(TypedDict, total=False):
     rtl_result: dict[str, Any]
     rtl_files: list[str]
 
+    verification_context: dict[str, Any]
+    verifier_status: str
+    verifier_result: dict[str, Any]
+    verification_plan: dict[str, Any]
     verification_status: str
     verification_evidence: dict[str, Any] | None
+
     diagnosis: dict[str, Any] | None
     repair_plan: dict[str, Any] | None
 
