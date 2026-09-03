@@ -129,7 +129,7 @@ Define:
 
 Do not reference a clear/acknowledge/retry command or signal unless it exists in the interface contract.
 
-### 10. Define external interfaces
+### 10. Define external interfaces and exact transport encoding
 For every logical channel define:
 - name
 - direction
@@ -148,14 +148,36 @@ For every signal define:
 - semantic meaning
 - reset value
 
+The interface description must be sufficient to implement a decoder/encoder without guessing. For every packet/section/transfer class, explicitly state:
+- which fields or element(s) are carried in one transfer
+- exact bit packing or lane packing when multiple fields/elements share a payload
+- exact or parameter-derived transfer count
+- section boundaries and legal section sequence
+- behavior of partial final vectors/tiles when dimensions are not multiples of parallelism
+
+Transport capacity must be physically sufficient. The sum of packed field widths for one transfer must not exceed the declared payload width. Do not describe a single-beat command whose fields cannot fit in that beat.
+
 If ready/valid is used, define transfer as `ready && valid` and require payload stability while stalled. Do not require ready/valid if another protocol is technically more appropriate.
 
 Width expressions must remain legal at every permitted parameter value. Avoid zero-width `$clog2` expressions. Parameterized designs should normally use parameter-derived width expressions rather than constants derived only from default parameter values.
 
-### 11. Define reset
+### 11. Prove schedule/transport compatibility
+Before declaring a compute schedule, reconcile it with ingress/egress bandwidth and local buffering:
+- determine how many external transfers are required to prepare each compute step
+- distinguish operand-loading cycles from actual compute cycles
+- state whether loading and compute overlap
+- if overlap is claimed, define the buffering/banking that permits it
+- reflect these cycles in the latency/throughput model
+
+If external data must be retransmitted because it is not retained locally, specify the exact replay order and transfer-count formula. Do not use vague phrases such as `compute-consumption order` without defining that order algorithmically.
+
+### 12. Prove output ordering is realizable
+Declared output ordering must follow from the actual compute traversal and buffering. If outputs are finalized and emitted tile-by-tile, do not claim global row-major/column-major ordering unless the tile traversal and within-tile emission produce that order or a reorder buffer is explicitly defined. Otherwise declare the actual tile-major ordering.
+
+### 13. Define reset
 Reset must deterministically restore control/protocol state. Prefer resetting pointers, counters, FSM state, valid bits, and validity metadata rather than bulk-clearing memories unless cleared contents are functionally required.
 
-### 12. Define module decomposition
+### 14. Define module decomposition
 Each module must have one clear responsibility. The manifest must define:
 - top module
 - each submodule
@@ -165,11 +187,13 @@ Each module must have one clear responsibility. The manifest must define:
 
 All dependency names must refer to declared modules, and all module parameter names must refer to declared architecture parameters.
 
-### 13. Define acceptance criteria
+### 15. Define acceptance criteria
 Create machine-testable criteria for:
 - functional semantics
 - data-type/arithmetic semantics
 - legal runtime bounds and boundary cases
+- exact input framing/packing/transfer counts
+- output ordering
 - reset
 - interface/protocol behavior
 - randomized regression
@@ -189,7 +213,11 @@ Before returning `READY`, verify:
 - storage capacities agree with declared parameterization
 - storage port/banking requirements sustain the stated compute schedule
 - interface framing/order agrees with storage/reuse and retransmission requirements
-- scalar interface bandwidth is accounted for in the schedule/latency model
+- every packet/command field physically fits its declared payload width
+- every repeated stream has an exact transfer-count and ordering rule
+- scalar/vector interface bandwidth is accounted for in the schedule/latency model
+- claimed compute overlap is backed by sufficient buffering/banking
+- declared output ordering is realizable by the traversal or explicit reorder storage
 - pipeline stalls cannot corrupt or duplicate state
 - every error behavior has an implementable recovery path present in the contract/interface
 - module responsibilities cover every architectural function
