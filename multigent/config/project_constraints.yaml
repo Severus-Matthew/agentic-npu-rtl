@@ -9,10 +9,10 @@ rtl_constraints:
     - classes
 
 verification_policy:
-  exact_integer_match: true
+  exact_integer_match_when_applicable: true
   randomized_transactions_minimum: 100
   require_reset_tests: true
-  require_backpressure_tests: true
+  require_backpressure_tests_when_applicable: true
 
 synthesis_policy:
   provider: synopsys
@@ -23,21 +23,19 @@ synthesis_policy:
 
 architect_must_decide_when_unspecified:
   - design_name
-  - design_description
-  - exact_arithmetic_semantics
-  - signedness
-  - overflow_semantics
+  - operation_semantics
+  - data_type_semantics
+  - legal_runtime_bounds
+  - compile_time_parameters
   - compute_organization
-  - array_dimensions
-  - supported_dimension_bounds
-  - parameterization
+  - parallelism
+  - scheduling
   - dataflow
-  - operand_reuse_strategy
-  - operand_storage_strategy
+  - storage_and_reuse
   - buffering
   - pipeline_structure
   - interface_protocol
-  - input_ordering
+  - framing_and_ordering
   - backpressure_behavior
   - reset_style
   - reset_polarity
