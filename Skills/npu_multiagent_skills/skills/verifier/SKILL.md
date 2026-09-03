@@ -63,7 +63,8 @@ Tests must drive only contract-declared external signals and observe only contra
 
 Implement reusable drivers/monitors for the declared channels. For ready/valid protocols:
 - transfer occurs only on `ready && valid`
-- producers hold payload stable while `valid && !ready`
+- once a producer presents a beat with `valid=1`, keep that beat's payload stable until handshake
+- receiver state and counters advance only on handshake
 - monitors count only completed handshakes
 - randomized backpressure must not change functional results or ordering
 
@@ -119,7 +120,9 @@ Initial RTL requires FULL regression.
 ## Generated Python Rules
 Generated reference/test files must:
 - be valid Python
-- use cocotb 2.x APIs for cocotb tests
+- use cocotb 2.x public APIs for cocotb tests
+- use `cocotb.start_soon(...)`, not deprecated `cocotb.start(...)`; await the returned Task when completion is required
+- import `SimTimeoutError` from `cocotb.triggers` if needed, never from `cocotb.result`
 - avoid shelling out or modifying repository files
 - avoid reading generated RTL source files
 - avoid network access
