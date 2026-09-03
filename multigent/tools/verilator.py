@@ -22,29 +22,58 @@ FAILURE_CLASSES = {
 }
 
 
-def _classify_verilator_failure(text: str) -> str:
-    """Classify deterministic compiler text into the project's coarse taxonomy."""
+def _extract_error_diagnostics(text: str) -> list[str]:
+    """Return Verilator error headline diagnostics, excluding warnings/notes."""
 
-    lowered = text.lower()
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if line.lstrip().lower().startswith("%error")
+    ]
+
+
+def _classify_verilator_failure(text: str) -> str:
+    """Classify deterministic compiler text into the project's coarse taxonomy.
+
+    When Verilator emits both fatal errors and non-fatal warnings, classification is
+    based on the error headlines first. This prevents an unrelated WIDTH warning from
+    masking a real elaboration failure.
+    """
+
+    errors = _extract_error_diagnostics(text)
+    diagnostic_text = "\n".join(errors) if errors else text
+    lowered = diagnostic_text.lower()
+
     if "syntax error" in lowered or "%error: syntax" in lowered:
         return "SV_SYNTAX_ERROR"
-    if "width" in lowered or "little bit endian" in lowered or "zero width" in lowered:
-        return "WIDTH_ERROR"
+
+    unsynth_tokens = ("unsynthesizable", "non-synthesizable")
+    if any(token in lowered for token in unsynth_tokens):
+        return "UNSYNTHESIZABLE_RTL"
+
     elaboration_tokens = (
         "constant expression",
+        "expression to be constant",
+        "isn't const",
+        "is not constant",
+        "two-state constant",
         "parameter",
         "port connection",
+        "unmatched array sizes",
         "dimension",
         "array",
         "cannot find",
         "can't find",
-        "unsupported",
     )
     if any(token in lowered for token in elaboration_tokens):
         return "ELABORATION_ERROR"
-    unsynth_tokens = ("unsupported", "unsynthesizable", "non-synthesizable")
-    if any(token in lowered for token in unsynth_tokens):
+
+    if "width" in lowered or "little bit endian" in lowered or "zero width" in lowered:
+        return "WIDTH_ERROR"
+
+    if "unsupported" in lowered:
         return "UNSYNTHESIZABLE_RTL"
+
     return "UNKNOWN"
 
 
@@ -73,6 +102,7 @@ def run_verilator_lint(
             "sources": [str(path) for path in sources],
             "stdout": "",
             "stderr": "verilator executable not found on PATH",
+            "error_diagnostics": [],
             "top_module": top_module,
         }
         _write_report(report_path, result)
@@ -106,6 +136,7 @@ def run_verilator_lint(
             "sources": [str(path) for path in sources],
             "stdout": exc.stdout or "",
             "stderr": exc.stderr or "",
+            "error_diagnostics": [],
             "top_module": top_module,
         }
         _write_report(report_path, result)
@@ -124,6 +155,7 @@ def run_verilator_lint(
         "sources": [str(path) for path in sources],
         "stdout": completed.stdout,
         "stderr": completed.stderr,
+        "error_diagnostics": _extract_error_diagnostics(combined),
         "top_module": top_module,
     }
     _write_report(report_path, result)
