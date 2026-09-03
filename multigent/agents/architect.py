@@ -40,6 +40,19 @@ class ArchitectAgent(APIAgent):
             )
         )
 
+    def load_instructions(self) -> str:
+        """Load only the Architect's technical skill.
+
+        Shared workflow details for Debugger/PPA/other agents are intentionally
+        excluded from the Architect prompt. Fixed cross-stage technical constraints
+        are already supplied through the deterministic intake envelope.
+        """
+
+        if not self.role_skill_path.is_file():
+            raise FileNotFoundError(self.role_skill_path)
+        role_skill = self.role_skill_path.read_text(encoding="utf-8")
+        return f"# ARCHITECT TECHNICAL SKILL\n\n{role_skill}\n"
+
     def run(
         self,
         request: str | Mapping[str, Any],
@@ -132,7 +145,8 @@ Required design work:
    accumulation width, bias semantics, activation semantics, overflow behavior,
    extension rules, and output datatype.
 2. Choose compute organization, array dimensions, parameterization, supported
-   runtime dimension bounds, and dataflow when unspecified.
+   runtime dimension bounds, and dataflow when unspecified. Every compile-time
+   parameter must have a concrete default value and a stated legality constraint.
 3. Close operand-reuse semantics. For every operand, state whether it is supplied
    once per job, once per tile, or repeatedly. If an operand is reused, define the
    storage/replay mechanism that makes that reuse possible.
