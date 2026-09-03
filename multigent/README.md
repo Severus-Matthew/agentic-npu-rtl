@@ -10,35 +10,27 @@ All LLM roles use the same configured API model in controlled experiments so imp
 
 **LLMs propose. Deterministic engineering tools decide correctness and implementation metrics.**
 
-## User input
+## User input and deterministic context
 
-The user supplies minimal computational/behavioral intent, for example:
+The user supplies minimal computational/behavioral intent. A deterministic intake layer adds only fixed technical policy. Runtime code must not inject benchmark-specific microarchitecture defaults.
 
-```text
-design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type
-```
-
-or a completely different hardware request. Runtime code must not inject benchmark-specific microarchitecture defaults.
-
-A deterministic intake layer adds only fixed technical policy such as synthesizable SystemVerilog requirements, verification policy, and the deterministic Synopsys-report boundary.
-
-Fixed technical constraints live in:
+Fixed policy:
 
 ```text
 multigent/config/project_constraints.yaml
 ```
 
-The deterministic context builder lives in:
+Deterministic context builders:
 
 ```text
 multigent/intake/request_builder.py
 ```
 
+The RTL and Verifier contexts are intentionally different. RTL receives the frozen architecture needed for implementation. Verifier receives the original request, frozen Architect artifacts, and verification policy but **not generated RTL source or RTL Generator output**.
+
 ## Agent 1: Architect
 
-The Architect converts the minimal request into a frozen, internally consistent implementation contract. It chooses unspecified technical details appropriate to the requested workload and does not write RTL.
-
-Run:
+The Architect converts the minimal request into a frozen, internally consistent implementation contract and does not write RTL.
 
 ```bash
 python -m multigent.agents.architect \
@@ -46,7 +38,7 @@ python -m multigent.agents.architect \
   --run-id dense-gemm-008
 ```
 
-On `READY`, it writes:
+On `READY` it writes:
 
 ```text
 multigent/workspace/architecture/
@@ -57,55 +49,11 @@ multigent/workspace/architecture/
 └── architect_result.json
 ```
 
-The exact original request is retained under `multigent/workspace/specs/` for provenance.
-
-Before acceptance, the Architect output passes strict JSON-schema validation plus deterministic semantic cross-reference checks. Architecture is then treated as frozen for downstream agents.
-
-## Deterministic RTL context
-
-The RTL Generator does not ask the user to restate architecture details. Its context is assembled deterministically from:
-
-1. the exact original request,
-2. fixed RTL/synthesis policy, and
-3. the frozen Architect artifacts.
-
-Optional manual inspection/export:
-
-```bash
-python -m multigent.scripts.prepare_rtl_input \
-  --run-id dense-gemm-008
-```
-
-which writes:
-
-```text
-multigent/workspace/specs/derived/rtl-input-dense-gemm-008.yaml
-```
-
-LangGraph nodes may build the same context directly without this intermediate file.
+Before acceptance, output passes strict JSON-schema validation plus deterministic semantic cross-reference checks.
 
 ## Agent 2: RTL Generator
 
-The RTL Generator is accelerator-agnostic. It derives all operations, widths, signedness, dimensions, parameters, storage, sequencing, interfaces, reset behavior, and module names from the frozen architecture.
-
-Supported task modes are:
-
-```text
-INITIAL_GENERATION
-FUNCTIONAL_REPAIR
-SYNTHESIS_REPAIR
-PPA_OPTIMIZATION
-```
-
-For initial generation:
-
-```bash
-python -m multigent.agents.rtl_generator \
-  --run-id dense-gemm-008 \
-  --task-type INITIAL_GENERATION
-```
-
-The agent returns one of:
+The RTL Generator derives all implementation details from the frozen contract. It may return:
 
 ```text
 RTL_GENERATED
@@ -113,70 +61,141 @@ ARCHITECTURE_CONFLICT
 REPAIR_BLOCKED
 ```
 
-`RTL_GENERATED` writes only `.sv` files under:
+Initial generation writes exactly the manifest modules under:
 
 ```text
 multigent/workspace/rtl/
 ```
 
-Initial generation must implement exactly the modules in the frozen manifest. It may not invent helper modules or change the architecture/interface.
+It may not silently change architecture/interface semantics.
 
-If the frozen architecture cannot be implemented coherently, the RTL Generator returns a structured `ARCHITECTURE_CONFLICT` with affected modules, technical evidence, and the exact decision required from the Architect. It does not silently make that architectural decision.
+## Agent 3: Independent Verifier
+
+The Verifier creates:
+
+```text
+multigent/workspace/reference/*.py
+multigent/workspace/tests/*.py
+multigent/workspace/verification/verification_plan.yaml
+multigent/workspace/verification/verifier_result.json
+```
+
+Its generation context excludes generated RTL. Expected behavior is derived from the original request plus frozen architecture/interface/acceptance artifacts.
+
+The Verifier returns only:
+
+```text
+VERIFICATION_READY
+ARCHITECTURE_CONFLICT
+```
+
+`VERIFICATION_READY` does **not** mean the RTL passed. It means an independent executable reference/test environment is ready for deterministic tools.
+
+## Deterministic verification
+
+After `VERIFICATION_READY`, LangGraph runs:
+
+```text
+Verilator lint/elaboration
+        ↓ PASS
+cocotb full regression using Verilator
+```
+
+Tool wrappers:
+
+```text
+multigent/tools/verilator.py
+multigent/tools/cocotb_runner.py
+```
+
+Verilator process return codes and cocotb xUnit results are authoritative. Infrastructure states such as `TOOL_UNAVAILABLE` are kept separate from RTL failures.
+
+Deterministic evidence is stored under:
+
+```text
+multigent/workspace/verification/
+├── verilator-lint-<tag>.json
+├── cocotb-<tag>.json
+├── verification-result-<tag>.json
+└── build/<tag>/...
+```
+
+Current deterministic routing is:
+
+```text
+PASS                -> READY_FOR_SYNTHESIS
+COMPILE_FAILURE     -> REPAIR_REQUIRED
+SIMULATION_FAILURE  -> REPAIR_REQUIRED
+SIMULATION_TIMEOUT  -> REPAIR_REQUIRED
+TOOL_UNAVAILABLE    -> VERIFICATION_TOOL_UNAVAILABLE
+```
+
+`REPAIR_REQUIRED` is currently a terminal placeholder. The next graph extension replaces it with Debugger -> constrained RTL repair -> deterministic re-verification.
 
 ## LangGraph orchestration
 
-LangGraph is the communication and routing backbone for the multi-agent workflow. Agents do not conduct uncontrolled free-form conversations with one another.
+LangGraph is the communication and routing backbone. Agents do not conduct uncontrolled free-form conversations.
 
-Shared graph state is defined in:
+```text
+User / checkpoint
+       ↓
+Architect
+       ↓
+RTL Generator
+   ├── ARCHITECTURE_CONFLICT ─────→ Architect revision
+   └── RTL_GENERATED
+             ↓
+Independent Verifier
+   ├── ARCHITECTURE_CONFLICT ─────→ Architect revision
+   └── VERIFICATION_READY
+             ↓
+Verilator + cocotb
+   ├── PASS ──────────────────────→ synthesis placeholder
+   └── FAIL ──────────────────────→ repair placeholder
+```
+
+Shared typed state:
 
 ```text
 multigent/orchestration/state.py
 ```
 
-The RTL node adapter is:
+Routing:
 
 ```text
-multigent/orchestration/rtl_node.py
+multigent/orchestration/routes.py
 ```
 
-`RTLGeneratorAgent.run_from_state(...)` accepts graph state and returns a partial state update containing:
+Graph:
 
 ```text
-rtl_status
-rtl_result
-rtl_files
-architecture_conflict
-needs_regression
+multigent/orchestration/graph.py
 ```
 
-This allows deterministic graph routing such as:
+## Resume the current dense-gemm-008 RTL at verification
 
-```text
-Architect
-   ↓
-frozen architecture
-   ↓
-RTL Generator
-   ├── RTL_GENERATED ─────────→ verification/tool nodes
-   ├── ARCHITECTURE_CONFLICT ─→ Architect revision route
-   └── REPAIR_BLOCKED ────────→ orchestrator retry/failure policy
+The current six generated RTL files can be reused without another Architect or RTL Generator API call:
+
+```bash
+python -m multigent.orchestration.graph \
+  --request "design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type" \
+  --run-id dense-gemm-008 \
+  --use-frozen-architecture \
+  --use-existing-rtl \
+  --max-architecture-revisions 2
 ```
 
-Routing and iteration budgets belong to LangGraph, not to individual agents.
+This starts at the independent Verifier, then runs deterministic verification.
 
-The later complete graph will add independent Verifier, deterministic compile/simulation, Debugger/repair, Synopsys integration, PPA Judge, and optimization/regression loops using the same typed state.
-
-## API and dependencies
-
-Install dependencies:
+## Dependencies
 
 ```bash
 pip install -r multigent/requirements.txt
 ```
 
-The runtime uses LangGraph 1.x and supports the cluster's Python 3.12 environment.
+The Python regression wrapper uses cocotb 2.x Python Runners with Verilator. `verilator` itself must be installed/loaded and available on `PATH`.
 
-Configure `.env` locally:
+API configuration:
 
 ```bash
 OPENAI_API_KEY=your_real_key
@@ -186,15 +205,9 @@ NPU_AGENT_API_MODE=responses
 NPU_AGENT_TRUST_ENV=false
 ```
 
-`.env` is gitignored. Verify API access with:
+## Offline tests
 
-```bash
-python -m multigent.scripts.check_api --list-models
-```
-
-## Tests
-
-Run the current Architect and RTL Generator offline tests before paid agent calls:
+Before paid agent calls:
 
 ```bash
 pytest \
@@ -202,11 +215,14 @@ pytest \
   multigent/tests/test_architect.py \
   multigent/tests/test_architect_skill.py \
   multigent/tests/test_rtl_generator.py \
+  multigent/tests/test_verifier.py \
+  multigent/tests/test_verification_tools.py \
+  multigent/tests/test_orchestration.py \
   -v
 ```
 
-The RTL Generator tests use a non-GEMM streaming FIR fixture to guard against benchmark-specific runtime assumptions.
+RTL Generator and Verifier tests use non-GEMM streaming FIR fixtures to guard against benchmark-specific runtime assumptions.
 
 ## Technical synthesis boundary
 
-`multigent/tools/synopsys_interface.py` defines the technical integration contract for Synopsys execution. The multi-agent runtime consumes real structured reports from that boundary and never substitutes LLM-estimated timing, area, power, frequency, or utilization.
+`multigent/tools/synopsys_interface.py` defines the deterministic Synopsys integration contract. The runtime never substitutes LLM-estimated timing, area, power, frequency, or utilization for authoritative tool reports.
