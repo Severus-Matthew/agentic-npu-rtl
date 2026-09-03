@@ -10,6 +10,7 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
 from multigent.agents.architect import ARCHITECT_OUTPUT_SCHEMA, ArchitectAgent
+from multigent.agents.base import AgentRuntimeError
 from multigent.intake.request_builder import build_architect_intake
 
 
@@ -31,14 +32,14 @@ class FakeArchitectAgent(ArchitectAgent):
                         "name": "filter",
                         "kind": "FIR",
                         "semantics": "y[t] is the weighted sum of the current and previous samples",
-                        "inputs": ["sample", "coefficient"],
-                        "outputs": ["result"],
+                        "inputs": ["sample_stream", "coefficient_vector"],
+                        "outputs": ["result_stream"],
                     }
                 ],
                 "data_types": [
                     {
-                        "name": "sample",
-                        "role": "stream input",
+                        "name": "sample_t",
+                        "role": "stream input element",
                         "width_bits": 16,
                         "signed": True,
                         "representation": "two's-complement integer",
@@ -47,8 +48,8 @@ class FakeArchitectAgent(ArchitectAgent):
                         "rounding_semantics": "none",
                     },
                     {
-                        "name": "coefficient",
-                        "role": "filter coefficient",
+                        "name": "coefficient_t",
+                        "role": "filter coefficient element",
                         "width_bits": 16,
                         "signed": True,
                         "representation": "two's-complement integer",
@@ -57,14 +58,43 @@ class FakeArchitectAgent(ArchitectAgent):
                         "rounding_semantics": "none",
                     },
                     {
-                        "name": "result",
-                        "role": "stream output",
+                        "name": "result_t",
+                        "role": "stream output element",
                         "width_bits": 32,
                         "signed": True,
                         "representation": "two's-complement integer",
-                        "conversion_semantics": "truncate accumulator to output width",
+                        "conversion_semantics": "accumulated result",
                         "overflow_semantics": "wrap",
                         "rounding_semantics": "none",
+                    },
+                ],
+                "data_objects": [
+                    {
+                        "name": "sample_stream",
+                        "role": "external input sample sequence",
+                        "data_type": "sample_t",
+                        "dimensions": [],
+                        "producer": "external",
+                        "consumers": ["filter"],
+                        "external": True,
+                    },
+                    {
+                        "name": "coefficient_vector",
+                        "role": "FIR coefficient set",
+                        "data_type": "coefficient_t",
+                        "dimensions": ["tap_count"],
+                        "producer": "external",
+                        "consumers": ["filter"],
+                        "external": True,
+                    },
+                    {
+                        "name": "result_stream",
+                        "role": "external filtered sample sequence",
+                        "data_type": "result_t",
+                        "dimensions": [],
+                        "producer": "filter",
+                        "consumers": ["external"],
+                        "external": True,
                     },
                 ],
                 "dimensions": [
@@ -86,38 +116,49 @@ class FakeArchitectAgent(ArchitectAgent):
                     }
                 ],
                 "compute": {
-                    "organization": "pipelined multiply-accumulate datapath",
-                    "dataflow": "streaming sample history through tap operations",
-                    "parallelism": "one tap operation per stage",
-                    "scheduling": "one accepted input advances the pipeline",
+                    "organization": "serial multiply-accumulate datapath",
+                    "dataflow": "sample history with coefficient traversal",
+                    "parallelism": "one multiply-accumulate per cycle",
+                    "scheduling": "iterate tap index for each accepted sample",
                 },
                 "storage": [
                     {
                         "name": "sample_history",
-                        "stores": "previous input samples",
+                        "stored_objects": ["sample_stream"],
                         "capacity_expression": "TAPS",
-                        "maximum_elements": 16,
-                        "element_width_bits": 16,
+                        "capacity_at_default_parameters": 8,
                         "access_pattern": "shift/register history",
-                        "port_requirements": "one new sample write and tap reads per accepted sample",
+                        "port_requirements": "one insert and one indexed read",
                         "implementation_hint": "register array",
                         "reuse_semantics": "history samples reused across adjacent outputs",
                         "lifetime": "persistent across accepted samples until reset/overwrite",
-                    }
+                    },
+                    {
+                        "name": "coefficient_store",
+                        "stored_objects": ["coefficient_vector"],
+                        "capacity_expression": "TAPS",
+                        "capacity_at_default_parameters": 8,
+                        "access_pattern": "one coefficient read per MAC cycle",
+                        "port_requirements": "one read port",
+                        "implementation_hint": "register array",
+                        "reuse_semantics": "coefficients reused across samples",
+                        "lifetime": "configuration lifetime",
+                    },
                 ],
                 "pipeline": [],
                 "control": {
-                    "strategy": "stream-driven",
-                    "state_progression": "advance only on accepted input",
-                    "counters": [],
-                    "error_behavior": "no protocol side effects on stalls",
+                    "strategy": "stream-driven FSM",
+                    "state_progression": "IDLE->MAC->OUTPUT->IDLE",
+                    "counters": ["tap_idx"],
+                    "error_behavior": "reject invalid configuration",
+                    "error_recovery": "synchronous reset returns design to IDLE",
                 },
                 "reset": {
                     "style": "synchronous",
                     "polarity": "active_high",
                     "required_state": "valid state cleared and history marked invalid",
                 },
-                "latency_model": "fixed pipeline latency after an accepted sample",
+                "latency_model": "TAPS MAC cycles plus output handshake",
                 "architectural_invariants": ["TAPS is compile-time bounded"],
                 "open_assumptions": [],
             },
@@ -130,14 +171,28 @@ class FakeArchitectAgent(ArchitectAgent):
                         "name": "sample_in",
                         "direction": "input",
                         "purpose": "input sample stream",
+                        "data_objects": ["sample_stream"],
+                        "metadata": [],
                         "framing": "one sample per transfer",
                         "ordering": "in order",
+                        "backpressure": "supported",
+                    },
+                    {
+                        "name": "coefficients",
+                        "direction": "input",
+                        "purpose": "coefficient loading",
+                        "data_objects": ["coefficient_vector"],
+                        "metadata": ["coefficient_index"],
+                        "framing": "TAPS transfers per configuration",
+                        "ordering": "ascending coefficient index",
                         "backpressure": "supported",
                     },
                     {
                         "name": "result_out",
                         "direction": "output",
                         "purpose": "filtered output stream",
+                        "data_objects": ["result_stream"],
+                        "metadata": [],
                         "framing": "one result per transfer",
                         "ordering": "in order",
                         "backpressure": "supported",
@@ -155,10 +210,17 @@ class FakeArchitectAgent(ArchitectAgent):
                     {
                         "name": "filter_top",
                         "responsibility": "top-level integration",
+                        "dependencies": ["filter_core"],
+                        "parameters": ["TAPS"],
+                        "stateful": True,
+                    },
+                    {
+                        "name": "filter_core",
+                        "responsibility": "FIR datapath and control",
                         "dependencies": [],
                         "parameters": ["TAPS"],
                         "stateful": True,
-                    }
+                    },
                 ],
             },
             "acceptance_criteria": {
@@ -247,3 +309,17 @@ def test_architect_writes_only_architecture_artifacts(tmp_path: Path) -> None:
     assert contract["design"]["name"] == "test_stream_filter"
     assert contract["parameters"][0]["name"] == "TAPS"
     assert not list(architecture_dir.glob("*.sv"))
+
+
+def test_semantic_validator_rejects_unknown_data_object() -> None:
+    result = copy.deepcopy(FakeArchitectAgent().run_structured())
+    result["architecture_contract"]["operations"][0]["inputs"].append("missing_object")
+    with pytest.raises(AgentRuntimeError, match="unknown data object"):
+        ArchitectAgent._validate_contract_references(result)
+
+
+def test_semantic_validator_rejects_unknown_module_parameter() -> None:
+    result = copy.deepcopy(FakeArchitectAgent().run_structured())
+    result["module_manifest"]["modules"][0]["parameters"].append("MISSING_PARAM")
+    with pytest.raises(AgentRuntimeError, match="unknown parameter"):
+        ArchitectAgent._validate_contract_references(result)
