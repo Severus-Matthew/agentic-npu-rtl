@@ -1,0 +1,69 @@
+{
+  "status": "VERIFICATION_READY",
+  "summary": "Independent reference model and cocotb verification suite created for GEMM+bias+ReLU int8/int32 contract with reset, backpressure, boundary, partial-tile, and >=100 randomized jobs.",
+  "reference_files": [
+    {
+      "path": "reference/gemm_ref.py",
+      "purpose": "Specification-derived arithmetic and command helpers for exact int behavior.",
+      "content": "def s8(x):\n    x &= 0xFF\n    return x - 256 if x & 0x80 else x\n\n\ndef s16(x):\n    x &= 0xFFFF\n    return x - 65536 if x & 0x8000 else x\n\n\ndef s32(x):\n    x &= 0xFFFFFFFF\n    return x - 4294967296 if x & 0x80000000 else x\n\n\ndef add32(a, b):\n    return s32((a & 0xFFFFFFFF) + (b & 0xFFFFFFFF))\n\n\ndef pack_cmd(M, N, K, bias_enable):\n    v = 0\n    v |= (M & 0xFFFF)\n    v |= ((N & 0xFFFF) << 16)\n    v |= ((K & 0xFFFF) << 32)\n    v |= ((1 if bias_enable else 0) << 48)\n    return v\n\n\ndef gemm_bias_relu_ref(M, N, K, A_row_major, B_row_major, bias_enable, bias_vec):\n    out = []\n    for m in range(M):\n        for n in range(N):\n            acc = 0\n            for k in range(K):\n                a = s8(A_row_major[m * K + k])\n                b = s8(B_row_major[k * N + n])\n                prod16 = s16(a * b)\n                acc = add32(acc, prod16)\n            if bias_enable:\n                acc = add32(acc, s32(bias_vec[n]))\n            out.append(acc if acc > 0 else 0)\n    return out\n"
+    }
+  ],
+  "test_files": [
+    {
+      "path": "tests/test_gemm_bias_relu_npu.py",
+      "purpose": "Protocol-aware cocotb tests with scoreboard and randomized/directed coverage.",
+      "categories": [
+        "functional",
+        "boundary",
+        "reset",
+        "backpressure",
+        "randomized"
+      ],
+      "regression_groups": [
+        "smoke",
+        "targeted",
+        "full"
+      ],
+      "content": "import random\nimport cocotb\nfrom cocotb.clock import Clock\nfrom cocotb.triggers import RisingEdge\nfrom cocotb.result import SimTimeoutError\nfrom cocotb.triggers import with_timeout\n\nfrom reference.gemm_ref import gemm_bias_relu_ref, pack_cmd, s8, s32\n\nSEED = 12345\nMAX_DIM = 64\n\n\nasync def reset_dut(dut, cycles=3):\n    dut.cmd_valid.value = 0\n    dut.a_valid.value = 0\n    dut.b_valid.value = 0\n    dut.bias_valid.value = 0\n    dut.out_ready.value = 0\n    dut.rst_n.value = 1\n    await RisingEdge(dut.clk)\n    dut.rst_n.value = 0\n    for _ in range(cycles):\n        await RisingEdge(dut.clk)\n    dut.rst_n.value = 1\n    await RisingEdge(dut.clk)\n\n\nasync def send_stream(dut, valid_sig, ready_sig, data_sig, values, rng, stall_prob=0.0):\n    valid_sig.value = 0\n    await RisingEdge(dut.clk)\n    for v in values:\n        data_sig.value = int(v) & ((1 << len(data_sig)) - 1)\n        valid_sig.value = 1\n        while True:\n            if stall_prob > 0 and rng.random() < stall_prob:\n                valid_sig.value = 0\n            else:\n                valid_sig.value = 1\n            await RisingEdge(dut.clk)\n            if int(valid_sig.value) == 1 and int(ready_sig.value) == 1:\n                break\n    valid_sig.value = 0\n\n\nasync def recv_stream(dut, count, rng, backpressure_prob=0.0):\n    out = []\n    while len(out) < count:\n        dut.out_ready.value = 0 if (backpressure_prob > 0 and rng.random() < backpressure_prob) else 1\n        await RisingEdge(dut.clk)\n        if int(dut.out_valid.value) == 1 and int(dut.out_ready.value) == 1:\n            out.append(s32(int(dut.out_data.value)))\n    dut.out_ready.value = 0\n    return out\n\n\nasync def run_job(dut, M, N, K, bias_enable, A, B, bias, rng, in_stall=0.0, out_bp=0.0):\n    dut.cmd_data.value = pack_cmd(M, N, K, bias_enable)\n    dut.cmd_valid.value = 1\n    while True:\n        await RisingEdge(dut.clk)\n        if int(dut.cmd_ready.value) == 1:\n            break\n    dut.cmd_valid.value = 0\n\n    expected = gemm_bias_relu_ref(M, N, K, A, B, bias_enable, bias)\n\n    await cocotb.start(send_stream(dut, dut.a_valid, dut.a_ready, dut.a_data, A, rng, in_stall))\n    await cocotb.start(send_stream(dut, dut.b_valid, dut.b_ready, dut.b_data, B, rng, in_stall))\n    if bias_enable:\n        await cocotb.start(send_stream(dut, dut.bias_valid, dut.bias_ready, dut.bias_data, bias, rng, in_stall))\n\n    got = await recv_stream(dut, M * N, rng, out_bp)\n    assert got == expected, f\"Mismatch M={M} N={N} K={K} bias={bias_enable} exp={expected[:8]} got={got[:8]}\"\n\n\n@cocotb.test()\nasync def smoke_minimal(dut):\n    cocotb.start_soon(Clock(dut.clk, 10, units='ns').start())\n    rng = random.Random(SEED)\n    await reset_dut(dut)\n    M, N, K = 1, 1, 1\n    A = [1]\n    B = [-2]\n    bias = [3]\n    await with_timeout(run_job(dut, M, N, K, True, A, B, bias, rng), 2, 'ms')\n\n\n@cocotb.test()\nasync def directed_partial_tile_and_no_bias(dut):\n    cocotb.start_soon(Clock(dut.clk, 10, units='ns').start())\n    rng = random.Random(SEED + 1)\n    await reset_dut(dut)\n    M, N, K = 2, 10, 3\n    A = [s8((i * 7) - 9) for i in range(M * K)]\n    B = [s8((i * 5) - 11) for i in range(K * N)]\n    bias = [123 for _ in range(N)]\n    await with_timeout(run_job(dut, M, N, K, False, A, B, bias, rng), 5, 'ms')\n\n\n@cocotb.test()\nasync def reset_idle_and_mid_output(dut):\n    cocotb.start_soon(Clock(dut.clk, 10, units='ns').start())\n    rng = random.Random(SEED + 2)\n    await reset_dut(dut)\n    await reset_dut(dut)\n\n    M, N, K = 4, 9, 8\n    A = [rng.randint(-128, 127) for _ in range(M * K)]\n    B = [rng.randint(-128, 127) for _ in range(K * N)]\n    bias = [rng.randint(-2**31, 2**31 - 1) for _ in range(N)]\n\n    dut.cmd_data.value = pack_cmd(M, N, K, True)\n    dut.cmd_valid.value = 1\n    while True:\n        await RisingEdge(dut.clk)\n        if int(dut.cmd_ready.value):\n            break\n    dut.cmd_valid.value = 0\n\n    cocotb.start_soon(send_stream(dut, dut.a_valid, dut.a_ready, dut.a_data, A, rng, 0.2))\n    cocotb.start_soon(send_stream(dut, dut.b_valid, dut.b_ready, dut.b_data, B, rng, 0.2))\n    cocotb.start_soon(send_stream(dut, dut.bias_valid, dut.bias_ready, dut.bias_data, bias, rng, 0.2))\n\n    seen = 0\n    for _ in range(3000):\n        dut.out_ready.value = 1\n        await RisingEdge(dut.clk)\n        if int(dut.out_valid.value) and int(dut.out_ready.value):\n            seen += 1\n            if seen >= 3:\n                break\n    dut.rst_n.value = 0\n    await RisingEdge(dut.clk)\n    dut.rst_n.value = 1\n    await RisingEdge(dut.clk)\n    assert int(dut.status_error.value) == 0\n\n\n@cocotb.test()\nasync def randomized_regression_100(dut):\n    cocotb.start_soon(Clock(dut.clk, 10, units='ns').start())\n    rng = random.Random(SEED + 3)\n    await reset_dut(dut)\n\n    jobs = 100\n    for j in range(jobs):\n        if j < 6:\n            M = [1, MAX_DIM, 1, MAX_DIM, 2, 3][j]\n            N = [1, MAX_DIM, 10, MAX_DIM - 1, 8, 9][j]\n            K = [1, MAX_DIM, 3, MAX_DIM, 2, 7][j]\n        else:\n            M = rng.randint(1, 8)\n            N = rng.randint(1, 16)\n            K = rng.randint(1, 16)\n        bias_enable = bool(rng.getrandbits(1))\n        A = [rng.randint(-128, 127) for _ in range(M * K)]\n        B = [rng.randint(-128, 127) for _ in range(K * N)]\n        bias = [rng.randint(-2**31, 2**31 - 1) for _ in range(N)]\n        await with_timeout(run_job(dut, M, N, K, bias_enable, A, B, bias, rng, in_stall=0.3, out_bp=0.3), 20, 'ms')\n"
+    }
+  ],
+  "verification_plan": {
+    "top_module": "gemm_bias_relu_npu_top",
+    "test_modules": [
+      "test_gemm_bias_relu_npu"
+    ],
+    "test_categories": [
+      "functional",
+      "boundary",
+      "reset",
+      "backpressure",
+      "randomized"
+    ],
+    "randomized_test_count": 100,
+    "seed": 12345,
+    "timeout_seconds": 2,
+    "regression_groups": {
+      "smoke": [
+        "test_gemm_bias_relu_npu"
+      ],
+      "targeted": [
+        "test_gemm_bias_relu_npu"
+      ],
+      "full": [
+        "test_gemm_bias_relu_npu"
+      ]
+    },
+    "pass_criteria": "All tests compile and run; ordered out_ch stream matches reference exactly for each job; required reset/backpressure/randomized coverage satisfied; any mismatch/timeout/assertion fails.",
+    "protocol_assumptions": [
+      "Synchronous active-low reset sampled on rising edge.",
+      "Transfers occur only on valid&&ready per channel.",
+      "Host drives cmd before payloads for each job.",
+      "Legal command fields are used in tests (1<=M,N,K<=64)."
+    ]
+  },
+  "architecture_conflict": null,
+  "known_verification_gaps": [
+    "No explicit negative illegal-command test included because external error signaling granularity for each illegality case is not fully specified beyond sticky status_error.",
+    "status_done pulse timing is not checked cycle-exactly since only completion indication presence is contract-visible and latency is non-exact under stalls."
+  ]
+}

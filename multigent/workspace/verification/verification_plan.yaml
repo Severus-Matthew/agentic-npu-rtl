@@ -1,0 +1,27 @@
+top_module: gemm_bias_relu_npu_top
+test_modules:
+- test_gemm_bias_relu_npu
+test_categories:
+- functional
+- boundary
+- reset
+- backpressure
+- randomized
+randomized_test_count: 100
+seed: 12345
+timeout_seconds: 2
+regression_groups:
+  smoke:
+  - test_gemm_bias_relu_npu
+  targeted:
+  - test_gemm_bias_relu_npu
+  full:
+  - test_gemm_bias_relu_npu
+pass_criteria: All tests compile and run; ordered out_ch stream matches reference
+  exactly for each job; required reset/backpressure/randomized coverage satisfied;
+  any mismatch/timeout/assertion fails.
+protocol_assumptions:
+- Synchronous active-low reset sampled on rising edge.
+- Transfers occur only on valid&&ready per channel.
+- Host drives cmd before payloads for each job.
+- Legal command fields are used in tests (1<=M,N,K<=64).
