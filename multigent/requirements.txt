@@ -2,6 +2,7 @@ openai>=2.0
 httpx>=0.27,<1
 jsonschema>=4.23,<5
 langgraph>=1.2,<2
+cocotb>=2.0,<3
 python-dotenv>=1.0
 PyYAML>=6.0
 pytest>=8.0
