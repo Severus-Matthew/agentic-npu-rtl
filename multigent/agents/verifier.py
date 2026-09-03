@@ -305,13 +305,24 @@ class VerifierAgent(APIAgent):
             raise AgentRuntimeError(
                 "verification_plan.test_modules must exactly match generated test filenames"
             )
-        minimum = int(
-            context["verification_policy"].get("randomized_transactions_minimum", 0)
+
+        verification_policy = context["verification_policy"]
+        minimum_randomized = int(
+            verification_policy.get("randomized_transactions_minimum", 0)
         )
-        if int(plan["randomized_test_count"]) < minimum:
+        if int(plan["randomized_test_count"]) < minimum_randomized:
             raise AgentRuntimeError(
-                f"Verifier randomized_test_count={plan['randomized_test_count']} is below policy minimum {minimum}"
+                f"Verifier randomized_test_count={plan['randomized_test_count']} is below policy minimum {minimum_randomized}"
             )
+
+        minimum_wall_timeout = int(
+            verification_policy.get("regression_wall_timeout_seconds_minimum", 1)
+        )
+        if int(plan["timeout_seconds"]) < minimum_wall_timeout:
+            raise AgentRuntimeError(
+                f"Verifier timeout_seconds={plan['timeout_seconds']} is below full-regression wall-clock policy minimum {minimum_wall_timeout}"
+            )
+
         full_group = set(map(str, plan["regression_groups"]["full"]))
         if full_group != test_modules:
             raise AgentRuntimeError(
@@ -423,15 +434,22 @@ OUTPUT RULES
 3. verification_plan.test_modules contains filename stems and exactly matches tests.
 4. The initial full regression group contains every generated test module.
 5. Honor at least the fixed randomized transaction minimum with a deterministic seed.
-6. Use cocotb 2.x public APIs and finite timeout/cycle waits. Use
-   ``cocotb.start_soon(...)`` rather than ``cocotb.start(...)``; await the returned
-   Task when the parent must wait for completion. Import ``SimTimeoutError`` from
-   ``cocotb.triggers`` if needed, never from ``cocotb.result``.
-7. Interact through contract-declared top-level signals only.
-8. Use Python standard library plus cocotb; do not read files, invoke processes, use
-   the network, or inspect RTL source.
-9. Keep code concise while covering all applicable functional, boundary, reset,
-   protocol/backpressure, and randomized acceptance requirements.
+6. ``verification_plan.timeout_seconds`` is the wall-clock budget for the ENTIRE
+   deterministic full-regression subprocess, not a per-transaction simulation-time
+   timeout. It must be at least ``verification_policy.regression_wall_timeout_seconds_minimum``.
+   Individual cocotb tests must separately use finite simulation-time/cycle bounds.
+7. Use cocotb 2.x public APIs. Use ``cocotb.start_soon(...)`` rather than
+   ``cocotb.start(...)``; await the returned Task when the parent must wait for
+   completion. Import ``SimTimeoutError`` from ``cocotb.triggers`` if needed, never
+   from ``cocotb.result``.
+8. Interact through contract-declared top-level signals only.
+9. If the frozen contract defines externally visible completion or error behavior,
+   explicitly test it. Do not move an unambiguous completion/error requirement into
+   known_verification_gaps merely to reduce test scope.
+10. Use Python standard library plus cocotb; do not read files, invoke processes, use
+    the network, or inspect RTL source.
+11. Keep code concise while covering all applicable functional, boundary, reset,
+    protocol/backpressure, and randomized acceptance requirements.
 
 VERIFIER CONTEXT
 ----------------
