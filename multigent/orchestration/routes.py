@@ -9,9 +9,12 @@ from .state import HardwareDesignState
 
 StartRoute = Literal["architect", "rtl_generator", "verifier", "verification_tools"]
 ArchitectRoute = Literal["rtl_generator", "failed"]
-RTLRoute = Literal["architect", "verifier", "failed"]
+RTLRoute = Literal["architect", "verifier", "verification_tools", "failed"]
 VerifierRoute = Literal["architect", "verification_tools", "failed"]
-VerificationRoute = Literal["synthesis", "repair_required", "tool_unavailable"]
+VerificationRoute = Literal[
+    "synthesis", "debugger", "repair_exhausted", "tool_unavailable"
+]
+DebuggerRoute = Literal["rtl_generator", "architect", "failed"]
 
 
 def route_start(state: HardwareDesignState) -> StartRoute:
@@ -32,8 +35,6 @@ def route_start(state: HardwareDesignState) -> StartRoute:
 
 
 def route_after_architect(state: HardwareDesignState) -> ArchitectRoute:
-    """Continue only when Architect produced a validated READY contract."""
-
     status = state.get("architecture_status")
     if status == "READY":
         return "rtl_generator"
@@ -43,10 +44,21 @@ def route_after_architect(state: HardwareDesignState) -> ArchitectRoute:
 
 
 def route_after_rtl(state: HardwareDesignState) -> RTLRoute:
-    """Route RTL status without letting the implementation LLM control workflow."""
+    """Keep the verifier frozen across RTL-only repair iterations."""
 
     status = state.get("rtl_status")
     if status == "RTL_GENERATED":
+        repair_mode = state.get("rtl_task_type") in {
+            "FUNCTIONAL_REPAIR",
+            "SYNTHESIS_REPAIR",
+            "PPA_OPTIMIZATION",
+        }
+        verifier_frozen = (
+            state.get("verifier_status") == "VERIFICATION_READY"
+            and bool(state.get("verification_plan"))
+        )
+        if repair_mode and verifier_frozen:
+            return "verification_tools"
         return "verifier"
     if status == "ARCHITECTURE_CONFLICT":
         return "architect" if _architecture_revision_available(state) else "failed"
@@ -56,8 +68,6 @@ def route_after_rtl(state: HardwareDesignState) -> RTLRoute:
 
 
 def route_after_verifier(state: HardwareDesignState) -> VerifierRoute:
-    """Verifier artifacts go to tools; contract ambiguity returns to Architect."""
-
     status = state.get("verifier_status")
     if status == "VERIFICATION_READY":
         return "verification_tools"
@@ -79,11 +89,28 @@ def route_after_verification(state: HardwareDesignState) -> VerificationRoute:
         "SIMULATION_FAILURE",
         "SIMULATION_TIMEOUT",
     }:
-        return "repair_required"
+        return "debugger" if _repair_available(state) else "repair_exhausted"
     raise ValueError(f"Cannot route unknown verification_status={status!r}")
+
+
+def route_after_debugger(state: HardwareDesignState) -> DebuggerRoute:
+    status = state.get("debugger_status")
+    if status == "REPAIR_PLAN_READY":
+        return "rtl_generator"
+    if status == "ARCHITECTURE_ESCALATION":
+        return "architect" if _architecture_revision_available(state) else "failed"
+    if status == "EVIDENCE_INSUFFICIENT":
+        return "failed"
+    raise ValueError(f"Cannot route unknown debugger_status={status!r}")
 
 
 def _architecture_revision_available(state: HardwareDesignState) -> bool:
     current = int(state.get("architecture_revision", 0))
     maximum = int(state.get("max_architecture_revisions", 2))
+    return current < maximum
+
+
+def _repair_available(state: HardwareDesignState) -> bool:
+    current = int(state.get("repair_iteration", 0))
+    maximum = int(state.get("max_repair_iterations", 5))
     return current < maximum
