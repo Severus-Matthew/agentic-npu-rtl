@@ -1,64 +1,62 @@
-protocol: AXI-stream-like ready/valid scalar channels plus status outputs
-clock: single clk input
-reset: rst_n synchronous active-low
+protocol: AXI-stream-like ready/valid channels with sideband section identifiers
+clock: clk
+reset: rst_n (active low synchronous)
 channels:
 - name: cmd_chan
   direction: input
-  purpose: job configuration
+  purpose: job descriptor
   data_objects:
-  - cmd_word
+  - obj_cmd
   metadata: []
-  framing: single-beat command
-  ordering: one command before operand sections
-  backpressure: cmd_ready/cmd_valid handshake
-- name: a_chan
+  framing: single transfer per job
+  ordering: must arrive before any data payload
+  backpressure: supported via cmd_ready
+- name: in_data_chan
   direction: input
-  purpose: A matrix payload
+  purpose: serialized A/B/bias payload ingress
   data_objects:
-  - a_matrix
-  metadata: []
-  framing: exactly M*K scalar int8 transfers
-  ordering: row-major over (m,k)
-  backpressure: a_ready/a_valid handshake
-- name: b_chan
-  direction: input
-  purpose: B matrix payload
-  data_objects:
-  - b_matrix
-  metadata: []
-  framing: exactly K*N scalar int8 transfers
-  ordering: row-major over (k,n)
-  backpressure: b_ready/b_valid handshake
-- name: bias_chan
-  direction: input
-  purpose: bias payload
-  data_objects:
-  - bias_vector
-  metadata: []
-  framing: exactly N scalar int32 transfers
-  ordering: increasing n
-  backpressure: bias_ready/bias_valid handshake
-- name: out_chan
+  - obj_a_stream
+  - obj_b_stream
+  - obj_bias_stream
+  metadata:
+  - in_section[1:0]
+  - in_last
+  framing: A section exactly M*K transfers, then B section exactly K*N transfers,
+    then optional bias section exactly N transfers
+  ordering: strict section order A->B->bias(if enabled), each row-major
+  backpressure: supported via in_ready
+- name: out_data_chan
   direction: output
-  purpose: result payload
+  purpose: C payload egress
   data_objects:
-  - output_matrix
+  - obj_c_stream
+  metadata:
+  - out_last
+  framing: exactly M*N transfers
+  ordering: row-major C
+  backpressure: supported via out_ready
+- name: status_chan
+  direction: output
+  purpose: job completion or error code
+  data_objects:
+  - obj_status
   metadata: []
-  framing: exactly M*N scalar int32 transfers
-  ordering: row-major over (m,n)
-  backpressure: out_ready/out_valid handshake
+  framing: single transfer after successful out_data completion or immediately on
+    error
+  ordering: one status per job
+  backpressure: supported via status_ready
 signals:
 - name: clk
   direction: input
   width: '1'
   signed: false
-  semantic: system clock
+  semantic: clock
   reset_value: '0'
 - name: rst_n
   direction: input
   width: '1'
   signed: false
-  semantic: synchronous active-low reset
+  semantic: active-low synchronous reset
   reset_value: '0'
 - name: cmd_valid
   direction: input
@@ -74,102 +72,84 @@ signals:
   reset_value: '0'
 - name: cmd_data
   direction: input
+  width: CMD_WIDTH
+  signed: false
+  semantic: 'command bitfields: [15:0]M,[31:16]N,[47:32]K,[48]bias_enable,[49]relu_enable,others
+    reserved 0'
+  reset_value: '0'
+- name: in_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: input payload valid
+  reset_value: '0'
+- name: in_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: input payload ready
+  reset_value: '0'
+- name: in_data
+  direction: input
   width: '32'
   signed: false
-  semantic: '{reserved[31:24],K[23:16],N[15:8],M[7:0]}'
+  semantic: payload; int8 uses bits[7:0] sign-interpreted, int32 uses bits[31:0]
   reset_value: '0'
-- name: a_valid
+- name: in_section
+  direction: input
+  width: '2'
+  signed: false
+  semantic: 00=A,01=B,10=bias
+  reset_value: '0'
+- name: in_last
   direction: input
   width: '1'
   signed: false
-  semantic: A stream valid
-  reset_value: '0'
-- name: a_ready
-  direction: output
-  width: '1'
-  signed: false
-  semantic: A stream ready
-  reset_value: '0'
-- name: a_data
-  direction: input
-  width: '8'
-  signed: true
-  semantic: one A element
-  reset_value: '0'
-- name: b_valid
-  direction: input
-  width: '1'
-  signed: false
-  semantic: B stream valid
-  reset_value: '0'
-- name: b_ready
-  direction: output
-  width: '1'
-  signed: false
-  semantic: B stream ready
-  reset_value: '0'
-- name: b_data
-  direction: input
-  width: '8'
-  signed: true
-  semantic: one B element
-  reset_value: '0'
-- name: bias_valid
-  direction: input
-  width: '1'
-  signed: false
-  semantic: bias stream valid
-  reset_value: '0'
-- name: bias_ready
-  direction: output
-  width: '1'
-  signed: false
-  semantic: bias stream ready
-  reset_value: '0'
-- name: bias_data
-  direction: input
-  width: '32'
-  signed: true
-  semantic: one bias element
+  semantic: last beat of current section
   reset_value: '0'
 - name: out_valid
   direction: output
   width: '1'
   signed: false
-  semantic: output valid
+  semantic: output payload valid
   reset_value: '0'
 - name: out_ready
   direction: input
   width: '1'
   signed: false
-  semantic: output ready
+  semantic: output payload ready
   reset_value: '0'
 - name: out_data
   direction: output
   width: '32'
   signed: true
-  semantic: one output element
+  semantic: C int32 element
   reset_value: '0'
-- name: busy
+- name: out_last
   direction: output
   width: '1'
   signed: false
-  semantic: high from accepted command until final output accepted
+  semantic: last C element of job
   reset_value: '0'
-- name: done
+- name: status_valid
   direction: output
   width: '1'
   signed: false
-  semantic: one-cycle pulse when job completes
+  semantic: status valid
   reset_value: '0'
-- name: error
-  direction: output
+- name: status_ready
+  direction: input
   width: '1'
   signed: false
-  semantic: high when last command illegal
+  semantic: status ready
+  reset_value: '0'
+- name: status_data
+  direction: output
+  width: STATUS_WIDTH
+  signed: false
+  semantic: status[7:0] code (0=OK,1=BAD_DIM,2=BAD_SECTION,3=EARLY_LAST,4=PROTOCOL),
+    status[31:8]=0
   reset_value: '0'
 global_handshake_rules:
-  transfer_condition: A channel transfer occurs iff ready && valid on same rising
-    clk edge.
-  stall_behavior: Producer must hold payload stable while valid=1 and ready=0; consumer
-    state must not advance without transfer.
+  transfer_condition: A channel transfer occurs iff ready && valid on that channel.
+  stall_behavior: Producer must hold payload/metadata stable while valid=1 and ready=0.

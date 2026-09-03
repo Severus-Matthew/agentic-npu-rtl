@@ -1,161 +1,232 @@
 design:
   name: gemm_bias_relu_npu
   version: '1.0'
-  description: Parameterized int8 GEMM with int32 bias add and ReLU output stream
-    interface.
+  description: Parameterized int8 GEMM with int32 accumulation, optional int32 bias
+    add, and ReLU; stream-commanded accelerator with on-chip operand buffering.
 operations:
-- name: load_config
-  kind: control
-  semantics: Latch per-job dimensions M,N,K after command transfer and validate bounds.
+- name: op_load_a
+  kind: data_movement
+  semantics: Load matrix A elements into local A buffer in row-major order for dimensions
+    MxK.
   inputs:
-  - cmd_word
+  - obj_a_stream
   outputs:
-  - job_config
-- name: gemm_core
+  - obj_a_buffered
+- name: op_load_b
+  kind: data_movement
+  semantics: Load matrix B elements into local B buffer in row-major order for dimensions
+    KxN.
+  inputs:
+  - obj_b_stream
+  outputs:
+  - obj_b_buffered
+- name: op_load_bias
+  kind: data_movement
+  semantics: Load bias vector elements into local bias buffer for dimension N.
+  inputs:
+  - obj_bias_stream
+  outputs:
+  - obj_bias_buffered
+- name: op_gemm
   kind: compute
-  semantics: For each output element C[m,n], compute accumulator = sum_{k=0..K-1}(A[m,k]*B[k,n])
-    using signed int8 operands and signed int32 accumulation.
+  semantics: 'For each (m,n): acc32=0; for k in [0,K-1] acc32 += sext8(A[m,k]) * sext8(B[k,n]).'
   inputs:
-  - a_matrix
-  - b_matrix
-  - job_config
+  - obj_a_buffered
+  - obj_b_buffered
   outputs:
-  - gemm_accum_matrix
-- name: bias_add
+  - obj_accum_matrix
+- name: op_bias_add
   kind: compute
-  semantics: For each output element, add signed int32 bias[n] to gemm accumulator
-    with two's-complement wrap on overflow.
+  semantics: 'For each (m,n): sum32 = accum_matrix[m,n] + bias[n] when bias_enable=1
+    else sum32=accum_matrix[m,n]. 32-bit signed wrap on overflow.'
   inputs:
-  - gemm_accum_matrix
-  - bias_vector
-  - job_config
+  - obj_accum_matrix
+  - obj_bias_buffered
   outputs:
-  - biased_matrix
-- name: relu
+  - obj_post_bias_matrix
+- name: op_relu
   kind: compute
-  semantics: For each output element, if biased value < 0 output 0 else output biased
-    value.
+  semantics: 'For each (m,n): out32 = max(sum32,0) when relu_enable=1 else out32=sum32.'
   inputs:
-  - biased_matrix
+  - obj_post_bias_matrix
   outputs:
-  - output_matrix
+  - obj_output_matrix
+- name: op_store_c
+  kind: data_movement
+  semantics: Emit output matrix C elements in row-major order for dimensions MxN.
+  inputs:
+  - obj_output_matrix
+  outputs:
+  - obj_c_stream
 data_types:
-- name: int8_s
-  role: input elements A/B
+- name: dt_int8
+  role: A/B elements
   width_bits: 8
   signed: true
   representation: two_complement
-  conversion_semantics: No implicit conversion; operands sign-extended before multiply.
+  conversion_semantics: sign-extend to dt_int32 before multiply
   overflow_semantics: wrap
-  rounding_semantics: not_applicable
-- name: int32_s
+  rounding_semantics: exact_integer
+- name: dt_int32
   role: accumulator/bias/output
   width_bits: 32
   signed: true
   representation: two_complement
-  conversion_semantics: Products widened to int32 before accumulation.
+  conversion_semantics: native
   overflow_semantics: wrap
+  rounding_semantics: exact_integer
+- name: dt_cmd
+  role: job command word
+  width_bits: 128
+  signed: false
+  representation: bitfield
+  conversion_semantics: bit-exact decode
+  overflow_semantics: not_applicable
   rounding_semantics: not_applicable
-- name: cmd_u32
-  role: command word
+- name: dt_status
+  role: status word
   width_bits: 32
   signed: false
-  representation: unsigned_binary
-  conversion_semantics: Bitfield decode only.
+  representation: bitfield
+  conversion_semantics: bit-exact encode
   overflow_semantics: not_applicable
   rounding_semantics: not_applicable
 data_objects:
-- name: cmd_word
-  role: job command transfer
-  data_type: cmd_u32
+- name: obj_cmd
+  role: job configuration
+  data_type: dt_cmd
   dimensions: []
   producer: external
   consumers:
-  - load_config
+  - op_load_a
+  - op_load_b
+  - op_load_bias
+  - op_gemm
+  - op_bias_add
+  - op_relu
+  - op_store_c
   external: true
-- name: job_config
-  role: latched dimensions
-  data_type: cmd_u32
+- name: obj_a_stream
+  role: A payload stream
+  data_type: dt_int8
+  dimensions:
+  - dim_M
+  - dim_K
+  producer: external
+  consumers:
+  - op_load_a
+  external: true
+- name: obj_b_stream
+  role: B payload stream
+  data_type: dt_int8
+  dimensions:
+  - dim_K
+  - dim_N
+  producer: external
+  consumers:
+  - op_load_b
+  external: true
+- name: obj_bias_stream
+  role: bias payload stream
+  data_type: dt_int32
+  dimensions:
+  - dim_N
+  producer: external
+  consumers:
+  - op_load_bias
+  external: true
+- name: obj_a_buffered
+  role: local A
+  data_type: dt_int8
+  dimensions:
+  - dim_M
+  - dim_K
+  producer: op_load_a
+  consumers:
+  - op_gemm
+  external: false
+- name: obj_b_buffered
+  role: local B
+  data_type: dt_int8
+  dimensions:
+  - dim_K
+  - dim_N
+  producer: op_load_b
+  consumers:
+  - op_gemm
+  external: false
+- name: obj_bias_buffered
+  role: local bias
+  data_type: dt_int32
+  dimensions:
+  - dim_N
+  producer: op_load_bias
+  consumers:
+  - op_bias_add
+  external: false
+- name: obj_accum_matrix
+  role: gemm accum
+  data_type: dt_int32
+  dimensions:
+  - dim_M
+  - dim_N
+  producer: op_gemm
+  consumers:
+  - op_bias_add
+  external: false
+- name: obj_post_bias_matrix
+  role: post-bias
+  data_type: dt_int32
+  dimensions:
+  - dim_M
+  - dim_N
+  producer: op_bias_add
+  consumers:
+  - op_relu
+  external: false
+- name: obj_output_matrix
+  role: final output matrix
+  data_type: dt_int32
+  dimensions:
+  - dim_M
+  - dim_N
+  producer: op_relu
+  consumers:
+  - op_store_c
+  external: false
+- name: obj_c_stream
+  role: C payload stream
+  data_type: dt_int32
+  dimensions:
+  - dim_M
+  - dim_N
+  producer: op_store_c
+  consumers:
+  - external
+  external: true
+- name: obj_status
+  role: completion/error status
+  data_type: dt_status
   dimensions: []
-  producer: load_config
-  consumers:
-  - gemm_core
-  - bias_add
-  external: false
-- name: a_matrix
-  role: left operand matrix
-  data_type: int8_s
-  dimensions:
-  - M
-  - K
-  producer: external
-  consumers:
-  - gemm_core
-  external: true
-- name: b_matrix
-  role: right operand matrix
-  data_type: int8_s
-  dimensions:
-  - K
-  - N
-  producer: external
-  consumers:
-  - gemm_core
-  external: true
-- name: bias_vector
-  role: per-column bias
-  data_type: int32_s
-  dimensions:
-  - N
-  producer: external
-  consumers:
-  - bias_add
-  external: true
-- name: gemm_accum_matrix
-  role: raw GEMM accumulators
-  data_type: int32_s
-  dimensions:
-  - M
-  - N
-  producer: gemm_core
-  consumers:
-  - bias_add
-  external: false
-- name: biased_matrix
-  role: post-bias intermediate
-  data_type: int32_s
-  dimensions:
-  - M
-  - N
-  producer: bias_add
-  consumers:
-  - relu
-  external: false
-- name: output_matrix
-  role: final ReLU outputs
-  data_type: int32_s
-  dimensions:
-  - M
-  - N
-  producer: relu
+  producer: op_store_c
   consumers:
   - external
   external: true
 dimensions:
-- name: M
-  semantic: output rows / A rows
+- name: dim_M
+  semantic: rows of A and C
   minimum: 1
   maximum: 64
   runtime_configurable: true
   bound_parameter: MAX_M
-- name: N
-  semantic: output cols / B cols / bias length
+- name: dim_N
+  semantic: columns of B and C
   minimum: 1
   maximum: 64
   runtime_configurable: true
   bound_parameter: MAX_N
-- name: K
-  semantic: reduction dimension / A cols / B rows
+- name: dim_K
+  semantic: shared reduction dimension
   minimum: 1
   maximum: 64
   runtime_configurable: true
@@ -163,126 +234,136 @@ dimensions:
 parameters:
 - name: MAX_M
   default_value: '64'
-  legality_constraint: integer >= 1
-  description: Maximum runtime M
+  legality_constraint: integer, 1<=MAX_M<=256
+  description: maximum supported M
 - name: MAX_N
   default_value: '64'
-  legality_constraint: integer >= 1
-  description: Maximum runtime N
+  legality_constraint: integer, 1<=MAX_N<=256
+  description: maximum supported N
 - name: MAX_K
   default_value: '64'
-  legality_constraint: integer >= 1
-  description: Maximum runtime K
+  legality_constraint: integer, 1<=MAX_K<=256
+  description: maximum supported K
 - name: LANES_N
-  default_value: '4'
-  legality_constraint: integer >= 1 and <= MAX_N
-  description: Parallel output columns computed per inner-loop step
+  default_value: '8'
+  legality_constraint: integer, 1<=LANES_N<=MAX_N
+  description: parallel output columns computed per inner-loop step
+- name: CMD_WIDTH
+  default_value: '128'
+  legality_constraint: CMD_WIDTH==128
+  description: command channel payload width
+- name: STATUS_WIDTH
+  default_value: '32'
+  legality_constraint: STATUS_WIDTH==32
+  description: status channel payload width
 compute:
-  organization: FSM-controlled iterative datapath with LANES_N parallel MAC lanes
-    sharing one A operand per cycle.
-  dataflow: Output-stationary across K loop for each (m, n-lane group).
-  parallelism: Column-lane SIMD parallelism only.
-  scheduling: 'Phase order: command -> load A/B/bias memories -> compute -> stream
-    output.'
+  organization: single-core FSM-controlled vector-dot-product engine
+  dataflow: output-stationary over one C row chunk of LANES_N columns
+  parallelism: LANES_N parallel int8xint8 multipliers with int32 accumulators
+  scheduling: 'phase schedule: load A, load B, optional load bias, compute all C,
+    stream out C'
 storage:
-- name: a_mem
+- name: buf_a
   stored_objects:
-  - a_matrix
-  capacity_expression: MAX_M*MAX_K elements of int8_s
+  - obj_a_buffered
+  capacity_expression: MAX_M*MAX_K elements of dt_int8
   capacity_at_default_parameters: 4096
-  access_pattern: Sequential write during load; read A[m,k] during compute.
-  port_requirements: 1R/1W simple dual-port
-  implementation_hint: SRAM or inferred block RAM
-  reuse_semantics: Each loaded A element reused across ceil(N/LANES_N) lane groups.
-  lifetime: One job
-- name: b_mem
+  access_pattern: write sequential during load; read as A[m,k] during compute
+  port_requirements: 1R/1W (or true dual-port)
+  implementation_hint: SRAM or inferred RAM
+  reuse_semantics: each A element reused across N outputs
+  lifetime: job scope
+- name: buf_b
   stored_objects:
-  - b_matrix
-  capacity_expression: MAX_K*MAX_N elements of int8_s
+  - obj_b_buffered
+  capacity_expression: MAX_K*MAX_N elements of dt_int8
   capacity_at_default_parameters: 4096
-  access_pattern: Sequential write during load; LANES_N reads per compute cycle at
-    fixed k and n-group.
-  port_requirements: Read bandwidth LANES_N elements/cycle via banking or word-packed
-    memory
-  implementation_hint: Banked SRAM or wide-word RAM
-  reuse_semantics: Each loaded B element reused across all M rows.
-  lifetime: One job
-- name: bias_mem
+  access_pattern: write sequential during load; read LANES_N contiguous columns for
+    fixed k
+  port_requirements: read bandwidth LANES_N elements/cycle via banking/replication
+    plus 1W load path
+  implementation_hint: banked SRAM
+  reuse_semantics: each B element reused across M outputs
+  lifetime: job scope
+- name: buf_bias
   stored_objects:
-  - bias_vector
-  capacity_expression: MAX_N elements of int32_s
+  - obj_bias_buffered
+  capacity_expression: MAX_N elements of dt_int32
   capacity_at_default_parameters: 64
-  access_pattern: Sequential write during load; LANES_N reads at output finalize.
-  port_requirements: Read bandwidth LANES_N elements/cycle via banking or wide-word
-    memory
-  implementation_hint: Register file or SRAM
-  reuse_semantics: Each bias reused across all M rows.
-  lifetime: One job
-- name: accum_mem
+  access_pattern: write sequential during load; read LANES_N contiguous per output
+    chunk
+  port_requirements: read bandwidth LANES_N elements/cycle when bias enabled
+  implementation_hint: register file or banked RAM
+  reuse_semantics: bias reused for all M rows
+  lifetime: job scope
+- name: buf_acc
   stored_objects:
-  - gemm_accum_matrix
-  - biased_matrix
-  - output_matrix
-  capacity_expression: MAX_M*MAX_N elements of int32_s
-  capacity_at_default_parameters: 4096
-  access_pattern: Initialize per output group then K-cycle updates; finalize then
-    read for output stream.
-  port_requirements: At least 1 write path for compute updates and 1 read path for
-    output phase (time-multiplexed by phase)
-  implementation_hint: SRAM or inferred block RAM
-  reuse_semantics: Accumulator persists for full K reduction and until output emission.
-  lifetime: One job
+  - obj_accum_matrix
+  - obj_post_bias_matrix
+  - obj_output_matrix
+  capacity_expression: LANES_N elements of dt_int32 accumulators plus output skid
+    FIFO depth 2*LANES_N
+  capacity_at_default_parameters: 24
+  access_pattern: accumulators cleared per chunk, updated each k, finalized and pushed
+    to output FIFO
+  port_requirements: LANES_N parallel accumulator update paths
+  implementation_hint: register array + small FIFO
+  reuse_semantics: ephemeral per output chunk
+  lifetime: inner compute/output phases
 pipeline:
-- stage: ingress
-  responsibility: Accept command and input payload streams into local memories.
+- stage: s0_ingress
+  responsibility: accept/decode command and stream payloads into local buffers
   registered: true
-  valid_behavior: Capture on ready&&valid.
-  stall_behavior: Deassert ready when target memory/load counter not available.
-- stage: compute
-  responsibility: Run nested loops m,n_group,k; perform multiply-accumulate.
+  valid_behavior: ingress transfer on ready&&valid
+  stall_behavior: deassert ready when target buffer phase inactive/full
+- stage: s1_compute
+  responsibility: perform LANES_N MAC updates per cycle across k loop
   registered: true
-  valid_behavior: Advance indices only on active compute cycle.
-  stall_behavior: Internal no-stall phase; external channels ignored.
-- stage: postprocess
-  responsibility: Bias add then ReLU on finalized accumulators.
+  valid_behavior: one k-step update per cycle when compute_enable
+  stall_behavior: hold m/n/k counters and accumulators when stalled
+- stage: s2_postproc
+  responsibility: apply optional bias and optional ReLU to finalized accumulators
   registered: true
-  valid_behavior: One lane-group finalize step per cycle.
-  stall_behavior: Hold state until downstream output stage accepts data if coupled.
-- stage: egress
-  responsibility: Stream output_matrix in row-major order.
+  valid_behavior: process one LANES_N chunk at chunk-finalization
+  stall_behavior: retain finalized chunk until output FIFO has space
+- stage: s3_egress
+  responsibility: stream int32 outputs and terminal status
   registered: true
-  valid_behavior: Transfer on out_valid&&out_ready.
-  stall_behavior: Hold out_valid and out_data stable until accepted.
+  valid_behavior: emit on ready&&valid
+  stall_behavior: hold payload stable while valid=1 and ready=0
 control:
-  strategy: Single top-level FSM with phase and nested counters.
-  state_progression: IDLE->LOAD_CMD->LOAD_A->LOAD_B->LOAD_BIAS->COMPUTE->OUTPUT->DONE->IDLE
+  strategy: single FSM with phase and nested counters
+  state_progression: IDLE->LOAD_A->LOAD_B->(LOAD_BIAS if bias_enable)->COMPUTE->OUTPUT->DONE->IDLE;
+    ERROR reachable from any active state
   counters:
-  - m_idx
-  - n_group_idx
-  - k_idx
-  - load_count
-  - out_count
-  error_behavior: If command dimensions exceed MAX_* or zero, set error flag, enter
-    DONE without compute, status reports error.
-  error_recovery: Host issues new valid command while in IDLE to clear error flag
-    and start next job.
+  - cnt_a:0..M*K-1
+  - cnt_b:0..K*N-1
+  - cnt_bias:0..N-1
+  - idx_m:0..M-1
+  - idx_n_chunk:0..ceil(N/LANES_N)-1
+  - idx_k:0..K-1
+  - cnt_out:0..M*N-1
+  error_behavior: illegal command fields, runtime dimensions out of range, unexpected
+    stream during wrong phase, or premature TLAST assert error status and enter ERROR
+  error_recovery: software issues soft reset via rst_n assertion; after reset FSM
+    returns to IDLE and clears status/error latches
 reset:
   style: synchronous
   polarity: active_low
-  required_state: FSM=IDLE, all valids low, counters zeroed, error flag cleared, configuration
-    invalid.
-latency_model: 'For one job: 1 cmd beat + (M*K) A beats + (K*N) B beats + N bias beats
-  + (M*ceil(N/LANES_N)*K) compute cycles + (M*N) output beats; no load/compute overlap
-  in baseline architecture.'
+  required_state: FSM=IDLE, valid outputs low, counters zero, error/status cleared,
+    buffer write pointers zero; memory contents unspecified
+latency_model: Total cycles = cmd_accept(1)+loadA(M*K)+loadB(K*N)+bias_enable*loadBias(N)+compute(M*ceil(N/LANES_N)*K)+postproc(M*ceil(N/LANES_N))+egress(M*N).
+  Compute/output do not overlap in baseline schedule.
 architectural_invariants:
-- Arithmetic is exact integer two's-complement with wrap on int32 overflow.
-- Bias and ReLU are applied to every GEMM output element before emission.
-- 'Output ordering is strict row-major: n increments fastest within each row m.'
-- All operands required for a job are loaded once and retained locally; no retransmission
-  during compute.
+- All arithmetic is exact integer two's-complement with wrap on 32-bit add/macc overflow.
+- A and B must be fully loaded before compute starts.
+- Output order is strict row-major C[m][n] ascending n then m.
+- Transfer condition for all streaming channels is ready&&valid with stable payload
+  under stall.
 open_assumptions:
-- Single outstanding job only.
-- 'Command encoding uses one 32-bit word: bits[7:0]=M, bits[15:8]=N, bits[23:16]=K,
-  bits[31:24] reserved must be zero.'
-- External data streams provide one scalar element per accepted transfer.
-- No asynchronous clear/retry signal; recovery via next command in IDLE.
+- Single outstanding job; no command queueing.
+- 'Host sends sections in required order: command, A payload, B payload, optional
+  bias payload.'
+- Bias and ReLU enables are per-job command bits.
+- When N is not divisible by LANES_N, inactive lanes in final chunk are masked and
+  no output beats are produced for invalid lanes.

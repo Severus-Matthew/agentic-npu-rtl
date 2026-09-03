@@ -1,23 +1,27 @@
 functional:
-- For all legal M,N,K within bounds, output[m,n]=max(0, sum_k(A[m,k]*B[k,n]) + bias[n])
-  with exact integer match.
-- Command with any of M,N,K=0 or >MAX bound sets error=1 and no output transfers occur
-  for that job.
-- Output transfer count is exactly M*N for legal jobs.
+- For each legal M,N,K, output C equals int32(ReLU((A*B)+bias)) per command enables,
+  exact integer semantics.
+- When bias_enable=0, bias input section is not required and bias term treated as
+  zero.
+- When relu_enable=0, negative outputs are preserved.
 verification:
-- Minimum 100 randomized legal transactions spanning varied M,N,K and signed operand
-  ranges.
-- Directed boundary tests at M,N,K = 1 and = MAX_* values.
-- 'Reset test: asserting rst_n low returns FSM/handshake/status to defined reset state.'
-- 'Backpressure test: random out_ready deassertion must not lose/duplicate/reorder
-  outputs; out_data stable while stalled.'
+- Minimum 100 randomized jobs across legal bounds with software golden model comparison.
+- 'Directed boundary tests: M/N/K at 1 and at MAX_M/MAX_N/MAX_K, plus N not divisible
+  by LANES_N.'
+- 'Reset tests required: reset during IDLE and mid-job; post-reset first job must
+  execute correctly.'
+- Backpressure tests required on in_data, out_data, and status channels with random
+  ready deassertions.
+- 'Protocol violation tests: bad dimensions, wrong section order, early/late in_last;
+  must emit nonzero status code.'
 rtl:
-- SystemVerilog synthesizable subset only; no real/shortreal, delay statements, force/release,
-  or classes.
-- All state transitions clocked; no combinational loops; no undefined latches.
-- Ready/valid protocol implemented exactly with transfer on ready&&valid.
+- 'RTL must be synthesizable SystemVerilog and avoid forbidden constructs: real, shortreal,
+  delay statements, force/release, classes.'
+- All sequential logic uses clk and synchronous active-low reset behavior per contract.
+- No undefined-width signals; parameterized widths remain legal for all legal parameter
+  values.
 synopsys_handoff:
-- Synthesis/timing/power/area metrics accepted only from deterministic Synopsys tool
-  reports conforming to multigent/schemas/synthesis_result.schema.json.
-- No estimated or inferred PPA metrics are allowed in signoff artifacts.
-- RTL must be functionally verified before Synopsys handoff per project policy.
+- Synthesis/timing/power/area/frequency/utilization claims accepted only from deterministic
+  Synopsys tool reports.
+- Reported metrics must conform to multigent/schemas/synthesis_result.schema.json.
+- No estimated or inferred PPA numbers are permitted without authoritative reports.

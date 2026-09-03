@@ -3,48 +3,41 @@
   "modules": [
     {
       "name": "gemm_bias_relu_npu_top",
-      "responsibility": "Top integration, external interface, global FSM.",
+      "responsibility": "top-level integration and external interface",
       "dependencies": [
+        "control_fsm",
         "cmd_decoder",
-        "input_loader",
-        "gemm_compute_core",
-        "postprocess_unit",
-        "output_streamer",
-        "status_block"
+        "ingress_loader",
+        "compute_core",
+        "postproc_unit",
+        "egress_unit",
+        "status_unit"
       ],
       "parameters": [
         "MAX_M",
         "MAX_N",
         "MAX_K",
-        "LANES_N"
+        "LANES_N",
+        "CMD_WIDTH",
+        "STATUS_WIDTH"
       ],
       "stateful": true
     },
     {
       "name": "cmd_decoder",
-      "responsibility": "Decode/validate command fields and issue job_config.",
+      "responsibility": "decode and validate command fields",
       "dependencies": [],
       "parameters": [
         "MAX_M",
         "MAX_N",
-        "MAX_K"
+        "MAX_K",
+        "CMD_WIDTH"
       ],
-      "stateful": true
+      "stateful": false
     },
     {
-      "name": "input_loader",
-      "responsibility": "Accept A/B/bias streams and write local memories with counters.",
-      "dependencies": [],
-      "parameters": [
-        "MAX_M",
-        "MAX_N",
-        "MAX_K"
-      ],
-      "stateful": true
-    },
-    {
-      "name": "gemm_compute_core",
-      "responsibility": "Execute nested-loop int8xint8->int32 MAC updates into accum_mem.",
+      "name": "control_fsm",
+      "responsibility": "phase control, counters, and error state handling",
       "dependencies": [],
       "parameters": [
         "MAX_M",
@@ -55,30 +48,52 @@
       "stateful": true
     },
     {
-      "name": "postprocess_unit",
-      "responsibility": "Apply bias add and ReLU to finalized accumulators.",
-      "dependencies": [],
-      "parameters": [
-        "MAX_N",
-        "LANES_N"
-      ],
-      "stateful": false
-    },
-    {
-      "name": "output_streamer",
-      "responsibility": "Read finalized outputs and drive out_chan with backpressure handling.",
+      "name": "ingress_loader",
+      "responsibility": "accept A/B/bias streams and write local buffers",
       "dependencies": [],
       "parameters": [
         "MAX_M",
-        "MAX_N"
+        "MAX_N",
+        "MAX_K"
       ],
       "stateful": true
     },
     {
-      "name": "status_block",
-      "responsibility": "Generate busy/done/error status signals.",
+      "name": "compute_core",
+      "responsibility": "LANES_N parallel MAC engine over buffered operands",
       "dependencies": [],
-      "parameters": [],
+      "parameters": [
+        "MAX_N",
+        "MAX_K",
+        "LANES_N"
+      ],
+      "stateful": true
+    },
+    {
+      "name": "postproc_unit",
+      "responsibility": "bias add and ReLU on finalized accumulators",
+      "dependencies": [],
+      "parameters": [
+        "LANES_N"
+      ],
+      "stateful": true
+    },
+    {
+      "name": "egress_unit",
+      "responsibility": "row-major output streaming with backpressure handling",
+      "dependencies": [],
+      "parameters": [
+        "LANES_N"
+      ],
+      "stateful": true
+    },
+    {
+      "name": "status_unit",
+      "responsibility": "status code generation and handshake",
+      "dependencies": [],
+      "parameters": [
+        "STATUS_WIDTH"
+      ],
       "stateful": true
     }
   ]
