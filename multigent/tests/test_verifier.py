@@ -19,6 +19,9 @@ def generic_fir_context() -> dict:
             "randomized_transactions_minimum": 100,
             "require_reset_tests": True,
             "require_backpressure_tests_when_applicable": True,
+            "regression_wall_timeout_seconds_minimum": 120,
+            "require_completion_behavior_tests_when_defined": True,
+            "require_error_behavior_tests_when_defined": True,
         },
         "frozen_architecture": {
             "architecture_contract": {
@@ -188,6 +191,13 @@ def test_verifier_requires_policy_randomized_minimum() -> None:
         VerifierAgent._validate_result(result=result, context=generic_fir_context())
 
 
+def test_verifier_requires_regression_wall_timeout_minimum() -> None:
+    result = verification_ready_result()
+    result["verification_plan"]["timeout_seconds"] = 2
+    with pytest.raises(AgentRuntimeError, match="wall-clock policy minimum"):
+        VerifierAgent._validate_result(result=result, context=generic_fir_context())
+
+
 def test_verifier_requires_manifest_top() -> None:
     result = verification_ready_result()
     result["verification_plan"]["top_module"] = "wrong_top"
@@ -244,7 +254,7 @@ def test_architecture_conflict_emits_no_tests() -> None:
                 "test_categories": [],
                 "randomized_test_count": 0,
                 "seed": 0,
-                "timeout_seconds": 60,
+                "timeout_seconds": 120,
                 "regression_groups": {"smoke": [], "targeted": [], "full": []},
                 "pass_criteria": "blocked",
                 "protocol_assumptions": [],
