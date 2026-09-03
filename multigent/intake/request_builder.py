@@ -1,13 +1,10 @@
-"""Build machine-owned context around a minimal user NPU request.
+"""Build machine-owned context around a minimal hardware-accelerator request.
 
-The user should describe only computational intent, for example:
-
-    design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type
-
-This module does not invent architecture. It adds only fixed technical project
-constraints and records which unspecified choices belong to the Architect.
-Downstream context is assembled deterministically from the original request,
-those fixed constraints, and the frozen Architect artifacts.
+The user supplies computational/behavioral intent only. This module does not
+invent architecture. It adds fixed technical project constraints and records
+which unspecified choices belong to the Architect. Downstream context is
+assembled deterministically from the original request, those fixed constraints,
+and the frozen Architect artifacts.
 """
 
 from __future__ import annotations
@@ -87,12 +84,11 @@ def build_rtl_context(
     user_request: str,
     architecture_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Assemble the deterministic context for the RTL Generator.
+    """Assemble deterministic context for the RTL Generator.
 
-    The RTL generator receives:
-      1. the original natural-language request,
-      2. fixed RTL/synthesis constraints, and
-      3. the frozen Architect artifacts.
+    The RTL Generator receives the original request, fixed RTL/synthesis policy,
+    and frozen Architect artifacts. It does not reconstruct or reinterpret the
+    user's intent independently.
     """
 
     architecture_dir = architecture_dir or (WORKSPACE_ROOT / "architecture")
