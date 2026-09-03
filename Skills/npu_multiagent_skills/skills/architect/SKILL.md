@@ -41,6 +41,8 @@ Identify every operation the design must perform. For each operation define:
 
 Do not assume GEMM, convolution, attention, FFT, systolic execution, matrix dimensions, or any other workload-specific structure unless the request requires it.
 
+Do not introduce optional operating modes, bypass modes, alternate arithmetic modes, or feature-enable controls absent from the user request unless they are technically required for implementation. Prefer the smallest architecture that exactly implements the requested behavior.
+
 ### 2. Define data types
 For every distinct scalar/element representation define:
 - name and role
@@ -69,11 +71,13 @@ Every operation input/output must reference a declared data object. Every data o
 Represent runtime-varying sizes as named dimensions. For each dimension define:
 - semantic meaning
 - minimum legal value
-- concrete maximum supported value
+- concrete maximum supported value at the default parameterization
 - whether runtime configurable
 - compile-time parameter that bounds it, if any
 
-Every maximum must be a concrete integer in the architecture contract. Do not emit placeholders, punctuation, unresolved expressions, or prose in numeric bound fields.
+If a bound depends on a compile-time parameter, the dimension semantics must state that runtime legality is governed by that parameter rather than by a default-only constant. Do not create a contradiction where a dimension names a bound parameter but also implies a permanently fixed maximum independent of that parameter.
+
+Every numeric maximum field must contain a concrete integer valid for the default parameterization. Do not emit placeholders, punctuation, unresolved expressions, or prose in numeric bound fields.
 
 ### 5. Define compile-time parameters
 For every parameter define:
@@ -82,7 +86,7 @@ For every parameter define:
 - legality constraint
 - purpose
 
-Parameter defaults must make the generated design self-contained and buildable. If an interface width, storage capacity, or counter width depends on a parameter, express that dependency symbolically rather than freezing a width that is valid only for the default value.
+Parameter defaults must make the generated design self-contained and buildable. If an interface width, storage capacity, runtime bound, or counter width depends on a parameter, express that dependency symbolically in the corresponding semantics rather than freezing behavior to values valid only for the defaults.
 
 ### 6. Choose compute organization
 Choose and justify:
@@ -169,10 +173,16 @@ Before declaring a compute schedule, reconcile it with ingress/egress bandwidth 
 - if overlap is claimed, define the buffering/banking that permits it
 - reflect these cycles in the latency/throughput model
 
+For every compute step, explicitly account for the cycles required to populate its operand staging storage from the declared interfaces. If one compute step consumes multiple operands but an interface supplies fewer operands per transfer, the unavoidable staging cycles must appear in the schedule and latency model.
+
+If throughput assumes prefetch, pipelining, ping-pong buffering, or any other overlap between operand loading and computation, declare the exact storage organization that makes the overlap possible and state when each buffer is read, written, and swapped. Do not claim steady-state throughput that the declared staging storage and interface bandwidth cannot sustain.
+
 If external data must be retransmitted because it is not retained locally, specify the exact replay order and transfer-count formula. Do not use vague phrases such as `compute-consumption order` without defining that order algorithmically.
 
 ### 12. Prove output ordering is realizable
 Declared output ordering must follow from the actual compute traversal and buffering. If outputs are finalized and emitted tile-by-tile, do not claim global row-major/column-major ordering unless the tile traversal and within-tile emission produce that order or a reorder buffer is explicitly defined. Otherwise declare the actual tile-major ordering.
+
+If compute and egress are separated into different phases, the declared storage must be large enough to retain every result that must remain live between those phases. Otherwise interleave compute/finalize/egress at a granularity supported by the available storage.
 
 ### 13. Define reset
 Reset must deterministically restore control/protocol state. Prefer resetting pointers, counters, FSM state, valid bits, and validity metadata rather than bulk-clearing memories unless cleared contents are functionally required.
@@ -193,6 +203,7 @@ Create machine-testable criteria for:
 - data-type/arithmetic semantics
 - legal runtime bounds and boundary cases
 - exact input framing/packing/transfer counts
+- operand staging/order and partial-vector/tile behavior when applicable
 - output ordering
 - reset
 - interface/protocol behavior
@@ -206,7 +217,8 @@ Only deterministic tool reports may establish synthesis/timing/power/area/freque
 Before returning `READY`, verify:
 - every operation input/output is a declared data object
 - every data object references a declared data type and declared dimensions
-- every runtime dimension has concrete integer bounds
+- every operation/data-object producer and consumer relationship is reciprocal
+- every runtime dimension has concrete default-parameter bounds and clear parameter-dependent legality semantics
 - every bound parameter and module parameter is declared
 - all parameter defaults are concrete and legal
 - parameter-derived signal widths remain valid beyond default parameter values
@@ -216,7 +228,9 @@ Before returning `READY`, verify:
 - every packet/command field physically fits its declared payload width
 - every repeated stream has an exact transfer-count and ordering rule
 - scalar/vector interface bandwidth is accounted for in the schedule/latency model
-- claimed compute overlap is backed by sufficient buffering/banking
+- operand staging cycles are explicitly counted whenever interface width is smaller than compute-step operand demand
+- claimed compute overlap is backed by sufficient buffering/banking with an explicit swap/use schedule
+- live-result storage is sufficient whenever compute and egress occur in separate phases
 - declared output ordering is realizable by the traversal or explicit reorder storage
 - pipeline stalls cannot corrupt or duplicate state
 - every error behavior has an implementable recovery path present in the contract/interface
@@ -230,6 +244,7 @@ Return `SPEC_CONFLICT` only when explicit requirements cannot simultaneously hol
 - generating SystemVerilog
 - silently specializing the framework to a benchmark example
 - inventing requirements absent from the request or technical constraints
+- adding optional modes not requested or technically required
 - weakening acceptance criteria to improve pass rate
 - changing verification expectations after seeing RTL failures
 - modifying or fabricating synthesis reports
