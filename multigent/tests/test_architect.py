@@ -9,7 +9,7 @@ from multigent.intake.request_builder import build_architect_intake
 
 
 class FakeArchitectAgent(ArchitectAgent):
-    """Deterministic test fixture; values here are not project defaults."""
+    """Deterministic non-GEMM fixture; values here are not project defaults."""
 
     def run_structured(self, **_: object) -> dict:
         return {
@@ -17,108 +17,147 @@ class FakeArchitectAgent(ArchitectAgent):
             "conflicts": [],
             "architecture_contract": {
                 "design": {
-                    "name": "test_npu",
+                    "name": "test_stream_filter",
                     "version": "0.1",
-                    "description": "test architecture",
+                    "description": "test-only generic streaming filter architecture",
                 },
-                "operation": {
-                    "kind": "GEMM_BIAS_RELU",
-                    "equation": "C=ReLU(A*B+bias)",
-                    "description": "dense integer GEMM with bias and ReLU",
-                },
-                "numeric": {
-                    "activation_width": 8,
-                    "activation_signed": True,
-                    "weight_width": 8,
-                    "weight_signed": True,
-                    "product_width": 16,
-                    "product_signed": True,
-                    "accumulator_width": 32,
-                    "accumulator_signed": True,
-                    "bias_width": 32,
-                    "bias_signed": True,
-                    "output_width": 32,
-                    "output_signed": True,
-                    "extension_semantics": "sign extend product to accumulator width",
-                    "overflow_semantics": "wrap",
-                    "rounding_semantics": "none",
-                },
-                "supported_dimensions": {
-                    "m": {"minimum": 1, "maximum": "M_MAX", "runtime_configurable": True},
-                    "n": {"minimum": 1, "maximum": "N_MAX", "runtime_configurable": True},
-                    "k": {"minimum": 1, "maximum": "K_MAX", "runtime_configurable": True},
-                },
-                "compute": {
-                    "organization": "test_parallel_array",
-                    "rows": 2,
-                    "columns": 3,
-                    "mac_count": 6,
-                    "parameterization": "test-only parameterization",
-                },
-                "dataflow": "test-only output-stationary flow",
-                "operand_storage": [
+                "operations": [
                     {
-                        "operand": "A",
-                        "ingress_order": "row-major",
-                        "supply_frequency": "once_per_job",
-                        "reuse_strategy": "local replay",
-                        "storage_strategy": "test buffer",
-                        "capacity": "M_MAX*K_MAX",
+                        "name": "filter",
+                        "kind": "FIR",
+                        "semantics": "y[t] is the weighted sum of the current and previous samples",
+                        "inputs": ["sample", "coefficient"],
+                        "outputs": ["result"],
+                    }
+                ],
+                "data_types": [
+                    {
+                        "name": "sample",
+                        "role": "stream input",
+                        "width_bits": 16,
+                        "signed": True,
+                        "representation": "two's-complement integer",
+                        "conversion_semantics": "none",
+                        "overflow_semantics": "not applicable at input",
+                        "rounding_semantics": "none",
                     },
                     {
-                        "operand": "B",
-                        "ingress_order": "row-major",
-                        "supply_frequency": "once_per_job",
-                        "reuse_strategy": "local replay",
-                        "storage_strategy": "test buffer",
-                        "capacity": "K_MAX*N_MAX",
+                        "name": "coefficient",
+                        "role": "filter coefficient",
+                        "width_bits": 16,
+                        "signed": True,
+                        "representation": "two's-complement integer",
+                        "conversion_semantics": "none",
+                        "overflow_semantics": "not applicable at input",
+                        "rounding_semantics": "none",
                     },
                     {
-                        "operand": "bias",
-                        "ingress_order": "n-major",
-                        "supply_frequency": "once_per_job",
-                        "reuse_strategy": "reuse across rows",
-                        "storage_strategy": "test buffer",
-                        "capacity": "N_MAX",
+                        "name": "result",
+                        "role": "stream output",
+                        "width_bits": 32,
+                        "signed": True,
+                        "representation": "two's-complement integer",
+                        "conversion_semantics": "truncate accumulator to output width",
+                        "overflow_semantics": "wrap",
+                        "rounding_semantics": "none",
                     },
                 ],
+                "dimensions": [
+                    {
+                        "name": "tap_count",
+                        "semantic": "number of FIR taps",
+                        "minimum": 1,
+                        "maximum": 16,
+                        "runtime_configurable": False,
+                        "bound_parameter": "TAPS",
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "TAPS",
+                        "default_value": "8",
+                        "legality_constraint": "1 <= TAPS <= 16",
+                        "description": "number of filter taps",
+                    }
+                ],
+                "compute": {
+                    "organization": "pipelined multiply-accumulate datapath",
+                    "dataflow": "streaming sample history through tap operations",
+                    "parallelism": "one tap operation per stage",
+                    "scheduling": "one accepted input advances the pipeline",
+                },
+                "storage": [
+                    {
+                        "name": "sample_history",
+                        "stores": "previous input samples",
+                        "capacity_expression": "TAPS",
+                        "maximum_elements": 16,
+                        "element_width_bits": 16,
+                        "access_pattern": "shift/register history",
+                        "port_requirements": "one new sample write and tap reads per accepted sample",
+                        "implementation_hint": "register array",
+                        "reuse_semantics": "history samples reused across adjacent outputs",
+                        "lifetime": "persistent across accepted samples until reset/overwrite",
+                    }
+                ],
                 "pipeline": [],
-                "buffers": [],
-                "control": "test controller",
+                "control": {
+                    "strategy": "stream-driven",
+                    "state_progression": "advance only on accepted input",
+                    "counters": [],
+                    "error_behavior": "no protocol side effects on stalls",
+                },
                 "reset": {
                     "style": "synchronous",
                     "polarity": "active_high",
-                    "required_state": "idle and valids cleared",
+                    "required_state": "valid state cleared and history marked invalid",
                 },
-                "latency_model": "test latency model",
-                "architectural_invariants": ["signed INT8 inputs"],
+                "latency_model": "fixed pipeline latency after an accepted sample",
+                "architectural_invariants": ["TAPS is compile-time bounded"],
                 "open_assumptions": [],
             },
             "interface_contract": {
                 "protocol": "ready_valid_stream",
                 "clock": "clk",
                 "reset": "rst",
+                "channels": [
+                    {
+                        "name": "sample_in",
+                        "direction": "input",
+                        "purpose": "input sample stream",
+                        "framing": "one sample per transfer",
+                        "ordering": "in order",
+                        "backpressure": "supported",
+                    },
+                    {
+                        "name": "result_out",
+                        "direction": "output",
+                        "purpose": "filtered output stream",
+                        "framing": "one result per transfer",
+                        "ordering": "in order",
+                        "backpressure": "supported",
+                    },
+                ],
                 "signals": [],
-                "handshake": {
+                "global_handshake_rules": {
                     "transfer_condition": "valid && ready",
-                    "stall_behavior": "payload remains stable",
-                    "backpressure_supported": True,
-                    "ordering": "in order",
+                    "stall_behavior": "payload remains stable while stalled",
                 },
             },
             "module_manifest": {
-                "top": "npu_top",
+                "top": "filter_top",
                 "modules": [
                     {
-                        "name": "npu_top",
+                        "name": "filter_top",
                         "responsibility": "top-level integration",
                         "dependencies": [],
+                        "parameters": ["TAPS"],
                         "stateful": True,
                     }
                 ],
             },
             "acceptance_criteria": {
-                "functional": ["exact integer match"],
+                "functional": ["matches independent FIR reference"],
                 "verification": ["random regression"],
                 "rtl": ["synthesizable SystemVerilog"],
                 "synopsys_handoff": ["verified RTL package"],
@@ -127,30 +166,25 @@ class FakeArchitectAgent(ArchitectAgent):
 
 
 def test_intake_keeps_architecture_choices_out_of_user_input() -> None:
-    request = "design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type"
+    request = "design a 16-bit streaming FIR accelerator with 8 taps"
     intake = build_architect_intake(request)
 
     assert intake["user_request"] == request
     assert intake["provenance"]["user_supplied_fields"] == ["user_request"]
-
     assert intake["project_constraints"]["rtl_constraints"]["language"] == "SystemVerilog"
-    assert (
-        intake["project_constraints"]["verification_policy"][
-            "randomized_transactions_minimum"
-        ]
-        == 100
-    )
+    assert intake["project_constraints"]["verification_policy"]["randomized_transactions_minimum"] == 100
     assert intake["project_constraints"]["synthesis_policy"]["provider"] == "synopsys"
     assert "owner" not in intake["project_constraints"]["synthesis_policy"]
 
     decisions = intake["architect_must_decide_when_unspecified"]
-    assert "array_dimensions" in decisions
-    assert "supported_dimension_bounds" in decisions
-    assert "operand_reuse_strategy" in decisions
-    assert "operand_storage_strategy" in decisions
+    assert "operation_semantics" in decisions
+    assert "data_type_semantics" in decisions
+    assert "legal_runtime_bounds" in decisions
+    assert "compile_time_parameters" in decisions
+    assert "compute_organization" in decisions
+    assert "storage_and_reuse" in decisions
     assert "interface_protocol" in decisions
     assert "reset_style" in decisions
-    assert "overflow_semantics" in decisions
 
 
 def test_architect_loads_role_technical_context_only() -> None:
@@ -158,13 +192,14 @@ def test_architect_loads_role_technical_context_only() -> None:
     assert "# ARCHITECT TECHNICAL SKILL" in instructions
     assert "external_team_member" not in instructions
     assert "Artifact Ownership" not in instructions
+    assert "Do not assume GEMM" in instructions
 
 
 def test_architect_writes_only_architecture_artifacts(tmp_path: Path) -> None:
     architecture_dir = tmp_path / "architecture"
     agent = FakeArchitectAgent()
     result = agent.run(
-        "design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type",
+        "design a 16-bit streaming FIR accelerator with 8 taps",
         output_dir=architecture_dir,
         run_id="unit",
     )
@@ -187,5 +222,6 @@ def test_architect_writes_only_architecture_artifacts(tmp_path: Path) -> None:
     contract = yaml.safe_load(
         (architecture_dir / "architecture_contract.yaml").read_text(encoding="utf-8")
     )
-    assert contract["compute"]["mac_count"] == 6
+    assert contract["design"]["name"] == "test_stream_filter"
+    assert contract["parameters"][0]["name"] == "TAPS"
     assert not list(architecture_dir.glob("*.sv"))
