@@ -204,6 +204,33 @@ def test_verifier_rejects_python_that_reads_rtl_workspace() -> None:
         VerifierAgent._validate_result(result=result, context=generic_fir_context())
 
 
+def test_verifier_rejects_old_sim_timeout_import() -> None:
+    result = verification_ready_result()
+    result["test_files"][0]["content"] = (
+        "import cocotb\n"
+        "from cocotb.result import SimTimeoutError\n\n"
+        "@cocotb.test()\n"
+        "async def test_old_api(dut):\n"
+        "    pass\n"
+    )
+    with pytest.raises(AgentRuntimeError, match="obsolete cocotb 2.x API"):
+        VerifierAgent._validate_result(result=result, context=generic_fir_context())
+
+
+def test_verifier_rejects_deprecated_cocotb_start() -> None:
+    result = verification_ready_result()
+    result["test_files"][0]["content"] = (
+        "import cocotb\n\n"
+        "async def child():\n"
+        "    return None\n\n"
+        "@cocotb.test()\n"
+        "async def test_old_start(dut):\n"
+        "    await cocotb.start(child())\n"
+    )
+    with pytest.raises(AgentRuntimeError, match="cocotb.start"):
+        VerifierAgent._validate_result(result=result, context=generic_fir_context())
+
+
 def test_architecture_conflict_emits_no_tests() -> None:
     result = verification_ready_result()
     result.update(
