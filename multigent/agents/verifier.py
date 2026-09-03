@@ -100,9 +100,9 @@ class VerifierAgent(APIAgent):
                 for stale in directory.glob("*.py"):
                     stale.unlink()
             for item in result["reference_files"]:
-                self._write_python(reference_dir, item)
+                self._write_python(reference_dir, item, owned_root="reference")
             for item in result["test_files"]:
-                self._write_python(tests_dir, item)
+                self._write_python(tests_dir, item, owned_root="tests")
             (verification_dir / "verification_plan.yaml").write_text(
                 yaml.safe_dump(
                     result["verification_plan"],
@@ -182,19 +182,45 @@ class VerifierAgent(APIAgent):
             )
 
     @staticmethod
-    def _safe_python_filename(raw: str) -> str:
+    def _safe_python_filename(raw: str, *, owned_root: str | None = None) -> str:
+        """Normalize a Verifier-owned Python path to its flat on-disk filename.
+
+        Models may reasonably return either ``foo.py`` or the explicit artifact-owned
+        form ``reference/foo.py`` / ``tests/foo.py``. Accept only the expected owned
+        prefix and strip it. Cross-owner paths, nested subdirectories, traversal, and
+        absolute paths remain forbidden.
+        """
+
         path = Path(str(raw))
-        if path.is_absolute() or ".." in path.parts or len(path.parts) != 1:
+        if path.is_absolute() or ".." in path.parts:
+            raise AgentRuntimeError(f"Unsafe verification Python path: {raw!r}")
+
+        parts = path.parts
+        if len(parts) == 1:
+            filename = parts[0]
+        elif len(parts) == 2 and owned_root is not None and parts[0] == owned_root:
+            filename = parts[1]
+        else:
+            expected = f"{owned_root}/<file>.py" if owned_root else "<file>.py"
             raise AgentRuntimeError(
-                f"Verification Python files must be flat safe filenames, got {raw!r}"
+                f"Verification Python path {raw!r} is outside its owned root; "
+                f"expected {expected}"
             )
-        if path.suffix != ".py" or path.name.startswith("."):
+
+        normalized = Path(filename)
+        if normalized.suffix != ".py" or normalized.name.startswith("."):
             raise AgentRuntimeError(f"Invalid verification Python filename: {raw!r}")
-        return path.name
+        return normalized.name
 
     @classmethod
-    def _write_python(cls, target: Path, item: Mapping[str, Any]) -> None:
-        filename = cls._safe_python_filename(str(item["path"]))
+    def _write_python(
+        cls,
+        target: Path,
+        item: Mapping[str, Any],
+        *,
+        owned_root: str,
+    ) -> None:
+        filename = cls._safe_python_filename(str(item["path"]), owned_root=owned_root)
         content = str(item["content"])
         if not content.endswith("\n"):
             content += "\n"
@@ -249,16 +275,20 @@ class VerifierAgent(APIAgent):
 
         reference_names: set[str] = set()
         for item in references:
-            name = cls._safe_python_filename(str(item["path"]))
+            name = cls._safe_python_filename(
+                str(item["path"]), owned_root="reference"
+            )
             if name in reference_names:
                 raise AgentRuntimeError(f"Duplicate reference filename: {name}")
             reference_names.add(name)
-            cls._validate_python_content(name, str(item["content"]), cocotb_required=False)
+            cls._validate_python_content(
+                name, str(item["content"]), cocotb_required=False
+            )
 
         test_names: set[str] = set()
         test_modules: set[str] = set()
         for item in tests:
-            name = cls._safe_python_filename(str(item["path"]))
+            name = cls._safe_python_filename(str(item["path"]), owned_root="tests")
             if name in test_names:
                 raise AgentRuntimeError(f"Duplicate test filename: {name}")
             test_names.add(name)
@@ -267,7 +297,9 @@ class VerifierAgent(APIAgent):
                 raise AgentRuntimeError(
                     f"Initial verifier test file {name} must belong to full regression"
                 )
-            cls._validate_python_content(name, str(item["content"]), cocotb_required=True)
+            cls._validate_python_content(
+                name, str(item["content"]), cocotb_required=True
+            )
 
         if set(map(str, plan["test_modules"])) != test_modules:
             raise AgentRuntimeError(
@@ -296,7 +328,9 @@ class VerifierAgent(APIAgent):
         if not content.strip():
             raise AgentRuntimeError(f"Generated Python file {filename} is empty")
         if "```" in content:
-            raise AgentRuntimeError(f"Generated Python file {filename} contains Markdown fences")
+            raise AgentRuntimeError(
+                f"Generated Python file {filename} contains Markdown fences"
+            )
         try:
             tree = ast.parse(content, filename=filename, mode="exec")
         except SyntaxError as exc:
@@ -324,7 +358,10 @@ class VerifierAgent(APIAgent):
                         f"Generated verification file {filename} imports forbidden capability {root}"
                     )
             elif isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Name) and node.func.id in _FORBIDDEN_CALL_NAMES:
+                if (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id in _FORBIDDEN_CALL_NAMES
+                ):
                     raise AgentRuntimeError(
                         f"Generated verification file {filename} calls forbidden capability {node.func.id}"
                     )
@@ -337,7 +374,9 @@ class VerifierAgent(APIAgent):
                     )
 
         if cocotb_required and not imported_cocotb:
-            raise AgentRuntimeError(f"Generated test file {filename} does not import cocotb")
+            raise AgentRuntimeError(
+                f"Generated test file {filename} does not import cocotb"
+            )
 
     @staticmethod
     def _build_task(context: Mapping[str, Any]) -> str:
@@ -360,7 +399,9 @@ OUTPUT RULES
 1. Return VERIFICATION_READY with Python reference/test file contents and a complete
    plan, or ARCHITECTURE_CONFLICT if an executable oracle cannot be defined without
    a new architectural/interface decision.
-2. Paths are flat filenames relative to their owned roots; do not create subfolders.
+2. A reference path may be ``foo.py`` or ``reference/foo.py``. A test path may be
+   ``bar.py`` or ``tests/bar.py``. Do not use nested subdirectories or any other
+   artifact root; the runtime normalizes the owned prefix before writing.
 3. verification_plan.test_modules contains filename stems and exactly matches tests.
 4. The initial full regression group contains every generated test module.
 5. Honor at least the fixed randomized transaction minimum with a deterministic seed.
