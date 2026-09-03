@@ -1,9 +1,8 @@
-"""Executable LangGraph for Architect -> RTL -> independent verification.
+"""Executable LangGraph for architecture, RTL, verification, and repair.
 
-The graph supports checkpoint resume from frozen architecture or existing RTL.
-Verifier generation is independent from RTL source; deterministic Verilator/cocotb
-nodes establish functional tool status. Debugger/repair and Synopsys nodes are the
-next extensions and are represented by terminal placeholders here.
+Verifier generation is independent from RTL source. Deterministic Verilator/cocotb
+status controls PASS/FAIL. Functional failures route through an evidence-driven
+Debugger and back to the RTL Generator while preserving the same verifier artifacts.
 """
 
 from __future__ import annotations
@@ -16,13 +15,16 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from multigent.agents.architect import ArchitectAgent
+from multigent.agents.debugger import DebuggerAgent
 from multigent.agents.rtl_generator import RTLGeneratorAgent
 from multigent.agents.verifier import VerifierAgent
 from multigent.intake.request_builder import WORKSPACE_ROOT, build_rtl_context
 
 from .architect_node import make_architect_node
+from .debugger_node import make_debugger_node
 from .routes import (
     route_after_architect,
+    route_after_debugger,
     route_after_rtl,
     route_after_verification,
     route_after_verifier,
@@ -35,8 +37,6 @@ from .verifier_node import make_verifier_node
 
 
 def _synthesis_placeholder(state: HardwareDesignState) -> dict[str, Any]:
-    """Terminal placeholder until deterministic Synopsys workflow is connected."""
-
     return {
         "status": "READY_FOR_SYNTHESIS",
         "history": [
@@ -49,15 +49,14 @@ def _synthesis_placeholder(state: HardwareDesignState) -> dict[str, Any]:
     }
 
 
-def _repair_required_node(state: HardwareDesignState) -> dict[str, Any]:
-    """Terminal placeholder that will be replaced by Debugger -> RTL repair loop."""
-
+def _repair_exhausted_node(state: HardwareDesignState) -> dict[str, Any]:
     return {
-        "status": "REPAIR_REQUIRED",
+        "status": "REPAIR_BUDGET_EXHAUSTED",
         "history": [
             {
                 "stage": "repair",
-                "status": "PENDING_DEBUGGER_IMPLEMENTATION",
+                "status": "BUDGET_EXHAUSTED",
+                "repair_iteration": state.get("repair_iteration"),
                 "failure_class": state.get("failure_class"),
             }
         ],
@@ -79,7 +78,8 @@ def _tool_unavailable_node(state: HardwareDesignState) -> dict[str, Any]:
 
 def _failed_node(state: HardwareDesignState) -> dict[str, Any]:
     reason = (
-        state.get("verifier_status")
+        state.get("debugger_status")
+        or state.get("verifier_status")
         or state.get("rtl_status")
         or state.get("architecture_status")
         or state.get("failure_class")
@@ -96,16 +96,18 @@ def build_workflow_graph(
     architect_agent: ArchitectAgent | None = None,
     rtl_agent: RTLGeneratorAgent | None = None,
     verifier_agent: VerifierAgent | None = None,
+    debugger_agent: DebuggerAgent | None = None,
 ):
-    """Compile Architect/RTL/Verifier/tool graph with architecture-revision routing."""
+    """Compile the deterministic evidence-driven multi-agent workflow."""
 
     builder = StateGraph(HardwareDesignState)
     builder.add_node("architect", make_architect_node(architect_agent))
     builder.add_node("rtl_generator", make_rtl_generator_node(rtl_agent))
     builder.add_node("verifier", make_verifier_node(verifier_agent))
     builder.add_node("verification_tools", verification_tools_node)
+    builder.add_node("debugger", make_debugger_node(debugger_agent))
     builder.add_node("synthesis", _synthesis_placeholder)
-    builder.add_node("repair_required", _repair_required_node)
+    builder.add_node("repair_exhausted", _repair_exhausted_node)
     builder.add_node("tool_unavailable", _tool_unavailable_node)
     builder.add_node("failed", _failed_node)
 
@@ -114,8 +116,9 @@ def build_workflow_graph(
     builder.add_conditional_edges("rtl_generator", route_after_rtl)
     builder.add_conditional_edges("verifier", route_after_verifier)
     builder.add_conditional_edges("verification_tools", route_after_verification)
+    builder.add_conditional_edges("debugger", route_after_debugger)
     builder.add_edge("synthesis", END)
-    builder.add_edge("repair_required", END)
+    builder.add_edge("repair_exhausted", END)
     builder.add_edge("tool_unavailable", END)
     builder.add_edge("failed", END)
     return builder.compile()
@@ -126,7 +129,7 @@ def build_architect_rtl_graph(
     architect_agent: ArchitectAgent | None = None,
     rtl_agent: RTLGeneratorAgent | None = None,
 ):
-    """Backward-compatible alias for callers using the earlier graph constructor."""
+    """Backward-compatible alias for the complete workflow constructor."""
 
     return build_workflow_graph(
         architect_agent=architect_agent,
@@ -136,12 +139,18 @@ def build_architect_rtl_graph(
 
 def _existing_rtl_files() -> list[str]:
     rtl_dir = WORKSPACE_ROOT / "rtl"
-    return [path.relative_to(rtl_dir).as_posix() for path in sorted(rtl_dir.rglob("*.sv"))]
+    return [
+        path.relative_to(rtl_dir).as_posix()
+        for path in sorted(rtl_dir.rglob("*.sv"))
+    ]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run LangGraph Architect -> RTL -> independent verification"
+        description=(
+            "Run LangGraph Architect -> RTL -> independent verification -> "
+            "Debugger/repair loop"
+        )
     )
     parser.add_argument("--request", required=True)
     parser.add_argument("--run-id", required=True)
@@ -160,7 +169,7 @@ def main() -> None:
     parser.add_argument(
         "--use-existing-rtl",
         action="store_true",
-        help="Resume at independent Verifier using existing workspace/rtl/*.sv files.",
+        help="Resume using existing workspace/rtl/*.sv files.",
     )
     args = parser.parse_args()
 
@@ -215,7 +224,11 @@ def main() -> None:
             }
         )
 
-    recursion_limit = 14 + 3 * args.max_architecture_revisions
+    recursion_limit = (
+        20
+        + 3 * args.max_architecture_revisions
+        + 4 * args.max_repair_iterations
+    )
     final_state = graph.invoke(initial, {"recursion_limit": recursion_limit})
     print(
         json.dumps(
@@ -228,6 +241,8 @@ def main() -> None:
                 "rtl_files": final_state.get("rtl_files", []),
                 "verifier_status": final_state.get("verifier_status"),
                 "verification_status": final_state.get("verification_status"),
+                "debugger_status": final_state.get("debugger_status"),
+                "repair_iteration": final_state.get("repair_iteration"),
                 "failure_class": final_state.get("failure_class"),
                 "architecture_conflict": final_state.get("architecture_conflict"),
             },
