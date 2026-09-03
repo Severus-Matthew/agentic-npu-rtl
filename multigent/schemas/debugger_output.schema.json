@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Generic Debugger Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "summary",
+    "diagnosis",
+    "repair_plan",
+    "architecture_conflict"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["REPAIR_PLAN_READY", "ARCHITECTURE_ESCALATION", "EVIDENCE_INSUFFICIENT"]
+    },
+    "summary": {"type": "string"},
+    "diagnosis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failure_class",
+        "root_cause",
+        "confidence",
+        "first_divergence",
+        "evidence",
+        "affected_modules",
+        "alternative_hypotheses",
+        "architecture_change_required",
+        "additional_evidence_requested"
+      ],
+      "properties": {
+        "failure_class": {"type": "string"},
+        "root_cause": {"type": "string"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "first_divergence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cycle", "signal_or_output", "expected", "observed"],
+          "properties": {
+            "cycle": {"type": ["integer", "null"], "minimum": 0},
+            "signal_or_output": {"type": "string"},
+            "expected": {"type": "string"},
+            "observed": {"type": "string"}
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "observation", "relevance"],
+            "properties": {
+              "source": {"type": "string"},
+              "observation": {"type": "string"},
+              "relevance": {"type": "string"}
+            }
+          }
+        },
+        "affected_modules": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "alternative_hypotheses": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "architecture_change_required": {"type": "boolean"},
+        "additional_evidence_requested": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "repair_plan": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "affected_modules",
+        "protected_modules",
+        "protected_interfaces",
+        "recommended_change",
+        "do_not_change",
+        "expected_side_effects",
+        "regression_required"
+      ],
+      "properties": {
+        "action": {"type": "string", "enum": ["PATCH"]},
+        "affected_modules": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "protected_modules": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "protected_interfaces": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "recommended_change": {"type": "string"},
+        "do_not_change": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "expected_side_effects": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "regression_required": {"type": "string", "enum": ["FULL"]}
+      }
+    },
+    "architecture_conflict": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["category", "affected_modules", "issue", "evidence", "requested_architect_decision"],
+      "properties": {
+        "category": {"type": "string"},
+        "affected_modules": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "issue": {"type": "string"},
+        "evidence": {"type": "string"},
+        "requested_architect_decision": {"type": "string"}
+      }
+    }
+  }
+}
