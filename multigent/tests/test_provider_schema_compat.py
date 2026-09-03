@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from multigent.agents.architect import ARCHITECT_OUTPUT_SCHEMA
+from multigent.agents.debugger import DEBUGGER_OUTPUT_SCHEMA
 from multigent.agents.rtl_generator import RTL_GENERATOR_OUTPUT_SCHEMA
 from multigent.agents.verifier import VERIFIER_OUTPUT_SCHEMA
 
@@ -14,6 +15,7 @@ PROVIDER_STRUCTURED_SCHEMAS = [
     ARCHITECT_OUTPUT_SCHEMA,
     RTL_GENERATOR_OUTPUT_SCHEMA,
     VERIFIER_OUTPUT_SCHEMA,
+    DEBUGGER_OUTPUT_SCHEMA,
 ]
 
 
