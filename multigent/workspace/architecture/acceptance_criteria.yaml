@@ -1,0 +1,28 @@
+functional:
+- For all legal M,N,K and inputs, output equals exact integer model Y=ReLU(AxB+bias)
+  with int8/int8/int32 types and 32-bit wraparound accumulation.
+- 'Signed behavior verified: negative operands multiply/accumulate correctly via sign
+  extension.'
+- Bias is applied per output column n before ReLU.
+- ReLU outputs max(0,x) in int32 domain.
+verification:
+- 'Directed tests: minimal edge (M=N=K=1), non-multiples of tile sizes, max bounds,
+  all-zero, all-negative, overflow-provoking patterns.'
+- Randomized regression with >=100 randomized transactions and exact integer scoreboarding.
+- 'Reset tests required: assert/deassert reset during idle and active streaming; verify
+  deterministic recovery.'
+- Backpressure tests required on output and input channels; verify payload stability
+  and no data loss/duplication.
+- 'Protocol error tests: illegal cmd dimensions (0 or >MAX) raise status_error and
+  do not produce outputs.'
+rtl:
+- SystemVerilog synthesizable subset only; no forbidden constructs (real/shortreal/delay/force-release/classes).
+- All counters/indices use legal non-zero widths at minimum parameter values.
+- No combinational ready/valid loops across module boundaries.
+- Reset initializes protocol/control state without mandatory bulk memory clear.
+synopsys_handoff:
+- Deliver verified RTL package with matching architecture/interface contracts and
+  test evidence.
+- Do not report timing/area/power/frequency/utilization unless from deterministic
+  Synopsys tool report conforming to required schema.
+- Include parameter/default list and legality constraints used in verification.

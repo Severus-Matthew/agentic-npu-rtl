@@ -1,0 +1,150 @@
+design:
+  name: gemm_bias_relu_int8_core
+  version: '1.0'
+  description: Synthesizable tiled GEMM engine implementing Y=ReLU(AxB+bias) with
+    int8 inputs and int32 accumulation/output.
+operation:
+  kind: GEMM_BIAS_RELU
+  equation: Y[m,n] = ReLU( sum_{k=0..K-1}( A[m,k] * B[k,n] ) + Bias[n] )
+  description: Matrix multiply with per-output-column bias add, then ReLU clamp to
+    non-negative.
+numeric:
+  activation_width: 8
+  activation_signed: true
+  weight_width: 8
+  weight_signed: true
+  product_width: 16
+  product_signed: true
+  accumulator_width: 32
+  accumulator_signed: true
+  bias_width: 32
+  bias_signed: true
+  output_width: 32
+  output_signed: true
+  extension_semantics: A and B are sign-extended before multiply; 16-bit product is
+    sign-extended to 32-bit before accumulation.
+  overflow_semantics: Two's-complement wrap on 32-bit add/macc (no saturation).
+  rounding_semantics: No rounding; exact integer operations at declared widths.
+supported_dimensions:
+  m:
+    minimum: 1
+    maximum: ','
+    runtime_configurable: true
+  n:
+    minimum: 1
+    maximum: ','
+    runtime_configurable: true
+  k:
+    minimum: 1
+    maximum: ','
+    runtime_configurable: true
+compute:
+  organization: 2D output-stationary systolic-style MAC array with local accumulators
+  rows: 4
+  columns: 4
+  mac_count: 16
+  parameterization: 'Compile-time parameters: ARRAY_M=4, ARRAY_N=4, MAX_M=64, MAX_N=64,
+    MAX_K=64; legal: ARRAY_M>=1, ARRAY_N>=1, MAX_M>=1, MAX_N>=1, MAX_K>=1.'
+dataflow: 'Output-stationary tiled GEMM: each tile computes up to ARRAY_M x ARRAY_N
+  outputs across full K, then writes out.'
+operand_storage:
+- operand: A
+  ingress_order: 'Row-major stream for tile rows over K: (row 0,k0..kT-1), ...'
+  supply_frequency: once_per_tile
+  reuse_strategy: Each A tile value reused across ARRAY_N columns during inner-k step.
+  storage_strategy: Tile buffer SRAM/register file indexed by local row,k.
+  capacity: ARRAY_M * MAX_K elements of int8
+- operand: B
+  ingress_order: 'Column-major by output columns over K: (k0,col0..colT-1) logically
+    transposed stream accepted via metadata'
+  supply_frequency: once_per_tile
+  reuse_strategy: Each B tile value reused across ARRAY_M rows during inner-k step.
+  storage_strategy: Tile buffer SRAM/register file indexed by k,local col.
+  capacity: MAX_K * ARRAY_N elements of int8
+- operand: bias
+  ingress_order: Bias vector for current N-tile in ascending column order
+  supply_frequency: once_per_tile
+  reuse_strategy: Bias per column reused for each row in tile at accumulator init.
+  storage_strategy: Small register file.
+  capacity: ARRAY_N elements of int32
+- operand: partial_sums
+  ingress_order: Not externally visible
+  supply_frequency: streamed_on_demand
+  reuse_strategy: Local accumulators hold running sums for each PE output.
+  storage_strategy: PE-local registers.
+  capacity: ARRAY_M * ARRAY_N elements of int32
+- operand: outputs
+  ingress_order: Produced row-major within tile
+  supply_frequency: once_per_tile
+  reuse_strategy: No reuse; single emit per output element.
+  storage_strategy: Direct stream from post-process stage with skid buffer.
+  capacity: 1 beat buffered
+pipeline:
+- stage: S0_cmd
+  responsibility: Latch job/tile descriptors (M,N,K and tile coordinates) when cmd
+    valid/ready.
+  registered: true
+  valid_behavior: Advances only on handshake; stalls block new command accept.
+- stage: S1_load
+  responsibility: Ingest A/B/bias tile streams into local buffers.
+  registered: true
+  valid_behavior: Per-channel ready/valid; compute starts after required tile payload
+    counts received.
+- stage: S2_compute
+  responsibility: Run K-loop MAC updates for active tile accumulators.
+  registered: true
+  valid_behavior: One inner-k step per cycle when enabled; pauses if downstream output
+    drain cannot accept completion transition.
+- stage: S3_post
+  responsibility: Add bias (if not preloaded at init) and apply ReLU max(0,x).
+  registered: true
+  valid_behavior: Produces one output candidate per cycle during drain window.
+- stage: S4_out
+  responsibility: Stream Y data with coordinates/last framing.
+  registered: true
+  valid_behavior: Holds payload stable while y_valid=1 and y_ready=0.
+buffers:
+- name: a_tile_buf
+  role: Store A tile for K reuse across N lanes
+  implementation_hint: single-port SRAM or reg array
+  depth: ARRAY_M*MAX_K
+  element_width: '8'
+- name: b_tile_buf
+  role: Store B tile for K reuse across M lanes
+  implementation_hint: single-port SRAM or reg array
+  depth: MAX_K*ARRAY_N
+  element_width: '8'
+- name: bias_buf
+  role: Store per-column bias for active N tile
+  implementation_hint: register file
+  depth: ARRAY_N
+  element_width: '32'
+- name: out_skid
+  role: Decouple output valid from ready
+  implementation_hint: 1-entry skid register
+  depth: '1'
+  element_width: output payload width
+control: 'Single FSM with nested counters: tile_m, tile_n, k_idx, local_m, local_n;
+  counters are width max(1,$clog2(PARAM)) style to avoid zero-width. Sequence: IDLE->LOAD->COMPUTE->DRAIN->NEXT_TILE/DONE.'
+reset:
+  style: synchronous
+  polarity: active_low
+  required_state: FSM to IDLE; all valids low; counters zero; accumulator valid flags
+    cleared; no requirement to clear A/B memories before overwrite.
+latency_model: 'Variable by M,N,K and backpressure. Per tile nominal cycles: load_cycles
+  + K + drain_cycles; total over ceil(M/ARRAY_M)*ceil(N/ARRAY_N) tiles.'
+architectural_invariants:
+- Operation fixed to GEMM+per-column-bias+ReLU.
+- Input A/B are signed int8; bias/output are signed int32.
+- Accumulator width fixed 32 with wraparound overflow.
+- ReLU applied after bias add and before output emission.
+- Output ordering is deterministic tile-row-major then global tile order (tile_m major,
+  tile_n minor).
+- No silent datatype or overflow semantic changes allowed.
+open_assumptions:
+- Bias is per output column n (length N), not per element.
+- Host provides exact payload counts for each tile based on command dimensions.
+- Maximum runtime dimensions bounded by MAX_M/MAX_N/MAX_K compile-time parameters
+  (defaults 64 each).
+- Input streams provide metadata (tile coordinates/phase) via command channel rather
+  than per-data beat.

@@ -14,4 +14,4 @@ venv/
 .DS_Store
 
 # Runtime-generated artifacts
-multigent/workspace/**
+# multigent/workspace/logs/agent_traces/*.json

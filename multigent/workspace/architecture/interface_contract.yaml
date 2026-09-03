@@ -1,0 +1,142 @@
+protocol: AXI-stream-like ready/valid custom channels
+clock: clk
+reset: rst_n (synchronous active-low)
+signals:
+- name: clk
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Primary clock
+  reset_value: n/a
+- name: rst_n
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Synchronous active-low reset
+  reset_value: '0'
+- name: cmd_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Command valid
+  reset_value: '0'
+- name: cmd_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Command ready
+  reset_value: '0'
+- name: cmd_m
+  direction: input
+  width: $clog2(MAX_M+1)
+  signed: false
+  semantic: Runtime M (1..MAX_M)
+  reset_value: '0'
+- name: cmd_n
+  direction: input
+  width: $clog2(MAX_N+1)
+  signed: false
+  semantic: Runtime N (1..MAX_N)
+  reset_value: '0'
+- name: cmd_k
+  direction: input
+  width: $clog2(MAX_K+1)
+  signed: false
+  semantic: Runtime K (1..MAX_K)
+  reset_value: '0'
+- name: a_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: A data valid
+  reset_value: '0'
+- name: a_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: A data ready
+  reset_value: '0'
+- name: a_data
+  direction: input
+  width: '8'
+  signed: true
+  semantic: Signed int8 A element stream
+  reset_value: '0'
+- name: b_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: B data valid
+  reset_value: '0'
+- name: b_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: B data ready
+  reset_value: '0'
+- name: b_data
+  direction: input
+  width: '8'
+  signed: true
+  semantic: Signed int8 B element stream
+  reset_value: '0'
+- name: bias_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Bias data valid
+  reset_value: '0'
+- name: bias_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Bias data ready
+  reset_value: '0'
+- name: bias_data
+  direction: input
+  width: '32'
+  signed: true
+  semantic: Signed int32 bias element stream
+  reset_value: '0'
+- name: y_valid
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Output valid
+  reset_value: '0'
+- name: y_ready
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Output ready
+  reset_value: '0'
+- name: y_data
+  direction: output
+  width: '32'
+  signed: true
+  semantic: Signed int32 output element
+  reset_value: '0'
+- name: y_last
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Asserted on final output element of job
+  reset_value: '0'
+- name: status_done
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Pulses when full command completes
+  reset_value: '0'
+- name: status_error
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Pulses on protocol/dimension error
+  reset_value: '0'
+handshake:
+  transfer_condition: Per channel transfer occurs when valid && ready on rising clk.
+  stall_behavior: Source must hold payload stable while valid=1 and ready=0.
+  backpressure_supported: true
+  ordering: In-order consumption per channel; outputs emitted deterministic order
+    matching contract.
