@@ -9,6 +9,7 @@ nodes later compile the RTL and execute these tests.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 from pathlib import Path
@@ -16,15 +17,38 @@ from typing import Any, Mapping
 
 import yaml
 
-from multigent.intake.request_builder import (
-    WORKSPACE_ROOT,
-    build_verification_context,
-)
+from multigent.intake.request_builder import WORKSPACE_ROOT, build_verification_context
 
 from .base import APIAgent, AgentConfig, AgentRuntimeError, SCHEMA_ROOT
 
 
 VERIFIER_OUTPUT_SCHEMA = SCHEMA_ROOT / "verifier_output.schema.json"
+_FORBIDDEN_IMPORT_ROOTS = {
+    "subprocess",
+    "socket",
+    "requests",
+    "urllib",
+    "http",
+    "pathlib",
+    "glob",
+    "importlib",
+}
+_FORBIDDEN_CALL_NAMES = {"open", "exec", "eval", "compile", "__import__"}
+_FORBIDDEN_CALL_ATTRIBUTES = {
+    "system",
+    "popen",
+    "run",
+    "call",
+    "check_call",
+    "check_output",
+    "read_text",
+    "read_bytes",
+    "write_text",
+    "write_bytes",
+    "open",
+    "glob",
+    "rglob",
+}
 
 
 class VerifierAgent(APIAgent):
@@ -41,8 +65,6 @@ class VerifierAgent(APIAgent):
         )
 
     def load_instructions(self) -> str:
-        """Load only independent Verifier technical instructions."""
-
         if not self.role_skill_path.is_file():
             raise FileNotFoundError(self.role_skill_path)
         return (
@@ -58,8 +80,6 @@ class VerifierAgent(APIAgent):
         workspace_dir: Path | None = None,
         run_id: str = "manual",
     ) -> dict[str, Any]:
-        """Generate reference/tests/plan or return an architecture conflict."""
-
         self._validate_context(context)
         root = workspace_dir or WORKSPACE_ROOT
         reference_dir = root / "reference"
@@ -79,12 +99,10 @@ class VerifierAgent(APIAgent):
             for directory in (reference_dir, tests_dir):
                 for stale in directory.glob("*.py"):
                     stale.unlink()
-
             for item in result["reference_files"]:
                 self._write_python(reference_dir, item)
             for item in result["test_files"]:
                 self._write_python(tests_dir, item)
-
             (verification_dir / "verification_plan.yaml").write_text(
                 yaml.safe_dump(
                     result["verification_plan"],
@@ -97,12 +115,9 @@ class VerifierAgent(APIAgent):
                 json.dumps(result, indent=2, sort_keys=False) + "\n",
                 encoding="utf-8",
             )
-
         return result
 
     def run_from_state(self, state: Mapping[str, Any]) -> dict[str, Any]:
-        """LangGraph-compatible Verifier node entry point."""
-
         context = state.get("verification_context")
         if not isinstance(context, Mapping):
             user_request = state.get("user_request")
@@ -120,8 +135,8 @@ class VerifierAgent(APIAgent):
 
         run_id = str(state.get("run_id", "langgraph"))
         architecture_version = int(state.get("architecture_version", 0))
-        rtl_iteration = int(state.get("repair_iteration", 0))
-        node_run_id = f"{run_id}-verify-av{architecture_version}-r{rtl_iteration}"
+        repair_iteration = int(state.get("repair_iteration", 0))
+        node_run_id = f"{run_id}-verify-av{architecture_version}-r{repair_iteration}"
         result = self.run(context, run_id=node_run_id)
         return {
             "verifier_status": result["status"],
@@ -142,7 +157,6 @@ class VerifierAgent(APIAgent):
         missing = sorted(required - set(context))
         if missing:
             raise AgentRuntimeError(f"Verifier context missing required fields: {missing}")
-
         provenance = context["provenance"]
         if not isinstance(provenance, Mapping):
             raise AgentRuntimeError("Verifier provenance must be a mapping")
@@ -152,7 +166,6 @@ class VerifierAgent(APIAgent):
             raise AgentRuntimeError(
                 "Independent Verifier context must exclude RTL Generator output"
             )
-
         frozen = context["frozen_architecture"]
         if not isinstance(frozen, Mapping):
             raise AgentRuntimeError("Verifier frozen_architecture must be a mapping")
@@ -199,7 +212,6 @@ class VerifierAgent(APIAgent):
         tests = list(result["test_files"])
         plan = result["verification_plan"]
         conflict = result["architecture_conflict"]
-
         manifest = context["frozen_architecture"]["module_manifest"]
         top = str(manifest["top"])
         module_names = {str(item["name"]) for item in manifest["modules"]}
@@ -251,8 +263,7 @@ class VerifierAgent(APIAgent):
                 raise AgentRuntimeError(f"Duplicate test filename: {name}")
             test_names.add(name)
             test_modules.add(Path(name).stem)
-            groups = set(item["regression_groups"])
-            if "full" not in groups:
+            if "full" not in set(item["regression_groups"]):
                 raise AgentRuntimeError(
                     f"Initial verifier test file {name} must belong to full regression"
                 )
@@ -262,7 +273,6 @@ class VerifierAgent(APIAgent):
             raise AgentRuntimeError(
                 "verification_plan.test_modules must exactly match generated test filenames"
             )
-
         minimum = int(
             context["verification_policy"].get("randomized_transactions_minimum", 0)
         )
@@ -270,7 +280,6 @@ class VerifierAgent(APIAgent):
             raise AgentRuntimeError(
                 f"Verifier randomized_test_count={plan['randomized_test_count']} is below policy minimum {minimum}"
             )
-
         full_group = set(map(str, plan["regression_groups"]["full"]))
         if full_group != test_modules:
             raise AgentRuntimeError(
@@ -289,28 +298,46 @@ class VerifierAgent(APIAgent):
         if "```" in content:
             raise AgentRuntimeError(f"Generated Python file {filename} contains Markdown fences")
         try:
-            compile(content, filename, "exec")
+            tree = ast.parse(content, filename=filename, mode="exec")
         except SyntaxError as exc:
             raise AgentRuntimeError(
                 f"Generated Python file {filename} has syntax error: {exc.msg}"
             ) from exc
-        lowered = content.lower()
-        forbidden = [
-            "subprocess.",
-            "os.system(",
-            "requests.",
-            "urllib.request",
-            "workspace/rtl",
-            "open(\"multigent/workspace/rtl",
-            "open('multigent/workspace/rtl",
-        ]
-        hit = [token for token in forbidden if token in lowered]
-        if hit:
-            raise AgentRuntimeError(
-                f"Generated verification file {filename} uses forbidden capability: {hit[0]}"
-            )
-        if cocotb_required and "cocotb" not in lowered:
-            raise AgentRuntimeError(f"Generated test file {filename} does not use cocotb")
+
+        imported_cocotb = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    root = alias.name.split(".", 1)[0]
+                    if root == "cocotb":
+                        imported_cocotb = True
+                    if root in _FORBIDDEN_IMPORT_ROOTS:
+                        raise AgentRuntimeError(
+                            f"Generated verification file {filename} imports forbidden capability {root}"
+                        )
+            elif isinstance(node, ast.ImportFrom):
+                root = (node.module or "").split(".", 1)[0]
+                if root == "cocotb":
+                    imported_cocotb = True
+                if root in _FORBIDDEN_IMPORT_ROOTS:
+                    raise AgentRuntimeError(
+                        f"Generated verification file {filename} imports forbidden capability {root}"
+                    )
+            elif isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id in _FORBIDDEN_CALL_NAMES:
+                    raise AgentRuntimeError(
+                        f"Generated verification file {filename} calls forbidden capability {node.func.id}"
+                    )
+                if (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr in _FORBIDDEN_CALL_ATTRIBUTES
+                ):
+                    raise AgentRuntimeError(
+                        f"Generated verification file {filename} calls forbidden capability {node.func.attr}"
+                    )
+
+        if cocotb_required and not imported_cocotb:
+            raise AgentRuntimeError(f"Generated test file {filename} does not import cocotb")
 
     @staticmethod
     def _build_task(context: Mapping[str, Any]) -> str:
@@ -323,27 +350,26 @@ INDEPENDENCE BOUNDARY
   frozen Architect artifacts only.
 - Generated RTL source and RTL Generator output are intentionally absent. Do not ask
   for them and do not infer expected behavior from likely implementation choices.
-- Deterministic Verilator/cocotb nodes will later execute your artifacts against RTL.
-  You create the oracle and tests; you do not declare PASS/FAIL.
+- Generated Python may not use filesystem, subprocess, dynamic-import, or network
+  capabilities. The runtime enforces this independently.
+- Deterministic Verilator/cocotb nodes later execute your artifacts against RTL. You
+  create the oracle and tests; you do not declare PASS/FAIL.
 
 OUTPUT RULES
 ------------
 1. Return VERIFICATION_READY with Python reference/test file contents and a complete
    plan, or ARCHITECTURE_CONFLICT if an executable oracle cannot be defined without
    a new architectural/interface decision.
-2. Reference and test paths are flat filenames relative to their owned roots, e.g.
-   ``model.py`` and ``test_contract.py``. Do not include ``reference/`` or ``tests/``
-   prefixes and do not create subdirectories.
-3. ``verification_plan.test_modules`` contains Python module names (filename without
-   ``.py``) and must exactly match generated test files.
-4. The initial ``full`` regression group contains every generated test module.
-5. Honor at least the fixed randomized transaction minimum. Use a deterministic seed.
-6. Use cocotb 2.x public APIs. Every test must be bounded by finite timeout/cycle waits.
-7. Tests interact through contract-declared top-level signals only. Do not inspect
-   internal RTL implementation state unless explicitly exposed by the contract.
-8. Keep generated Python concise enough for structured output while still covering
-   functional, boundary, reset, protocol/backpressure, and randomized requirements
-   that actually apply to this contract.
+2. Paths are flat filenames relative to their owned roots; do not create subfolders.
+3. verification_plan.test_modules contains filename stems and exactly matches tests.
+4. The initial full regression group contains every generated test module.
+5. Honor at least the fixed randomized transaction minimum with a deterministic seed.
+6. Use cocotb 2.x public APIs and finite timeout/cycle waits.
+7. Interact through contract-declared top-level signals only.
+8. Use Python standard library plus cocotb; do not read files, invoke processes, use
+   the network, or inspect RTL source.
+9. Keep code concise while covering all applicable functional, boundary, reset,
+   protocol/backpressure, and randomized acceptance requirements.
 
 VERIFIER CONTEXT
 ----------------
@@ -367,7 +393,6 @@ def main() -> None:
         default=None,
     )
     args = parser.parse_args()
-
     context = build_verification_context(
         user_request=args.request,
         architecture_dir=args.architecture_dir,
