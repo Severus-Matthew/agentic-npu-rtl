@@ -37,8 +37,10 @@
         "design",
         "operation",
         "numeric",
+        "supported_dimensions",
         "compute",
         "dataflow",
+        "operand_storage",
         "pipeline",
         "buffers",
         "control",
@@ -76,8 +78,15 @@
             "activation_signed",
             "weight_width",
             "weight_signed",
+            "product_width",
+            "product_signed",
             "accumulator_width",
             "accumulator_signed",
+            "bias_width",
+            "bias_signed",
+            "output_width",
+            "output_signed",
+            "extension_semantics",
             "overflow_semantics",
             "rounding_semantics"
           ],
@@ -86,10 +95,27 @@
             "activation_signed": {"type": "boolean"},
             "weight_width": {"type": "integer", "minimum": 1},
             "weight_signed": {"type": "boolean"},
+            "product_width": {"type": "integer", "minimum": 1},
+            "product_signed": {"type": "boolean"},
             "accumulator_width": {"type": "integer", "minimum": 1},
             "accumulator_signed": {"type": "boolean"},
+            "bias_width": {"type": "integer", "minimum": 1},
+            "bias_signed": {"type": "boolean"},
+            "output_width": {"type": "integer", "minimum": 1},
+            "output_signed": {"type": "boolean"},
+            "extension_semantics": {"type": "string"},
             "overflow_semantics": {"type": "string"},
             "rounding_semantics": {"type": "string"}
+          }
+        },
+        "supported_dimensions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["m", "n", "k"],
+          "properties": {
+            "m": {"$ref": "#/$defs/dimension_bound"},
+            "n": {"$ref": "#/$defs/dimension_bound"},
+            "k": {"$ref": "#/$defs/dimension_bound"}
           }
         },
         "compute": {
@@ -105,6 +131,33 @@
           }
         },
         "dataflow": {"type": "string"},
+        "operand_storage": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "operand",
+              "ingress_order",
+              "supply_frequency",
+              "reuse_strategy",
+              "storage_strategy",
+              "capacity"
+            ],
+            "properties": {
+              "operand": {"type": "string"},
+              "ingress_order": {"type": "string"},
+              "supply_frequency": {
+                "type": "string",
+                "enum": ["once_per_job", "once_per_tile", "streamed_on_demand", "repeated_by_host"]
+              },
+              "reuse_strategy": {"type": "string"},
+              "storage_strategy": {"type": "string"},
+              "capacity": {"type": "string"}
+            }
+          }
+        },
         "pipeline": {
           "type": "array",
           "items": {
@@ -129,8 +182,8 @@
               "name": {"type": "string"},
               "role": {"type": "string"},
               "implementation_hint": {"type": "string"},
-              "depth": {"type": "integer", "minimum": 1},
-              "element_width": {"type": "integer", "minimum": 1}
+              "depth": {"type": "string"},
+              "element_width": {"type": "string"}
             }
           }
         },
@@ -224,6 +277,18 @@
         "verification": {"type": "array", "items": {"type": "string"}},
         "rtl": {"type": "array", "items": {"type": "string"}},
         "synopsys_handoff": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  },
+  "$defs": {
+    "dimension_bound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "maximum", "runtime_configurable"],
+      "properties": {
+        "minimum": {"type": "integer", "minimum": 1},
+        "maximum": {"type": "string"},
+        "runtime_configurable": {"type": "boolean"}
       }
     }
   }
