@@ -121,7 +121,11 @@ def run_cocotb_regression(
         result = dict(worker)
     else:
         combined = f"{completed.stdout}\n{completed.stderr}".lower()
-        if "modulenotfounderror" in combined or "importerror" in combined or "syntaxerror" in combined:
+        if (
+            "modulenotfounderror" in combined
+            or "importerror" in combined
+            or "syntaxerror" in combined
+        ):
             failure_class = "TESTBENCH_ERROR"
         else:
             failure_class = "UNKNOWN"
@@ -175,7 +179,12 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
         _write_json(result_path, result)
         return result
 
-    pythonpath_parts = [str(tests_dir), str(reference_dir)]
+    workspace_root = reference_dir.parent
+    pythonpath_parts = [
+        str(tests_dir),
+        str(reference_dir),
+        str(workspace_root),
+    ]
     existing = os.environ.get("PYTHONPATH", "").strip()
     if existing:
         pythonpath_parts.append(existing)
@@ -224,11 +233,18 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
     try:
         tests, failures = get_results(results_xml)
     except Exception as exc:
-        text = f"{type(simulation_exception).__name__}: {simulation_exception}" if simulation_exception else ""
+        text = (
+            f"{type(simulation_exception).__name__}: {simulation_exception}"
+            if simulation_exception
+            else ""
+        )
         lowered = text.lower()
         failure_class = (
             "TESTBENCH_ERROR"
-            if any(token in lowered for token in ("modulenotfounderror", "importerror", "syntaxerror"))
+            if any(
+                token in lowered
+                for token in ("modulenotfounderror", "importerror", "syntaxerror")
+            )
             else "UNKNOWN"
         )
         result = {
@@ -246,7 +262,11 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
         _write_json(result_path, result)
         return result
 
-    status = "PASS" if failures == 0 and simulation_exception is None else "SIMULATION_FAILURE"
+    status = (
+        "PASS"
+        if failures == 0 and simulation_exception is None
+        else "SIMULATION_FAILURE"
+    )
     result = {
         "stage": "cocotb_regression",
         "status": status,
