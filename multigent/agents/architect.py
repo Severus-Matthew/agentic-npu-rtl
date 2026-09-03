@@ -1,12 +1,9 @@
-"""API-backed Architect Agent.
+"""API-backed generic Hardware Architect Agent.
 
-The normal user-facing input is intentionally minimal natural language, e.g.:
-
-    design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type
-
-A deterministic intake layer adds fixed technical policy. The Architect chooses
-unspecified microarchitecture details and freezes them into contracts for
-independent RTL generation and verification. The Architect never writes RTL.
+The user-facing input is intentionally minimal natural language. A deterministic
+intake layer adds only fixed technical policy. The Architect chooses unspecified
+microarchitecture details and freezes them into contracts for independent RTL
+generation and verification. The Architect never writes RTL.
 """
 
 from __future__ import annotations
@@ -28,7 +25,7 @@ ARCHITECT_OUTPUT_SCHEMA = SCHEMA_ROOT / "architect_output.schema.json"
 
 
 class ArchitectAgent(APIAgent):
-    """Produce frozen architecture contracts from minimal user intent."""
+    """Produce frozen architecture contracts from minimal hardware intent."""
 
     def __init__(self, *, model: str | None = None, api_mode: str | None = None) -> None:
         super().__init__(
@@ -41,12 +38,7 @@ class ArchitectAgent(APIAgent):
         )
 
     def load_instructions(self) -> str:
-        """Load only the Architect's technical skill.
-
-        Shared workflow details for Debugger/PPA/other agents are intentionally
-        excluded from the Architect prompt. Fixed cross-stage technical constraints
-        are already supplied through the deterministic intake envelope.
-        """
+        """Load only the Architect's technical skill."""
 
         if not self.role_skill_path.is_file():
             raise FileNotFoundError(self.role_skill_path)
@@ -69,7 +61,7 @@ class ArchitectAgent(APIAgent):
             intake = build_architect_intake(request)
         else:
             intake = build_architect_intake(
-                "Legacy structured NPU specification supplied by the caller."
+                "Legacy structured hardware specification supplied by the caller."
             )
             intake["legacy_user_specification"] = dict(request)
             intake["provenance"]["user_supplied_fields"].append(
@@ -121,7 +113,7 @@ class ArchitectAgent(APIAgent):
             sort_keys=False,
             default_flow_style=False,
         )
-        return f"""Design and freeze an RTL microarchitecture from the intake envelope below.
+        return f"""Design and freeze a synthesizable RTL microarchitecture from the intake envelope below.
 
 INPUT AUTHORITY
 ---------------
@@ -136,38 +128,41 @@ synthesizable defaults for unspecified architecture choices and record them in
 ``open_assumptions``. Return ``SPEC_CONFLICT`` only for genuinely contradictory
 explicit requirements.
 
+This is a GENERIC hardware architecture task. Do not assume GEMM, matrix
+multiplication, M/N/K dimensions, activation/weight/bias terminology, a MAC array,
+systolic execution, a particular interface, or any benchmark-specific structure
+unless the user request itself requires it.
+
 Your output is a CONTRACT, not RTL. Do not generate SystemVerilog. Synthesis/PPA
-metrics are valid only when supplied by the deterministic Synopsys integration;
-do not infer or fabricate timing, area, power, frequency, or utilization values.
+metrics are valid only when supplied by deterministic Synopsys reports; do not
+infer or fabricate timing, area, power, frequency, or utilization values.
 
 Required design work:
-1. Resolve the exact operation, tensor shapes, signedness, product width,
-   accumulation width, bias semantics, activation semantics, overflow behavior,
-   extension rules, and output datatype.
-2. Choose compute organization, array dimensions, parameterization, supported
-   runtime dimension bounds, and dataflow when unspecified. Every compile-time
-   parameter must have a concrete default value and a stated legality constraint.
-3. Close operand-reuse semantics. For every operand, state whether it is supplied
-   once per job, once per tile, or repeatedly. If an operand is reused, define the
-   storage/replay mechanism that makes that reuse possible.
-4. Make buffer capacities consistent with dimension bounds and reuse strategy.
-   Do not introduce arbitrary fixed depths unless the corresponding supported
-   dimension bound makes them sufficient.
-5. Define pipeline stages, exact valid/stall behavior, control, reset, and any
-   flush/drain behavior.
-6. Fully define the external interface, ordering, framing, and ready/valid
-   semantics. No interface behavior may depend on unstated host behavior.
-7. Decompose the design into modules with explicit responsibilities/dependencies.
-8. State architectural invariants downstream agents may not silently change.
-9. Build deterministic functional, verification, RTL, and Synopsys handoff
-   acceptance criteria from the technical project policy.
-10. Check parameter edge cases. Signal widths and counters must remain legal for
-    minimum supported parameter values; avoid zero-width ``$clog2`` expressions.
-11. Reset control/state deterministically without requiring bulk memory clearing
-    unless the computation actually depends on cleared memory contents.
-12. Before returning READY, perform a consistency pass across arithmetic,
-    dimensions, dataflow, storage, interface, module manifest, and acceptance
-    criteria. The RTL Generator must not need to guess missing architectural facts.
+1. Define all requested operations with exact functional semantics and named inputs/outputs.
+2. Define every relevant data type/intermediate representation, including width,
+   signedness where meaningful, conversions, overflow, and rounding behavior.
+3. Define every runtime-varying dimension as a named dimension with concrete
+   integer minimum/maximum bounds. Never emit placeholders or unresolved text in
+   numeric bound fields.
+4. Define all compile-time parameters with concrete defaults, legality constraints,
+   and purposes.
+5. Choose compute organization, dataflow, parallelism, and scheduling appropriate
+   for the requested workload rather than copying benchmark examples.
+6. Close all storage/reuse semantics. Storage capacity and read/write/banking/port
+   requirements must sustain the stated compute schedule under the declared bounds.
+7. Define pipeline stages, valid behavior, and stall behavior.
+8. Define control strategy, state progression, counters/indices, and illegal-input behavior.
+9. Fully define logical channels and top-level signals, including framing, ordering,
+   backpressure, widths, and reset behavior. No interface behavior may depend on
+   unstated environment behavior.
+10. Define module decomposition with explicit responsibilities, dependencies,
+    parameters, and statefulness.
+11. Define deterministic functional, verification, RTL, and Synopsys-handoff
+    acceptance criteria from the technical project policy.
+12. Before returning READY, cross-check operations, data types, runtime bounds,
+    parameters, compute schedule, storage bandwidth/capacity, pipeline, interface,
+    control, reset, module manifest, and acceptance criteria. The RTL Generator
+    must not need to guess architectural facts.
 
 ARCHITECT INTAKE ENVELOPE
 -------------------------
@@ -196,20 +191,17 @@ def load_legacy_spec(path: Path) -> dict[str, Any]:
     else:
         value = yaml.safe_load(raw)
     if not isinstance(value, dict):
-        raise TypeError("NPU specification must decode to a mapping/object.")
+        raise TypeError("Hardware specification must decode to a mapping/object.")
     return value
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the NPU Architect Agent")
+    parser = argparse.ArgumentParser(description="Run the Hardware Architect Agent")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument(
         "--request",
         type=str,
-        help=(
-            "Minimal natural-language NPU request, e.g. 'design a GEMM_BIAS_RELU "
-            "NPU of int8 x int8 x int32 type'"
-        ),
+        help="Minimal natural-language hardware accelerator request",
     )
     source.add_argument(
         "--request-file",
