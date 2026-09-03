@@ -1,332 +1,283 @@
 design:
   name: gemm_bias_relu_npu
   version: '1.0'
-  description: Parameterized int8 GEMM with int32 bias add and ReLU output using ready/valid
-    streaming interfaces and tiled local accumulation.
+  description: Parameterized single-core GEMM engine performing int8*int8 accumulation
+    to int32, optional per-output-column int32 bias add, then ReLU clamp to nonnegative
+    int32.
 operations:
-- name: load_config
-  kind: control
-  semantics: Latch per-job dimensions M,N,K from command channel when accepted in
-    IDLE state.
-  inputs:
-  - cfg_cmd
-  outputs:
-  - cfg_state
-- name: gemm_core
+- name: op_gemm_accumulate
   kind: compute
-  semantics: "For each output element C[m,n], compute sum over k: acc32=\u03A3(A[m,k]*B[k,n])\
-    \ where A and B are signed int8, product is signed int16, accumulation is signed\
-    \ int32 with two's-complement wrap on overflow."
+  semantics: For each output element C[m,n], compute S[m,n]=sum_{k=0..K-1}(A[m,k]*B[k,n])
+    with signed int8 operands and signed int32 accumulator; exact integer arithmetic
+    with no rounding; intermediate product is signed int16 then sign-extended to int32
+    before accumulation.
   inputs:
-  - tensor_a
-  - tensor_b
-  - cfg_state
+  - obj_a_stream
+  - obj_b_stream
+  - obj_cmd
   outputs:
-  - acc_tensor
-- name: bias_add
+  - obj_accum_matrix
+- name: op_bias_add
   kind: compute
-  semantics: For each C[m,n], add signed int32 bias[n] to acc32 using signed int32
-    two's-complement wrap.
+  semantics: For each C position, T[m,n]=S[m,n]+Bias[n] when bias_enable=1 else T[m,n]=S[m,n].
+    Signed int32 add with 2s-complement wrap on overflow.
   inputs:
-  - acc_tensor
-  - bias_vec
-  - cfg_state
+  - obj_accum_matrix
+  - obj_bias_stream
+  - obj_cmd
   outputs:
-  - biased_tensor
-- name: relu
+  - obj_bias_matrix
+- name: op_relu
   kind: compute
-  semantics: For each element x in biased_tensor, output max(x,0) in signed int32.
+  semantics: Y[m,n]=max(0,T[m,n]) in signed int32 domain.
   inputs:
-  - biased_tensor
+  - obj_bias_matrix
   outputs:
-  - output_tensor
+  - obj_out_stream
 data_types:
-- name: sint8
-  role: A/B elements
+- name: dt_int8
+  role: input elements A/B
   width_bits: 8
   signed: true
   representation: two_complement
-  conversion_semantics: sign-extend when widened
-  overflow_semantics: wrap
-  rounding_semantics: not_applicable
-- name: sint16
-  role: product intermediate
-  width_bits: 16
-  signed: true
-  representation: two_complement
-  conversion_semantics: exact from sint8*sint8
-  overflow_semantics: wrap
-  rounding_semantics: not_applicable
-- name: sint32
+  conversion_semantics: No implicit conversion on ingress; consumed as signed 8-bit.
+  overflow_semantics: N/A for storage type
+  rounding_semantics: N/A
+- name: dt_int32
   role: accumulator/bias/output
   width_bits: 32
   signed: true
   representation: two_complement
-  conversion_semantics: sign-extend from narrower signed types
-  overflow_semantics: wrap
-  rounding_semantics: not_applicable
-- name: u16
-  role: runtime dimensions
-  width_bits: 16
+  conversion_semantics: int16 product sign-extended to int32 before accumulate.
+  overflow_semantics: 2s-complement wrap for int32 add
+  rounding_semantics: exact integer (no rounding)
+- name: dt_cmd
+  role: job control packet
+  width_bits: 96
   signed: false
-  representation: unsigned_binary
-  conversion_semantics: exact
-  overflow_semantics: illegal_if_out_of_range
-  rounding_semantics: not_applicable
+  representation: bitfield
+  conversion_semantics: Fields decoded by fixed bit slices.
+  overflow_semantics: N/A
+  rounding_semantics: N/A
 data_objects:
-- name: cfg_cmd
-  role: job configuration {M,N,K}
-  data_type: u16
-  dimensions:
-  - cfg_fields
+- name: obj_cmd
+  role: runtime job configuration
+  data_type: dt_cmd
+  dimensions: []
   producer: external
   consumers:
-  - load_config
+  - op_gemm_accumulate
+  - op_bias_add
   external: true
-- name: cfg_state
-  role: latched active job dimensions
-  data_type: u16
+- name: obj_a_stream
+  role: A matrix elements
+  data_type: dt_int8
   dimensions:
-  - cfg_fields
-  producer: load_config
+  - dim_M
+  - dim_K
+  producer: external
   consumers:
-  - gemm_core
-  - bias_add
+  - op_gemm_accumulate
+  external: true
+- name: obj_b_stream
+  role: B matrix elements
+  data_type: dt_int8
+  dimensions:
+  - dim_K
+  - dim_N
+  producer: external
+  consumers:
+  - op_gemm_accumulate
+  external: true
+- name: obj_bias_stream
+  role: Bias vector elements indexed by N
+  data_type: dt_int32
+  dimensions:
+  - dim_N
+  producer: external
+  consumers:
+  - op_bias_add
+  external: true
+- name: obj_accum_matrix
+  role: post-GEMM pre-bias matrix
+  data_type: dt_int32
+  dimensions:
+  - dim_M
+  - dim_N
+  producer: op_gemm_accumulate
+  consumers:
+  - op_bias_add
   external: false
-- name: tensor_a
-  role: A matrix stream
-  data_type: sint8
+- name: obj_bias_matrix
+  role: post-bias pre-relu matrix
+  data_type: dt_int32
   dimensions:
-  - M
-  - K
-  producer: external
+  - dim_M
+  - dim_N
+  producer: op_bias_add
   consumers:
-  - gemm_core
-  external: true
-- name: tensor_b
-  role: B matrix stream
-  data_type: sint8
-  dimensions:
-  - K
-  - N
-  producer: external
-  consumers:
-  - gemm_core
-  external: true
-- name: bias_vec
-  role: per-output-column bias
-  data_type: sint32
-  dimensions:
-  - N
-  producer: external
-  consumers:
-  - bias_add
-  external: true
-- name: acc_tensor
-  role: GEMM accumulation result
-  data_type: sint32
-  dimensions:
-  - M
-  - N
-  producer: gemm_core
-  consumers:
-  - bias_add
+  - op_relu
   external: false
-- name: biased_tensor
-  role: post-bias tensor
-  data_type: sint32
+- name: obj_out_stream
+  role: output matrix after bias/relu
+  data_type: dt_int32
   dimensions:
-  - M
-  - N
-  producer: bias_add
-  consumers:
-  - relu
-  external: false
-- name: output_tensor
-  role: final ReLU outputs
-  data_type: sint32
-  dimensions:
-  - M
-  - N
-  producer: relu
+  - dim_M
+  - dim_N
+  producer: op_relu
   consumers:
   - external
   external: true
 dimensions:
-- name: M
-  semantic: output rows / A rows
+- name: dim_M
+  semantic: rows of A and output rows; runtime legal range 1..MAX_M
   minimum: 1
-  maximum: 256
+  maximum: 64
   runtime_configurable: true
   bound_parameter: MAX_M
-- name: N
-  semantic: output cols / B cols / bias length
+- name: dim_N
+  semantic: columns of B and output columns; runtime legal range 1..MAX_N
   minimum: 1
-  maximum: 256
+  maximum: 64
   runtime_configurable: true
   bound_parameter: MAX_N
-- name: K
-  semantic: reduction length / A cols / B rows
+- name: dim_K
+  semantic: shared reduction dimension; runtime legal range 1..MAX_K
   minimum: 1
-  maximum: 256
+  maximum: 64
   runtime_configurable: true
   bound_parameter: MAX_K
-- name: cfg_fields
-  semantic: number of config scalars {M,N,K}
-  minimum: 3
-  maximum: 3
-  runtime_configurable: false
-  bound_parameter: CFG_FIELDS
 parameters:
 - name: MAX_M
   default_value: '64'
-  legality_constraint: integer >=1 and <=256
-  description: maximum supported runtime M
+  legality_constraint: integer >=1
+  description: Compile-time upper bound for runtime M.
 - name: MAX_N
   default_value: '64'
-  legality_constraint: integer >=1 and <=256
-  description: maximum supported runtime N
+  legality_constraint: integer >=1
+  description: Compile-time upper bound for runtime N.
 - name: MAX_K
   default_value: '64'
-  legality_constraint: integer >=1 and <=256
-  description: maximum supported runtime K
-- name: TILE_M
-  default_value: '4'
-  legality_constraint: integer >=1 and <=MAX_M
-  description: rows computed per tile
+  legality_constraint: integer >=1
+  description: Compile-time upper bound for runtime K.
 - name: TILE_N
-  default_value: '4'
+  default_value: '8'
   legality_constraint: integer >=1 and <=MAX_N
-  description: cols computed per tile
-- name: CFG_FIELDS
-  default_value: '3'
-  legality_constraint: must equal 3
-  description: config field count
-- name: CMD_W
-  default_value: '48'
-  legality_constraint: must be >=48
-  description: command payload width; packs M,N,K as 3x16b
-- name: A_W
-  default_value: '8'
-  legality_constraint: must equal 8
-  description: A stream payload width
-- name: B_W
-  default_value: '8'
-  legality_constraint: must equal 8
-  description: B stream payload width
-- name: BIAS_W
-  default_value: '32'
-  legality_constraint: must equal 32
-  description: bias stream payload width
-- name: OUT_W
-  default_value: '32'
-  legality_constraint: must equal 32
-  description: output stream payload width
+  description: Number of output columns processed in parallel in compute core.
 compute:
-  organization: single-core tiled MAC engine with TILE_M x TILE_N parallel accumulators
-  dataflow: output-stationary within a tile; K streamed across stationary accumulators
-  parallelism: spatial parallelism TILE_M*TILE_N MACs/cycle during steady compute
-  scheduling: 'phase schedule per job: load bias tile, for each m-tile and n-tile
-    run K-step MAC loop, then bias+ReLU and emit; edge tiles masked for non-multiples'
+  organization: Tiled dot-product engine with TILE_N parallel lanes sharing one A
+    element broadcast per K step.
+  dataflow: For each row m and N-tile, iterate k to accumulate lane-local sums; then
+    bias/relu and emit.
+  parallelism: Spatial parallelism across N lanes = TILE_N; temporal iteration over
+    M,K and N tiles.
+  scheduling: 'Load-all then compute/emit: phase 1 load A,B,(bias optional), phase
+    2 compute and stream outputs; no overlap between load and compute.'
 storage:
-- name: bias_sram
+- name: buf_A
   stored_objects:
-  - bias_vec
-  capacity_expression: MAX_N elements of sint32
+  - obj_a_stream
+  capacity_expression: MAX_M*MAX_K elements of dt_int8
+  capacity_at_default_parameters: 4096
+  access_pattern: Write during A load in row-major A[m][k]; read sequential by m,k
+    during compute.
+  port_requirements: 1R1W logical (simple dual-port RAM acceptable)
+  implementation_hint: SRAM or inferred block RAM
+  reuse_semantics: Each A element reused across all N tiles for same m,k.
+  lifetime: One job from load completion to job completion.
+- name: buf_B
+  stored_objects:
+  - obj_b_stream
+  capacity_expression: MAX_K*MAX_N elements of dt_int8
+  capacity_at_default_parameters: 4096
+  access_pattern: Write during B load in row-major B[k][n]; read TILE_N elements per
+    cycle across n-lane slice at fixed k.
+  port_requirements: Read bandwidth TILE_N elements/cycle via banking or wide word
+    organization; plus write bandwidth 1 element/cycle during load phase
+  implementation_hint: Banked SRAM/BRAM with TILE_N banks
+  reuse_semantics: Each B element reused across all M rows.
+  lifetime: One job.
+- name: buf_bias
+  stored_objects:
+  - obj_bias_stream
+  capacity_expression: MAX_N elements of dt_int32
   capacity_at_default_parameters: 64
-  access_pattern: sequential write during bias load; random read by n index during
-    output finalize
-  port_requirements: 1R1W or time-multiplexed single-port with non-overlap
-  implementation_hint: small SRAM or register file
-  reuse_semantics: loaded once per job and reused across all M rows
-  lifetime: from bias load completion until job done
-- name: acc_tile_regs
+  access_pattern: Write during bias load when enabled; read per output element by
+    n index.
+  port_requirements: 1R1W logical
+  implementation_hint: Register file or small SRAM
+  reuse_semantics: Each bias[n] reused across all M rows.
+  lifetime: One job when bias_enable=1; ignored otherwise.
+- name: reg_acc_lane
   stored_objects:
-  - acc_tensor
-  capacity_expression: TILE_M*TILE_N elements of sint32
-  capacity_at_default_parameters: 16
-  access_pattern: per-cycle read-modify-write during K loop
-  port_requirements: TILE_M*TILE_N parallel RMW lanes
-  implementation_hint: register array
-  reuse_semantics: cleared at tile start; holds partial sums across K
-  lifetime: one output tile
-- name: a_lane_regs
-  stored_objects:
-  - tensor_a
-  capacity_expression: TILE_M elements of sint8
-  capacity_at_default_parameters: 4
-  access_pattern: loaded each K step then broadcast across N lanes
-  port_requirements: TILE_M write + TILE_M*TILE_N read fanout
-  implementation_hint: registers
-  reuse_semantics: used for one K step
-  lifetime: one inner-loop iteration
-- name: b_lane_regs
-  stored_objects:
-  - tensor_b
-  capacity_expression: TILE_N elements of sint8
-  capacity_at_default_parameters: 4
-  access_pattern: loaded each K step then broadcast across M lanes
-  port_requirements: TILE_N write + TILE_M*TILE_N read fanout
-  implementation_hint: registers
-  reuse_semantics: used for one K step
-  lifetime: one inner-loop iteration
+  - obj_accum_matrix
+  - obj_bias_matrix
+  capacity_expression: TILE_N elements of dt_int32
+  capacity_at_default_parameters: 8
+  access_pattern: Per-lane clear at tile start; accumulate each k; then bias/relu
+    in place and stream.
+  port_requirements: Per-lane read/write each cycle
+  implementation_hint: Flip-flop array
+  reuse_semantics: Holds one output row-tile partial/final results.
+  lifetime: From tile start until tile outputs emitted.
 pipeline:
-- stage: S0_cmd
-  responsibility: accept and validate command in IDLE
+- stage: s_cmd
+  responsibility: Latch and validate command fields.
   registered: true
-  valid_behavior: latch cfg when cmd_valid&&cmd_ready
-  stall_behavior: cmd_ready deasserted outside IDLE
-- stage: S1_load
-  responsibility: ingest bias then operand streams for active tiles
+  valid_behavior: Command accepted on cmd_valid&&cmd_ready and transitions FSM to
+    load.
+  stall_behavior: If not ready, cmd payload must remain stable externally; internal
+    state unchanged.
+- stage: s_load
+  responsibility: Ingest A/B/(bias) streams into local buffers with element counters.
   registered: true
-  valid_behavior: advance only on stream ready&&valid handshakes
-  stall_behavior: hold indices and partial state when any required input beat missing
-- stage: S2_mac
-  responsibility: parallel multiply-accumulate update for active tile
+  valid_behavior: Each input transfer occurs on valid&&ready; write pointer increments
+    once per transfer.
+  stall_behavior: On missing valid or deasserted ready, counters and write pointers
+    hold.
+- stage: s_compute
+  responsibility: Run nested loops m, n_tile, k; perform int8xint8 MAC into lane accumulators.
   registered: true
-  valid_behavior: on each accepted K-step operands, update enabled accumulators
-  stall_behavior: no state change without accepted operand set
-- stage: S3_post
-  responsibility: bias add and ReLU on finalized tile elements
+  valid_behavior: When active, one k-step per cycle updates all active lanes.
+  stall_behavior: Compute not backpressured internally; egress separated after finalize
+    per tile.
+- stage: s_emit
+  responsibility: Apply bias/relu for tile and stream int32 outputs.
   registered: true
-  valid_behavior: compute one or more outputs when downstream can accept
-  stall_behavior: hold output data/valid stable under backpressure
-- stage: S4_out
-  responsibility: stream output elements with framing
-  registered: true
-  valid_behavior: emit in tile-major deterministic order on ready&&valid
-  stall_behavior: retain current output element and metadata until transfer
+  valid_behavior: Output advances on out_valid&&out_ready.
+  stall_behavior: On out_ready low, hold current output data/indices and do not advance.
 control:
-  strategy: central FSM with nested counters
-  state_progression: IDLE->LOAD_BIAS->COMPUTE_TILES->EMIT_TILE->DONE->IDLE
+  strategy: Single FSM controlling phase progression and loop counters.
+  state_progression: IDLE->LOAD_A->LOAD_B->LOAD_BIAS(optional)->COMPUTE->EMIT->DONE->IDLE
   counters:
-  - m_idx:0..M-1
-  - n_idx:0..N-1
-  - k_idx:0..K-1
-  - tm_idx:0..TILE_M-1
-  - tn_idx:0..TILE_N-1
-  error_behavior: illegal dimension (0 or >max) or protocol violation sets error flag
-    and transitions to DONE with status error, suppressing output_valid
-  error_recovery: host issues new valid command while in IDLE after done_status observed;
-    new command clears error flag and restarts
+  - cnt_a:0..M*K
+  - cnt_b:0..K*N
+  - cnt_bias:0..N
+  - idx_m:0..M-1
+  - idx_ntile:0..ceil(N/TILE_N)-1
+  - idx_k:0..K-1
+  - idx_lane:0..TILE_N-1
+  error_behavior: Protocol/legality errors raise sticky error_flag and halt acceptance
+    of new payloads for current job.
+  error_recovery: Return to IDLE only via reset; no in-band clear command.
 reset:
   style: synchronous
   polarity: active_low
-  required_state: FSM=IDLE, counters=0, valids=0, done=0, error=0, cfg invalid
-latency_model: Cycles = 1(cmd)+N(bias load)+ceil(M/TILE_M)*ceil(N/TILE_N)*(K + valid_outputs_per_tile)
-  plus backpressure stalls; no overlap between bias load and compute; compute stalls
-  if required operand beats not available.
+  required_state: FSM=IDLE, ready signals to accept new command, counters/pointers
+    zeroed, valid outputs deasserted, error_flag cleared; memory contents treated
+    invalid until reloaded.
+latency_model: Total cycles per job = 1(cmd)+M*K(load A)+K*N(load B)+bias_enable*N(load
+  bias)+M*ceil(N/TILE_N)*(K + active_lane_emit), where active_lane_emit is TILE_N
+  for full tile and N%TILE_N for final partial tile (or TILE_N if divisible). No load/compute
+  overlap.
 architectural_invariants:
-- Runtime dimensions must satisfy 1<=M<=MAX_M, 1<=N<=MAX_N, 1<=K<=MAX_K.
-- "One output element equals ReLU((\u03A3_k A[m,k]*B[k,n]) + bias[n]) in signed int32\
-  \ wrap arithmetic."
-- 'Outputs emitted in tile-major order: tile_m outer, tile_n inner, then row-major
-  within tile with masked edges skipped.'
-- All ready/valid channels transfer only when ready&&valid; payload stable while valid&&
-  !ready.
+- Exactly one job in flight.
+- A and B must be fully loaded before compute starts.
+- Output order is strict row-major over (m,n).
+- Final partial N tile emits only lanes with n<N; inactive lanes produce no transfer.
+- Bias indexing depends only on n, shared across rows.
 open_assumptions:
-- Simple single-job in-flight model (no command queue).
-- Host provides A and B streams in exact compute-consumption order required by tile/K
-  traversal.
-- Bias is provided once per job before compute and fully retained locally.
-- No quantization/scaling beyond requested int8/int32 arithmetic.
+- Single clock domain.
+- Host provides streams in required load order without gaps or with valid/ready compliance.
+- bias_enable field in command selects whether bias stream is required.
+- No quantization/scaling beyond requested int32 output.

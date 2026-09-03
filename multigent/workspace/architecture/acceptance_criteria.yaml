@@ -1,28 +1,25 @@
 functional:
-- For every legal M,N,K and inputs A,B,bias, output stream equals software reference
-  ReLU((A*B)+bias) with signed int32 wrap arithmetic.
-- 'Bias index is column-wise: bias[n] added to all rows m for fixed n.'
-- Edge tiles (when M or N not divisible by tile sizes) produce only legal indices
-  with no extra outputs.
+- 'For all legal M,N,K and int8/int32 inputs, output equals reference: Y[m,n]=max(0,sum_k(A[m,k]*B[k,n])
+  + (bias_enable?Bias[n]:0)) with signed arithmetic and int32 wrap on additions.'
+- When bias_enable=0, bias_ch transfers must be zero and outputs must ignore bias_data.
+- Output transfer count per job is exactly M*N.
 verification:
-- Minimum 100 randomized legal transactions across varying M,N,K including boundary
-  values 1 and MAX_*.
-- 'Reset test required: asserting/deasserting rst_n returns interface/control to required
-  reset state before next command.'
-- Backpressure tests required on all ready/valid inputs and outputs with random stalls;
-  no data loss/duplication.
-- 'Protocol-negative tests: illegal dimensions (0 or >max) must produce done_error=1
-  and no output data.'
+- "Minimum 100 randomized jobs across varied M,N,K including boundary values 1 and\
+  \ defaults\u2019 maxima."
+- Include directed tests for partial final tile when N mod TILE_N != 0.
+- Include reset tests covering reset during IDLE and mid-stream/mid-output.
+- Include backpressure tests on all input/output channels with random ready/valid
+  throttling.
+- Scoreboard must check exact integer match cycle-independently by ordered stream
+  comparison.
 rtl:
-- SystemVerilog synthesizable subset only; no real/shortreal/delay/force-release/classes.
-- No combinational loops; sequential state updates on clk edge with synchronous active-low
-  reset behavior as specified.
-- Payload stability under stall must be provable by assertions on each valid/ready
-  channel.
+- SystemVerilog synthesizable subset only; no forbidden constructs from project constraints.
+- All sequential state updated only on clock edge with synchronous active-low reset
+  behavior consistent with contract.
+- No unresolved X-dependent control for protocol-visible outputs.
 synopsys_handoff:
-- Synthesis/timing/power/area/frequency/utilization claims accepted only from deterministic
-  Synopsys tool reports conforming to multigent/schemas/synthesis_result.schema.json.
-- No estimated or inferred PPA metrics allowed without authoritative deterministic
-  report.
-- Handoff requires verified RTL passing functional and protocol acceptance criteria
-  prior to Synopsys runs.
+- Provide deterministic Synopsys synthesis report artifacts conforming to multigent/schemas/synthesis_result.schema.json.
+- Report metrics only from authoritative deterministic tool reports; no estimated/inferred
+  PPA values.
+- Handoff includes verified RTL version identifier matching architecture contract
+  version 1.0.

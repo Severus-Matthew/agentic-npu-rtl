@@ -3,83 +3,72 @@
   "modules": [
     {
       "name": "gemm_bias_relu_npu_top",
-      "responsibility": "top integration, interface termination, global FSM, status generation",
+      "responsibility": "Top integration, external interface, and submodule wiring.",
       "dependencies": [
-        "cfg_unit",
-        "stream_ingress",
-        "mac_tile_core",
-        "postproc_unit",
-        "egress_unit"
+        "npu_control_fsm",
+        "input_loader",
+        "gemm_core",
+        "postproc_relu_bias",
+        "output_streamer"
       ],
       "parameters": [
         "MAX_M",
         "MAX_N",
         "MAX_K",
-        "TILE_M",
-        "TILE_N",
-        "CFG_FIELDS",
-        "CMD_W",
-        "A_W",
-        "B_W",
-        "BIAS_W",
-        "OUT_W"
+        "TILE_N"
       ],
       "stateful": true
     },
     {
-      "name": "cfg_unit",
-      "responsibility": "decode/validate command and hold runtime dimensions",
+      "name": "npu_control_fsm",
+      "responsibility": "Command decode, legality checks, phase/state/counter control, error handling.",
       "dependencies": [],
       "parameters": [
         "MAX_M",
         "MAX_N",
         "MAX_K",
-        "CMD_W"
+        "TILE_N"
       ],
       "stateful": true
     },
     {
-      "name": "stream_ingress",
-      "responsibility": "accept bias/A/B streams and present lane operands per schedule",
+      "name": "input_loader",
+      "responsibility": "Handshake-driven loading of A/B/bias streams into local buffers.",
       "dependencies": [],
       "parameters": [
-        "TILE_M",
+        "MAX_M",
+        "MAX_N",
+        "MAX_K"
+      ],
+      "stateful": true
+    },
+    {
+      "name": "gemm_core",
+      "responsibility": "MAC datapath and looped accumulation across K with TILE_N lanes.",
+      "dependencies": [],
+      "parameters": [
         "TILE_N",
-        "A_W",
-        "B_W",
-        "BIAS_W",
+        "MAX_K",
         "MAX_N"
       ],
       "stateful": true
     },
     {
-      "name": "mac_tile_core",
-      "responsibility": "TILE_M x TILE_N int8 MAC accumulation across K",
+      "name": "postproc_relu_bias",
+      "responsibility": "Apply optional bias add then ReLU to lane accumulators.",
       "dependencies": [],
       "parameters": [
-        "TILE_M",
-        "TILE_N"
-      ],
-      "stateful": true
-    },
-    {
-      "name": "postproc_unit",
-      "responsibility": "bias add and ReLU for finalized tile accumulators",
-      "dependencies": [],
-      "parameters": [
-        "TILE_M",
         "TILE_N"
       ],
       "stateful": false
     },
     {
-      "name": "egress_unit",
-      "responsibility": "ordered output streaming and done signaling",
+      "name": "output_streamer",
+      "responsibility": "Serialize lane results to out_ch in row-major order with backpressure handling.",
       "dependencies": [],
       "parameters": [
-        "TILE_M",
         "TILE_N",
-        "OUT_W"
+        "MAX_N"
       ],
       "stateful": true
     }
