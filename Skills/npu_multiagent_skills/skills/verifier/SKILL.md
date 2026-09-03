@@ -85,8 +85,10 @@ When applicable include:
 - randomized output backpressure
 - back-to-back jobs
 - illegal command/configuration behavior
+- externally visible completion behavior
+- externally visible sticky/error recovery behavior
 
-Do not create irrelevant categories for semantics that the contract does not contain.
+If completion or error behavior is unambiguously defined by the frozen contract, test it explicitly. Do not list such a requirement as a known verification gap merely to reduce test scope.
 
 ### 5. Randomized regression
 Honor the fixed verification policy and frozen acceptance criteria. Use deterministic seeds. The initial full regression must contain at least the required randomized transaction count unless the frozen criteria explicitly require more.
@@ -99,9 +101,11 @@ Tests must record enough assertion context to identify:
 - relevant transaction/configuration context
 
 ### 6. Timeouts
-Every cocotb test must have a finite timeout or a bounded cycle-wait helper so deadlocked RTL produces a deterministic failure instead of hanging the workflow.
+Every cocotb test must have a finite simulation-time timeout or a bounded cycle-wait helper so deadlocked RTL produces a deterministic failure instead of hanging the workflow.
 
-Choose the timeout from the frozen latency/transaction model with generous protocol-stall margin. Do not require exact cycle latency unless exact latency is an explicit acceptance criterion.
+`verification_plan.timeout_seconds` is different: it is the wall-clock timeout for the entire full-regression subprocess. It must satisfy the fixed verification-policy minimum. Do not confuse per-test simulation time with the worker's wall-clock execution budget.
+
+Choose simulation-time bounds from the frozen latency/transaction model with generous protocol-stall margin. Do not require exact cycle latency unless exact latency is an explicit acceptance criterion.
 
 ### 7. Verification plan
 Produce a machine-readable plan describing:
@@ -110,7 +114,8 @@ Produce a machine-readable plan describing:
 - test categories
 - randomized test count
 - deterministic seed
-- per-test/default timeout intent
+- whole-regression wall-clock timeout
+- per-test/default simulation-time timeout intent
 - smoke/targeted/full regression groups
 - required pass criterion
 - known verification gaps
