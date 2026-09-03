@@ -85,7 +85,11 @@ def verification_ready_result() -> dict:
         "status": "VERIFICATION_READY",
         "summary": "Independent FIR reference and cocotb contract tests.",
         "reference_files": [
-            {"path": "fir_reference.py", "purpose": "golden arithmetic", "content": reference}
+            {
+                "path": "fir_reference.py",
+                "purpose": "golden arithmetic",
+                "content": reference,
+            }
         ],
         "test_files": [
             {
@@ -109,7 +113,9 @@ def verification_ready_result() -> dict:
                 "full": ["test_fir_contract"],
             },
             "pass_criteria": "all cocotb tests pass",
-            "protocol_assumptions": ["ready/valid transfers occur on ready && valid"],
+            "protocol_assumptions": [
+                "ready/valid transfers occur on ready && valid"
+            ],
         },
         "architecture_conflict": None,
         "known_verification_gaps": [],
@@ -149,6 +155,32 @@ def test_verifier_writes_only_owned_artifacts(tmp_path: Path) -> None:
     assert not list(tmp_path.rglob("*.sv"))
 
 
+def test_verifier_accepts_explicit_owned_path_prefixes(tmp_path: Path) -> None:
+    class PrefixedVerifier(FakeVerifierAgent):
+        def run_structured(self, **_: object) -> dict:
+            result = verification_ready_result()
+            result["reference_files"][0]["path"] = "reference/fir_reference.py"
+            result["test_files"][0]["path"] = "tests/test_fir_contract.py"
+            return result
+
+    PrefixedVerifier().run(
+        generic_fir_context(),
+        workspace_dir=tmp_path,
+        run_id="prefixed",
+    )
+    assert (tmp_path / "reference" / "fir_reference.py").is_file()
+    assert (tmp_path / "tests" / "test_fir_contract.py").is_file()
+    assert not (tmp_path / "reference" / "reference").exists()
+    assert not (tmp_path / "tests" / "tests").exists()
+
+
+def test_verifier_rejects_cross_owned_path_prefix() -> None:
+    result = verification_ready_result()
+    result["reference_files"][0]["path"] = "tests/fir_reference.py"
+    with pytest.raises(AgentRuntimeError, match="outside its owned root"):
+        VerifierAgent._validate_result(result=result, context=generic_fir_context())
+
+
 def test_verifier_requires_policy_randomized_minimum() -> None:
     result = verification_ready_result()
     result["verification_plan"]["randomized_test_count"] = 99
@@ -165,7 +197,9 @@ def test_verifier_requires_manifest_top() -> None:
 
 def test_verifier_rejects_python_that_reads_rtl_workspace() -> None:
     result = verification_ready_result()
-    result["test_files"][0]["content"] += '\nopen("multigent/workspace/rtl/dut.sv").read()\n'
+    result["test_files"][0]["content"] += (
+        '\nopen("multigent/workspace/rtl/dut.sv").read()\n'
+    )
     with pytest.raises(AgentRuntimeError, match="forbidden capability"):
         VerifierAgent._validate_result(result=result, context=generic_fir_context())
 
@@ -193,7 +227,9 @@ def test_architecture_conflict_emits_no_tests() -> None:
                 "affected_modules": ["filter_top"],
                 "issue": "output framing is contradictory",
                 "evidence": "two frozen clauses disagree",
-                "requested_architect_decision": "choose one externally visible framing rule",
+                "requested_architect_decision": (
+                    "choose one externally visible framing rule"
+                ),
             },
         }
     )
