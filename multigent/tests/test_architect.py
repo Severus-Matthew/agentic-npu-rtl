@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import copy
+import json
 from pathlib import Path
 
+import pytest
 import yaml
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
 
-from multigent.agents.architect import ArchitectAgent
+from multigent.agents.architect import ARCHITECT_OUTPUT_SCHEMA, ArchitectAgent
 from multigent.intake.request_builder import build_architect_intake
 
 
@@ -163,6 +168,23 @@ class FakeArchitectAgent(ArchitectAgent):
                 "synopsys_handoff": ["verified RTL package"],
             },
         }
+
+
+def architect_schema() -> dict:
+    return json.loads(ARCHITECT_OUTPUT_SCHEMA.read_text(encoding="utf-8"))
+
+
+def test_generic_non_gemm_output_satisfies_architect_schema() -> None:
+    Draft202012Validator(architect_schema()).validate(
+        FakeArchitectAgent().run_structured()
+    )
+
+
+def test_dimension_maximum_must_be_concrete_integer() -> None:
+    result = copy.deepcopy(FakeArchitectAgent().run_structured())
+    result["architecture_contract"]["dimensions"][0]["maximum"] = ","
+    with pytest.raises(ValidationError):
+        Draft202012Validator(architect_schema()).validate(result)
 
 
 def test_intake_keeps_architecture_choices_out_of_user_input() -> None:
