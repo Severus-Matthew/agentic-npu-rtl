@@ -1,46 +1,66 @@
 {
-  "top": "gemm_bias_relu_int8_core",
+  "top": "gemm_bias_relu_npu_top",
   "modules": [
     {
-      "name": "gemm_bias_relu_int8_core",
-      "responsibility": "Top integration, interface, global FSM/control",
+      "name": "gemm_bias_relu_npu_top",
+      "responsibility": "Top-level integration and external interface.",
       "dependencies": [
-        "cmd_decoder",
-        "tile_loader",
-        "mac_array",
-        "postprocess_relu",
-        "output_streamer"
+        "control_fsm",
+        "stream_ingress",
+        "mac_tile_engine",
+        "postproc_emit"
+      ],
+      "parameters": [
+        "MAX_M",
+        "MAX_N",
+        "MAX_K",
+        "TILE_M",
+        "TILE_N"
       ],
       "stateful": true
     },
     {
-      "name": "cmd_decoder",
-      "responsibility": "Validate and latch command dimensions; generate tile schedule bounds",
+      "name": "control_fsm",
+      "responsibility": "Job sequencing, counters, legality checks, done/error generation.",
       "dependencies": [],
+      "parameters": [
+        "MAX_M",
+        "MAX_N",
+        "MAX_K",
+        "TILE_M",
+        "TILE_N"
+      ],
       "stateful": true
     },
     {
-      "name": "tile_loader",
-      "responsibility": "Drive a/b/bias ready signals and fill tile buffers with counted payloads",
+      "name": "stream_ingress",
+      "responsibility": "Handshake management and loading of bias/A/B into internal buffers.",
       "dependencies": [],
+      "parameters": [
+        "MAX_N",
+        "TILE_M",
+        "TILE_N"
+      ],
       "stateful": true
     },
     {
-      "name": "mac_array",
-      "responsibility": "Perform int8xint8 MAC over K into int32 accumulators for ARRAY_MxARRAY_N tile",
+      "name": "mac_tile_engine",
+      "responsibility": "Parallel int8 multiply-accumulate over K into int32 tile accumulators.",
       "dependencies": [],
+      "parameters": [
+        "TILE_M",
+        "TILE_N"
+      ],
       "stateful": true
     },
     {
-      "name": "postprocess_relu",
-      "responsibility": "Bias application and ReLU clamp",
+      "name": "postproc_emit",
+      "responsibility": "Bias add, ReLU, and ordered y_out streaming.",
       "dependencies": [],
-      "stateful": false
-    },
-    {
-      "name": "output_streamer",
-      "responsibility": "Serialize tile outputs, manage y_valid/y_ready/y_last and skid buffer",
-      "dependencies": [],
+      "parameters": [
+        "TILE_M",
+        "TILE_N"
+      ],
       "stateful": true
     }
   ]

@@ -3,202 +3,364 @@
   "conflicts": [],
   "architecture_contract": {
     "design": {
-      "name": "gemm_bias_relu_int8_core",
+      "name": "gemm_bias_relu_npu",
       "version": "1.0",
-      "description": "Synthesizable tiled GEMM engine implementing Y=ReLU(AxB+bias) with int8 inputs and int32 accumulation/output."
+      "description": "Synthesizable int8 GEMM with int32 bias add and ReLU activation using streaming tiles."
     },
-    "operation": {
-      "kind": "GEMM_BIAS_RELU",
-      "equation": "Y[m,n] = ReLU( sum_{k=0..K-1}( A[m,k] * B[k,n] ) + Bias[n] )",
-      "description": "Matrix multiply with per-output-column bias add, then ReLU clamp to non-negative."
-    },
-    "numeric": {
-      "activation_width": 8,
-      "activation_signed": true,
-      "weight_width": 8,
-      "weight_signed": true,
-      "product_width": 16,
-      "product_signed": true,
-      "accumulator_width": 32,
-      "accumulator_signed": true,
-      "bias_width": 32,
-      "bias_signed": true,
-      "output_width": 32,
-      "output_signed": true,
-      "extension_semantics": "A and B are sign-extended before multiply; 16-bit product is sign-extended to 32-bit before accumulation.",
-      "overflow_semantics": "Two's-complement wrap on 32-bit add/macc (no saturation).",
-      "rounding_semantics": "No rounding; exact integer operations at declared widths."
-    },
-    "supported_dimensions": {
-      "m": {
-        "minimum": 1,
-        "maximum": ",",
-        "runtime_configurable": true
+    "operations": [
+      {
+        "name": "gemm_core",
+        "kind": "matrix_multiply_accumulate",
+        "semantics": "Compute C[m,n] = sum_{k=0..K-1}(A[m,k]*B[k,n]) with A,B as signed int8 and accumulation in signed int32.",
+        "inputs": [
+          "A_elem_int8",
+          "B_elem_int8",
+          "dim_M",
+          "dim_N",
+          "dim_K"
+        ],
+        "outputs": [
+          "acc_int32_matrix"
+        ]
       },
-      "n": {
-        "minimum": 1,
-        "maximum": ",",
-        "runtime_configurable": true
+      {
+        "name": "bias_add",
+        "kind": "elementwise_add",
+        "semantics": "Compute Cb[m,n] = C[m,n] + Bias[n], Bias is signed int32 broadcast across M.",
+        "inputs": [
+          "acc_int32_matrix",
+          "Bias_int32_vector",
+          "dim_M",
+          "dim_N"
+        ],
+        "outputs": [
+          "biased_int32_matrix"
+        ]
       },
-      "k": {
-        "minimum": 1,
-        "maximum": ",",
-        "runtime_configurable": true
+      {
+        "name": "relu",
+        "kind": "elementwise_activation",
+        "semantics": "Compute Y[m,n] = max(0, Cb[m,n]) in signed int32 domain.",
+        "inputs": [
+          "biased_int32_matrix",
+          "dim_M",
+          "dim_N"
+        ],
+        "outputs": [
+          "Y_int32_matrix"
+        ]
       }
-    },
+    ],
+    "data_types": [
+      {
+        "name": "A_elem_int8",
+        "role": "input_activation_element",
+        "width_bits": 8,
+        "signed": true,
+        "representation": "two_complement",
+        "conversion_semantics": "Consumed as-is.",
+        "overflow_semantics": "N/A",
+        "rounding_semantics": "N/A"
+      },
+      {
+        "name": "B_elem_int8",
+        "role": "input_weight_element",
+        "width_bits": 8,
+        "signed": true,
+        "representation": "two_complement",
+        "conversion_semantics": "Consumed as-is.",
+        "overflow_semantics": "N/A",
+        "rounding_semantics": "N/A"
+      },
+      {
+        "name": "mul_int16",
+        "role": "product_intermediate",
+        "width_bits": 16,
+        "signed": true,
+        "representation": "two_complement",
+        "conversion_semantics": "Exact signed multiply of two int8.",
+        "overflow_semantics": "No overflow for 8x8 product in 16 bits.",
+        "rounding_semantics": "N/A"
+      },
+      {
+        "name": "acc_int32",
+        "role": "dot_product_accumulator",
+        "width_bits": 32,
+        "signed": true,
+        "representation": "two_complement",
+        "conversion_semantics": "Each int16 product sign-extended to int32 then added.",
+        "overflow_semantics": "Wrap on two_complement overflow.",
+        "rounding_semantics": "N/A"
+      },
+      {
+        "name": "Bias_int32",
+        "role": "bias_element",
+        "width_bits": 32,
+        "signed": true,
+        "representation": "two_complement",
+        "conversion_semantics": "Consumed as-is.",
+        "overflow_semantics": "N/A",
+        "rounding_semantics": "N/A"
+      },
+      {
+        "name": "Y_int32",
+        "role": "output_element",
+        "width_bits": 32,
+        "signed": true,
+        "representation": "two_complement",
+        "conversion_semantics": "ReLU output from int32 biased sum.",
+        "overflow_semantics": "Inherited from prior add (wrap).",
+        "rounding_semantics": "N/A"
+      }
+    ],
+    "dimensions": [
+      {
+        "name": "M",
+        "semantic": "rows of A and output Y",
+        "minimum": 1,
+        "maximum": 64,
+        "runtime_configurable": true,
+        "bound_parameter": "MAX_M"
+      },
+      {
+        "name": "N",
+        "semantic": "columns of B and output Y",
+        "minimum": 1,
+        "maximum": 64,
+        "runtime_configurable": true,
+        "bound_parameter": "MAX_N"
+      },
+      {
+        "name": "K",
+        "semantic": "inner reduction dimension",
+        "minimum": 1,
+        "maximum": 64,
+        "runtime_configurable": true,
+        "bound_parameter": "MAX_K"
+      }
+    ],
+    "parameters": [
+      {
+        "name": "MAX_M",
+        "default_value": "64",
+        "legality_constraint": "integer >=1",
+        "description": "Maximum runtime M."
+      },
+      {
+        "name": "MAX_N",
+        "default_value": "64",
+        "legality_constraint": "integer >=1",
+        "description": "Maximum runtime N."
+      },
+      {
+        "name": "MAX_K",
+        "default_value": "64",
+        "legality_constraint": "integer >=1",
+        "description": "Maximum runtime K."
+      },
+      {
+        "name": "TILE_M",
+        "default_value": "4",
+        "legality_constraint": "integer >=1 and <=MAX_M",
+        "description": "Rows processed per tile."
+      },
+      {
+        "name": "TILE_N",
+        "default_value": "4",
+        "legality_constraint": "integer >=1 and <=MAX_N",
+        "description": "Columns processed per tile."
+      }
+    ],
     "compute": {
-      "organization": "2D output-stationary systolic-style MAC array with local accumulators",
-      "rows": 4,
-      "columns": 4,
-      "mac_count": 16,
-      "parameterization": "Compile-time parameters: ARRAY_M=4, ARRAY_N=4, MAX_M=64, MAX_N=64, MAX_K=64; legal: ARRAY_M>=1, ARRAY_N>=1, MAX_M>=1, MAX_N>=1, MAX_K>=1."
+      "organization": "Tiled SIMD MAC engine",
+      "dataflow": "Output-stationary within TILE_M x TILE_N tile across K loop",
+      "parallelism": "TILE_M*TILE_N parallel int8xint8 MAC lanes each cycle",
+      "scheduling": "Deterministic nested loops over tile_m, tile_n, k with one MAC step per cycle"
     },
-    "dataflow": "Output-stationary tiled GEMM: each tile computes up to ARRAY_M x ARRAY_N outputs across full K, then writes out.",
-    "operand_storage": [
+    "storage": [
       {
-        "operand": "A",
-        "ingress_order": "Row-major stream for tile rows over K: (row 0,k0..kT-1), ...",
-        "supply_frequency": "once_per_tile",
-        "reuse_strategy": "Each A tile value reused across ARRAY_N columns during inner-k step.",
-        "storage_strategy": "Tile buffer SRAM/register file indexed by local row,k.",
-        "capacity": "ARRAY_M * MAX_K elements of int8"
+        "name": "a_tile_buffer",
+        "stores": "A tile row elements for current k step",
+        "capacity_expression": "TILE_M elements",
+        "maximum_elements": 4,
+        "element_width_bits": 8,
+        "access_pattern": "Read all TILE_M each cycle at current k; refill per k/tile.",
+        "port_requirements": "1 write path from input stream, TILE_M read fanout via register array",
+        "implementation_hint": "register array",
+        "reuse_semantics": "Each loaded A value reused across TILE_N MAC lanes in same row for cycle.",
+        "lifetime": "one k-step"
       },
       {
-        "operand": "B",
-        "ingress_order": "Column-major by output columns over K: (k0,col0..colT-1) logically transposed stream accepted via metadata",
-        "supply_frequency": "once_per_tile",
-        "reuse_strategy": "Each B tile value reused across ARRAY_M rows during inner-k step.",
-        "storage_strategy": "Tile buffer SRAM/register file indexed by k,local col.",
-        "capacity": "MAX_K * ARRAY_N elements of int8"
+        "name": "b_tile_buffer",
+        "stores": "B tile column elements for current k step",
+        "capacity_expression": "TILE_N elements",
+        "maximum_elements": 4,
+        "element_width_bits": 8,
+        "access_pattern": "Read all TILE_N each cycle at current k; refill per k/tile.",
+        "port_requirements": "1 write path from input stream, TILE_N read fanout via register array",
+        "implementation_hint": "register array",
+        "reuse_semantics": "Each loaded B value reused across TILE_M MAC lanes in same column for cycle.",
+        "lifetime": "one k-step"
       },
       {
-        "operand": "bias",
-        "ingress_order": "Bias vector for current N-tile in ascending column order",
-        "supply_frequency": "once_per_tile",
-        "reuse_strategy": "Bias per column reused for each row in tile at accumulator init.",
-        "storage_strategy": "Small register file.",
-        "capacity": "ARRAY_N elements of int32"
+        "name": "acc_tile_buffer",
+        "stores": "Partial sums for TILE_M x TILE_N outputs",
+        "capacity_expression": "TILE_M*TILE_N elements",
+        "maximum_elements": 16,
+        "element_width_bits": 32,
+        "access_pattern": "Read-modify-write each element every cycle during K accumulation.",
+        "port_requirements": "Implemented as per-lane registers enabling parallel update of all elements per cycle",
+        "implementation_hint": "register array",
+        "reuse_semantics": "Retained across full K loop, then consumed by bias/relu/output.",
+        "lifetime": "one output tile"
       },
       {
-        "operand": "partial_sums",
-        "ingress_order": "Not externally visible",
-        "supply_frequency": "streamed_on_demand",
-        "reuse_strategy": "Local accumulators hold running sums for each PE output.",
-        "storage_strategy": "PE-local registers.",
-        "capacity": "ARRAY_M * ARRAY_N elements of int32"
-      },
-      {
-        "operand": "outputs",
-        "ingress_order": "Produced row-major within tile",
-        "supply_frequency": "once_per_tile",
-        "reuse_strategy": "No reuse; single emit per output element.",
-        "storage_strategy": "Direct stream from post-process stage with skid buffer.",
-        "capacity": "1 beat buffered"
+        "name": "bias_buffer",
+        "stores": "Bias vector length N",
+        "capacity_expression": "MAX_N elements",
+        "maximum_elements": 64,
+        "element_width_bits": 32,
+        "access_pattern": "Sequential load once per job; random-access by output column index.",
+        "port_requirements": "1 write stream port + up to TILE_N read per cycle via banking/replication",
+        "implementation_hint": "small SRAM or register file with replication",
+        "reuse_semantics": "Reused for all M rows of job.",
+        "lifetime": "entire job"
       }
     ],
     "pipeline": [
       {
-        "stage": "S0_cmd",
-        "responsibility": "Latch job/tile descriptors (M,N,K and tile coordinates) when cmd valid/ready.",
+        "stage": "s0_cmd",
+        "responsibility": "Latch command and dimensions when accepted.",
         "registered": true,
-        "valid_behavior": "Advances only on handshake; stalls block new command accept."
+        "valid_behavior": "valid set on cmd handshake.",
+        "stall_behavior": "Holds latched config until job completion."
       },
       {
-        "stage": "S1_load",
-        "responsibility": "Ingest A/B/bias tile streams into local buffers.",
+        "stage": "s1_load",
+        "responsibility": "Ingest bias and A/B tile elements from input streams.",
         "registered": true,
-        "valid_behavior": "Per-channel ready/valid; compute starts after required tile payload counts received."
+        "valid_behavior": "Advances on ready&&valid.",
+        "stall_behavior": "Backpressures inputs via ready deassertion when buffers full."
       },
       {
-        "stage": "S2_compute",
-        "responsibility": "Run K-loop MAC updates for active tile accumulators.",
+        "stage": "s2_mac",
+        "responsibility": "Parallel MAC update of acc_tile_buffer.",
         "registered": true,
-        "valid_behavior": "One inner-k step per cycle when enabled; pauses if downstream output drain cannot accept completion transition."
+        "valid_behavior": "One K-step update when operands available.",
+        "stall_behavior": "Freezes k counter and accumulator state."
       },
       {
-        "stage": "S3_post",
-        "responsibility": "Add bias (if not preloaded at init) and apply ReLU max(0,x).",
+        "stage": "s3_post",
+        "responsibility": "Bias add then ReLU per accumulator lane.",
         "registered": true,
-        "valid_behavior": "Produces one output candidate per cycle during drain window."
-      },
-      {
-        "stage": "S4_out",
-        "responsibility": "Stream Y data with coordinates/last framing.",
-        "registered": true,
-        "valid_behavior": "Holds payload stable while y_valid=1 and y_ready=0."
+        "valid_behavior": "Produces TILE_M*TILE_N outputs over sequenced emission.",
+        "stall_behavior": "Holds output payload stable while valid=1 and ready=0."
       }
     ],
-    "buffers": [
-      {
-        "name": "a_tile_buf",
-        "role": "Store A tile for K reuse across N lanes",
-        "implementation_hint": "single-port SRAM or reg array",
-        "depth": "ARRAY_M*MAX_K",
-        "element_width": "8"
-      },
-      {
-        "name": "b_tile_buf",
-        "role": "Store B tile for K reuse across M lanes",
-        "implementation_hint": "single-port SRAM or reg array",
-        "depth": "MAX_K*ARRAY_N",
-        "element_width": "8"
-      },
-      {
-        "name": "bias_buf",
-        "role": "Store per-column bias for active N tile",
-        "implementation_hint": "register file",
-        "depth": "ARRAY_N",
-        "element_width": "32"
-      },
-      {
-        "name": "out_skid",
-        "role": "Decouple output valid from ready",
-        "implementation_hint": "1-entry skid register",
-        "depth": "1",
-        "element_width": "output payload width"
-      }
-    ],
-    "control": "Single FSM with nested counters: tile_m, tile_n, k_idx, local_m, local_n; counters are width max(1,$clog2(PARAM)) style to avoid zero-width. Sequence: IDLE->LOAD->COMPUTE->DRAIN->NEXT_TILE/DONE.",
+    "control": {
+      "strategy": "Central FSM with nested counters",
+      "state_progression": "IDLE->LOAD_BIAS->COMPUTE_TILES->EMIT_TILE->DONE->IDLE",
+      "counters": [
+        "m_tile_idx",
+        "n_tile_idx",
+        "k_idx",
+        "emit_lane_idx",
+        "bias_load_idx",
+        "a_load_idx",
+        "b_load_idx"
+      ],
+      "error_behavior": "Illegal command (dimension 0 or above max) sets status_error and refuses start until next reset or clear command."
+    },
     "reset": {
       "style": "synchronous",
       "polarity": "active_low",
-      "required_state": "FSM to IDLE; all valids low; counters zero; accumulator valid flags cleared; no requirement to clear A/B memories before overwrite."
+      "required_state": "FSM to IDLE, valids low, ready defaults per IDLE policy, counters zero, error cleared."
     },
-    "latency_model": "Variable by M,N,K and backpressure. Per tile nominal cycles: load_cycles + K + drain_cycles; total over ceil(M/ARRAY_M)*ceil(N/ARRAY_N) tiles.",
+    "latency_model": "Variable latency: setup (bias load) + sum over tiles of (K MAC cycles + load/emit overhead), with additional stalls under backpressure.",
     "architectural_invariants": [
-      "Operation fixed to GEMM+per-column-bias+ReLU.",
-      "Input A/B are signed int8; bias/output are signed int32.",
-      "Accumulator width fixed 32 with wraparound overflow.",
-      "ReLU applied after bias add and before output emission.",
-      "Output ordering is deterministic tile-row-major then global tile order (tile_m major, tile_n minor).",
-      "No silent datatype or overflow semantic changes allowed."
+      "No output transaction occurs unless corresponding computation complete.",
+      "Output order is row-major over M then N.",
+      "Transfer condition on streaming channels is ready&&valid only.",
+      "Payload remains stable while stalled.",
+      "Accumulator cleared before each new output tile accumulation."
     ],
     "open_assumptions": [
-      "Bias is per output column n (length N), not per element.",
-      "Host provides exact payload counts for each tile based on command dimensions.",
-      "Maximum runtime dimensions bounded by MAX_M/MAX_N/MAX_K compile-time parameters (defaults 64 each).",
-      "Input streams provide metadata (tile coordinates/phase) via command channel rather than per-data beat."
+      "Single-job in-flight; no command queue.",
+      "A and B provided as streams already ordered for tile scheduler needs.",
+      "Bias loaded fully before compute starts.",
+      "No quantization/downcast at output; output is int32.",
+      "Overflow behavior is two's-complement wrap for int32 accumulation/add."
     ]
   },
   "interface_contract": {
-    "protocol": "AXI-stream-like ready/valid custom channels",
-    "clock": "clk",
-    "reset": "rst_n (synchronous active-low)",
+    "protocol": "ready_valid_streaming_with_control",
+    "clock": "single clk",
+    "reset": "rst_n synchronous active-low",
+    "channels": [
+      {
+        "name": "cmd",
+        "direction": "input",
+        "purpose": "Start operation and provide M,N,K",
+        "framing": "Single beat per job",
+        "ordering": "In program order",
+        "backpressure": "cmd_ready/cmd_valid handshake"
+      },
+      {
+        "name": "bias_in",
+        "direction": "input",
+        "purpose": "Bias vector elements",
+        "framing": "N beats per job",
+        "ordering": "Index 0..N-1",
+        "backpressure": "bias_ready/bias_valid handshake"
+      },
+      {
+        "name": "a_in",
+        "direction": "input",
+        "purpose": "Matrix A elements",
+        "framing": "M*K beats per job",
+        "ordering": "Row-major A[m][k]",
+        "backpressure": "a_ready/a_valid handshake"
+      },
+      {
+        "name": "b_in",
+        "direction": "input",
+        "purpose": "Matrix B elements",
+        "framing": "K*N beats per job",
+        "ordering": "Row-major over k then n for B[k][n]",
+        "backpressure": "b_ready/b_valid handshake"
+      },
+      {
+        "name": "y_out",
+        "direction": "output",
+        "purpose": "Output matrix elements",
+        "framing": "M*N beats per job",
+        "ordering": "Row-major Y[m][n]",
+        "backpressure": "y_ready/y_valid handshake"
+      },
+      {
+        "name": "status",
+        "direction": "output",
+        "purpose": "Done/error reporting",
+        "framing": "Level signals",
+        "ordering": "N/A",
+        "backpressure": "None"
+      }
+    ],
     "signals": [
       {
         "name": "clk",
         "direction": "input",
         "width": "1",
         "signed": false,
-        "semantic": "Primary clock",
-        "reset_value": "n/a"
+        "semantic": "clock",
+        "reset_value": "0"
       },
       {
         "name": "rst_n",
         "direction": "input",
         "width": "1",
         "signed": false,
-        "semantic": "Synchronous active-low reset",
+        "semantic": "synchronous active-low reset",
         "reset_value": "0"
       },
       {
@@ -206,7 +368,7 @@
         "direction": "input",
         "width": "1",
         "signed": false,
-        "semantic": "Command valid",
+        "semantic": "command valid",
         "reset_value": "0"
       },
       {
@@ -214,31 +376,55 @@
         "direction": "output",
         "width": "1",
         "signed": false,
-        "semantic": "Command ready",
-        "reset_value": "0"
+        "semantic": "command ready",
+        "reset_value": "1"
       },
       {
         "name": "cmd_m",
         "direction": "input",
-        "width": "$clog2(MAX_M+1)",
+        "width": "7",
         "signed": false,
-        "semantic": "Runtime M (1..MAX_M)",
+        "semantic": "runtime M (1..MAX_M)",
         "reset_value": "0"
       },
       {
         "name": "cmd_n",
         "direction": "input",
-        "width": "$clog2(MAX_N+1)",
+        "width": "7",
         "signed": false,
-        "semantic": "Runtime N (1..MAX_N)",
+        "semantic": "runtime N (1..MAX_N)",
         "reset_value": "0"
       },
       {
         "name": "cmd_k",
         "direction": "input",
-        "width": "$clog2(MAX_K+1)",
+        "width": "7",
         "signed": false,
-        "semantic": "Runtime K (1..MAX_K)",
+        "semantic": "runtime K (1..MAX_K)",
+        "reset_value": "0"
+      },
+      {
+        "name": "bias_valid",
+        "direction": "input",
+        "width": "1",
+        "signed": false,
+        "semantic": "bias data valid",
+        "reset_value": "0"
+      },
+      {
+        "name": "bias_ready",
+        "direction": "output",
+        "width": "1",
+        "signed": false,
+        "semantic": "bias data ready",
+        "reset_value": "0"
+      },
+      {
+        "name": "bias_data",
+        "direction": "input",
+        "width": "32",
+        "signed": true,
+        "semantic": "bias element",
         "reset_value": "0"
       },
       {
@@ -262,7 +448,7 @@
         "direction": "input",
         "width": "8",
         "signed": true,
-        "semantic": "Signed int8 A element stream",
+        "semantic": "A element",
         "reset_value": "0"
       },
       {
@@ -286,31 +472,7 @@
         "direction": "input",
         "width": "8",
         "signed": true,
-        "semantic": "Signed int8 B element stream",
-        "reset_value": "0"
-      },
-      {
-        "name": "bias_valid",
-        "direction": "input",
-        "width": "1",
-        "signed": false,
-        "semantic": "Bias data valid",
-        "reset_value": "0"
-      },
-      {
-        "name": "bias_ready",
-        "direction": "output",
-        "width": "1",
-        "signed": false,
-        "semantic": "Bias data ready",
-        "reset_value": "0"
-      },
-      {
-        "name": "bias_data",
-        "direction": "input",
-        "width": "32",
-        "signed": true,
-        "semantic": "Signed int32 bias element stream",
+        "semantic": "B element",
         "reset_value": "0"
       },
       {
@@ -318,7 +480,7 @@
         "direction": "output",
         "width": "1",
         "signed": false,
-        "semantic": "Output valid",
+        "semantic": "Y data valid",
         "reset_value": "0"
       },
       {
@@ -326,7 +488,7 @@
         "direction": "input",
         "width": "1",
         "signed": false,
-        "semantic": "Output ready",
+        "semantic": "Y data ready",
         "reset_value": "0"
       },
       {
@@ -334,15 +496,7 @@
         "direction": "output",
         "width": "32",
         "signed": true,
-        "semantic": "Signed int32 output element",
-        "reset_value": "0"
-      },
-      {
-        "name": "y_last",
-        "direction": "output",
-        "width": "1",
-        "signed": false,
-        "semantic": "Asserted on final output element of job",
+        "semantic": "Y element",
         "reset_value": "0"
       },
       {
@@ -350,7 +504,7 @@
         "direction": "output",
         "width": "1",
         "signed": false,
-        "semantic": "Pulses when full command completes",
+        "semantic": "Pulses high for one cycle when job completes",
         "reset_value": "0"
       },
       {
@@ -358,88 +512,103 @@
         "direction": "output",
         "width": "1",
         "signed": false,
-        "semantic": "Pulses on protocol/dimension error",
+        "semantic": "High when illegal command detected",
         "reset_value": "0"
       }
     ],
-    "handshake": {
-      "transfer_condition": "Per channel transfer occurs when valid && ready on rising clk.",
-      "stall_behavior": "Source must hold payload stable while valid=1 and ready=0.",
-      "backpressure_supported": true,
-      "ordering": "In-order consumption per channel; outputs emitted deterministic order matching contract."
+    "global_handshake_rules": {
+      "transfer_condition": "A transfer occurs iff ready && valid on that channel.",
+      "stall_behavior": "While valid=1 and ready=0, payload and sideband remain stable."
     }
   },
   "module_manifest": {
-    "top": "gemm_bias_relu_int8_core",
+    "top": "gemm_bias_relu_npu_top",
     "modules": [
       {
-        "name": "gemm_bias_relu_int8_core",
-        "responsibility": "Top integration, interface, global FSM/control",
+        "name": "gemm_bias_relu_npu_top",
+        "responsibility": "Top-level integration and external interface.",
         "dependencies": [
-          "cmd_decoder",
-          "tile_loader",
-          "mac_array",
-          "postprocess_relu",
-          "output_streamer"
+          "control_fsm",
+          "stream_ingress",
+          "mac_tile_engine",
+          "postproc_emit"
+        ],
+        "parameters": [
+          "MAX_M",
+          "MAX_N",
+          "MAX_K",
+          "TILE_M",
+          "TILE_N"
         ],
         "stateful": true
       },
       {
-        "name": "cmd_decoder",
-        "responsibility": "Validate and latch command dimensions; generate tile schedule bounds",
+        "name": "control_fsm",
+        "responsibility": "Job sequencing, counters, legality checks, done/error generation.",
         "dependencies": [],
+        "parameters": [
+          "MAX_M",
+          "MAX_N",
+          "MAX_K",
+          "TILE_M",
+          "TILE_N"
+        ],
         "stateful": true
       },
       {
-        "name": "tile_loader",
-        "responsibility": "Drive a/b/bias ready signals and fill tile buffers with counted payloads",
+        "name": "stream_ingress",
+        "responsibility": "Handshake management and loading of bias/A/B into internal buffers.",
         "dependencies": [],
+        "parameters": [
+          "MAX_N",
+          "TILE_M",
+          "TILE_N"
+        ],
         "stateful": true
       },
       {
-        "name": "mac_array",
-        "responsibility": "Perform int8xint8 MAC over K into int32 accumulators for ARRAY_MxARRAY_N tile",
+        "name": "mac_tile_engine",
+        "responsibility": "Parallel int8 multiply-accumulate over K into int32 tile accumulators.",
         "dependencies": [],
+        "parameters": [
+          "TILE_M",
+          "TILE_N"
+        ],
         "stateful": true
       },
       {
-        "name": "postprocess_relu",
-        "responsibility": "Bias application and ReLU clamp",
+        "name": "postproc_emit",
+        "responsibility": "Bias add, ReLU, and ordered y_out streaming.",
         "dependencies": [],
-        "stateful": false
-      },
-      {
-        "name": "output_streamer",
-        "responsibility": "Serialize tile outputs, manage y_valid/y_ready/y_last and skid buffer",
-        "dependencies": [],
+        "parameters": [
+          "TILE_M",
+          "TILE_N"
+        ],
         "stateful": true
       }
     ]
   },
   "acceptance_criteria": {
     "functional": [
-      "For all legal M,N,K and inputs, output equals exact integer model Y=ReLU(AxB+bias) with int8/int8/int32 types and 32-bit wraparound accumulation.",
-      "Signed behavior verified: negative operands multiply/accumulate correctly via sign extension.",
-      "Bias is applied per output column n before ReLU.",
-      "ReLU outputs max(0,x) in int32 domain."
+      "For any legal M,N,K and inputs, output Y equals ReLU(AxB + Bias) with exact integer arithmetic and two's-complement wrap in int32 accumulation/add.",
+      "Output sequence is exactly row-major over m then n.",
+      "Bias is applied per output column n to every row m."
     ],
     "verification": [
-      "Directed tests: minimal edge (M=N=K=1), non-multiples of tile sizes, max bounds, all-zero, all-negative, overflow-provoking patterns.",
-      "Randomized regression with >=100 randomized transactions and exact integer scoreboarding.",
-      "Reset tests required: assert/deassert reset during idle and active streaming; verify deterministic recovery.",
-      "Backpressure tests required on output and input channels; verify payload stability and no data loss/duplication.",
-      "Protocol error tests: illegal cmd dimensions (0 or >MAX) raise status_error and do not produce outputs."
+      "Minimum 100 randomized legal transactions across varied M,N,K including boundary cases 1 and 64.",
+      "Reset tests verify deterministic return to IDLE, cleared valids/status_done low/status_error low.",
+      "Backpressure tests on all ready/valid channels verify no loss/duplication and stable payload under stall.",
+      "Directed tests for illegal cmd values (0 or >max) verify status_error behavior and no output emission."
     ],
     "rtl": [
-      "SystemVerilog synthesizable subset only; no forbidden constructs (real/shortreal/delay/force-release/classes).",
-      "All counters/indices use legal non-zero widths at minimum parameter values.",
-      "No combinational ready/valid loops across module boundaries.",
-      "Reset initializes protocol/control state without mandatory bulk memory clear."
+      "RTL is SystemVerilog synthesizable-only and excludes forbidden constructs: real, shortreal, delay statements, force/release, classes.",
+      "No combinational ready/valid loops causing non-synthesizable behavior.",
+      "All counters and index widths support configured bounds without overflow in addressing/control."
     ],
     "synopsys_handoff": [
-      "Deliver verified RTL package with matching architecture/interface contracts and test evidence.",
-      "Do not report timing/area/power/frequency/utilization unless from deterministic Synopsys tool report conforming to required schema.",
-      "Include parameter/default list and legality constraints used in verification."
+      "Provide deterministic Synopsys synthesis report conforming to multigent/schemas/synthesis_result.schema.json.",
+      "Report generation only after verification pass; no estimated or inferred metrics accepted.",
+      "All reported PPA/timing/utilization values must come from authoritative deterministic tool report."
     ]
   }
 }
