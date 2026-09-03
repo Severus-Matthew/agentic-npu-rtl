@@ -3,6 +3,7 @@ from __future__ import annotations
 from multigent.orchestration.graph import build_workflow_graph
 from multigent.orchestration.routes import (
     route_after_architect,
+    route_after_debugger,
     route_after_rtl,
     route_after_verification,
     route_after_verifier,
@@ -10,7 +11,7 @@ from multigent.orchestration.routes import (
 )
 
 
-def test_langgraph_compiles_verification_nodes() -> None:
+def test_langgraph_compiles_repair_nodes() -> None:
     class StubArchitect:
         pass
 
@@ -20,10 +21,14 @@ def test_langgraph_compiles_verification_nodes() -> None:
     class StubVerifier:
         pass
 
+    class StubDebugger:
+        pass
+
     graph = build_workflow_graph(  # type: ignore[arg-type]
         architect_agent=StubArchitect(),
         rtl_agent=StubRTL(),
         verifier_agent=StubVerifier(),
+        debugger_agent=StubDebugger(),
     )
     nodes = set(graph.get_graph().nodes)
     assert {
@@ -31,8 +36,9 @@ def test_langgraph_compiles_verification_nodes() -> None:
         "rtl_generator",
         "verifier",
         "verification_tools",
+        "debugger",
         "synthesis",
-        "repair_required",
+        "repair_exhausted",
         "tool_unavailable",
         "failed",
     } <= nodes
@@ -60,8 +66,20 @@ def test_rtl_conflict_stops_when_architecture_budget_exhausted() -> None:
     assert route_after_rtl(state) == "failed"
 
 
-def test_generated_rtl_routes_to_independent_verifier() -> None:
-    assert route_after_rtl({"rtl_status": "RTL_GENERATED"}) == "verifier"
+def test_initial_generated_rtl_routes_to_independent_verifier() -> None:
+    assert route_after_rtl(
+        {"rtl_status": "RTL_GENERATED", "rtl_task_type": "INITIAL_GENERATION"}
+    ) == "verifier"
+
+
+def test_functional_repair_reuses_frozen_verifier() -> None:
+    state = {
+        "rtl_status": "RTL_GENERATED",
+        "rtl_task_type": "FUNCTIONAL_REPAIR",
+        "verifier_status": "VERIFICATION_READY",
+        "verification_plan": {"top_module": "top"},
+    }
+    assert route_after_rtl(state) == "verification_tools"
 
 
 def test_verifier_ready_routes_to_deterministic_tools() -> None:
@@ -77,8 +95,39 @@ def test_verifier_architecture_conflict_uses_revision_budget() -> None:
     assert route_after_verifier(state) == "architect"
 
 
-def test_compile_failure_routes_to_repair() -> None:
-    assert route_after_verification({"verification_status": "COMPILE_FAILURE"}) == "repair_required"
+def test_compile_failure_routes_to_debugger_with_budget() -> None:
+    state = {
+        "verification_status": "COMPILE_FAILURE",
+        "repair_iteration": 0,
+        "max_repair_iterations": 5,
+    }
+    assert route_after_verification(state) == "debugger"
+
+
+def test_compile_failure_stops_when_repair_budget_exhausted() -> None:
+    state = {
+        "verification_status": "COMPILE_FAILURE",
+        "repair_iteration": 5,
+        "max_repair_iterations": 5,
+    }
+    assert route_after_verification(state) == "repair_exhausted"
+
+
+def test_debugger_plan_routes_to_functional_repair() -> None:
+    assert route_after_debugger({"debugger_status": "REPAIR_PLAN_READY"}) == "rtl_generator"
+
+
+def test_debugger_architecture_escalation_uses_architecture_budget() -> None:
+    state = {
+        "debugger_status": "ARCHITECTURE_ESCALATION",
+        "architecture_revision": 0,
+        "max_architecture_revisions": 2,
+    }
+    assert route_after_debugger(state) == "architect"
+
+
+def test_debugger_insufficient_evidence_stops() -> None:
+    assert route_after_debugger({"debugger_status": "EVIDENCE_INSUFFICIENT"}) == "failed"
 
 
 def test_pass_routes_to_synthesis() -> None:
