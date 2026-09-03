@@ -1,42 +1,44 @@
-def s8(x):
+def to_s8(x: int) -> int:
     x &= 0xFF
-    return x - 256 if x & 0x80 else x
+    return x - 0x100 if x & 0x80 else x
 
 
-def s16(x):
+def to_s16(x: int) -> int:
     x &= 0xFFFF
-    return x - 65536 if x & 0x8000 else x
+    return x - 0x10000 if x & 0x8000 else x
 
 
-def s32(x):
+def to_s32(x: int) -> int:
     x &= 0xFFFFFFFF
-    return x - 4294967296 if x & 0x80000000 else x
+    return x - 0x100000000 if x & 0x80000000 else x
 
 
-def add32(a, b):
-    return s32((a & 0xFFFFFFFF) + (b & 0xFFFFFFFF))
+def i32_add_wrap(a: int, b: int) -> int:
+    return to_s32((a + b) & 0xFFFFFFFF)
 
 
-def pack_cmd(M, N, K, bias_enable):
-    v = 0
-    v |= (M & 0xFFFF)
-    v |= ((N & 0xFFFF) << 16)
-    v |= ((K & 0xFFFF) << 32)
-    v |= ((1 if bias_enable else 0) << 48)
-    return v
+def pack_cmd(M: int, N: int, K: int, bias_enable: int) -> int:
+    cmd = 0
+    cmd |= (M & 0xFFFF)
+    cmd |= ((N & 0xFFFF) << 16)
+    cmd |= ((K & 0xFFFF) << 32)
+    cmd |= ((bias_enable & 0x1) << 48)
+    return cmd
 
 
-def gemm_bias_relu_ref(M, N, K, A_row_major, B_row_major, bias_enable, bias_vec):
+def gemm_bias_relu_ref(M, N, K, a_row_major, b_row_major, bias_enable, bias_vec):
     out = []
     for m in range(M):
         for n in range(N):
             acc = 0
             for k in range(K):
-                a = s8(A_row_major[m * K + k])
-                b = s8(B_row_major[k * N + n])
-                prod16 = s16(a * b)
-                acc = add32(acc, prod16)
+                a = to_s8(a_row_major[m * K + k])
+                b = to_s8(b_row_major[k * N + n])
+                prod16 = to_s16(a * b)
+                acc = i32_add_wrap(acc, prod16)
+            t = acc
             if bias_enable:
-                acc = add32(acc, s32(bias_vec[n]))
-            out.append(acc if acc > 0 else 0)
+                t = i32_add_wrap(t, to_s32(bias_vec[n]))
+            y = t if t > 0 else 0
+            out.append(to_s32(y))
     return out
