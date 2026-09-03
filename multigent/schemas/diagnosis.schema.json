@@ -1,5 +1,50 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Failure Diagnosis",
-  "type": "object"
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "failure_class",
+    "root_cause",
+    "confidence",
+    "first_divergence",
+    "evidence",
+    "affected_modules",
+    "alternative_hypotheses",
+    "architecture_change_required",
+    "additional_evidence_requested"
+  ],
+  "properties": {
+    "failure_class": {"type": "string"},
+    "root_cause": {"type": "string"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "first_divergence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cycle", "signal_or_output", "expected", "observed"],
+      "properties": {
+        "cycle": {"type": ["integer", "null"], "minimum": 0},
+        "signal_or_output": {"type": "string"},
+        "expected": {"type": "string"},
+        "observed": {"type": "string"}
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "observation", "relevance"],
+        "properties": {
+          "source": {"type": "string"},
+          "observation": {"type": "string"},
+          "relevance": {"type": "string"}
+        }
+      }
+    },
+    "affected_modules": {"type": "array", "items": {"type": "string"}},
+    "alternative_hypotheses": {"type": "array", "items": {"type": "string"}},
+    "architecture_change_required": {"type": "boolean"},
+    "additional_evidence_requested": {"type": "array", "items": {"type": "string"}}
+  }
 }
