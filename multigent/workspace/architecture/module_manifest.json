@@ -3,96 +3,83 @@
   "modules": [
     {
       "name": "gemm_bias_relu_npu_top",
-      "responsibility": "top-level integration and external interface",
+      "responsibility": "top integration, interface termination, global FSM, status generation",
       "dependencies": [
-        "control_fsm",
-        "cmd_decoder",
-        "ingress_loader",
-        "compute_core",
+        "cfg_unit",
+        "stream_ingress",
+        "mac_tile_core",
         "postproc_unit",
-        "egress_unit",
-        "status_unit"
+        "egress_unit"
       ],
       "parameters": [
         "MAX_M",
         "MAX_N",
         "MAX_K",
-        "LANES_N",
-        "CMD_WIDTH",
-        "STATUS_WIDTH"
+        "TILE_M",
+        "TILE_N",
+        "CFG_FIELDS",
+        "CMD_W",
+        "A_W",
+        "B_W",
+        "BIAS_W",
+        "OUT_W"
       ],
       "stateful": true
     },
     {
-      "name": "cmd_decoder",
-      "responsibility": "decode and validate command fields",
+      "name": "cfg_unit",
+      "responsibility": "decode/validate command and hold runtime dimensions",
       "dependencies": [],
       "parameters": [
         "MAX_M",
         "MAX_N",
         "MAX_K",
-        "CMD_WIDTH"
-      ],
-      "stateful": false
-    },
-    {
-      "name": "control_fsm",
-      "responsibility": "phase control, counters, and error state handling",
-      "dependencies": [],
-      "parameters": [
-        "MAX_M",
-        "MAX_N",
-        "MAX_K",
-        "LANES_N"
+        "CMD_W"
       ],
       "stateful": true
     },
     {
-      "name": "ingress_loader",
-      "responsibility": "accept A/B/bias streams and write local buffers",
+      "name": "stream_ingress",
+      "responsibility": "accept bias/A/B streams and present lane operands per schedule",
       "dependencies": [],
       "parameters": [
-        "MAX_M",
-        "MAX_N",
-        "MAX_K"
+        "TILE_M",
+        "TILE_N",
+        "A_W",
+        "B_W",
+        "BIAS_W",
+        "MAX_N"
       ],
       "stateful": true
     },
     {
-      "name": "compute_core",
-      "responsibility": "LANES_N parallel MAC engine over buffered operands",
+      "name": "mac_tile_core",
+      "responsibility": "TILE_M x TILE_N int8 MAC accumulation across K",
       "dependencies": [],
       "parameters": [
-        "MAX_N",
-        "MAX_K",
-        "LANES_N"
+        "TILE_M",
+        "TILE_N"
       ],
       "stateful": true
     },
     {
       "name": "postproc_unit",
-      "responsibility": "bias add and ReLU on finalized accumulators",
+      "responsibility": "bias add and ReLU for finalized tile accumulators",
       "dependencies": [],
       "parameters": [
-        "LANES_N"
+        "TILE_M",
+        "TILE_N"
       ],
-      "stateful": true
+      "stateful": false
     },
     {
       "name": "egress_unit",
-      "responsibility": "row-major output streaming with backpressure handling",
+      "responsibility": "ordered output streaming and done signaling",
       "dependencies": [],
       "parameters": [
-        "LANES_N"
-      ],
-      "stateful": true
-    },
-    {
-      "name": "status_unit",
-      "responsibility": "status code generation and handshake",
-      "dependencies": [],
-      "parameters": [
-        "STATUS_WIDTH"
+        "TILE_M",
+        "TILE_N",
+        "OUT_W"
       ],
       "stateful": true
     }

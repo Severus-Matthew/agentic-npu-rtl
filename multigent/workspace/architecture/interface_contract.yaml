@@ -1,56 +1,83 @@
-protocol: AXI-stream-like ready/valid channels with sideband section identifiers
-clock: clk
-reset: rst_n (active low synchronous)
+protocol: AXI-stream-like ready/valid discrete channels
+clock: single rising-edge clock
+reset: active-low synchronous reset
 channels:
-- name: cmd_chan
+- name: cmd
   direction: input
-  purpose: job descriptor
+  purpose: job configuration
   data_objects:
-  - obj_cmd
-  metadata: []
-  framing: single transfer per job
-  ordering: must arrive before any data payload
+  - cfg_cmd
+  metadata:
+  - cmd_valid
+  - cmd_ready
+  framing: single beat per job; bits[15:0]=M bits[31:16]=N bits[47:32]=K
+  ordering: one command only accepted in IDLE
   backpressure: supported via cmd_ready
-- name: in_data_chan
+- name: a_in
   direction: input
-  purpose: serialized A/B/bias payload ingress
+  purpose: A operand stream
   data_objects:
-  - obj_a_stream
-  - obj_b_stream
-  - obj_bias_stream
+  - tensor_a
   metadata:
-  - in_section[1:0]
-  - in_last
-  framing: A section exactly M*K transfers, then B section exactly K*N transfers,
-    then optional bias section exactly N transfers
-  ordering: strict section order A->B->bias(if enabled), each row-major
-  backpressure: supported via in_ready
-- name: out_data_chan
+  - a_valid
+  - a_ready
+  framing: one int8 element per beat in bits[7:0]
+  ordering: 'for each tile_m, tile_n, and each k: send rows r=0..TILE_M-1 for global
+    row m=tile_m*TILE_M+r when m<M; skip invalid edge rows'
+  backpressure: supported
+- name: b_in
+  direction: input
+  purpose: B operand stream
+  data_objects:
+  - tensor_b
+  metadata:
+  - b_valid
+  - b_ready
+  framing: one int8 element per beat in bits[7:0]
+  ordering: 'for each tile_m, tile_n, and each k: send cols c=0..TILE_N-1 for global
+    col n=tile_n*TILE_N+c when n<N; skip invalid edge cols'
+  backpressure: supported
+- name: bias_in
+  direction: input
+  purpose: bias vector stream
+  data_objects:
+  - bias_vec
+  metadata:
+  - bias_valid
+  - bias_ready
+  framing: one int32 element per beat bits[31:0]
+  ordering: n=0..N-1 exactly once after command and before compute
+  backpressure: supported
+- name: out
   direction: output
-  purpose: C payload egress
+  purpose: final result stream
   data_objects:
-  - obj_c_stream
+  - output_tensor
   metadata:
+  - out_valid
+  - out_ready
   - out_last
-  framing: exactly M*N transfers
-  ordering: row-major C
-  backpressure: supported via out_ready
-- name: status_chan
+  - out_user_err
+  framing: one int32 per beat bits[31:0]; out_last asserted on final element of job
+  ordering: tile-major deterministic order matching architecture invariant
+  backpressure: supported
+- name: status
   direction: output
-  purpose: job completion or error code
-  data_objects:
-  - obj_status
-  metadata: []
-  framing: single transfer after successful out_data completion or immediately on
-    error
-  ordering: one status per job
-  backpressure: supported via status_ready
+  purpose: job completion
+  data_objects: []
+  metadata:
+  - done_valid
+  - done_ready
+  - done_error
+  framing: single beat at job end
+  ordering: exactly one status beat per accepted command
+  backpressure: supported
 signals:
 - name: clk
   direction: input
   width: '1'
   signed: false
-  semantic: clock
+  semantic: system clock
   reset_value: '0'
 - name: rst_n
   direction: input
@@ -72,84 +99,113 @@ signals:
   reset_value: '0'
 - name: cmd_data
   direction: input
-  width: CMD_WIDTH
+  width: CMD_W
   signed: false
-  semantic: 'command bitfields: [15:0]M,[31:16]N,[47:32]K,[48]bias_enable,[49]relu_enable,others
-    reserved 0'
+  semantic: packed M,N,K
   reset_value: '0'
-- name: in_valid
+- name: a_valid
   direction: input
   width: '1'
   signed: false
-  semantic: input payload valid
+  semantic: A beat valid
   reset_value: '0'
-- name: in_ready
+- name: a_ready
   direction: output
   width: '1'
   signed: false
-  semantic: input payload ready
+  semantic: A beat ready
   reset_value: '0'
-- name: in_data
+- name: a_data
   direction: input
-  width: '32'
-  signed: false
-  semantic: payload; int8 uses bits[7:0] sign-interpreted, int32 uses bits[31:0]
+  width: A_W
+  signed: true
+  semantic: A element
   reset_value: '0'
-- name: in_section
-  direction: input
-  width: '2'
-  signed: false
-  semantic: 00=A,01=B,10=bias
-  reset_value: '0'
-- name: in_last
+- name: b_valid
   direction: input
   width: '1'
   signed: false
-  semantic: last beat of current section
+  semantic: B beat valid
+  reset_value: '0'
+- name: b_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: B beat ready
+  reset_value: '0'
+- name: b_data
+  direction: input
+  width: B_W
+  signed: true
+  semantic: B element
+  reset_value: '0'
+- name: bias_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: bias beat valid
+  reset_value: '0'
+- name: bias_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: bias beat ready
+  reset_value: '0'
+- name: bias_data
+  direction: input
+  width: BIAS_W
+  signed: true
+  semantic: bias element
   reset_value: '0'
 - name: out_valid
   direction: output
   width: '1'
   signed: false
-  semantic: output payload valid
+  semantic: output valid
   reset_value: '0'
 - name: out_ready
   direction: input
   width: '1'
   signed: false
-  semantic: output payload ready
+  semantic: output ready
   reset_value: '0'
 - name: out_data
   direction: output
-  width: '32'
+  width: OUT_W
   signed: true
-  semantic: C int32 element
+  semantic: output element
   reset_value: '0'
 - name: out_last
   direction: output
   width: '1'
   signed: false
-  semantic: last C element of job
+  semantic: final output beat marker
   reset_value: '0'
-- name: status_valid
+- name: out_user_err
+  direction: output
+  width: '1'
+  signed: false
+  semantic: error marker (1 if job failed)
+  reset_value: '0'
+- name: done_valid
   direction: output
   width: '1'
   signed: false
   semantic: status valid
   reset_value: '0'
-- name: status_ready
+- name: done_ready
   direction: input
   width: '1'
   signed: false
   semantic: status ready
   reset_value: '0'
-- name: status_data
+- name: done_error
   direction: output
-  width: STATUS_WIDTH
+  width: '1'
   signed: false
-  semantic: status[7:0] code (0=OK,1=BAD_DIM,2=BAD_SECTION,3=EARLY_LAST,4=PROTOCOL),
-    status[31:8]=0
+  semantic: status error flag
   reset_value: '0'
 global_handshake_rules:
-  transfer_condition: A channel transfer occurs iff ready && valid on that channel.
-  stall_behavior: Producer must hold payload/metadata stable while valid=1 and ready=0.
+  transfer_condition: A channel transfer occurs iff ready && valid on same cycle.
+  stall_behavior: While valid=1 and ready=0, payload and sideband metadata must remain
+    stable until transfer.

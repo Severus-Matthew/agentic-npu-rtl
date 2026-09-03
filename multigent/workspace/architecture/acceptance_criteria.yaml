@@ -1,27 +1,28 @@
 functional:
-- For each legal M,N,K, output C equals int32(ReLU((A*B)+bias)) per command enables,
-  exact integer semantics.
-- When bias_enable=0, bias input section is not required and bias term treated as
-  zero.
-- When relu_enable=0, negative outputs are preserved.
+- For every legal M,N,K and inputs A,B,bias, output stream equals software reference
+  ReLU((A*B)+bias) with signed int32 wrap arithmetic.
+- 'Bias index is column-wise: bias[n] added to all rows m for fixed n.'
+- Edge tiles (when M or N not divisible by tile sizes) produce only legal indices
+  with no extra outputs.
 verification:
-- Minimum 100 randomized jobs across legal bounds with software golden model comparison.
-- 'Directed boundary tests: M/N/K at 1 and at MAX_M/MAX_N/MAX_K, plus N not divisible
-  by LANES_N.'
-- 'Reset tests required: reset during IDLE and mid-job; post-reset first job must
-  execute correctly.'
-- Backpressure tests required on in_data, out_data, and status channels with random
-  ready deassertions.
-- 'Protocol violation tests: bad dimensions, wrong section order, early/late in_last;
-  must emit nonzero status code.'
+- Minimum 100 randomized legal transactions across varying M,N,K including boundary
+  values 1 and MAX_*.
+- 'Reset test required: asserting/deasserting rst_n returns interface/control to required
+  reset state before next command.'
+- Backpressure tests required on all ready/valid inputs and outputs with random stalls;
+  no data loss/duplication.
+- 'Protocol-negative tests: illegal dimensions (0 or >max) must produce done_error=1
+  and no output data.'
 rtl:
-- 'RTL must be synthesizable SystemVerilog and avoid forbidden constructs: real, shortreal,
-  delay statements, force/release, classes.'
-- All sequential logic uses clk and synchronous active-low reset behavior per contract.
-- No undefined-width signals; parameterized widths remain legal for all legal parameter
-  values.
+- SystemVerilog synthesizable subset only; no real/shortreal/delay/force-release/classes.
+- No combinational loops; sequential state updates on clk edge with synchronous active-low
+  reset behavior as specified.
+- Payload stability under stall must be provable by assertions on each valid/ready
+  channel.
 synopsys_handoff:
 - Synthesis/timing/power/area/frequency/utilization claims accepted only from deterministic
-  Synopsys tool reports.
-- Reported metrics must conform to multigent/schemas/synthesis_result.schema.json.
-- No estimated or inferred PPA numbers are permitted without authoritative reports.
+  Synopsys tool reports conforming to multigent/schemas/synthesis_result.schema.json.
+- No estimated or inferred PPA metrics allowed without authoritative deterministic
+  report.
+- Handoff requires verified RTL passing functional and protocol acceptance criteria
+  prior to Synopsys runs.
