@@ -1,150 +1,57 @@
 # Multi-Agent NPU Runtime
 
-This directory contains the executable LangGraph-based multi-agent system for autonomous NPU RTL generation, verification, repair, and optimization planning.
+This directory contains the executable multi-agent runtime for autonomous NPU RTL generation, independent verification, repair, and implementation-quality evaluation.
 
-All LLM roles use the **same configured API model** so model capability remains controlled across one-shot, single-agent, and multi-agent experiments. The role instructions live separately under `../Skills/npu_multiagent_skills/skills/`. Every agent loads `project_contract` plus its role-specific skill.
+All LLM roles use the same configured API model so model capability remains controlled across one-shot, single-agent, and multi-agent experiments.
 
-## User-facing input philosophy
+## User input
 
-The user should provide only the computational intent, not a hand-written architecture specification.
-
-Example:
+The user provides computational intent only, for example:
 
 ```text
 design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type
 ```
 
-The runtime then separates three sources of authority:
+The Architect is not given a hand-written microarchitecture. A deterministic intake layer adds only fixed technical constraints:
 
-```text
-USER
-  └── computation / datatype intent only
+- synthesizable SystemVerilog
+- forbidden RTL constructs
+- verification requirements
+- deterministic Synopsys-report policy
 
-RUNTIME
-  └── fixed project rules
-      ├── SystemVerilog
-      ├── synthesizable RTL only
-      ├── forbidden RTL constructs
-      ├── verification policy
-      └── external Synopsys ownership
+The Architect must resolve unspecified technical choices such as:
 
-ARCHITECT AGENT
-  └── actual architecture decisions
-      ├── compute organization
-      ├── array dimensions
-      ├── dataflow
-      ├── buffering
-      ├── pipeline
-      ├── interface / handshake
-      ├── reset behavior
-      ├── overflow semantics
-      ├── parameterization
-      ├── control
-      ├── latency model
-      └── module decomposition
-```
+- exact arithmetic and overflow semantics
+- supported M/N/K bounds
+- compute organization and array dimensions
+- tiling/dataflow
+- operand reuse and storage
+- buffering
+- pipeline/control
+- interface and backpressure
+- reset behavior
+- parameterization
+- module decomposition
 
-This distinction is important experimentally: architecture choices are attributable to the Architect agent rather than being hidden in a large user-authored YAML file.
+This separation makes architecture choices attributable to the Architect rather than hidden in the user input.
 
-Fixed project rules live in:
+Fixed technical constraints live in:
 
 ```text
 multigent/config/project_constraints.yaml
 ```
 
-The natural-language intake builder lives in:
+The intake builder lives in:
 
 ```text
 multigent/intake/request_builder.py
 ```
 
-## Ownership boundary
+## Architect execution
 
-The multi-agent team owns architecture generation, RTL generation, independent verification, debug/repair, and PPA decision logic.
+The Architect receives only its technical skill plus the deterministic intake envelope. It does not receive unrelated Debugger/PPA/workflow instructions.
 
-**Synopsys execution is externally owned.** `tools/synopsys_interface.py` is only the integration contract. The runtime must never fabricate synthesis, timing, power, or area values when a real Synopsys report is unavailable.
-
-## Runtime Flow
-
-```text
-minimal natural-language request
-             |
-             v
- deterministic intake builder
-             |
-             v
-Architect Agent (API model)
-      |
-      +-----------------------+
-      |                       |
-      v                       v
-RTL Generator            Verifier
- (API model)             (API model)
-      |                       |
-      +-----------+-----------+
-                  |
-                  v
-        Deterministic Verification
-        lint / compile / simulation
-              /          \
-           FAIL          PASS
-            |              |
-            v              v
-   Debugger (API model)  verified RTL handoff
-            |              |
-            +--> RTL       v
-                    external Synopsys flow
-                              |
-                              v
-                    PPA Judge (API model)
-                              |
-                    +---------+---------+
-                    |                   |
-                optimize             accept
-                    |                   |
-                    +--> RTL            v
-                                   Final RTL
-```
-
-## Agent execution model
-
-Agents call the configured OpenAI API directly through the Python SDK. The model returns schema-constrained structured proposals; each Python role wrapper writes only that role's whitelisted artifacts. This gives us enforceable ownership boundaries rather than relying solely on prompt instructions.
-
-## Local API setup
-
-Install dependencies:
-
-```bash
-pip install -r multigent/requirements.txt
-```
-
-Copy the example configuration:
-
-```bash
-cp .env.example .env
-```
-
-For the standard OpenAI endpoint, `OPENAI_BASE_URL` may be left blank.
-
-```bash
-OPENAI_API_KEY=your_real_key
-OPENAI_BASE_URL=
-NPU_AGENT_MODEL=gpt-5.3-codex
-NPU_AGENT_API_MODE=responses
-NPU_AGENT_TRUST_ENV=false
-```
-
-`.env` is gitignored. Never commit or paste the real API key into GitHub, issues, logs, or prompts.
-
-Check the connection before running an agent:
-
-```bash
-python -m multigent.scripts.check_api --list-models
-```
-
-## Agent 1: Architect
-
-The normal Architect command is now:
+Run:
 
 ```bash
 python -m multigent.agents.architect \
@@ -152,13 +59,13 @@ python -m multigent.agents.architect \
   --run-id dense-gemm-001
 ```
 
-The runtime automatically records the exact request plus injected project policy at:
+The exact request and injected technical policy are recorded at:
 
 ```text
 multigent/workspace/specs/request-dense-gemm-001.yaml
 ```
 
-On `READY`, the Architect may create only:
+On `READY`, the Architect writes:
 
 ```text
 multigent/workspace/architecture/
@@ -169,13 +76,25 @@ multigent/workspace/architecture/
 └── architect_result.json
 ```
 
-It must not create or edit SystemVerilog.
+The Architect never writes SystemVerilog.
 
-The old `--spec <yaml>` input remains only for legacy benchmarks/tests and is not the preferred research workflow.
+## Architect contract requirements
 
-## Preparing the RTL Generator input
+Before returning `READY`, the architecture must close all implementation-critical semantics. In particular:
 
-After the Architect succeeds, build the next agent's complete input deterministically:
+- INT arithmetic widths/signedness/extension/overflow must be explicit.
+- Supported dimension bounds must be explicit.
+- Every operand's ordering, supply frequency, reuse strategy, storage strategy, and capacity must be explicit.
+- Tiled reuse must be realizable from the stated storage and interface protocol.
+- Buffer capacities must be sufficient for the declared dimension bounds and schedule.
+- Compile-time parameters must have concrete defaults and legality constraints.
+- Interface widths must remain legal at minimum parameter values.
+- Reset must restore control/protocol state without unnecessary bulk memory clearing.
+- No EDA metric may be invented; synthesis/PPA values come only from deterministic Synopsys reports.
+
+## Preparing RTL Generator input
+
+After the Architect produces a valid frozen contract:
 
 ```bash
 python -m multigent.scripts.prepare_rtl_input \
@@ -188,41 +107,42 @@ This creates:
 multigent/workspace/specs/derived/rtl-input-dense-gemm-001.yaml
 ```
 
-That file combines:
+The RTL input is assembled from:
 
 1. the exact original user request,
-2. fixed RTL/project constraints, and
-3. the Architect's frozen architecture/interface/module/acceptance contracts.
+2. fixed RTL/synthesis constraints, and
+3. the frozen architecture/interface/module/acceptance artifacts.
 
-The user does **not** need to restate those details for the RTL Generator.
+The user does not restate architecture details for the RTL Generator.
 
-## Directory Responsibilities
+## API setup
 
-- `intake/` — converts minimal user intent into machine-owned agent context without inventing architecture.
-- `orchestrator/` — LangGraph state, nodes, routing, retry limits, checkpoints, and termination.
-- `agents/` — API-backed role wrappers that load the project contract and role-specific skills.
-- `tools/` — deterministic verification tools plus the external Synopsys integration boundary.
-- `schemas/` — machine-readable contracts for all agent handoffs and tool results.
-- `config/` — project constraints, workflow, retry, toolchain, and experiment settings.
-- `workspace/` — run-time artifacts produced by the agents and deterministic tools.
-- `benchmarks/` — fixed natural-language benchmark requests and legacy structured fixtures.
-- `experiments/` — one-shot, single-agent, and multi-agent experiment definitions/results.
-- `tests/` — software tests for the graph, schemas, permissions, and tool wrappers.
-- `scripts/` — CLI entry points for workflow, context preparation, and baselines.
+Install dependencies:
 
-## Workspace ownership
-
-```text
-workspace/specs/          original/derived runtime inputs
-workspace/architecture/   Architect Agent
-workspace/rtl/            RTL Generator
-workspace/reference/      Verifier
-workspace/tests/          Verifier
-workspace/diagnostics/    Debugger
-workspace/synthesis/      external Synopsys results only
-workspace/optimization/   PPA Judge
-workspace/logs/           orchestrator + agent/tool logs
-workspace/final/          accepted deliverables only
+```bash
+pip install -r multigent/requirements.txt
 ```
 
-LLMs propose. Deterministic engineering tools decide correctness. Synopsys-generated reports decide implementation metrics when the external integration is available.
+Configure `.env` locally:
+
+```bash
+OPENAI_API_KEY=your_real_key
+OPENAI_BASE_URL=
+NPU_AGENT_MODEL=gpt-5.3-codex
+NPU_AGENT_API_MODE=responses
+NPU_AGENT_TRUST_ENV=false
+```
+
+`.env` is gitignored. Verify API access with:
+
+```bash
+python -m multigent.scripts.check_api --list-models
+```
+
+## Technical synthesis boundary
+
+`tools/synopsys_interface.py` defines the integration contract for Synopsys execution. The multi-agent runtime consumes real structured reports from that interface and never substitutes LLM-estimated timing, area, power, frequency, or utilization.
+
+## Core rule
+
+**LLMs propose. Deterministic engineering tools decide correctness and implementation metrics.**
