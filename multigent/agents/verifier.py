@@ -155,11 +155,67 @@ class VerifierAgent(APIAgent):
             raise AgentRuntimeError(f"Invalid verification Python filename: {raw!r}")
         return normalized.name
 
+    @staticmethod
+    def _canonical_test_module(raw: str) -> str:
+        """Normalize equivalent verifier plan references to one cocotb module stem.
+
+        Accepted examples are ``test_core``, ``test_core.py``,
+        ``tests/test_core.py``, and ``tests.test_core``. The saved verification plan
+        is rewritten to the canonical bare importable module name ``test_core``.
+        """
+
+        value = str(raw).strip()
+        if not value:
+            raise AgentRuntimeError("Empty verification test module reference")
+
+        if value.startswith("tests."):
+            value = value[len("tests."):]
+
+        if "/" in value or "\\" in value:
+            value = value.replace("\\", "/")
+            filename = VerifierAgent._safe_python_filename(value, owned_root="tests")
+            value = Path(filename).stem
+        elif value.endswith(".py"):
+            if Path(value).name != value:
+                raise AgentRuntimeError(f"Unsafe verification test module reference: {raw!r}")
+            value = Path(value).stem
+
+        if not value.isidentifier():
+            raise AgentRuntimeError(
+                f"Verification test module reference {raw!r} is not a flat importable Python module"
+            )
+        return value
+
     @classmethod
     def _write_python(cls, target: Path, item: Mapping[str, Any], *, owned_root: str) -> None:
         filename = cls._safe_python_filename(str(item["path"]), owned_root=owned_root)
         content = str(item["content"])
         (target / filename).write_text(content if content.endswith("\n") else content + "\n", encoding="utf-8")
+
+    @classmethod
+    def _normalize_plan_test_modules(cls, plan: Mapping[str, Any]) -> None:
+        """Canonicalize all test-module references before semantic validation/write."""
+
+        if not isinstance(plan, dict):
+            raise AgentRuntimeError("verification_plan must be a mutable mapping")
+
+        modules = [cls._canonical_test_module(item) for item in plan["test_modules"]]
+        if len(modules) != len(set(modules)):
+            raise AgentRuntimeError("verification_plan.test_modules contains duplicate module references")
+        plan["test_modules"] = modules
+
+        groups = plan.get("regression_groups")
+        if not isinstance(groups, dict):
+            raise AgentRuntimeError("verification_plan.regression_groups must be a mapping")
+        for group_name in ("smoke", "targeted", "full"):
+            normalized = [
+                cls._canonical_test_module(item) for item in groups[group_name]
+            ]
+            if len(normalized) != len(set(normalized)):
+                raise AgentRuntimeError(
+                    f"verification_plan.regression_groups.{group_name} contains duplicates"
+                )
+            groups[group_name] = normalized
 
     @classmethod
     def _validate_result(cls, *, result: Mapping[str, Any], context: Mapping[str, Any]) -> None:
@@ -214,8 +270,12 @@ class VerifierAgent(APIAgent):
             cls._validate_python_content(name, content, cocotb_required=True)
             test_contents.append(content)
 
-        if set(map(str, plan["test_modules"])) != test_modules:
-            raise AgentRuntimeError("verification_plan.test_modules must exactly match generated test filenames")
+        cls._normalize_plan_test_modules(plan)
+        normalized_plan_modules = set(map(str, plan["test_modules"]))
+        if normalized_plan_modules != test_modules:
+            raise AgentRuntimeError(
+                "verification_plan.test_modules must reference exactly the generated test files"
+            )
 
         policy = context["verification_policy"]
         minimum_randomized = int(policy.get("randomized_transactions_minimum", 0))
@@ -228,6 +288,14 @@ class VerifierAgent(APIAgent):
             raise AgentRuntimeError(
                 f"Verifier timeout_seconds={plan['timeout_seconds']} is below full-regression wall-clock policy minimum {minimum_wall_timeout}"
             )
+
+        for group_name in ("smoke", "targeted", "full"):
+            group_modules = set(map(str, plan["regression_groups"][group_name]))
+            unknown_group_modules = sorted(group_modules - test_modules)
+            if unknown_group_modules:
+                raise AgentRuntimeError(
+                    f"verification_plan.regression_groups.{group_name} references unknown test modules: {unknown_group_modules}"
+                )
         if set(map(str, plan["regression_groups"]["full"])) != test_modules:
             raise AgentRuntimeError("Initial full regression group must contain every generated test module")
 
@@ -379,18 +447,21 @@ OUTPUT RULES
    ARCHITECTURE_CONFLICT when an executable oracle requires a new Architect decision.
 2. Reference paths may be foo.py or reference/foo.py; test paths may be bar.py or
    tests/bar.py. No nested/cross-owned paths.
-3. Full regression contains every generated test module and meets the randomized
+3. verification_plan.test_modules and every regression-group entry may use a bare
+   module stem, a .py filename, or the explicit tests/ prefix; runtime canonicalizes
+   these equivalent forms before saving the plan.
+4. Full regression contains every generated test module and meets the randomized
    transaction minimum with a deterministic seed.
-4. verification_plan.timeout_seconds is the wall-clock budget for the whole
+5. verification_plan.timeout_seconds is the wall-clock budget for the whole
    regression and must satisfy the policy minimum; tests need separate simulation
    timeouts/bounded waits.
-5. Use cocotb 2.x APIs: cocotb.start_soon(), and SimTimeoutError from cocotb.triggers.
-6. For ready/valid input sources, randomized throttling may delay presenting a beat,
+6. Use cocotb 2.x APIs: cocotb.start_soon(), and SimTimeoutError from cocotb.triggers.
+7. For ready/valid input sources, randomized throttling may delay presenting a beat,
    but once valid=1 for a beat, keep valid=1 and payload stable until ready&&valid.
    Do not toggle/deassert valid inside the handshake wait loop.
-7. If completion/error behavior is defined and required by policy, generated tests
+8. If completion/error behavior is defined and required by policy, generated tests
    must actually reference and check those external signal names.
-8. Use only contract-declared top-level signals and preserve verifier independence.
+9. Use only contract-declared top-level signals and preserve verifier independence.
 
 VERIFIER CONTEXT
 ----------------
