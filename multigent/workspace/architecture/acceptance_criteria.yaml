@@ -1,27 +1,23 @@
 functional:
-- 'Given legal M,N,K and ordered payload, output equals software reference: Y=ReLU(AxB
-  + bias) with signed int8 inputs and signed int32 accumulation/output.'
-- Output stream emits exactly M*N elements in row-major order with out_last asserted
-  only on final element.
-- Bias value bias[n] is applied to every row m for column n exactly once after full
-  K reduction.
+- For all legal M,N,K within bounds, output[m,n]=max(0, sum_k(A[m,k]*B[k,n]) + bias[n])
+  with exact integer match.
+- Command with any of M,N,K=0 or >MAX bound sets error=1 and no output transfers occur
+  for that job.
+- Output transfer count is exactly M*N for legal jobs.
 verification:
-- Minimum 100 randomized legal transactions varying M,N,K within bounds and randomized
-  backpressure on input/output ready signals.
-- 'Reset test required: asserting rst_n low returns interface/control to idle deterministic
-  state and clears done/error.'
-- 'Backpressure test required: when out_valid=1 and out_ready=0 for arbitrary bursts,
-  out_data/out_last stay stable and no duplication/loss occurs.'
-- Boundary tests include M,N,K at 1 and at MAX_M,MAX_N,MAX_K plus non-multiples of
-  TILE_M/TILE_N.
+- Minimum 100 randomized legal transactions spanning varied M,N,K and signed operand
+  ranges.
+- Directed boundary tests at M,N,K = 1 and = MAX_* values.
+- 'Reset test: asserting rst_n low returns FSM/handshake/status to defined reset state.'
+- 'Backpressure test: random out_ready deassertion must not lose/duplicate/reorder
+  outputs; out_data stable while stalled.'
 rtl:
-- 'RTL must be synthesizable SystemVerilog and avoid forbidden constructs: real, shortreal,
-  delay statements, force/release, classes.'
-- No behavioral dependency on unsynthesizable initialization; control correctness
-  must rely on reset-defined state.
+- SystemVerilog synthesizable subset only; no real/shortreal, delay statements, force/release,
+  or classes.
+- All state transitions clocked; no combinational loops; no undefined latches.
+- Ready/valid protocol implemented exactly with transfer on ready&&valid.
 synopsys_handoff:
-- Synthesis/timing/power/area/frequency/utilization claims are accepted only from
-  deterministic Synopsys tool reports matching project schema.
-- No estimated or inferred PPA metrics allowed without authoritative deterministic
-  report.
-- Handoff includes verified RTL evidence before Synopsys result publication.
+- Synthesis/timing/power/area metrics accepted only from deterministic Synopsys tool
+  reports conforming to multigent/schemas/synthesis_result.schema.json.
+- No estimated or inferred PPA metrics are allowed in signoff artifacts.
+- RTL must be functionally verified before Synopsys handoff per project policy.

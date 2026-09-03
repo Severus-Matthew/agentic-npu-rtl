@@ -1,126 +1,175 @@
-protocol: ready_valid_stream_with_packet_tags
-clock: single rising-edge clock domain
-reset: synchronous active-low rst_n
+protocol: AXI-stream-like ready/valid scalar channels plus status outputs
+clock: single clk input
+reset: rst_n synchronous active-low
 channels:
-- name: cmd_data_in
+- name: cmd_chan
   direction: input
-  purpose: Carries config and operand payloads.
+  purpose: job configuration
   data_objects:
-  - obj_dims
-  - obj_bias_vector
-  - obj_a_matrix
-  - obj_b_matrix
-  metadata:
-  - section_id[1:0]
-  - last
-  framing: 'Packetized sections in strict order: config(1 beat) -> bias(dim_n beats)
-    -> repeated A/B compute payload beats.'
-  ordering: In-order; no interleaving between jobs.
-  backpressure: Source obeys in_ready; transfer only on in_valid&&in_ready.
-- name: result_out
-  direction: output
-  purpose: Carries output matrix elements.
-  data_objects:
-  - obj_out_matrix
-  metadata:
-  - last
-  framing: dim_m*dim_n beats per job, last asserted on final beat.
-  ordering: Row-major (m outer, n inner).
-  backpressure: Sink drives out_ready; module holds stable payload when stalled.
-- name: status
-  direction: output
-  purpose: Reports busy/done/error state.
-  data_objects: []
+  - cmd_word
   metadata: []
-  framing: Level signals.
-  ordering: Not applicable.
-  backpressure: Not applicable.
+  framing: single-beat command
+  ordering: one command before operand sections
+  backpressure: cmd_ready/cmd_valid handshake
+- name: a_chan
+  direction: input
+  purpose: A matrix payload
+  data_objects:
+  - a_matrix
+  metadata: []
+  framing: exactly M*K scalar int8 transfers
+  ordering: row-major over (m,k)
+  backpressure: a_ready/a_valid handshake
+- name: b_chan
+  direction: input
+  purpose: B matrix payload
+  data_objects:
+  - b_matrix
+  metadata: []
+  framing: exactly K*N scalar int8 transfers
+  ordering: row-major over (k,n)
+  backpressure: b_ready/b_valid handshake
+- name: bias_chan
+  direction: input
+  purpose: bias payload
+  data_objects:
+  - bias_vector
+  metadata: []
+  framing: exactly N scalar int32 transfers
+  ordering: increasing n
+  backpressure: bias_ready/bias_valid handshake
+- name: out_chan
+  direction: output
+  purpose: result payload
+  data_objects:
+  - output_matrix
+  metadata: []
+  framing: exactly M*N scalar int32 transfers
+  ordering: row-major over (m,n)
+  backpressure: out_ready/out_valid handshake
 signals:
 - name: clk
   direction: input
   width: '1'
   signed: false
-  semantic: Primary clock
+  semantic: system clock
   reset_value: '0'
 - name: rst_n
   direction: input
   width: '1'
   signed: false
-  semantic: Active-low synchronous reset
+  semantic: synchronous active-low reset
   reset_value: '0'
-- name: in_valid
+- name: cmd_valid
   direction: input
   width: '1'
   signed: false
-  semantic: Input payload valid
+  semantic: command valid
   reset_value: '0'
-- name: in_ready
+- name: cmd_ready
   direction: output
   width: '1'
   signed: false
-  semantic: Input payload ready
+  semantic: command ready
   reset_value: '0'
-- name: in_data
+- name: cmd_data
   direction: input
   width: '32'
   signed: false
-  semantic: Input payload word; int8/int32 fields packed by section format
+  semantic: '{reserved[31:24],K[23:16],N[15:8],M[7:0]}'
   reset_value: '0'
-- name: in_section
-  direction: input
-  width: '2'
-  signed: false
-  semantic: 00=config,01=bias,10=A,11=B
-  reset_value: '0'
-- name: in_last
+- name: a_valid
   direction: input
   width: '1'
   signed: false
-  semantic: Last beat of current logical section
+  semantic: A stream valid
+  reset_value: '0'
+- name: a_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: A stream ready
+  reset_value: '0'
+- name: a_data
+  direction: input
+  width: '8'
+  signed: true
+  semantic: one A element
+  reset_value: '0'
+- name: b_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: B stream valid
+  reset_value: '0'
+- name: b_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: B stream ready
+  reset_value: '0'
+- name: b_data
+  direction: input
+  width: '8'
+  signed: true
+  semantic: one B element
+  reset_value: '0'
+- name: bias_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: bias stream valid
+  reset_value: '0'
+- name: bias_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: bias stream ready
+  reset_value: '0'
+- name: bias_data
+  direction: input
+  width: '32'
+  signed: true
+  semantic: one bias element
   reset_value: '0'
 - name: out_valid
   direction: output
   width: '1'
   signed: false
-  semantic: Output payload valid
+  semantic: output valid
   reset_value: '0'
 - name: out_ready
   direction: input
   width: '1'
   signed: false
-  semantic: Output payload ready
+  semantic: output ready
   reset_value: '0'
 - name: out_data
   direction: output
-  width: ACC_W
+  width: '32'
   signed: true
-  semantic: Output int32 element
-  reset_value: '0'
-- name: out_last
-  direction: output
-  width: '1'
-  signed: false
-  semantic: Last output beat of job
+  semantic: one output element
   reset_value: '0'
 - name: busy
   direction: output
   width: '1'
   signed: false
-  semantic: Job in progress
+  semantic: high from accepted command until final output accepted
   reset_value: '0'
 - name: done
   direction: output
   width: '1'
   signed: false
-  semantic: Single-cycle pulse when job completes
+  semantic: one-cycle pulse when job completes
   reset_value: '0'
 - name: error
   direction: output
   width: '1'
   signed: false
-  semantic: Latched protocol/config error until reset
+  semantic: high when last command illegal
   reset_value: '0'
 global_handshake_rules:
-  transfer_condition: A channel transfer occurs iff ready && valid.
-  stall_behavior: While valid=1 and ready=0, payload and metadata remain stable; internal
-    state tied to that channel transfer does not advance.
+  transfer_condition: A channel transfer occurs iff ready && valid on same rising
+    clk edge.
+  stall_behavior: Producer must hold payload stable while valid=1 and ready=0; consumer
+    state must not advance without transfer.

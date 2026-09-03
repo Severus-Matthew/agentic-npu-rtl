@@ -3,81 +3,82 @@
   "modules": [
     {
       "name": "gemm_bias_relu_npu_top",
-      "responsibility": "Top integration of interfaces, control, buffers, compute, and output.",
+      "responsibility": "Top integration, external interface, global FSM.",
       "dependencies": [
-        "control_fsm",
+        "cmd_decoder",
         "input_loader",
-        "mac_tile_engine",
-        "bias_relu_unit",
-        "output_streamer"
+        "gemm_compute_core",
+        "postprocess_unit",
+        "output_streamer",
+        "status_block"
       ],
       "parameters": [
         "MAX_M",
         "MAX_N",
         "MAX_K",
-        "TILE_M",
-        "TILE_N",
-        "ACC_W"
+        "LANES_N"
       ],
       "stateful": true
     },
     {
-      "name": "control_fsm",
-      "responsibility": "Phase/state control and loop counters, error handling.",
+      "name": "cmd_decoder",
+      "responsibility": "Decode/validate command fields and issue job_config.",
       "dependencies": [],
       "parameters": [
         "MAX_M",
         "MAX_N",
-        "MAX_K",
-        "TILE_M",
-        "TILE_N"
+        "MAX_K"
       ],
       "stateful": true
     },
     {
       "name": "input_loader",
-      "responsibility": "Decode input sections and populate config/bias/operand staging buffers.",
+      "responsibility": "Accept A/B/bias streams and write local memories with counters.",
+      "dependencies": [],
+      "parameters": [
+        "MAX_M",
+        "MAX_N",
+        "MAX_K"
+      ],
+      "stateful": true
+    },
+    {
+      "name": "gemm_compute_core",
+      "responsibility": "Execute nested-loop int8xint8->int32 MAC updates into accum_mem.",
+      "dependencies": [],
+      "parameters": [
+        "MAX_M",
+        "MAX_N",
+        "MAX_K",
+        "LANES_N"
+      ],
+      "stateful": true
+    },
+    {
+      "name": "postprocess_unit",
+      "responsibility": "Apply bias add and ReLU to finalized accumulators.",
       "dependencies": [],
       "parameters": [
         "MAX_N",
-        "TILE_M",
-        "TILE_N"
-      ],
-      "stateful": true
-    },
-    {
-      "name": "mac_tile_engine",
-      "responsibility": "Perform int8xint8 MAC accumulation into int32 tile accumulators.",
-      "dependencies": [],
-      "parameters": [
-        "TILE_M",
-        "TILE_N",
-        "ACC_W"
-      ],
-      "stateful": true
-    },
-    {
-      "name": "bias_relu_unit",
-      "responsibility": "Apply bias addition and ReLU to accumulated tile values.",
-      "dependencies": [],
-      "parameters": [
-        "TILE_M",
-        "TILE_N",
-        "ACC_W"
+        "LANES_N"
       ],
       "stateful": false
     },
     {
       "name": "output_streamer",
-      "responsibility": "Serialize finalized tile/output matrix to result interface with ordering/last generation.",
+      "responsibility": "Read finalized outputs and drive out_chan with backpressure handling.",
       "dependencies": [],
       "parameters": [
         "MAX_M",
-        "MAX_N",
-        "TILE_M",
-        "TILE_N",
-        "ACC_W"
+        "MAX_N"
       ],
+      "stateful": true
+    },
+    {
+      "name": "status_block",
+      "responsibility": "Generate busy/done/error status signals.",
+      "dependencies": [],
+      "parameters": [],
       "stateful": true
     }
   ]
