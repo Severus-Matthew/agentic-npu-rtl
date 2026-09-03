@@ -350,12 +350,20 @@ class VerifierAgent(APIAgent):
                             f"Generated verification file {filename} imports forbidden capability {root}"
                         )
             elif isinstance(node, ast.ImportFrom):
-                root = (node.module or "").split(".", 1)[0]
+                module = node.module or ""
+                root = module.split(".", 1)[0]
                 if root == "cocotb":
                     imported_cocotb = True
                 if root in _FORBIDDEN_IMPORT_ROOTS:
                     raise AgentRuntimeError(
                         f"Generated verification file {filename} imports forbidden capability {root}"
+                    )
+                if module == "cocotb.result" and any(
+                    alias.name == "SimTimeoutError" for alias in node.names
+                ):
+                    raise AgentRuntimeError(
+                        f"Generated test file {filename} uses obsolete cocotb 2.x API: "
+                        "import SimTimeoutError from cocotb.triggers, not cocotb.result"
                     )
             elif isinstance(node, ast.Call):
                 if (
@@ -371,6 +379,16 @@ class VerifierAgent(APIAgent):
                 ):
                     raise AgentRuntimeError(
                         f"Generated verification file {filename} calls forbidden capability {node.func.attr}"
+                    )
+                if (
+                    isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "cocotb"
+                    and node.func.attr == "start"
+                ):
+                    raise AgentRuntimeError(
+                        f"Generated test file {filename} uses obsolete cocotb API "
+                        "cocotb.start(); use cocotb.start_soon() and await the returned Task when completion is required"
                     )
 
         if cocotb_required and not imported_cocotb:
@@ -405,7 +423,10 @@ OUTPUT RULES
 3. verification_plan.test_modules contains filename stems and exactly matches tests.
 4. The initial full regression group contains every generated test module.
 5. Honor at least the fixed randomized transaction minimum with a deterministic seed.
-6. Use cocotb 2.x public APIs and finite timeout/cycle waits.
+6. Use cocotb 2.x public APIs and finite timeout/cycle waits. Use
+   ``cocotb.start_soon(...)`` rather than ``cocotb.start(...)``; await the returned
+   Task when the parent must wait for completion. Import ``SimTimeoutError`` from
+   ``cocotb.triggers`` if needed, never from ``cocotb.result``.
 7. Interact through contract-declared top-level signals only.
 8. Use Python standard library plus cocotb; do not read files, invoke processes, use
    the network, or inspect RTL source.
