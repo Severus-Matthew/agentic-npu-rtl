@@ -79,6 +79,31 @@ def persist_intake(
     return path
 
 
+def load_frozen_architecture(
+    architecture_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Load the complete frozen Architect artifact set deterministically."""
+
+    architecture_dir = architecture_dir or (WORKSPACE_ROOT / "architecture")
+    required = {
+        "architecture_contract": architecture_dir / "architecture_contract.yaml",
+        "interface_contract": architecture_dir / "interface_contract.yaml",
+        "module_manifest": architecture_dir / "module_manifest.json",
+        "acceptance_criteria": architecture_dir / "acceptance_criteria.yaml",
+    }
+    missing = [str(path) for path in required.values() if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(
+            "Cannot load downstream context before Architect artifacts exist: "
+            + ", ".join(missing)
+        )
+
+    artifacts: dict[str, Any] = {}
+    for name, path in required.items():
+        artifacts[name] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return artifacts
+
+
 def build_rtl_context(
     *,
     user_request: str,
@@ -91,28 +116,37 @@ def build_rtl_context(
     user's intent independently.
     """
 
-    architecture_dir = architecture_dir or (WORKSPACE_ROOT / "architecture")
-    required = {
-        "architecture_contract": architecture_dir / "architecture_contract.yaml",
-        "interface_contract": architecture_dir / "interface_contract.yaml",
-        "module_manifest": architecture_dir / "module_manifest.json",
-        "acceptance_criteria": architecture_dir / "acceptance_criteria.yaml",
-    }
-    missing = [str(path) for path in required.values() if not path.is_file()]
-    if missing:
-        raise FileNotFoundError(
-            "Cannot build RTL context before Architect artifacts exist: "
-            + ", ".join(missing)
-        )
-
     project = load_project_constraints()
-    artifacts: dict[str, Any] = {}
-    for name, path in required.items():
-        artifacts[name] = yaml.safe_load(path.read_text(encoding="utf-8"))
-
     return {
         "user_request": user_request.strip(),
         "fixed_rtl_constraints": project["rtl_constraints"],
         "synthesis_policy": project["synthesis_policy"],
-        "frozen_architecture": artifacts,
+        "frozen_architecture": load_frozen_architecture(architecture_dir),
+    }
+
+
+def build_verification_context(
+    *,
+    user_request: str,
+    architecture_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Assemble independent context for the Verifier Agent.
+
+    This envelope deliberately excludes generated RTL source and RTL Generator
+    output. Expected behavior is derived only from the original request, frozen
+    Architect artifacts, and fixed verification policy.
+    """
+
+    request = user_request.strip()
+    if not request:
+        raise ValueError("User request must not be empty.")
+    project = load_project_constraints()
+    return {
+        "user_request": request,
+        "verification_policy": project["verification_policy"],
+        "frozen_architecture": load_frozen_architecture(architecture_dir),
+        "provenance": {
+            "includes_generated_rtl": False,
+            "includes_rtl_generator_output": False,
+        },
     }
