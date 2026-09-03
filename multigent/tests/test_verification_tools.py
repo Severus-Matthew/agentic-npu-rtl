@@ -20,6 +20,18 @@ def test_verilator_failure_classification_elaboration() -> None:
     )
 
 
+def test_verilator_error_diagnostics_override_unrelated_width_warnings() -> None:
+    text = """
+%Error: postproc.sv:9: Expecting expression to be constant, but variable isn't const: 'cfg_n'
+%Warning-WIDTHEXPAND: other.sv:10: width mismatch
+%Error: top.sv:108: Illegal assignment: Unmatched array sizes in dimension 0 (2 vs 64)
+"""
+    assert verilator._classify_verilator_failure(text) == "ELABORATION_ERROR"
+    diagnostics = verilator._extract_error_diagnostics(text)
+    assert len(diagnostics) == 2
+    assert all(line.startswith("%Error") for line in diagnostics)
+
+
 def test_verilator_tool_unavailable_is_distinct_from_compile_failure(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -36,4 +48,5 @@ def test_verilator_tool_unavailable_is_distinct_from_compile_failure(
 
     assert result["status"] == "TOOL_UNAVAILABLE"
     assert result["failure_class"] is None
+    assert result["error_diagnostics"] == []
     assert (tmp_path / "verification" / "lint.json").is_file()
