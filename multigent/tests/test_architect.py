@@ -323,3 +323,35 @@ def test_semantic_validator_rejects_unknown_module_parameter() -> None:
     result["module_manifest"]["modules"][0]["parameters"].append("MISSING_PARAM")
     with pytest.raises(AgentRuntimeError, match="unknown parameter"):
         ArchitectAgent._validate_contract_references(result)
+
+
+def test_semantic_validator_rejects_nonreciprocal_producer() -> None:
+    result = copy.deepcopy(FakeArchitectAgent().run_structured())
+    result["architecture_contract"]["operations"][0]["outputs"] = []
+    with pytest.raises(AgentRuntimeError, match="does not list result_stream as an output"):
+        ArchitectAgent._validate_contract_references(result)
+
+
+def test_semantic_validator_rejects_nonreciprocal_consumer() -> None:
+    result = copy.deepcopy(FakeArchitectAgent().run_structured())
+    result["architecture_contract"]["operations"][0]["inputs"].remove("sample_stream")
+    with pytest.raises(AgentRuntimeError, match="does not list sample_stream as an input"):
+        ArchitectAgent._validate_contract_references(result)
+
+
+def test_semantic_validator_rejects_unexposed_external_object() -> None:
+    result = copy.deepcopy(FakeArchitectAgent().run_structured())
+    result["interface_contract"]["channels"] = [
+        channel
+        for channel in result["interface_contract"]["channels"]
+        if channel["name"] != "coefficients"
+    ]
+    with pytest.raises(AgentRuntimeError, match="not carried by any interface channel"):
+        ArchitectAgent._validate_contract_references(result)
+
+
+def test_semantic_validator_rejects_bound_default_outside_dimension_range() -> None:
+    result = copy.deepcopy(FakeArchitectAgent().run_structured())
+    result["architecture_contract"]["parameters"][0]["default_value"] = "32"
+    with pytest.raises(AgentRuntimeError, match="lies outside"):
+        ArchitectAgent._validate_contract_references(result)
