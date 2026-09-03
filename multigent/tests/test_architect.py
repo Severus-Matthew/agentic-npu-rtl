@@ -9,7 +9,7 @@ from multigent.intake.request_builder import build_architect_intake
 
 
 class FakeArchitectAgent(ArchitectAgent):
-    """Avoid a live API call while testing artifact ownership/writing."""
+    """Deterministic test fixture; values here are not project defaults."""
 
     def run_structured(self, **_: object) -> dict:
         return {
@@ -31,28 +31,66 @@ class FakeArchitectAgent(ArchitectAgent):
                     "activation_signed": True,
                     "weight_width": 8,
                     "weight_signed": True,
+                    "product_width": 16,
+                    "product_signed": True,
                     "accumulator_width": 32,
                     "accumulator_signed": True,
+                    "bias_width": 32,
+                    "bias_signed": True,
+                    "output_width": 32,
+                    "output_signed": True,
+                    "extension_semantics": "sign extend product to accumulator width",
                     "overflow_semantics": "wrap",
                     "rounding_semantics": "none",
                 },
-                "compute": {
-                    "organization": "systolic_array",
-                    "rows": 8,
-                    "columns": 8,
-                    "mac_count": 64,
-                    "parameterization": "rows and columns are parameters",
+                "supported_dimensions": {
+                    "m": {"minimum": 1, "maximum": "M_MAX", "runtime_configurable": True},
+                    "n": {"minimum": 1, "maximum": "N_MAX", "runtime_configurable": True},
+                    "k": {"minimum": 1, "maximum": "K_MAX", "runtime_configurable": True},
                 },
-                "dataflow": "weight-stationary",
+                "compute": {
+                    "organization": "test_parallel_array",
+                    "rows": 2,
+                    "columns": 3,
+                    "mac_count": 6,
+                    "parameterization": "test-only parameterization",
+                },
+                "dataflow": "test-only output-stationary flow",
+                "operand_storage": [
+                    {
+                        "operand": "A",
+                        "ingress_order": "row-major",
+                        "supply_frequency": "once_per_job",
+                        "reuse_strategy": "local replay",
+                        "storage_strategy": "test buffer",
+                        "capacity": "M_MAX*K_MAX",
+                    },
+                    {
+                        "operand": "B",
+                        "ingress_order": "row-major",
+                        "supply_frequency": "once_per_job",
+                        "reuse_strategy": "local replay",
+                        "storage_strategy": "test buffer",
+                        "capacity": "K_MAX*N_MAX",
+                    },
+                    {
+                        "operand": "bias",
+                        "ingress_order": "n-major",
+                        "supply_frequency": "once_per_job",
+                        "reuse_strategy": "reuse across rows",
+                        "storage_strategy": "test buffer",
+                        "capacity": "N_MAX",
+                    },
+                ],
                 "pipeline": [],
                 "buffers": [],
-                "control": "single transaction controller",
+                "control": "test controller",
                 "reset": {
                     "style": "synchronous",
                     "polarity": "active_high",
                     "required_state": "idle and valids cleared",
                 },
-                "latency_model": "implementation contract defines fixed pipeline latency",
+                "latency_model": "test latency model",
                 "architectural_invariants": ["signed INT8 inputs"],
                 "open_assumptions": [],
             },
@@ -95,7 +133,6 @@ def test_intake_keeps_architecture_choices_out_of_user_input() -> None:
     assert intake["user_request"] == request
     assert intake["provenance"]["user_supplied_fields"] == ["user_request"]
 
-    # Fixed policy may be injected by software.
     assert intake["project_constraints"]["rtl_constraints"]["language"] == "SystemVerilog"
     assert (
         intake["project_constraints"]["verification_policy"][
@@ -103,14 +140,24 @@ def test_intake_keeps_architecture_choices_out_of_user_input() -> None:
         ]
         == 100
     )
+    assert intake["project_constraints"]["synthesis_policy"]["provider"] == "synopsys"
+    assert "owner" not in intake["project_constraints"]["synthesis_policy"]
 
-    # Genuine architecture choices are delegated to the Architect, not silently
-    # inserted as if the user requested them.
     decisions = intake["architect_must_decide_when_unspecified"]
     assert "array_dimensions" in decisions
+    assert "supported_dimension_bounds" in decisions
+    assert "operand_reuse_strategy" in decisions
+    assert "operand_storage_strategy" in decisions
     assert "interface_protocol" in decisions
     assert "reset_style" in decisions
     assert "overflow_semantics" in decisions
+
+
+def test_architect_loads_role_technical_context_only() -> None:
+    instructions = FakeArchitectAgent().load_instructions()
+    assert "# ARCHITECT TECHNICAL SKILL" in instructions
+    assert "external_team_member" not in instructions
+    assert "Artifact Ownership" not in instructions
 
 
 def test_architect_writes_only_architecture_artifacts(tmp_path: Path) -> None:
@@ -135,9 +182,10 @@ def test_architect_writes_only_architecture_artifacts(tmp_path: Path) -> None:
     assert intake_path.is_file()
     intake = yaml.safe_load(intake_path.read_text(encoding="utf-8"))
     assert intake["provenance"]["user_supplied_fields"] == ["user_request"]
+    assert "owner" not in intake["project_constraints"]["synthesis_policy"]
 
     contract = yaml.safe_load(
         (architecture_dir / "architecture_contract.yaml").read_text(encoding="utf-8")
     )
-    assert contract["compute"]["mac_count"] == 64
+    assert contract["compute"]["mac_count"] == 6
     assert not list(architecture_dir.glob("*.sv"))
