@@ -13,6 +13,9 @@ verification_policy:
   randomized_transactions_minimum: 100
   require_reset_tests: true
   require_backpressure_tests_when_applicable: true
+  regression_wall_timeout_seconds_minimum: 120
+  require_completion_behavior_tests_when_defined: true
+  require_error_behavior_tests_when_defined: true
 
 synthesis_policy:
   provider: synopsys
