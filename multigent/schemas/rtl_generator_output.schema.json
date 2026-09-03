@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Generic RTL Generator Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "task_type",
+    "summary",
+    "files",
+    "contract_checks",
+    "changed_modules",
+    "architecture_conflict",
+    "blocked_reason",
+    "architecture_changed",
+    "interface_changed",
+    "latency_changed",
+    "known_risks",
+    "regression_required"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["RTL_GENERATED", "ARCHITECTURE_CONFLICT", "REPAIR_BLOCKED"]
+    },
+    "task_type": {
+      "type": "string",
+      "enum": ["INITIAL_GENERATION", "FUNCTIONAL_REPAIR", "SYNTHESIS_REPAIR", "PPA_OPTIMIZATION"]
+    },
+    "summary": {"type": "string"},
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "module", "purpose", "content"],
+        "properties": {
+          "path": {"type": "string"},
+          "module": {"type": "string"},
+          "purpose": {"type": "string"},
+          "content": {"type": "string"}
+        }
+      }
+    },
+    "contract_checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requirement", "satisfied", "evidence"],
+        "properties": {
+          "requirement": {"type": "string"},
+          "satisfied": {"type": "boolean"},
+          "evidence": {"type": "string"}
+        }
+      }
+    },
+    "changed_modules": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "architecture_conflict": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["category", "affected_modules", "issue", "evidence", "requested_architect_decision"],
+      "properties": {
+        "category": {"type": "string"},
+        "affected_modules": {"type": "array", "items": {"type": "string"}},
+        "issue": {"type": "string"},
+        "evidence": {"type": "string"},
+        "requested_architect_decision": {"type": "string"}
+      }
+    },
+    "blocked_reason": {"type": "string"},
+    "architecture_changed": {"type": "boolean"},
+    "interface_changed": {"type": "boolean"},
+    "latency_changed": {"type": "boolean"},
+    "known_risks": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "regression_required": {
+      "type": "string",
+      "enum": ["NONE", "TARGETED", "FULL"]
+    }
+  }
+}
