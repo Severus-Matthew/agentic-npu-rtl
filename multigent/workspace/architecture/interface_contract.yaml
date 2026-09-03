@@ -1,170 +1,126 @@
-protocol: ready_valid_streaming_with_control
-clock: single clk
-reset: rst_n synchronous active-low
+protocol: ready_valid_stream_with_packet_tags
+clock: single rising-edge clock domain
+reset: synchronous active-low rst_n
 channels:
-- name: cmd
+- name: cmd_data_in
   direction: input
-  purpose: Start operation and provide M,N,K
-  framing: Single beat per job
-  ordering: In program order
-  backpressure: cmd_ready/cmd_valid handshake
-- name: bias_in
-  direction: input
-  purpose: Bias vector elements
-  framing: N beats per job
-  ordering: Index 0..N-1
-  backpressure: bias_ready/bias_valid handshake
-- name: a_in
-  direction: input
-  purpose: Matrix A elements
-  framing: M*K beats per job
-  ordering: Row-major A[m][k]
-  backpressure: a_ready/a_valid handshake
-- name: b_in
-  direction: input
-  purpose: Matrix B elements
-  framing: K*N beats per job
-  ordering: Row-major over k then n for B[k][n]
-  backpressure: b_ready/b_valid handshake
-- name: y_out
+  purpose: Carries config and operand payloads.
+  data_objects:
+  - obj_dims
+  - obj_bias_vector
+  - obj_a_matrix
+  - obj_b_matrix
+  metadata:
+  - section_id[1:0]
+  - last
+  framing: 'Packetized sections in strict order: config(1 beat) -> bias(dim_n beats)
+    -> repeated A/B compute payload beats.'
+  ordering: In-order; no interleaving between jobs.
+  backpressure: Source obeys in_ready; transfer only on in_valid&&in_ready.
+- name: result_out
   direction: output
-  purpose: Output matrix elements
-  framing: M*N beats per job
-  ordering: Row-major Y[m][n]
-  backpressure: y_ready/y_valid handshake
+  purpose: Carries output matrix elements.
+  data_objects:
+  - obj_out_matrix
+  metadata:
+  - last
+  framing: dim_m*dim_n beats per job, last asserted on final beat.
+  ordering: Row-major (m outer, n inner).
+  backpressure: Sink drives out_ready; module holds stable payload when stalled.
 - name: status
   direction: output
-  purpose: Done/error reporting
-  framing: Level signals
-  ordering: N/A
-  backpressure: None
+  purpose: Reports busy/done/error state.
+  data_objects: []
+  metadata: []
+  framing: Level signals.
+  ordering: Not applicable.
+  backpressure: Not applicable.
 signals:
 - name: clk
   direction: input
   width: '1'
   signed: false
-  semantic: clock
+  semantic: Primary clock
   reset_value: '0'
 - name: rst_n
   direction: input
   width: '1'
   signed: false
-  semantic: synchronous active-low reset
+  semantic: Active-low synchronous reset
   reset_value: '0'
-- name: cmd_valid
+- name: in_valid
   direction: input
   width: '1'
   signed: false
-  semantic: command valid
+  semantic: Input payload valid
   reset_value: '0'
-- name: cmd_ready
+- name: in_ready
   direction: output
   width: '1'
   signed: false
-  semantic: command ready
-  reset_value: '1'
-- name: cmd_m
-  direction: input
-  width: '7'
-  signed: false
-  semantic: runtime M (1..MAX_M)
+  semantic: Input payload ready
   reset_value: '0'
-- name: cmd_n
-  direction: input
-  width: '7'
-  signed: false
-  semantic: runtime N (1..MAX_N)
-  reset_value: '0'
-- name: cmd_k
-  direction: input
-  width: '7'
-  signed: false
-  semantic: runtime K (1..MAX_K)
-  reset_value: '0'
-- name: bias_valid
-  direction: input
-  width: '1'
-  signed: false
-  semantic: bias data valid
-  reset_value: '0'
-- name: bias_ready
-  direction: output
-  width: '1'
-  signed: false
-  semantic: bias data ready
-  reset_value: '0'
-- name: bias_data
+- name: in_data
   direction: input
   width: '32'
+  signed: false
+  semantic: Input payload word; int8/int32 fields packed by section format
+  reset_value: '0'
+- name: in_section
+  direction: input
+  width: '2'
+  signed: false
+  semantic: 00=config,01=bias,10=A,11=B
+  reset_value: '0'
+- name: in_last
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Last beat of current logical section
+  reset_value: '0'
+- name: out_valid
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Output payload valid
+  reset_value: '0'
+- name: out_ready
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Output payload ready
+  reset_value: '0'
+- name: out_data
+  direction: output
+  width: ACC_W
   signed: true
-  semantic: bias element
+  semantic: Output int32 element
   reset_value: '0'
-- name: a_valid
-  direction: input
-  width: '1'
-  signed: false
-  semantic: A data valid
-  reset_value: '0'
-- name: a_ready
+- name: out_last
   direction: output
   width: '1'
   signed: false
-  semantic: A data ready
+  semantic: Last output beat of job
   reset_value: '0'
-- name: a_data
-  direction: input
-  width: '8'
-  signed: true
-  semantic: A element
-  reset_value: '0'
-- name: b_valid
-  direction: input
-  width: '1'
-  signed: false
-  semantic: B data valid
-  reset_value: '0'
-- name: b_ready
+- name: busy
   direction: output
   width: '1'
   signed: false
-  semantic: B data ready
+  semantic: Job in progress
   reset_value: '0'
-- name: b_data
-  direction: input
-  width: '8'
-  signed: true
-  semantic: B element
-  reset_value: '0'
-- name: y_valid
+- name: done
   direction: output
   width: '1'
   signed: false
-  semantic: Y data valid
+  semantic: Single-cycle pulse when job completes
   reset_value: '0'
-- name: y_ready
-  direction: input
-  width: '1'
-  signed: false
-  semantic: Y data ready
-  reset_value: '0'
-- name: y_data
-  direction: output
-  width: '32'
-  signed: true
-  semantic: Y element
-  reset_value: '0'
-- name: status_done
+- name: error
   direction: output
   width: '1'
   signed: false
-  semantic: Pulses high for one cycle when job completes
-  reset_value: '0'
-- name: status_error
-  direction: output
-  width: '1'
-  signed: false
-  semantic: High when illegal command detected
+  semantic: Latched protocol/config error until reset
   reset_value: '0'
 global_handshake_rules:
-  transfer_condition: A transfer occurs iff ready && valid on that channel.
-  stall_behavior: While valid=1 and ready=0, payload and sideband remain stable.
+  transfer_condition: A channel transfer occurs iff ready && valid.
+  stall_behavior: While valid=1 and ready=0, payload and metadata remain stable; internal
+    state tied to that channel transfer does not advance.

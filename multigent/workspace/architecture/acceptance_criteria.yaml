@@ -1,25 +1,27 @@
 functional:
-- For any legal M,N,K and inputs, output Y equals ReLU(AxB + Bias) with exact integer
-  arithmetic and two's-complement wrap in int32 accumulation/add.
-- Output sequence is exactly row-major over m then n.
-- Bias is applied per output column n to every row m.
+- 'Given legal M,N,K and ordered payload, output equals software reference: Y=ReLU(AxB
+  + bias) with signed int8 inputs and signed int32 accumulation/output.'
+- Output stream emits exactly M*N elements in row-major order with out_last asserted
+  only on final element.
+- Bias value bias[n] is applied to every row m for column n exactly once after full
+  K reduction.
 verification:
-- Minimum 100 randomized legal transactions across varied M,N,K including boundary
-  cases 1 and 64.
-- Reset tests verify deterministic return to IDLE, cleared valids/status_done low/status_error
-  low.
-- Backpressure tests on all ready/valid channels verify no loss/duplication and stable
-  payload under stall.
-- Directed tests for illegal cmd values (0 or >max) verify status_error behavior and
-  no output emission.
+- Minimum 100 randomized legal transactions varying M,N,K within bounds and randomized
+  backpressure on input/output ready signals.
+- 'Reset test required: asserting rst_n low returns interface/control to idle deterministic
+  state and clears done/error.'
+- 'Backpressure test required: when out_valid=1 and out_ready=0 for arbitrary bursts,
+  out_data/out_last stay stable and no duplication/loss occurs.'
+- Boundary tests include M,N,K at 1 and at MAX_M,MAX_N,MAX_K plus non-multiples of
+  TILE_M/TILE_N.
 rtl:
-- 'RTL is SystemVerilog synthesizable-only and excludes forbidden constructs: real,
-  shortreal, delay statements, force/release, classes.'
-- No combinational ready/valid loops causing non-synthesizable behavior.
-- All counters and index widths support configured bounds without overflow in addressing/control.
+- 'RTL must be synthesizable SystemVerilog and avoid forbidden constructs: real, shortreal,
+  delay statements, force/release, classes.'
+- No behavioral dependency on unsynthesizable initialization; control correctness
+  must rely on reset-defined state.
 synopsys_handoff:
-- Provide deterministic Synopsys synthesis report conforming to multigent/schemas/synthesis_result.schema.json.
-- Report generation only after verification pass; no estimated or inferred metrics
-  accepted.
-- All reported PPA/timing/utilization values must come from authoritative deterministic
-  tool report.
+- Synthesis/timing/power/area/frequency/utilization claims are accepted only from
+  deterministic Synopsys tool reports matching project schema.
+- No estimated or inferred PPA metrics allowed without authoritative deterministic
+  report.
+- Handoff includes verified RTL evidence before Synopsys result publication.

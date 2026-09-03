@@ -3,25 +3,27 @@
   "modules": [
     {
       "name": "gemm_bias_relu_npu_top",
-      "responsibility": "Top-level integration and external interface.",
+      "responsibility": "Top integration of interfaces, control, buffers, compute, and output.",
       "dependencies": [
         "control_fsm",
-        "stream_ingress",
+        "input_loader",
         "mac_tile_engine",
-        "postproc_emit"
+        "bias_relu_unit",
+        "output_streamer"
       ],
       "parameters": [
         "MAX_M",
         "MAX_N",
         "MAX_K",
         "TILE_M",
-        "TILE_N"
+        "TILE_N",
+        "ACC_W"
       ],
       "stateful": true
     },
     {
       "name": "control_fsm",
-      "responsibility": "Job sequencing, counters, legality checks, done/error generation.",
+      "responsibility": "Phase/state control and loop counters, error handling.",
       "dependencies": [],
       "parameters": [
         "MAX_M",
@@ -33,8 +35,8 @@
       "stateful": true
     },
     {
-      "name": "stream_ingress",
-      "responsibility": "Handshake management and loading of bias/A/B into internal buffers.",
+      "name": "input_loader",
+      "responsibility": "Decode input sections and populate config/bias/operand staging buffers.",
       "dependencies": [],
       "parameters": [
         "MAX_N",
@@ -45,21 +47,36 @@
     },
     {
       "name": "mac_tile_engine",
-      "responsibility": "Parallel int8 multiply-accumulate over K into int32 tile accumulators.",
+      "responsibility": "Perform int8xint8 MAC accumulation into int32 tile accumulators.",
       "dependencies": [],
       "parameters": [
         "TILE_M",
-        "TILE_N"
+        "TILE_N",
+        "ACC_W"
       ],
       "stateful": true
     },
     {
-      "name": "postproc_emit",
-      "responsibility": "Bias add, ReLU, and ordered y_out streaming.",
+      "name": "bias_relu_unit",
+      "responsibility": "Apply bias addition and ReLU to accumulated tile values.",
       "dependencies": [],
       "parameters": [
         "TILE_M",
-        "TILE_N"
+        "TILE_N",
+        "ACC_W"
+      ],
+      "stateful": false
+    },
+    {
+      "name": "output_streamer",
+      "responsibility": "Serialize finalized tile/output matrix to result interface with ordering/last generation.",
+      "dependencies": [],
+      "parameters": [
+        "MAX_M",
+        "MAX_N",
+        "TILE_M",
+        "TILE_N",
+        "ACC_W"
       ],
       "stateful": true
     }
