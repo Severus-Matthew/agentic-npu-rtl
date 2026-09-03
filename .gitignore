@@ -2,7 +2,7 @@
 .env
 .env.*
 !.env.example
-.env.example
+
 # Python
 __pycache__/
 *.py[cod]
@@ -14,4 +14,4 @@ venv/
 .DS_Store
 
 # Runtime-generated artifacts
-multigent/workspace/logs/agent_traces/*.json
+multigent/workspace/**
