@@ -18,7 +18,7 @@ import yaml
 
 from multigent.intake.request_builder import build_architect_intake, persist_intake
 
-from .base import APIAgent, AgentConfig, SCHEMA_ROOT, WORKSPACE_ROOT
+from .base import APIAgent, AgentConfig, AgentRuntimeError, SCHEMA_ROOT, WORKSPACE_ROOT
 
 
 ARCHITECT_OUTPUT_SCHEMA = SCHEMA_ROOT / "architect_output.schema.json"
@@ -87,6 +87,8 @@ class ArchitectAgent(APIAgent):
                 "Architect returned READY while also reporting specification conflicts."
             )
 
+        self._validate_contract_references(result)
+
         self._write_yaml(
             target / "architecture_contract.yaml",
             result["architecture_contract"],
@@ -105,6 +107,115 @@ class ArchitectAgent(APIAgent):
         )
         self._write_json(target / "architect_result.json", result)
         return result
+
+    @staticmethod
+    def _validate_contract_references(result: Mapping[str, Any]) -> None:
+        """Deterministically reject broken cross-references in a READY contract.
+
+        JSON Schema validates structure and primitive types. This second layer checks
+        generic relational invariants that JSON Schema cannot conveniently express:
+        operations reference declared data objects, data objects reference declared
+        types/dimensions, storage and channels reference declared objects, and module
+        dependencies/parameters are resolvable.
+        """
+
+        arch = result["architecture_contract"]
+        interface = result["interface_contract"]
+        manifest = result["module_manifest"]
+        errors: list[str] = []
+
+        def unique_names(items: list[Mapping[str, Any]], kind: str) -> set[str]:
+            names = [str(item["name"]) for item in items]
+            if len(names) != len(set(names)):
+                errors.append(f"duplicate {kind} names")
+            return set(names)
+
+        operation_names = unique_names(arch["operations"], "operation")
+        type_names = unique_names(arch["data_types"], "data type")
+        object_names = unique_names(arch["data_objects"], "data object")
+        dimension_names = unique_names(arch["dimensions"], "dimension")
+        parameter_names = unique_names(arch["parameters"], "parameter")
+
+        for dim in arch["dimensions"]:
+            if int(dim["maximum"]) < int(dim["minimum"]):
+                errors.append(
+                    f"dimension {dim['name']} maximum is smaller than minimum"
+                )
+            bound_parameter = str(dim["bound_parameter"]).strip()
+            if bound_parameter and bound_parameter not in parameter_names:
+                errors.append(
+                    f"dimension {dim['name']} references unknown parameter "
+                    f"{bound_parameter}"
+                )
+
+        for obj in arch["data_objects"]:
+            name = str(obj["name"])
+            if obj["data_type"] not in type_names:
+                errors.append(
+                    f"data object {name} references unknown data type {obj['data_type']}"
+                )
+            for dimension in obj["dimensions"]:
+                if dimension not in dimension_names:
+                    errors.append(
+                        f"data object {name} references unknown dimension {dimension}"
+                    )
+            producer = str(obj["producer"])
+            if producer != "external" and producer not in operation_names:
+                errors.append(
+                    f"data object {name} references unknown producer {producer}"
+                )
+            for consumer in obj["consumers"]:
+                if consumer != "external" and consumer not in operation_names:
+                    errors.append(
+                        f"data object {name} references unknown consumer {consumer}"
+                    )
+
+        for operation in arch["operations"]:
+            for object_name in [*operation["inputs"], *operation["outputs"]]:
+                if object_name not in object_names:
+                    errors.append(
+                        f"operation {operation['name']} references unknown data object "
+                        f"{object_name}"
+                    )
+
+        for storage in arch["storage"]:
+            for object_name in storage["stored_objects"]:
+                if object_name not in object_names:
+                    errors.append(
+                        f"storage {storage['name']} references unknown data object "
+                        f"{object_name}"
+                    )
+
+        for channel in interface["channels"]:
+            for object_name in channel["data_objects"]:
+                if object_name not in object_names:
+                    errors.append(
+                        f"channel {channel['name']} references unknown data object "
+                        f"{object_name}"
+                    )
+
+        module_names = unique_names(manifest["modules"], "module")
+        if manifest["top"] not in module_names:
+            errors.append(f"top module {manifest['top']} is not declared")
+        for module in manifest["modules"]:
+            for dependency in module["dependencies"]:
+                if dependency not in module_names:
+                    errors.append(
+                        f"module {module['name']} references unknown dependency "
+                        f"{dependency}"
+                    )
+            for parameter in module["parameters"]:
+                if parameter not in parameter_names:
+                    errors.append(
+                        f"module {module['name']} references unknown parameter {parameter}"
+                    )
+
+        if errors:
+            formatted = "; ".join(errors)
+            raise AgentRuntimeError(
+                "Architect returned a structurally valid but internally inconsistent "
+                f"READY contract: {formatted}"
+            )
 
     @staticmethod
     def _build_architecture_task(intake: Mapping[str, Any]) -> str:
@@ -138,31 +249,41 @@ metrics are valid only when supplied by deterministic Synopsys reports; do not
 infer or fabricate timing, area, power, frequency, or utilization values.
 
 Required design work:
-1. Define all requested operations with exact functional semantics and named inputs/outputs.
-2. Define every relevant data type/intermediate representation, including width,
-   signedness where meaningful, conversions, overflow, and rounding behavior.
-3. Define every runtime-varying dimension as a named dimension with concrete
-   integer minimum/maximum bounds. Never emit placeholders or unresolved text in
-   numeric bound fields.
+1. Define all requested operations with exact functional semantics. Every operation
+   input/output must reference a declared logical ``data_object``.
+2. Define scalar/element ``data_types`` separately from logical ``data_objects``.
+   Every data object must name its data type, dimensions, producer, consumers, and
+   whether it crosses the external interface.
+3. Define every runtime-varying dimension with concrete integer minimum/maximum
+   bounds and any compile-time bound parameter.
 4. Define all compile-time parameters with concrete defaults, legality constraints,
-   and purposes.
+   and purposes. Parameter-dependent signal widths and capacities must be expressed
+   symbolically rather than frozen to values valid only at the defaults.
 5. Choose compute organization, dataflow, parallelism, and scheduling appropriate
    for the requested workload rather than copying benchmark examples.
 6. Close all storage/reuse semantics. Storage capacity and read/write/banking/port
    requirements must sustain the stated compute schedule under the declared bounds.
-7. Define pipeline stages, valid behavior, and stall behavior.
-8. Define control strategy, state progression, counters/indices, and illegal-input behavior.
-9. Fully define logical channels and top-level signals, including framing, ordering,
-   backpressure, widths, and reset behavior. No interface behavior may depend on
-   unstated environment behavior.
-10. Define module decomposition with explicit responsibilities, dependencies,
-    parameters, and statefulness.
-11. Define deterministic functional, verification, RTL, and Synopsys-handoff
+   Cross-check input framing against storage lifetime: once-per-job data must be
+   retained if later phases reuse it; otherwise the interface must explicitly define
+   retransmission.
+7. Account for interface bandwidth. If scalar streams load several operands for one
+   parallel compute step, include the load cycles or provide sufficient prefetch/
+   buffering/double-buffering to sustain the claimed throughput.
+8. Define pipeline stages, valid behavior, and stall behavior.
+9. Define control strategy, state progression, counters/indices, illegal-input
+   behavior, and an explicit implementable recovery path. Never reference a clear or
+   retry command that is absent from the interface.
+10. Fully define logical channels and top-level signals. Each channel must list the
+    declared data objects it carries plus any metadata, framing, ordering,
+    backpressure, widths, and reset behavior.
+11. Define module decomposition with explicit responsibilities, dependencies,
+    parameters, and statefulness. All dependencies and parameters must resolve.
+12. Define deterministic functional, verification, RTL, and Synopsys-handoff
     acceptance criteria from the technical project policy.
-12. Before returning READY, cross-check operations, data types, runtime bounds,
-    parameters, compute schedule, storage bandwidth/capacity, pipeline, interface,
-    control, reset, module manifest, and acceptance criteria. The RTL Generator
-    must not need to guess architectural facts.
+13. Before returning READY, cross-check operations, data objects, data types, runtime
+    bounds, parameters, compute schedule, storage bandwidth/capacity, pipeline,
+    interface, control, reset, module manifest, and acceptance criteria. The RTL
+    Generator must not need to guess architectural facts.
 
 ARCHITECT INTAKE ENVELOPE
 -------------------------
