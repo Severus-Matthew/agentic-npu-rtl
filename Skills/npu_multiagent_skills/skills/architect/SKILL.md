@@ -1,14 +1,15 @@
-# Skill: NPU Hardware Architect
+# Skill: Hardware Architect
 
 ## Role
-Convert a minimal NPU request into a complete, internally consistent RTL architecture contract. Do not write RTL.
+Convert a minimal hardware-accelerator request into a complete, internally consistent RTL architecture contract. Do not write RTL.
 
 ## Technical Objective
 Produce an architecture that is:
 - faithful to the requested computation and datatypes
 - synthesizable in SystemVerilog
 - explicit enough that RTL generation and independent verification require no hidden assumptions
-- simple and regular unless the user explicitly requests a more complex design
+- simple and regular unless the request explicitly justifies more complexity
+- independent of any specific accelerator family, tensor shape, arithmetic format, or array topology unless required by the request
 
 ## Inputs
 Use only:
@@ -29,110 +30,155 @@ Do not edit RTL, tests, reference models, tool reports, or the user request.
 
 ## Required Design Work
 
-### Mathematical and numeric semantics
-Define:
-- exact tensor equation and order of operations
-- tensor dimensions and legal runtime bounds
-- signedness and width of every operand
-- product width and extension rules
-- accumulation width
-- bias semantics
-- activation semantics
-- overflow, truncation, saturation, and rounding behavior
-- output datatype
+### 1. Normalize requested behavior
+Identify every operation the design must perform. For each operation define:
+- operation name/kind
+- exact functional semantics
+- named inputs and outputs
+- order of operations
+- optional versus mandatory behavior
 
-Never leave signedness or overflow semantics implicit.
+Do not assume GEMM, convolution, attention, FFT, systolic execution, matrix dimensions, or any other workload-specific structure unless the request requires it.
 
-### Compute architecture
-Choose and define:
+### 2. Define data types and arithmetic
+For every architecturally visible or intermediate value define:
+- name and role
+- representation
+- bit width
+- signedness when meaningful
+- conversion/extension/truncation behavior
+- overflow/saturation/wrap behavior
+- rounding behavior
+
+If a concept is not applicable, state that explicitly rather than inventing a workload-specific field.
+
+### 3. Define legal runtime dimensions/bounds
+Represent runtime-varying sizes as named dimensions. For each dimension define:
+- semantic meaning
+- minimum legal value
+- concrete maximum supported value
+- whether runtime configurable
+- compile-time parameter that bounds it, if any
+
+Every maximum must be a concrete integer in the architecture contract. Do not emit placeholders, punctuation, unresolved expressions, or prose in numeric bound fields.
+
+### 4. Define compile-time parameters
+For every parameter define:
+- name
+- concrete default value
+- legality constraint
+- purpose
+
+Parameter defaults must make the generated design self-contained and buildable.
+
+### 5. Choose compute organization
+Choose and justify:
 - compute organization
-- array dimensions
-- parameterization
-- tiling/dataflow
-- accumulator organization
-- controller structure
+- dataflow
+- available parallelism
+- scheduling policy
 
-Do not copy an example array size unless it is technically justified by the request and constraints.
+Do not copy example sizes or structures. A MAC array, SIMD lanes, pipeline, reduction tree, FSM datapath, butterfly network, sparse engine, or other structure is valid only when technically appropriate for the requested workload.
 
-### Operand storage and reuse
-For A, B, bias, partial sums, and outputs, define:
-- ingress ordering/framing
-- whether data is supplied once per job, once per tile, or repeatedly
-- reuse pattern
-- storage/replay mechanism
-- logical capacity and how that capacity relates to supported dimensions
-- read/write timing needed by the compute schedule
+### 6. Close storage and reuse semantics
+For every stored object define:
+- what it stores
+- capacity expression
+- maximum number of stored elements under default legal bounds
+- element width
+- access pattern
+- required read/write ports or banking
+- implementation hint
+- reuse semantics
+- lifetime
 
-A tiled GEMM contract is invalid if it requires operand reuse but provides neither sufficient storage nor an explicit retransmission protocol.
+The storage implementation must actually sustain the compute schedule. For example, if a compute stage consumes multiple values per cycle, a single-port memory is invalid unless banking, replication, staging, or a slower schedule explicitly resolves the bandwidth requirement.
 
-### Pipeline and control
-For each stage define:
+Do not assume the environment retransmits data unless the interface contract explicitly defines that protocol.
+
+### 7. Define pipeline behavior
+For every stage define:
 - responsibility
 - registered/combinational behavior
-- valid propagation
+- valid behavior
 - stall behavior
-- state update conditions
-- drain/flush behavior when relevant
 
-Define all counters and loop bounds sufficiently for RTL implementation.
+Pipeline stages and state updates must remain correct under backpressure when backpressure is supported.
 
-### Interface
-For every top-level signal define:
+### 8. Define control
+Define:
+- control strategy
+- state progression
+- counters/indices/state variables needed for implementation
+- behavior for illegal commands/protocol violations
+
+Control description must be sufficient for RTL implementation without guessing hidden sequencing rules.
+
+### 9. Define external interfaces
+For every logical channel define:
 - name
 - direction
-- width
+- purpose
+- framing
+- ordering
+- backpressure behavior
+
+For every signal define:
+- name
+- direction
+- width expression
 - signedness
 - semantic meaning
-- reset behavior
+- reset value
 
-For each ready/valid channel define:
-- transfer condition
-- payload stability under stall
-- ordering/framing
-- whether backpressure is supported
+If ready/valid is used, define transfer as `ready && valid` and require payload stability while stalled. Do not require ready/valid if another protocol is technically more appropriate.
 
-Avoid zero-width parameter expressions. Width formulas must remain legal at the minimum supported parameter values.
+Width expressions must remain legal at every permitted parameter value. Avoid zero-width `$clog2` expressions.
 
-### Reset
-Reset must deterministically restore protocol/control state. Prefer resetting pointers, counters, FSM state, and valid bits rather than bulk-clearing memories unless cleared memory contents are functionally required.
+### 10. Define reset
+Reset must deterministically restore control/protocol state. Prefer resetting pointers, counters, FSM state, valid bits, and validity metadata rather than bulk-clearing memories unless cleared contents are functionally required.
 
-### Module decomposition
-Each module must have one clear responsibility. The module manifest must name:
+### 11. Define module decomposition
+Each module must have one clear responsibility. The manifest must define:
 - top module
 - each submodule
-- responsibility
 - dependencies
-- whether it contains state
+- parameters used by that module
+- whether the module contains state
 
-### Acceptance criteria
-Define machine-testable criteria for:
-- arithmetic correctness
-- supported dimensions and edge cases
+### 12. Define acceptance criteria
+Create machine-testable criteria for:
+- functional semantics
+- data-type/arithmetic semantics
+- legal runtime bounds and boundary cases
 - reset
-- protocol/backpressure
+- interface/protocol behavior
 - randomized regression
 - synthesizable RTL
-- the verified RTL package required by the Synopsys integration
+- deterministic Synopsys handoff requirements
 
-Synthesis, timing, power, area, frequency, and utilization values are valid only when supplied by deterministic tool reports. Never invent or estimate them.
+Only deterministic tool reports may establish synthesis/timing/power/area/frequency/utilization results.
 
 ## Consistency Review Before READY
-Check all of the following:
-- operation and datatype semantics agree everywhere
-- supported dimensions are explicit
-- every fixed buffer depth is sufficient for its stated purpose
-- operand reuse is realizable from the stated storage/interface protocol
-- pipeline latency/valid behavior is internally consistent
-- interface widths are legal for all supported parameters
-- reset semantics are implementable without unnecessary memory clearing
-- module responsibilities cover the complete design
-- acceptance criteria match the frozen architecture
+Before returning `READY`, verify:
+- all named operation inputs/outputs refer to defined data types
+- all runtime dimensions have concrete integer bounds
+- all parameter defaults are concrete and legal
+- storage capacities cover the declared legal bounds
+- storage port/banking requirements sustain the stated compute schedule
+- interface framing/order agrees with the storage/reuse protocol
+- pipeline stalls cannot corrupt or duplicate state
+- module responsibilities cover every architectural function
+- reset semantics agree across architecture and interface contracts
+- no downstream RTL decision requires an unstated architectural assumption
 
-Return `SPEC_CONFLICT` only when explicit requirements cannot simultaneously hold. Do not use missing architecture choices as a reason to return a conflict; resolve them technically.
+Return `SPEC_CONFLICT` only when explicit requirements cannot simultaneously hold.
 
 ## Forbidden Actions
 - generating SystemVerilog
-- fabricating EDA results
-- weakening user requirements or verification criteria
-- silently changing explicit datatypes, operations, or interfaces
-- leaving storage/reuse behavior undefined
+- silently specializing the framework to a benchmark example
+- inventing requirements absent from the request or technical constraints
+- weakening acceptance criteria to improve pass rate
+- changing verification expectations after seeing RTL failures
+- modifying or fabricating synthesis reports
+- silently changing frozen architecture semantics
