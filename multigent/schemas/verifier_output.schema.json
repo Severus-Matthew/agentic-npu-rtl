@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Generic Verifier Agent Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "summary",
+    "reference_files",
+    "test_files",
+    "verification_plan",
+    "architecture_conflict",
+    "known_verification_gaps"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["VERIFICATION_READY", "ARCHITECTURE_CONFLICT"]
+    },
+    "summary": {"type": "string"},
+    "reference_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "purpose", "content"],
+        "properties": {
+          "path": {"type": "string"},
+          "purpose": {"type": "string"},
+          "content": {"type": "string"}
+        }
+      }
+    },
+    "test_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "purpose", "categories", "regression_groups", "content"],
+        "properties": {
+          "path": {"type": "string"},
+          "purpose": {"type": "string"},
+          "categories": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "regression_groups": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["smoke", "targeted", "full"]}
+          },
+          "content": {"type": "string"}
+        }
+      }
+    },
+    "verification_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "top_module",
+        "test_modules",
+        "test_categories",
+        "randomized_test_count",
+        "seed",
+        "timeout_seconds",
+        "regression_groups",
+        "pass_criteria",
+        "protocol_assumptions"
+      ],
+      "properties": {
+        "top_module": {"type": "string"},
+        "test_modules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"}
+        },
+        "test_categories": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"}
+        },
+        "randomized_test_count": {"type": "integer", "minimum": 0},
+        "seed": {"type": "integer", "minimum": 0},
+        "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+        "regression_groups": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["smoke", "targeted", "full"],
+          "properties": {
+            "smoke": {"type": "array", "items": {"type": "string"}},
+            "targeted": {"type": "array", "items": {"type": "string"}},
+            "full": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "pass_criteria": {"type": "string"},
+        "protocol_assumptions": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "architecture_conflict": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["category", "affected_modules", "issue", "evidence", "requested_architect_decision"],
+          "properties": {
+            "category": {"type": "string"},
+            "affected_modules": {"type": "array", "items": {"type": "string"}},
+            "issue": {"type": "string"},
+            "evidence": {"type": "string"},
+            "requested_architect_decision": {"type": "string"}
+          }
+        }
+      ]
+    },
+    "known_verification_gaps": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  }
+}
