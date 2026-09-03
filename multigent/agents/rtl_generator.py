@@ -1,13 +1,8 @@
 """API-backed generic RTL Generator Agent.
 
-The agent implements a frozen architecture contract as synthesizable SystemVerilog.
-It is intentionally accelerator-agnostic: operation names, arithmetic formats,
-parallelism, interfaces, storage, and module names all come from the Architect
-artifacts supplied in the deterministic RTL context.
-
-The ``run_from_state`` method has the standard LangGraph node shape: it accepts a
-mapping-like graph state and returns a partial state update. The graph itself is
-assembled separately so routing policy remains orchestration-owned.
+Implements frozen architecture artifacts as synthesizable SystemVerilog and applies
+only explicitly authorized repair/optimization feedback. Runtime logic remains
+accelerator-agnostic.
 """
 
 from __future__ import annotations
@@ -49,12 +44,9 @@ class RTLGeneratorAgent(APIAgent):
         )
 
     def load_instructions(self) -> str:
-        """Load only the role's technical skill to avoid benchmark-example bias."""
-
         if not self.role_skill_path.is_file():
             raise FileNotFoundError(self.role_skill_path)
-        role_skill = self.role_skill_path.read_text(encoding="utf-8")
-        return f"# RTL GENERATOR TECHNICAL SKILL\n\n{role_skill}\n"
+        return "# RTL GENERATOR TECHNICAL SKILL\n\n" + self.role_skill_path.read_text(encoding="utf-8") + "\n"
 
     def run(
         self,
@@ -65,15 +57,12 @@ class RTLGeneratorAgent(APIAgent):
         output_dir: Path | None = None,
         run_id: str = "manual",
     ) -> dict[str, Any]:
-        """Generate RTL or a structured escalation from a frozen RTL context."""
-
         if task_type not in TASK_TYPES:
             raise ValueError(f"Unsupported RTL task type: {task_type}")
         self._validate_context(context)
 
         target = output_dir or (WORKSPACE_ROOT / "rtl")
         target.mkdir(parents=True, exist_ok=True)
-
         existing_rtl = self._load_existing_rtl(target) if task_type != "INITIAL_GENERATION" else {}
         if task_type != "INITIAL_GENERATION" and not existing_rtl:
             raise AgentRuntimeError(
@@ -82,14 +71,13 @@ class RTLGeneratorAgent(APIAgent):
         if task_type != "INITIAL_GENERATION" and feedback is None:
             raise AgentRuntimeError(f"{task_type} requires deterministic/authorized feedback.")
 
-        task = self._build_task(
-            context=context,
-            task_type=task_type,
-            feedback=feedback,
-            existing_rtl=existing_rtl,
-        )
         result = self.run_structured(
-            task=task,
+            task=self._build_task(
+                context=context,
+                task_type=task_type,
+                feedback=feedback,
+                existing_rtl=existing_rtl,
+            ),
             schema_path=RTL_GENERATOR_OUTPUT_SCHEMA,
             log_name=f"rtl-generator-{run_id}.json",
         )
@@ -98,6 +86,7 @@ class RTLGeneratorAgent(APIAgent):
             context=context,
             task_type=task_type,
             existing_rtl=existing_rtl,
+            authorized_feedback=feedback,
         )
 
         if result["status"] == "RTL_GENERATED":
@@ -109,35 +98,18 @@ class RTLGeneratorAgent(APIAgent):
                 path = target / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 content = str(item["content"])
-                if not content.endswith("\n"):
-                    content += "\n"
-                path.write_text(content, encoding="utf-8")
-
+                path.write_text(content if content.endswith("\n") else content + "\n", encoding="utf-8")
         return result
 
     def run_from_state(self, state: Mapping[str, Any]) -> dict[str, Any]:
-        """LangGraph-compatible node entry point.
-
-        LangGraph nodes accept state and return a partial state update. This method
-        intentionally contains no routing logic: the orchestrator decides whether an
-        ``ARCHITECTURE_CONFLICT`` returns to the Architect, whether verification runs,
-        and whether retry budgets are exhausted.
-        """
-
         context = state.get("rtl_context")
         if not isinstance(context, Mapping):
             user_request = state.get("user_request")
             if not isinstance(user_request, str) or not user_request.strip():
-                raise AgentRuntimeError(
-                    "RTL LangGraph node requires state['rtl_context'] or state['user_request']."
-                )
-            architecture_dir_raw = state.get(
-                "architecture_dir", WORKSPACE_ROOT / "architecture"
-            )
-            architecture_dir = Path(architecture_dir_raw)
+                raise AgentRuntimeError("RTL LangGraph node requires rtl_context or user_request")
             context = build_rtl_context(
                 user_request=user_request,
-                architecture_dir=architecture_dir,
+                architecture_dir=Path(state.get("architecture_dir", WORKSPACE_ROOT / "architecture")),
             )
 
         task_type = str(state.get("rtl_task_type", "INITIAL_GENERATION"))
@@ -145,12 +117,11 @@ class RTLGeneratorAgent(APIAgent):
         if feedback is not None and not isinstance(feedback, Mapping):
             raise AgentRuntimeError("state['rtl_feedback'] must be a mapping when supplied")
 
-        run_id = str(state.get("run_id", "langgraph"))
         result = self.run(
             context,
             task_type=task_type,
             feedback=feedback,
-            run_id=run_id,
+            run_id=str(state.get("run_id", "langgraph")),
         )
         return {
             "rtl_status": result["status"],
@@ -162,41 +133,27 @@ class RTLGeneratorAgent(APIAgent):
 
     @staticmethod
     def _validate_context(context: Mapping[str, Any]) -> None:
-        required = {
-            "user_request",
-            "fixed_rtl_constraints",
-            "synthesis_policy",
-            "frozen_architecture",
-        }
+        required = {"user_request", "fixed_rtl_constraints", "synthesis_policy", "frozen_architecture"}
         missing = sorted(required - set(context))
         if missing:
             raise AgentRuntimeError(f"RTL context missing required fields: {missing}")
-
         frozen = context["frozen_architecture"]
         if not isinstance(frozen, Mapping):
             raise AgentRuntimeError("frozen_architecture must be a mapping")
-        artifact_names = {
-            "architecture_contract",
-            "interface_contract",
-            "module_manifest",
-            "acceptance_criteria",
-        }
-        missing_artifacts = sorted(artifact_names - set(frozen))
+        required_artifacts = {"architecture_contract", "interface_contract", "module_manifest", "acceptance_criteria"}
+        missing_artifacts = sorted(required_artifacts - set(frozen))
         if missing_artifacts:
-            raise AgentRuntimeError(
-                f"RTL context missing frozen Architect artifacts: {missing_artifacts}"
-            )
-
+            raise AgentRuntimeError(f"RTL context missing frozen Architect artifacts: {missing_artifacts}")
         manifest = frozen["module_manifest"]
         if not isinstance(manifest, Mapping) or not manifest.get("modules"):
             raise AgentRuntimeError("Frozen module manifest is empty or invalid")
 
     @staticmethod
     def _load_existing_rtl(target: Path) -> dict[str, str]:
-        files: dict[str, str] = {}
-        for path in sorted(target.rglob("*.sv")):
-            files[path.relative_to(target).as_posix()] = path.read_text(encoding="utf-8")
-        return files
+        return {
+            path.relative_to(target).as_posix(): path.read_text(encoding="utf-8")
+            for path in sorted(target.rglob("*.sv"))
+        }
 
     @staticmethod
     def _safe_relative_sv_path(raw: str) -> Path:
@@ -206,15 +163,15 @@ class RTLGeneratorAgent(APIAgent):
         if path.suffix.lower() != ".sv":
             raise AgentRuntimeError(f"RTL Generator may write only .sv files, got {raw!r}")
         if not path.parts or path.parts[0] in {"rtl", "."}:
-            raise AgentRuntimeError(
-                f"RTL file paths must be relative to the RTL root, got {raw!r}"
-            )
+            raise AgentRuntimeError(f"RTL file paths must be relative to the RTL root, got {raw!r}")
         return path
 
     @staticmethod
     def _manifest_modules(context: Mapping[str, Any]) -> set[str]:
-        modules = context["frozen_architecture"]["module_manifest"]["modules"]
-        return {str(module["name"]) for module in modules}
+        return {
+            str(item["name"])
+            for item in context["frozen_architecture"]["module_manifest"]["modules"]
+        }
 
     @classmethod
     def _validate_result(
@@ -224,6 +181,7 @@ class RTLGeneratorAgent(APIAgent):
         context: Mapping[str, Any],
         task_type: str,
         existing_rtl: Mapping[str, str],
+        authorized_feedback: Mapping[str, Any] | None = None,
     ) -> None:
         if result["task_type"] != task_type:
             raise AgentRuntimeError(
@@ -234,19 +192,15 @@ class RTLGeneratorAgent(APIAgent):
         status = result["status"]
         files = list(result["files"])
         changed_modules = [str(name) for name in result["changed_modules"]]
-
         if len(changed_modules) != len(set(changed_modules)):
             raise AgentRuntimeError("RTL Generator returned duplicate changed_modules")
         unknown_changed = sorted(set(changed_modules) - manifest_modules)
         if unknown_changed:
-            raise AgentRuntimeError(
-                f"RTL Generator attempted undeclared modules: {unknown_changed}"
-            )
+            raise AgentRuntimeError(f"RTL Generator attempted undeclared modules: {unknown_changed}")
 
-        if result["architecture_changed"] or result["interface_changed"]:
+        if result["architecture_changed"] or result["interface_changed"] or result["latency_changed"]:
             raise AgentRuntimeError(
-                "RTL Generator may not report or enact architecture/interface changes; "
-                "return ARCHITECTURE_CONFLICT instead."
+                "RTL Generator may not enact frozen architecture/interface/latency changes; return ARCHITECTURE_CONFLICT instead"
             )
 
         if status == "RTL_GENERATED":
@@ -259,15 +213,12 @@ class RTLGeneratorAgent(APIAgent):
             if not result["contract_checks"]:
                 raise AgentRuntimeError("RTL_GENERATED requires explicit contract_checks")
             failed_checks = [
-                check["requirement"]
+                str(check["requirement"])
                 for check in result["contract_checks"]
                 if not check["satisfied"]
             ]
             if failed_checks:
-                raise AgentRuntimeError(
-                    "RTL_GENERATED contains unsatisfied contract checks: "
-                    + ", ".join(map(str, failed_checks))
-                )
+                raise AgentRuntimeError("RTL_GENERATED contains unsatisfied contract checks: " + ", ".join(failed_checks))
 
             paths: set[str] = set()
             file_modules: set[str] = set()
@@ -277,72 +228,51 @@ class RTLGeneratorAgent(APIAgent):
                 if normalized in paths:
                     raise AgentRuntimeError(f"Duplicate RTL output path: {normalized}")
                 paths.add(normalized)
-
                 module = str(item["module"])
                 if module not in manifest_modules:
-                    raise AgentRuntimeError(
-                        f"RTL file {normalized} implements undeclared module {module!r}"
-                    )
+                    raise AgentRuntimeError(f"RTL file {normalized} implements undeclared module {module!r}")
                 if module in file_modules:
-                    raise AgentRuntimeError(
-                        f"Module {module!r} is emitted by more than one RTL file"
-                    )
+                    raise AgentRuntimeError(f"Module {module!r} is emitted by more than one RTL file")
                 file_modules.add(module)
-
                 content = str(item["content"])
-                if not content.strip():
-                    raise AgentRuntimeError(f"RTL file {normalized} has empty content")
-                if "```" in content:
-                    raise AgentRuntimeError(
-                        f"RTL file {normalized} contains Markdown code fences"
-                    )
-                declaration = re.compile(
-                    rf"\bmodule\s+(?:automatic\s+)?{re.escape(module)}\b"
-                )
-                if declaration.search(content) is None:
-                    raise AgentRuntimeError(
-                        f"RTL file {normalized} does not declare expected module {module!r}"
-                    )
-                if re.search(r"\bendmodule\b", content) is None:
-                    raise AgentRuntimeError(f"RTL file {normalized} has no endmodule")
+                if not content.strip() or "```" in content:
+                    raise AgentRuntimeError(f"RTL file {normalized} has invalid/empty content")
+                declaration = re.compile(rf"\bmodule\s+(?:automatic\s+)?{re.escape(module)}\b")
+                if declaration.search(content) is None or re.search(r"\bendmodule\b", content) is None:
+                    raise AgentRuntimeError(f"RTL file {normalized} does not contain complete expected module {module!r}")
 
             if set(changed_modules) != file_modules:
-                raise AgentRuntimeError(
-                    "changed_modules must exactly match modules emitted in files"
-                )
+                raise AgentRuntimeError("changed_modules must exactly match modules emitted in files")
 
             if task_type == "INITIAL_GENERATION":
                 if file_modules != manifest_modules:
                     missing = sorted(manifest_modules - file_modules)
                     extra = sorted(file_modules - manifest_modules)
                     raise AgentRuntimeError(
-                        f"Initial RTL must implement exactly the frozen manifest; "
-                        f"missing={missing}, extra={extra}"
+                        f"Initial RTL must implement exactly the frozen manifest; missing={missing}, extra={extra}"
                     )
                 if result["regression_required"] != "FULL":
                     raise AgentRuntimeError("Initial RTL generation requires FULL regression")
-            elif task_type == "PPA_OPTIMIZATION" and result["regression_required"] != "FULL":
-                raise AgentRuntimeError("PPA RTL changes require FULL regression")
+            else:
+                cls._validate_authorized_change_scope(
+                    changed_modules=file_modules,
+                    task_type=task_type,
+                    feedback=authorized_feedback,
+                )
+                if task_type in {"FUNCTIONAL_REPAIR", "PPA_OPTIMIZATION"} and result["regression_required"] != "FULL":
+                    raise AgentRuntimeError(f"{task_type} RTL changes require FULL regression")
 
         elif status == "ARCHITECTURE_CONFLICT":
             if files or changed_modules:
-                raise AgentRuntimeError(
-                    "ARCHITECTURE_CONFLICT must not emit or modify RTL files"
-                )
+                raise AgentRuntimeError("ARCHITECTURE_CONFLICT must not emit or modify RTL files")
             conflict = result["architecture_conflict"]
             if not isinstance(conflict, Mapping):
-                raise AgentRuntimeError(
-                    "ARCHITECTURE_CONFLICT requires architecture_conflict details"
-                )
+                raise AgentRuntimeError("ARCHITECTURE_CONFLICT requires architecture_conflict details")
             unknown = sorted(set(conflict["affected_modules"]) - manifest_modules)
             if unknown:
-                raise AgentRuntimeError(
-                    f"Architecture conflict references undeclared modules: {unknown}"
-                )
+                raise AgentRuntimeError(f"Architecture conflict references undeclared modules: {unknown}")
             if result["regression_required"] != "NONE":
-                raise AgentRuntimeError(
-                    "No RTL changed during ARCHITECTURE_CONFLICT; regression must be NONE"
-                )
+                raise AgentRuntimeError("No RTL changed during ARCHITECTURE_CONFLICT; regression must be NONE")
 
         elif status == "REPAIR_BLOCKED":
             if task_type == "INITIAL_GENERATION":
@@ -352,11 +282,40 @@ class RTLGeneratorAgent(APIAgent):
             if not str(result["blocked_reason"]).strip():
                 raise AgentRuntimeError("REPAIR_BLOCKED requires blocked_reason")
             if result["regression_required"] != "NONE":
-                raise AgentRuntimeError(
-                    "No RTL changed during REPAIR_BLOCKED; regression must be NONE"
-                )
+                raise AgentRuntimeError("No RTL changed during REPAIR_BLOCKED; regression must be NONE")
         else:
             raise AgentRuntimeError(f"Unknown RTL Generator status: {status!r}")
+
+    @staticmethod
+    def _validate_authorized_change_scope(
+        *,
+        changed_modules: set[str],
+        task_type: str,
+        feedback: Mapping[str, Any] | None,
+    ) -> None:
+        if not isinstance(feedback, Mapping):
+            raise AgentRuntimeError(f"{task_type} requires structured authorized feedback")
+
+        if task_type == "FUNCTIONAL_REPAIR":
+            repair_plan = feedback.get("repair_plan")
+            if not isinstance(repair_plan, Mapping):
+                raise AgentRuntimeError("FUNCTIONAL_REPAIR requires debugger repair_plan feedback")
+            authorized = set(map(str, repair_plan.get("affected_modules", [])))
+            if not authorized:
+                raise AgentRuntimeError("FUNCTIONAL_REPAIR repair_plan has no authorized affected_modules")
+            unauthorized = sorted(changed_modules - authorized)
+            if unauthorized:
+                raise AgentRuntimeError(
+                    f"FUNCTIONAL_REPAIR attempted modules outside Debugger authorization: {unauthorized}"
+                )
+            protected = set(map(str, repair_plan.get("protected_modules", [])))
+            touched_protected = sorted(changed_modules & protected)
+            if touched_protected:
+                raise AgentRuntimeError(
+                    f"FUNCTIONAL_REPAIR attempted protected modules: {touched_protected}"
+                )
+            if feedback.get("frozen_verifier") is not True:
+                raise AgentRuntimeError("FUNCTIONAL_REPAIR must preserve the frozen verifier")
 
     @staticmethod
     def _build_task(
@@ -377,51 +336,31 @@ class RTLGeneratorAgent(APIAgent):
 
 AUTHORITY AND COMMUNICATION
 ---------------------------
-- The original user request is preserved for provenance and requirement authority.
-- The Architect artifacts in ``rtl_context.frozen_architecture`` are frozen technical
-  decisions. Do not silently reinterpret, repair, optimize, or replace them.
-- If those artifacts are internally insufficient or impossible to implement without
-  an architectural/interface decision, return ``ARCHITECTURE_CONFLICT``. State the
-  exact evidence and the decision required from the Architect. Do not make that
-  decision yourself.
-- LangGraph will route structured conflicts, verification failures, repair plans, and
-  optimization plans. Do not simulate an agent-to-agent conversation in prose.
+- Architect artifacts are frozen technical decisions. Do not silently reinterpret or
+  change them; return ARCHITECTURE_CONFLICT when a new architecture decision is needed.
+- LangGraph supplies deterministic repair/optimization feedback. Do not simulate
+  free-form agent conversations.
 
-GENERIC IMPLEMENTATION RULES
-----------------------------
-1. This runtime is accelerator-agnostic. Derive all operations, data types, widths,
-   signedness, dimensions, parameters, storage, scheduling, protocols, reset behavior,
-   and module names from the frozen contracts. Never assume GEMM, convolution,
-   attention, a MAC array, INT8, INT32, M/N/K, a particular tile shape, or any other
-   benchmark structure unless it is present in the supplied architecture.
-2. For INITIAL_GENERATION, emit exactly one ``.sv`` file for every module in the
-   frozen module manifest and no undeclared helper modules. Each file entry names the
-   single manifest module it implements.
-3. Preserve the interface contract exactly. Architecture/interface changes are not
-   implementation conveniences; escalate them.
-4. Use explicit widths and signed conversions where needed. Implement the arithmetic
-   semantics in the frozen contract rather than relying on accidental language casts.
-5. Implement ready/valid, framing, ordering, stalls, reset, counters, edge conditions,
-   storage capacities, banking/ports, and latency sequencing exactly as contracted.
-6. Generate synthesizable SystemVerilog only. Do not place Markdown fences in file
-   content and do not claim any compiler, simulator, or synthesis tool has run.
-7. For repair/optimization modes, use the supplied existing RTL and authorized
-   feedback. Modify only necessary manifest modules. Never change tests, golden
-   behavior, architecture, or interface to make a failure disappear.
-8. For PPA_OPTIMIZATION, deterministic synthesis evidence is authoritative; every RTL
-   change requires FULL functional regression afterward.
-9. Before returning RTL_GENERATED, perform a textual self-review and populate
-   ``contract_checks`` with concise evidence. Self-review is not deterministic PASS.
-10. If a requested repair cannot be applied coherently under the frozen architecture,
-    return ARCHITECTURE_CONFLICT when a new architecture decision is required, or
-    REPAIR_BLOCKED when the authorized repair/evidence is insufficient without any
-    architecture change.
+GENERIC RULES
+-------------
+1. Derive operations, types, widths, dimensions, parameters, storage, scheduling,
+   protocols, reset, and module names only from supplied frozen contracts.
+2. INITIAL_GENERATION emits exactly one .sv file per manifest module.
+3. Preserve the interface, latency semantics, arithmetic, storage, and control contract.
+4. Generate synthesizable SystemVerilog and never claim deterministic tool PASS.
+5. For repair modes, use existing RTL and authorized feedback. Emit only modules that
+   actually need modification; untouched files remain in the workspace.
+6. FUNCTIONAL_REPAIR may change only modules listed in
+   feedback.repair_plan.affected_modules, must not change protected_modules or any
+   frozen interface/test/reference behavior, and requires FULL regression.
+7. If authorized evidence cannot support a coherent patch, return REPAIR_BLOCKED; if
+   a new Architect decision is needed, return ARCHITECTURE_CONFLICT.
+8. Populate contract_checks as textual self-review only.
 
 FILE PATH RULE
 --------------
-Every file path is relative to ``multigent/workspace/rtl`` (for example
-``controller.sv`` or ``subsystem/controller.sv``). Never prefix it with ``rtl/`` and
-never use absolute paths or ``..``.
+Paths are relative to multigent/workspace/rtl, without rtl/ prefix, absolute paths,
+or traversal.
 
 RTL TASK ENVELOPE
 -----------------
@@ -432,9 +371,7 @@ RTL TASK ENVELOPE
 def _load_recorded_request(run_id: str) -> str:
     path = WORKSPACE_ROOT / "specs" / f"request-{run_id}.yaml"
     if not path.is_file():
-        raise FileNotFoundError(
-            f"Architect intake record not found: {path}. Run the Architect first."
-        )
+        raise FileNotFoundError(f"Architect intake record not found: {path}")
     value = yaml.safe_load(path.read_text(encoding="utf-8"))
     request = value.get("user_request") if isinstance(value, Mapping) else None
     if not isinstance(request, str) or not request.strip():
@@ -444,10 +381,7 @@ def _load_recorded_request(run_id: str) -> str:
 
 def _load_mapping(path: Path) -> dict[str, Any]:
     raw = path.read_text(encoding="utf-8")
-    if path.suffix.lower() == ".json":
-        value = json.loads(raw)
-    else:
-        value = yaml.safe_load(raw)
+    value = json.loads(raw) if path.suffix.lower() == ".json" else yaml.safe_load(raw)
     if not isinstance(value, dict):
         raise TypeError(f"{path} must decode to a mapping/object")
     return value
@@ -456,68 +390,32 @@ def _load_mapping(path: Path) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the generic RTL Generator Agent")
     parser.add_argument("--run-id", required=True)
-    parser.add_argument(
-        "--task-type",
-        choices=sorted(TASK_TYPES),
-        default="INITIAL_GENERATION",
-    )
-    parser.add_argument(
-        "--context",
-        type=Path,
-        default=None,
-        help="Optional prepared RTL context YAML/JSON; otherwise build from the frozen workspace architecture.",
-    )
-    parser.add_argument(
-        "--feedback",
-        type=Path,
-        default=None,
-        help="Authorized repair/optimization feedback YAML/JSON for non-initial tasks.",
-    )
-    parser.add_argument(
-        "--architecture-dir",
-        type=Path,
-        default=WORKSPACE_ROOT / "architecture",
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=WORKSPACE_ROOT / "rtl",
-    )
+    parser.add_argument("--task-type", choices=sorted(TASK_TYPES), default="INITIAL_GENERATION")
+    parser.add_argument("--context", type=Path, default=None)
+    parser.add_argument("--feedback", type=Path, default=None)
+    parser.add_argument("--architecture-dir", type=Path, default=WORKSPACE_ROOT / "architecture")
+    parser.add_argument("--output-dir", type=Path, default=WORKSPACE_ROOT / "rtl")
     parser.add_argument("--model", default=None)
-    parser.add_argument(
-        "--api-mode",
-        choices=["responses", "chat_completions"],
-        default=None,
-    )
+    parser.add_argument("--api-mode", choices=["responses", "chat_completions"], default=None)
     args = parser.parse_args()
 
-    if args.context is not None:
-        context = _load_mapping(args.context)
-    else:
-        context = build_rtl_context(
-            user_request=_load_recorded_request(args.run_id),
-            architecture_dir=args.architecture_dir,
-        )
+    context = _load_mapping(args.context) if args.context is not None else build_rtl_context(
+        user_request=_load_recorded_request(args.run_id),
+        architecture_dir=args.architecture_dir,
+    )
     feedback = _load_mapping(args.feedback) if args.feedback is not None else None
-
-    agent = RTLGeneratorAgent(model=args.model, api_mode=args.api_mode)
-    result = agent.run(
+    result = RTLGeneratorAgent(model=args.model, api_mode=args.api_mode).run(
         context,
         task_type=args.task_type,
         feedback=feedback,
         output_dir=args.output_dir,
         run_id=args.run_id,
     )
-    print(
-        json.dumps(
-            {
-                "status": result["status"],
-                "task_type": result["task_type"],
-                "files": [item["path"] for item in result["files"]],
-            },
-            indent=2,
-        )
-    )
+    print(json.dumps({
+        "status": result["status"],
+        "task_type": result["task_type"],
+        "files": [item["path"] for item in result["files"]],
+    }, indent=2))
 
 
 if __name__ == "__main__":
