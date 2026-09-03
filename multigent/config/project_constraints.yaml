@@ -25,6 +25,7 @@ architect_must_decide_when_unspecified:
   - design_name
   - operation_semantics
   - data_type_semantics
+  - logical_data_objects
   - legal_runtime_bounds
   - compile_time_parameters
   - compute_organization
@@ -35,10 +36,12 @@ architect_must_decide_when_unspecified:
   - buffering
   - pipeline_structure
   - interface_protocol
+  - interface_payload_mapping
   - framing_and_ordering
   - backpressure_behavior
   - reset_style
   - reset_polarity
   - control_strategy
+  - error_recovery
   - latency_model
   - module_decomposition
