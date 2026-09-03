@@ -110,13 +110,12 @@ class ArchitectAgent(APIAgent):
 
     @staticmethod
     def _validate_contract_references(result: Mapping[str, Any]) -> None:
-        """Deterministically reject broken cross-references in a READY contract.
+        """Deterministically reject broken relational invariants in READY output.
 
         JSON Schema validates structure and primitive types. This second layer checks
-        generic relational invariants that JSON Schema cannot conveniently express:
-        operations reference declared data objects, data objects reference declared
-        types/dimensions, storage and channels reference declared objects, and module
-        dependencies/parameters are resolvable.
+        relationships that are generic across accelerator families: operation/object
+        graph reciprocity, type/dimension/parameter references, interface visibility,
+        storage references, and module dependencies/parameters.
         """
 
         arch = result["architecture_contract"]
@@ -135,18 +134,43 @@ class ArchitectAgent(APIAgent):
         object_names = unique_names(arch["data_objects"], "data object")
         dimension_names = unique_names(arch["dimensions"], "dimension")
         parameter_names = unique_names(arch["parameters"], "parameter")
+        storage_names = unique_names(arch["storage"], "storage")
+        channel_names = unique_names(interface["channels"], "channel")
+        del storage_names, channel_names  # uniqueness side effect is the required check
+
+        operations = {str(item["name"]): item for item in arch["operations"]}
+        objects = {str(item["name"]): item for item in arch["data_objects"]}
+        parameters = {str(item["name"]): item for item in arch["parameters"]}
 
         for dim in arch["dimensions"]:
-            if int(dim["maximum"]) < int(dim["minimum"]):
+            dim_name = str(dim["name"])
+            minimum = int(dim["minimum"])
+            maximum = int(dim["maximum"])
+            if maximum < minimum:
                 errors.append(
-                    f"dimension {dim['name']} maximum is smaller than minimum"
+                    f"dimension {dim_name} maximum is smaller than minimum"
                 )
+
             bound_parameter = str(dim["bound_parameter"]).strip()
-            if bound_parameter and bound_parameter not in parameter_names:
-                errors.append(
-                    f"dimension {dim['name']} references unknown parameter "
-                    f"{bound_parameter}"
-                )
+            if bound_parameter:
+                if bound_parameter not in parameter_names:
+                    errors.append(
+                        f"dimension {dim_name} references unknown parameter "
+                        f"{bound_parameter}"
+                    )
+                else:
+                    # When the bound parameter has an integer default, the default
+                    # build itself must lie within the architecture's declared bounds.
+                    default_value = str(parameters[bound_parameter]["default_value"]).strip()
+                    try:
+                        default_int = int(default_value, 0)
+                    except ValueError:
+                        default_int = None
+                    if default_int is not None and not minimum <= default_int <= maximum:
+                        errors.append(
+                            f"dimension {dim_name} bound parameter {bound_parameter} "
+                            f"default {default_int} lies outside [{minimum}, {maximum}]"
+                        )
 
         for obj in arch["data_objects"]:
             name = str(obj["name"])
@@ -159,23 +183,68 @@ class ArchitectAgent(APIAgent):
                     errors.append(
                         f"data object {name} references unknown dimension {dimension}"
                     )
+
             producer = str(obj["producer"])
-            if producer != "external" and producer not in operation_names:
-                errors.append(
-                    f"data object {name} references unknown producer {producer}"
-                )
-            for consumer in obj["consumers"]:
-                if consumer != "external" and consumer not in operation_names:
+            if producer != "external":
+                if producer not in operation_names:
                     errors.append(
-                        f"data object {name} references unknown consumer {consumer}"
+                        f"data object {name} references unknown producer {producer}"
+                    )
+                elif name not in operations[producer]["outputs"]:
+                    errors.append(
+                        f"data object {name} names producer {producer}, but operation "
+                        f"{producer} does not list {name} as an output"
                     )
 
+            for consumer in obj["consumers"]:
+                consumer_name = str(consumer)
+                if consumer_name == "external":
+                    continue
+                if consumer_name not in operation_names:
+                    errors.append(
+                        f"data object {name} references unknown consumer {consumer_name}"
+                    )
+                elif name not in operations[consumer_name]["inputs"]:
+                    errors.append(
+                        f"data object {name} names consumer {consumer_name}, but operation "
+                        f"{consumer_name} does not list {name} as an input"
+                    )
+
+            crosses_boundary = producer == "external" or "external" in obj["consumers"]
+            if crosses_boundary and not bool(obj["external"]):
+                errors.append(
+                    f"data object {name} crosses the external boundary but external=false"
+                )
+            if bool(obj["external"]) and not crosses_boundary:
+                errors.append(
+                    f"data object {name} is marked external=true but has no external "
+                    "producer or consumer"
+                )
+
         for operation in arch["operations"]:
-            for object_name in [*operation["inputs"], *operation["outputs"]]:
+            operation_name = str(operation["name"])
+            for object_name in operation["inputs"]:
                 if object_name not in object_names:
                     errors.append(
-                        f"operation {operation['name']} references unknown data object "
+                        f"operation {operation_name} references unknown data object "
                         f"{object_name}"
+                    )
+                elif operation_name not in objects[object_name]["consumers"]:
+                    errors.append(
+                        f"operation {operation_name} lists {object_name} as input, but "
+                        f"data object {object_name} does not list {operation_name} as consumer"
+                    )
+            for object_name in operation["outputs"]:
+                if object_name not in object_names:
+                    errors.append(
+                        f"operation {operation_name} references unknown data object "
+                        f"{object_name}"
+                    )
+                elif str(objects[object_name]["producer"]) != operation_name:
+                    errors.append(
+                        f"operation {operation_name} lists {object_name} as output, but "
+                        f"data object {object_name} names producer "
+                        f"{objects[object_name]['producer']}"
                     )
 
         for storage in arch["storage"]:
@@ -186,6 +255,7 @@ class ArchitectAgent(APIAgent):
                         f"{object_name}"
                     )
 
+        externally_carried_objects: set[str] = set()
         for channel in interface["channels"]:
             for object_name in channel["data_objects"]:
                 if object_name not in object_names:
@@ -193,6 +263,18 @@ class ArchitectAgent(APIAgent):
                         f"channel {channel['name']} references unknown data object "
                         f"{object_name}"
                     )
+                    continue
+                externally_carried_objects.add(str(object_name))
+                if not bool(objects[object_name]["external"]):
+                    errors.append(
+                        f"channel {channel['name']} exposes internal data object {object_name}"
+                    )
+
+        for obj in arch["data_objects"]:
+            if bool(obj["external"]) and str(obj["name"]) not in externally_carried_objects:
+                errors.append(
+                    f"external data object {obj['name']} is not carried by any interface channel"
+                )
 
         module_names = unique_names(manifest["modules"], "module")
         if manifest["top"] not in module_names:
@@ -253,9 +335,11 @@ Required design work:
    input/output must reference a declared logical ``data_object``.
 2. Define scalar/element ``data_types`` separately from logical ``data_objects``.
    Every data object must name its data type, dimensions, producer, consumers, and
-   whether it crosses the external interface.
+   whether it crosses the external interface. Producer/consumer declarations must
+   be reciprocal with operation outputs/inputs.
 3. Define every runtime-varying dimension with concrete integer minimum/maximum
-   bounds and any compile-time bound parameter.
+   bounds and any compile-time bound parameter. A bound parameter's default build
+   must fall inside the declared dimension range.
 4. Define all compile-time parameters with concrete defaults, legality constraints,
    and purposes. Parameter-dependent signal widths and capacities must be expressed
    symbolically rather than frozen to values valid only at the defaults.
@@ -274,8 +358,9 @@ Required design work:
    behavior, and an explicit implementable recovery path. Never reference a clear or
    retry command that is absent from the interface.
 10. Fully define logical channels and top-level signals. Each channel must list the
-    declared data objects it carries plus any metadata, framing, ordering,
-    backpressure, widths, and reset behavior.
+    declared external data objects it carries plus any metadata, framing, ordering,
+    backpressure, widths, and reset behavior. Every external data object must be
+    represented by at least one interface channel.
 11. Define module decomposition with explicit responsibilities, dependencies,
     parameters, and statefulness. All dependencies and parameters must resolve.
 12. Define deterministic functional, verification, RTL, and Synopsys-handoff
