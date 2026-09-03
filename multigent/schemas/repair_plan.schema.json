@@ -1,5 +1,26 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Repair Plan",
-  "type": "object"
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "action",
+    "affected_modules",
+    "protected_modules",
+    "protected_interfaces",
+    "recommended_change",
+    "do_not_change",
+    "expected_side_effects",
+    "regression_required"
+  ],
+  "properties": {
+    "action": {"type": "string", "enum": ["PATCH"]},
+    "affected_modules": {"type": "array", "items": {"type": "string"}},
+    "protected_modules": {"type": "array", "items": {"type": "string"}},
+    "protected_interfaces": {"type": "array", "items": {"type": "string"}},
+    "recommended_change": {"type": "string"},
+    "do_not_change": {"type": "array", "items": {"type": "string"}},
+    "expected_side_effects": {"type": "array", "items": {"type": "string"}},
+    "regression_required": {"type": "string", "enum": ["FULL"]}
+  }
 }
