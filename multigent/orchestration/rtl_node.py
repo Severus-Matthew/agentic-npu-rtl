@@ -23,13 +23,26 @@ def make_rtl_generator_node(
     runtime = agent or RTLGeneratorAgent()
 
     def rtl_generator_node(state: HardwareDesignState) -> dict[str, Any]:
-        update = runtime.run_from_state(state)
+        base_run_id = str(state.get("run_id", "langgraph"))
+        architecture_version = int(state.get("architecture_version", 0))
+        repair_iteration = int(state.get("repair_iteration", 0))
+        ppa_iteration = int(state.get("ppa_iteration", 0))
+        node_state = dict(state)
+        node_state["run_id"] = (
+            f"{base_run_id}-rtl-av{architecture_version}"
+            f"-r{repair_iteration}-p{ppa_iteration}"
+        )
+
+        update = runtime.run_from_state(node_state)
         return {
             **update,
             "history": [
                 {
                     "stage": "rtl_generator",
                     "status": update["rtl_status"],
+                    "architecture_version": architecture_version,
+                    "repair_iteration": repair_iteration,
+                    "ppa_iteration": ppa_iteration,
                     "files": list(update["rtl_files"]),
                 }
             ],
