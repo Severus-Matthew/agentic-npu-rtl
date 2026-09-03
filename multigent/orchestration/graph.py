@@ -1,23 +1,26 @@
 """Initial executable LangGraph for Architect -> RTL generation.
 
-This graph intentionally stops at a verification placeholder. The independent
-Verifier and deterministic tool nodes will replace that placeholder in the next
-stage without changing the Architect/RTL communication contract.
+The graph can start from a user request or reuse a previously frozen architecture.
+If RTL reports ``ARCHITECTURE_CONFLICT``, deterministic routing sends the structured
+feedback to Architect within the configured revision budget. The graph intentionally
+stops at a verification placeholder until the independent Verifier is implemented.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
 from multigent.agents.architect import ArchitectAgent
 from multigent.agents.rtl_generator import RTLGeneratorAgent
+from multigent.intake.request_builder import WORKSPACE_ROOT, build_rtl_context
 
 from .architect_node import make_architect_node
-from .routes import route_after_architect, route_after_rtl
+from .routes import route_after_architect, route_after_rtl, route_start
 from .rtl_node import make_rtl_generator_node
 from .state import HardwareDesignState
 
@@ -64,7 +67,7 @@ def build_architect_rtl_graph(
     builder.add_node("verification", _verification_placeholder)
     builder.add_node("failed", _failed_node)
 
-    builder.add_edge(START, "architect")
+    builder.add_conditional_edges(START, route_start)
     builder.add_conditional_edges("architect", route_after_architect)
     builder.add_conditional_edges("rtl_generator", route_after_rtl)
     builder.add_edge("verification", END)
@@ -79,6 +82,16 @@ def main() -> None:
     parser.add_argument("--request", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--max-architecture-revisions", type=int, default=2)
+    parser.add_argument(
+        "--architecture-dir",
+        type=Path,
+        default=WORKSPACE_ROOT / "architecture",
+    )
+    parser.add_argument(
+        "--use-frozen-architecture",
+        action="store_true",
+        help="Start at RTL using the validated architecture artifacts already in --architecture-dir.",
+    )
     args = parser.parse_args()
 
     if args.max_architecture_revisions < 0:
@@ -88,6 +101,7 @@ def main() -> None:
     initial: HardwareDesignState = {
         "run_id": args.run_id,
         "user_request": args.request.strip(),
+        "architecture_dir": str(args.architecture_dir),
         "architecture_version": 0,
         "architecture_revision": 0,
         "max_architecture_revisions": args.max_architecture_revisions,
@@ -96,6 +110,19 @@ def main() -> None:
         "errors": [],
         "status": "RUNNING",
     }
+
+    if args.use_frozen_architecture:
+        initial.update(
+            {
+                "architecture_status": "READY",
+                "architecture_version": 1,
+                "rtl_context": build_rtl_context(
+                    user_request=args.request.strip(),
+                    architecture_dir=args.architecture_dir,
+                ),
+            }
+        )
+
     recursion_limit = 8 + 2 * args.max_architecture_revisions
     final_state = graph.invoke(initial, {"recursion_limit": recursion_limit})
     print(
