@@ -11,7 +11,7 @@ from typing import Annotated, Any, TypedDict
 
 
 class HardwareDesignState(TypedDict, total=False):
-    """Shared state for the Architect/RTL/verification/synthesis workflow."""
+    """Shared state for the Architect/RTL/verification/repair/synthesis workflow."""
 
     run_id: str
     user_request: str
@@ -38,6 +38,7 @@ class HardwareDesignState(TypedDict, total=False):
     verification_status: str
     verification_evidence: dict[str, Any] | None
 
+    debugger_status: str
     diagnosis: dict[str, Any] | None
     repair_plan: dict[str, Any] | None
 
