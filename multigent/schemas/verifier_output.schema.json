@@ -94,21 +94,16 @@
       }
     },
     "architecture_conflict": {
-      "oneOf": [
-        {"type": "null"},
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["category", "affected_modules", "issue", "evidence", "requested_architect_decision"],
-          "properties": {
-            "category": {"type": "string"},
-            "affected_modules": {"type": "array", "items": {"type": "string"}},
-            "issue": {"type": "string"},
-            "evidence": {"type": "string"},
-            "requested_architect_decision": {"type": "string"}
-          }
-        }
-      ]
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["category", "affected_modules", "issue", "evidence", "requested_architect_decision"],
+      "properties": {
+        "category": {"type": "string"},
+        "affected_modules": {"type": "array", "items": {"type": "string"}},
+        "issue": {"type": "string"},
+        "evidence": {"type": "string"},
+        "requested_architect_decision": {"type": "string"}
+      }
     },
     "known_verification_gaps": {
       "type": "array",
