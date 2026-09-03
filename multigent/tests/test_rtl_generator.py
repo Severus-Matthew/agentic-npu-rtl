@@ -222,7 +222,7 @@ def test_skill_context_is_generic_and_role_only() -> None:
 def test_langgraph_node_returns_partial_state_update() -> None:
     class StubAgent:
         def run_from_state(self, state: dict) -> dict:
-            assert state["run_id"] == "graph-unit"
+            assert state["run_id"] == "graph-unit-rtl-av0-r0-p0"
             return {
                 "rtl_status": "ARCHITECTURE_CONFLICT",
                 "rtl_result": {"status": "ARCHITECTURE_CONFLICT"},
