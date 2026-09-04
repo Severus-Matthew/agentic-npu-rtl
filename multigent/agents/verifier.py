@@ -157,16 +157,27 @@ class VerifierAgent(APIAgent):
 
     @staticmethod
     def _canonical_test_module(raw: str) -> str:
-        """Normalize equivalent verifier plan references to one cocotb module stem.
+        """Normalize verifier plan references to a cocotb Python module stem.
 
-        Accepted examples are ``test_core``, ``test_core.py``,
-        ``tests/test_core.py``, and ``tests.test_core``. The saved verification plan
-        is rewritten to the canonical bare importable module name ``test_core``.
+        Accepted forms include ``test_core``, ``test_core.py``,
+        ``tests/test_core.py``, ``tests.test_core``, and pytest-style selectors such
+        as ``tests/test_core.py::test_backpressure``. Cocotb's runner consumes test
+        *modules*, so any ``::...`` selector is intentionally reduced to its owning
+        module. The generated test file remains the authority for which cocotb tests
+        exist inside that module.
         """
 
         value = str(raw).strip()
         if not value:
             raise AgentRuntimeError("Empty verification test module reference")
+
+        if "::" in value:
+            module_part, selector = value.split("::", 1)
+            if not module_part.strip() or not selector.strip():
+                raise AgentRuntimeError(
+                    f"Malformed verification test selector: {raw!r}"
+                )
+            value = module_part.strip()
 
         if value.startswith("tests."):
             value = value[len("tests."):]
@@ -194,7 +205,13 @@ class VerifierAgent(APIAgent):
 
     @classmethod
     def _normalize_plan_test_modules(cls, plan: Mapping[str, Any]) -> None:
-        """Canonicalize all test-module references before semantic validation/write."""
+        """Canonicalize test-module references before semantic validation/write.
+
+        ``test_modules`` itself must contain unique modules. Regression groups may
+        enumerate individual pytest-style selectors from the same generated file;
+        those collapse to a single owning cocotb module while preserving first-seen
+        order. Every group is constrained to declared ``test_modules``.
+        """
 
         if not isinstance(plan, dict):
             raise AgentRuntimeError("verification_plan must be a mutable mapping")
@@ -203,17 +220,23 @@ class VerifierAgent(APIAgent):
         if len(modules) != len(set(modules)):
             raise AgentRuntimeError("verification_plan.test_modules contains duplicate module references")
         plan["test_modules"] = modules
+        declared = set(modules)
 
         groups = plan.get("regression_groups")
         if not isinstance(groups, dict):
             raise AgentRuntimeError("verification_plan.regression_groups must be a mapping")
         for group_name in ("smoke", "targeted", "full"):
-            normalized = [
-                cls._canonical_test_module(item) for item in groups[group_name]
-            ]
-            if len(normalized) != len(set(normalized)):
+            normalized: list[str] = []
+            seen: set[str] = set()
+            for item in groups[group_name]:
+                module = cls._canonical_test_module(item)
+                if module not in seen:
+                    normalized.append(module)
+                    seen.add(module)
+            unknown = sorted(seen - declared)
+            if unknown:
                 raise AgentRuntimeError(
-                    f"verification_plan.regression_groups.{group_name} contains duplicates"
+                    f"verification_plan.regression_groups.{group_name} references undeclared test modules: {unknown}"
                 )
             groups[group_name] = normalized
 
@@ -288,14 +311,6 @@ class VerifierAgent(APIAgent):
             raise AgentRuntimeError(
                 f"Verifier timeout_seconds={plan['timeout_seconds']} is below full-regression wall-clock policy minimum {minimum_wall_timeout}"
             )
-
-        for group_name in ("smoke", "targeted", "full"):
-            group_modules = set(map(str, plan["regression_groups"][group_name]))
-            unknown_group_modules = sorted(group_modules - test_modules)
-            if unknown_group_modules:
-                raise AgentRuntimeError(
-                    f"verification_plan.regression_groups.{group_name} references unknown test modules: {unknown_group_modules}"
-                )
         if set(map(str, plan["regression_groups"]["full"])) != test_modules:
             raise AgentRuntimeError("Initial full regression group must contain every generated test module")
 
@@ -447,9 +462,9 @@ OUTPUT RULES
    ARCHITECTURE_CONFLICT when an executable oracle requires a new Architect decision.
 2. Reference paths may be foo.py or reference/foo.py; test paths may be bar.py or
    tests/bar.py. No nested/cross-owned paths.
-3. verification_plan.test_modules and every regression-group entry may use a bare
-   module stem, a .py filename, or the explicit tests/ prefix; runtime canonicalizes
-   these equivalent forms before saving the plan.
+3. verification_plan.test_modules and regression_groups identify generated cocotb
+   Python modules. Bare module names are preferred. If a pytest-style ``::test``
+   selector is emitted, the runtime canonicalizes it to its owning cocotb module.
 4. Full regression contains every generated test module and meets the randomized
    transaction minimum with a deterministic seed.
 5. verification_plan.timeout_seconds is the wall-clock budget for the whole
