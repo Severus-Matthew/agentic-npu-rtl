@@ -179,3 +179,11 @@ The orchestrator, not this agent, controls iteration budgets and routing.
 - fabricating deterministic tool results or PPA metrics
 - declaring compilation/simulation/synthesis PASS without tool evidence
 - broad refactoring during constrained repair without evidence
+
+## Complete implementation is mandatory
+Never output placeholder or comment-only modules, omitted ports, TODO logic, or
+"ports via top .*" stubs. Implement every required module completely. Use the frozen
+module port lists, with explicit instance connections. Missing architectural port
+contracts must be raised as ARCHITECTURE_CONFLICT so Architect can complete them.
+REPAIR_BLOCKED and ARCHITECTURE_CONFLICT emit no changed files and use
+regression_required=NONE; they do not represent successful repair.

@@ -45,7 +45,7 @@ def _build_semantic_retry_state(
     error: AgentRuntimeError,
 ) -> dict[str, Any]:
     context = state.get("verification_context")
-    if isinstance(context, Mapping):
+    if isinstance(context, Mapping) and context:
         retry_context: dict[str, Any] = dict(context)
     else:
         user_request = state.get("user_request")
@@ -92,6 +92,7 @@ def make_verifier_node(
     runtime = agent or VerifierAgent()
 
     def verifier_node(state: HardwareDesignState) -> dict[str, Any]:
+        state = {key: state[key] for key in ("run_id", "user_request", "architecture_dir", "architecture_version", "repair_iteration", "verification_context") if key in state}
         semantic_retry = False
         semantic_error: str | None = None
         try:
@@ -102,7 +103,13 @@ def make_verifier_node(
             semantic_retry = True
             semantic_error = str(exc)
             retry_state = _build_semantic_retry_state(state, error=exc)
-            update = runtime.run_from_state(retry_state)
+            try:
+                update = runtime.run_from_state(retry_state)
+            except AgentRuntimeError as retry_exc:
+                if not _is_semantic_validation_error(retry_exc):
+                    raise
+                return {"verifier_status": "SEMANTIC_VALIDATION_FAILED", "errors": [str(retry_exc)],
+                        "history": [{"stage": "verifier_generation", "status": "SEMANTIC_VALIDATION_FAILED"}]}
 
         history_entry: dict[str, Any] = {
             "stage": "verifier_generation",

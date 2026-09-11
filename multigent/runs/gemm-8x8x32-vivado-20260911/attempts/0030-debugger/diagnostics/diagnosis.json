@@ -1,0 +1,61 @@
+{
+  "failure_class": "SIMULATION_TIMEOUT",
+  "root_cause": "Design enters non-recovering job flow: loader/top do not correctly re-arm between jobs and data-path timing/index handling (1-cycle RAM latency not honored) causes early output mismatch, then randomized multi-job test does not complete within timeout.",
+  "confidence": 0.86,
+  "first_divergence": {
+    "cycle": 28160,
+    "signal_or_output": "test_directed_basic output vector",
+    "expected": "Directed case output equals reference row-major Y",
+    "observed": "Assertion mismatch (got starts [3,3,3,0,...] vs expected [1,0,0,0,...])"
+  },
+  "evidence": [
+    {
+      "source": "cocotb_regression stdout",
+      "observation": "test_directed_basic fails with Output mismatch at 28160ns before suite timeout.",
+      "relevance": "Authoritative first functional divergence."
+    },
+    {
+      "source": "cocotb status",
+      "observation": "Overall regression status TIMEOUT/SIMULATION_TIMEOUT.",
+      "relevance": "Authoritative failure classification to preserve."
+    },
+    {
+      "source": "rtl/input_loader.sv",
+      "observation": "Counters/state not reset on new start; L_DONE is terminal and no re-entry path for subsequent jobs without reset.",
+      "relevance": "Explains multi-job hang/timeout."
+    },
+    {
+      "source": "rtl/gemm8x8x32_bias_relu_top.sv",
+      "observation": "Top auto-enters ST_LOAD from ST_IDLE via combinational start_load; no explicit external job gating/clean submodule reinit handshake.",
+      "relevance": "Contributes to uncontrolled restart behavior and protocol fragility."
+    },
+    {
+      "source": "rtl/output_streamer.sv",
+      "observation": "m_data sampled from out_rd_data in same cycle as address advance despite 1-cycle memory read latency; first/next beat alignment incorrect.",
+      "relevance": "Direct cause of directed output mismatch and potential duplication/skew."
+    },
+    {
+      "source": "rtl/postproc_relu_bias.sv",
+      "observation": "Accepts new acc_valid while pending response active; single pending register can be overwritten if back-to-back acc_valid.",
+      "relevance": "Can corrupt writes/order and downstream completion."
+    },
+    {
+      "source": "rtl/gemm_core_seq.sv",
+      "observation": "Uses RAM read data in same cycle as address issue; ignores declared 1-cycle read latency.",
+      "relevance": "Produces incorrect accumulation values feeding mismatch."
+    }
+  ],
+  "affected_modules": [
+    "gemm8x8x32_bias_relu_top",
+    "input_loader",
+    "gemm_core_seq",
+    "postproc_relu_bias",
+    "output_streamer"
+  ],
+  "alternative_hypotheses": [
+    "Arithmetic sign-extension bug in MAC path independent of latency misuse.",
+    "Top-level done pulse observation race with test sampling (less likely given explicit data mismatch)."
+  ],
+  "architecture_change_required": false,
+  "additional_evidence_requested": []
+}

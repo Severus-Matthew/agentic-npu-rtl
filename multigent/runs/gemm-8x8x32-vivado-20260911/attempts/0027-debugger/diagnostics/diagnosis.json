@@ -1,0 +1,56 @@
+{
+  "failure_class": "SIMULATION_TIMEOUT",
+  "root_cause": "Current RTL is structurally incomplete: gemm_core_seq, postproc_relu_bias, output_streamer, and local_memories are placeholder stubs, and top-level control depends on their done/stream signals. As a result, the FSM cannot complete a job and cocotb waits until timeout.",
+  "confidence": 0.96,
+  "first_divergence": {
+    "cycle": null,
+    "signal_or_output": "cocotb test execution progress",
+    "expected": "test_directed_boundaries should advance through load/compute/emit and produce y transfers",
+    "observed": "regression starts first test then stalls and ends in SIMULATION_TIMEOUT with no completed tests"
+  },
+  "evidence": [
+    {
+      "source": "deterministic_verification.cocotb.status",
+      "observation": "TIMEOUT in cocotb_regression at first test start.",
+      "relevance": "Authoritative primary failure class is simulation timeout."
+    },
+    {
+      "source": "current_rtl/gemm_core_seq.sv",
+      "observation": "Module body is placeholder comment only; no sequential MAC or done generation.",
+      "relevance": "Compute phase cannot progress to completion."
+    },
+    {
+      "source": "current_rtl/postproc_relu_bias.sv",
+      "observation": "Module body is placeholder comment only; no finalize datapath/done behavior.",
+      "relevance": "Finalize phase cannot complete."
+    },
+    {
+      "source": "current_rtl/output_streamer.sv",
+      "observation": "Module body is placeholder comment only; no y_valid/y_data/emit_done handling.",
+      "relevance": "Egress cannot produce outputs or completion pulse."
+    },
+    {
+      "source": "current_rtl/local_memories.sv",
+      "observation": "Module body is placeholder comment only; no storage/readback implementation.",
+      "relevance": "No functional data path for load/compute/finalize/emit."
+    },
+    {
+      "source": "current_rtl/gemm8x8x32_bias_relu_top.sv",
+      "observation": "FSM transitions depend on load_*_done/compute_done/finalize_done/emit_done and uses wildcard connections to submodules.",
+      "relevance": "If submodule control outputs are unimplemented, top-level state machine stalls."
+    }
+  ],
+  "affected_modules": [
+    "gemm_core_seq",
+    "postproc_relu_bias",
+    "output_streamer",
+    "local_memories",
+    "input_loader",
+    "gemm8x8x32_bias_relu_top"
+  ],
+  "alternative_hypotheses": [
+    "Potential handshake bug in input_loader could also stall ingress even after other blocks are implemented."
+  ],
+  "architecture_change_required": false,
+  "additional_evidence_requested": []
+}

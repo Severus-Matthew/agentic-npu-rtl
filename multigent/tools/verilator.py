@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from multigent.tools.process import run_process
 from pathlib import Path
 from typing import Any
 
@@ -118,7 +119,7 @@ def run_verilator_lint(
         *[str(path) for path in sources],
     ]
     try:
-        completed = subprocess.run(
+        completed = run_process(
             command,
             cwd=rtl_dir,
             text=True,
@@ -134,8 +135,8 @@ def run_verilator_lint(
             "return_code": None,
             "command": command,
             "sources": [str(path) for path in sources],
-            "stdout": exc.stdout or "",
-            "stderr": exc.stderr or "",
+            "stdout": exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or ""),
+            "stderr": exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or ""),
             "error_diagnostics": [],
             "top_module": top_module,
         }

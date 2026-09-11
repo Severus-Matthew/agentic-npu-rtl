@@ -280,6 +280,12 @@ class ArchitectAgent(APIAgent):
         if manifest["top"] not in module_names:
             errors.append(f"top module {manifest['top']} is not declared")
         for module in manifest["modules"]:
+            ports = module.get("ports", [])
+            if ports:
+                unique_names(ports, f"port in {module['name']}")
+            if module["name"] == manifest["top"] and interface.get("signals") and ports:
+                if {p['name'] for p in ports} != {p['name'] for p in interface['signals']}:
+                    errors.append("Top module ports must match the external interface signals")
             for dependency in module["dependencies"]:
                 if dependency not in module_names:
                     errors.append(

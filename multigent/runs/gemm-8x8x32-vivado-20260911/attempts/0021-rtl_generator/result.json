@@ -1,0 +1,78 @@
+{
+  "rtl_status": "ARCHITECTURE_CONFLICT",
+  "rtl_result": {
+    "status": "ARCHITECTURE_CONFLICT",
+    "task_type": "FUNCTIONAL_REPAIR",
+    "summary": "Cannot implement/repair manifest modules because frozen artifacts do not define explicit internal module port contracts for input_loader, gemm_core_seq, postproc_relu_bias, output_streamer, and local_memories. Existing RTL uses wildcard top-level coupling, which is not a frozen interface contract and is insufficiently specified for deterministic compliant repair.",
+    "files": [],
+    "contract_checks": [
+      {
+        "requirement": "Implement only frozen architecture/interface semantics without inventing missing contracts",
+        "satisfied": false,
+        "evidence": "Frozen manifest lists module names/responsibilities/parameters but omits required port lists and signal-level internal interfaces between modules."
+      },
+      {
+        "requirement": "FUNCTIONAL_REPAIR may modify affected modules only, preserving external protected interface",
+        "satisfied": false,
+        "evidence": "Repair requires defining new internal ports/signals across all affected modules; these interface decisions are currently unspecified by frozen artifacts."
+      },
+      {
+        "requirement": "Return ARCHITECTURE_CONFLICT when architectural/interface decision is missing",
+        "satisfied": true,
+        "evidence": "Missing internal module interface definitions block compliant RTL implementation without making new architect-owned decisions."
+      }
+    ],
+    "changed_modules": [],
+    "architecture_conflict": {
+      "category": "MISSING_FROZEN_INTERNAL_INTERFACE_CONTRACT",
+      "affected_modules": [
+        "gemm8x8x32_bias_relu_top",
+        "input_loader",
+        "gemm_core_seq",
+        "postproc_relu_bias",
+        "output_streamer",
+        "local_memories"
+      ],
+      "issue": "No explicit frozen port contracts for non-top manifest modules; deterministic, synthesizable, contract-faithful implementation requires architect-specified ports (names, directions, widths, handshake timing, memory read/write interfaces, done/error signaling boundaries).",
+      "evidence": "module_manifest provides responsibilities/dependencies/parameters only; existing stub comments ('ports via top .*') and wildcard instantiation are not authoritative frozen contracts and cannot be safely redefined in repair.",
+      "requested_architect_decision": "Provide complete frozen port lists for each manifest module (including all control, memory, data, counter/address, done/error, and ready/valid-related signals), plus any required latency/validity rules for those internal interfaces."
+    },
+    "blocked_reason": "",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [
+      "Attempting patch without frozen internal ports would introduce non-authorized architectural/interface choices and may violate verification expectations."
+    ],
+    "regression_required": "NONE"
+  },
+  "rtl_files": [],
+  "architecture_conflict": {
+    "category": "MISSING_FROZEN_INTERNAL_INTERFACE_CONTRACT",
+    "affected_modules": [
+      "gemm8x8x32_bias_relu_top",
+      "input_loader",
+      "gemm_core_seq",
+      "postproc_relu_bias",
+      "output_streamer",
+      "local_memories"
+    ],
+    "issue": "No explicit frozen port contracts for non-top manifest modules; deterministic, synthesizable, contract-faithful implementation requires architect-specified ports (names, directions, widths, handshake timing, memory read/write interfaces, done/error signaling boundaries).",
+    "evidence": "module_manifest provides responsibilities/dependencies/parameters only; existing stub comments ('ports via top .*') and wildcard instantiation are not authoritative frozen contracts and cannot be safely redefined in repair.",
+    "requested_architect_decision": "Provide complete frozen port lists for each manifest module (including all control, memory, data, counter/address, done/error, and ready/valid-related signals), plus any required latency/validity rules for those internal interfaces."
+  },
+  "needs_regression": false,
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "history": [
+    {
+      "stage": "rtl_generator",
+      "status": "ARCHITECTURE_CONFLICT",
+      "architecture_version": 1,
+      "repair_iteration": 1,
+      "ppa_iteration": 0,
+      "files": []
+    }
+  ]
+}

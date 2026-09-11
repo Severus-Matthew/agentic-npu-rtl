@@ -1,0 +1,39 @@
+{
+  "action": "PATCH",
+  "affected_modules": [
+    "gemm8x8x32_bias_relu_top",
+    "postproc_relu_bias"
+  ],
+  "protected_modules": [
+    "input_loader",
+    "gemm_core_seq",
+    "output_streamer",
+    "local_memories"
+  ],
+  "protected_interfaces": [
+    "clk",
+    "rst",
+    "s_valid",
+    "s_ready",
+    "s_data",
+    "s_type",
+    "m_valid",
+    "m_ready",
+    "m_data",
+    "busy",
+    "done",
+    "error"
+  ],
+  "recommended_change": "Align producer/consumer timing for accumulator transfer without changing interfaces: either (A) assert start_post before/during compute so postproc is active for all acc_valid beats, or (B) modify postproc to latch/queue incoming acc stream independent of start_post and begin processing at start_post. Implement minimal deterministic fix so every acc_valid from gemm_core_seq results in exactly one out_wr_en write, and post_done asserts only after processing final (m,n). Preserve existing external protocol and arithmetic semantics.",
+  "do_not_change": [
+    "Do not modify top-level port list or ready/valid semantics.",
+    "Do not change GEMM/bias/ReLU numeric behavior (int8*int8, wrap32 adds, signed ReLU).",
+    "Do not alter input section ordering/count checks or sticky error reset behavior.",
+    "Do not edit frozen tests/reference artifacts."
+  ],
+  "expected_side_effects": [
+    "Postprocess phase timing shifts internally.",
+    "Directed test should produce 64 outputs instead of 0; timeout symptom should clear if no further bugs."
+  ],
+  "regression_required": "FULL"
+}

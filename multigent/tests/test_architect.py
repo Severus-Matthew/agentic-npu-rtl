@@ -213,6 +213,7 @@ class FakeArchitectAgent(ArchitectAgent):
                         "dependencies": ["filter_core"],
                         "parameters": ["TAPS"],
                         "stateful": True,
+                        "ports": [{"name":"clk", "direction":"input", "width":"1", "signed":False, "semantics":"rising-edge clock"}],
                     },
                     {
                         "name": "filter_core",
@@ -220,6 +221,7 @@ class FakeArchitectAgent(ArchitectAgent):
                         "dependencies": [],
                         "parameters": ["TAPS"],
                         "stateful": True,
+                        "ports": [{"name":"clk", "direction":"input", "width":"1", "signed":False, "semantics":"rising-edge clock"}],
                     },
                 ],
             },
@@ -227,7 +229,7 @@ class FakeArchitectAgent(ArchitectAgent):
                 "functional": ["matches independent FIR reference"],
                 "verification": ["random regression"],
                 "rtl": ["synthesizable SystemVerilog"],
-                "synopsys_handoff": ["verified RTL package"],
+                "fpga_handoff": ["verified RTL package"],
             },
         }
 
@@ -257,7 +259,7 @@ def test_intake_keeps_architecture_choices_out_of_user_input() -> None:
     assert intake["provenance"]["user_supplied_fields"] == ["user_request"]
     assert intake["project_constraints"]["rtl_constraints"]["language"] == "SystemVerilog"
     assert intake["project_constraints"]["verification_policy"]["randomized_transactions_minimum"] == 100
-    assert intake["project_constraints"]["synthesis_policy"]["provider"] == "synopsys"
+    assert intake["project_constraints"]["synthesis_policy"]["provider"] == "vivado"
     assert "owner" not in intake["project_constraints"]["synthesis_policy"]
 
     decisions = intake["architect_must_decide_when_unspecified"]

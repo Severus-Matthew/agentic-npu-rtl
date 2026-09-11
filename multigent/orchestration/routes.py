@@ -7,19 +7,24 @@ from typing import Literal
 from .state import HardwareDesignState
 
 
-StartRoute = Literal["architect", "rtl_generator", "verifier", "verification_tools"]
+StartRoute = Literal["architect", "rtl_generator", "verifier", "verification_tools", "diagnostic_probe", "debugger"]
 ArchitectRoute = Literal["rtl_generator", "failed"]
 RTLRoute = Literal["architect", "verifier", "verification_tools", "failed"]
 VerifierRoute = Literal["architect", "verification_tools", "failed"]
 VerificationRoute = Literal[
     "synthesis", "debugger", "repair_exhausted", "tool_unavailable"
 ]
-DebuggerRoute = Literal["rtl_generator", "architect", "failed"]
+DebuggerRoute = Literal["rtl_generator", "architect", "verification_repair", "diagnostic_probe", "failed"]
 
 
 def route_start(state: HardwareDesignState) -> StartRoute:
     """Resume from the most advanced explicitly supplied validated checkpoint."""
 
+    history = state.get("history", [])
+    if history and history[-1].get("status") == "ERROR" and history[-1].get("stage") in {"architect","rtl_generator","verifier","debugger","verification_tools"}:
+        return history[-1]["stage"]
+    if state.get("debugger_status") == "EVIDENCE_INSUFFICIENT" and state.get("max_diagnostic_iterations",0)>state.get("diagnostic_iteration",0):
+        return "diagnostic_probe"
     if state.get("architecture_status") == "READY":
         if (
             state.get("rtl_status") == "RTL_GENERATED"
@@ -73,6 +78,8 @@ def route_after_verifier(state: HardwareDesignState) -> VerifierRoute:
         return "verification_tools"
     if status == "ARCHITECTURE_CONFLICT":
         return "architect" if _architecture_revision_available(state) else "failed"
+    if status == "SEMANTIC_VALIDATION_FAILED":
+        return "failed"
     raise ValueError(f"Cannot route unknown verifier_status={status!r}")
 
 
@@ -95,12 +102,14 @@ def route_after_verification(state: HardwareDesignState) -> VerificationRoute:
 
 def route_after_debugger(state: HardwareDesignState) -> DebuggerRoute:
     status = state.get("debugger_status")
+    if status == "VERIFICATION_REPAIR_REQUIRED":
+        return "verification_repair" if _verifier_repair_available(state) else "failed"
     if status == "REPAIR_PLAN_READY":
         return "rtl_generator"
     if status == "ARCHITECTURE_ESCALATION":
         return "architect" if _architecture_revision_available(state) else "failed"
     if status == "EVIDENCE_INSUFFICIENT":
-        return "failed"
+        return "diagnostic_probe" if state.get("max_diagnostic_iterations", 0) > state.get("diagnostic_iteration", 0) else "failed"
     raise ValueError(f"Cannot route unknown debugger_status={status!r}")
 
 
@@ -114,3 +123,14 @@ def _repair_available(state: HardwareDesignState) -> bool:
     current = int(state.get("repair_iteration", 0))
     maximum = int(state.get("max_repair_iterations", 5))
     return current < maximum
+
+
+def _verifier_repair_available(state):
+    # A new contract needs an independent verifier and its own bounded repair budget.
+    # Keep the global revision ID monotonic for unique artifact names.
+    history=state.get('history',[])
+    architectures=[i for i,event in enumerate(history) if event.get('stage')=='architect' and event.get('status')=='READY']
+    used=state.get('verifier_revision',0)
+    if architectures:
+        used=sum(event.get('stage')=='verification_repair' for event in history[architectures[-1]+1:])
+    return used < state.get('max_verifier_revisions',2)

@@ -1,0 +1,698 @@
+{
+  "top": "gemm8x8x32_bias_relu_top",
+  "modules": [
+    {
+      "name": "gemm8x8x32_bias_relu_top",
+      "responsibility": "Top-level FSM and external interface integration",
+      "dependencies": [
+        "input_loader",
+        "gemm_core_seq",
+        "postproc_relu_bias",
+        "output_streamer",
+        "local_memories"
+      ],
+      "parameters": [
+        "M_MAX",
+        "N_MAX",
+        "K_MAX",
+        "A_ELEM_W",
+        "ACC_W"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "sync active-high reset"
+        },
+        {
+          "name": "s_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "ingress valid"
+        },
+        {
+          "name": "s_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "ingress ready"
+        },
+        {
+          "name": "s_data",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "ingress payload"
+        },
+        {
+          "name": "s_type",
+          "direction": "input",
+          "width": "2",
+          "signed": false,
+          "semantics": "ingress type"
+        },
+        {
+          "name": "m_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "egress valid"
+        },
+        {
+          "name": "m_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "egress ready"
+        },
+        {
+          "name": "m_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "egress payload"
+        },
+        {
+          "name": "busy",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "busy flag"
+        },
+        {
+          "name": "done",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "completion pulse"
+        },
+        {
+          "name": "error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "sticky error"
+        }
+      ]
+    },
+    {
+      "name": "input_loader",
+      "responsibility": "Decode ingress sections, count beats, generate memory writes and load_done/error",
+      "dependencies": [],
+      "parameters": [
+        "M_MAX",
+        "N_MAX",
+        "K_MAX",
+        "A_ELEM_W",
+        "ACC_W"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "start_load",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "1-cycle pulse to begin expecting CMD"
+        },
+        {
+          "name": "s_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "input valid"
+        },
+        {
+          "name": "s_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "input ready"
+        },
+        {
+          "name": "s_data",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "input payload"
+        },
+        {
+          "name": "s_type",
+          "direction": "input",
+          "width": "2",
+          "signed": false,
+          "semantics": "input type"
+        },
+        {
+          "name": "a_wr_en",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "A memory write enable on handshake in A section"
+        },
+        {
+          "name": "a_wr_addr",
+          "direction": "output",
+          "width": "$clog2(M_MAX*K_MAX)",
+          "signed": false,
+          "semantics": "A write address"
+        },
+        {
+          "name": "a_wr_data",
+          "direction": "output",
+          "width": "A_ELEM_W",
+          "signed": true,
+          "semantics": "A element from s_data[7:0]"
+        },
+        {
+          "name": "b_wr_en",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "B memory write enable"
+        },
+        {
+          "name": "b_wr_addr",
+          "direction": "output",
+          "width": "$clog2(K_MAX*N_MAX)",
+          "signed": false,
+          "semantics": "B write address"
+        },
+        {
+          "name": "b_wr_data",
+          "direction": "output",
+          "width": "A_ELEM_W",
+          "signed": true,
+          "semantics": "B element from s_data[7:0]"
+        },
+        {
+          "name": "bias_wr_en",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "bias memory write enable"
+        },
+        {
+          "name": "bias_wr_addr",
+          "direction": "output",
+          "width": "$clog2(N_MAX)",
+          "signed": false,
+          "semantics": "bias write address"
+        },
+        {
+          "name": "bias_wr_data",
+          "direction": "output",
+          "width": "ACC_W",
+          "signed": true,
+          "semantics": "bias int32 from s_data"
+        },
+        {
+          "name": "load_done",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "1-cycle pulse when all required beats loaded"
+        },
+        {
+          "name": "error_flag",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "sticky protocol/length/type error"
+        }
+      ]
+    },
+    {
+      "name": "gemm_core_seq",
+      "responsibility": "Sequential MAC engine producing acc values to postprocess path",
+      "dependencies": [
+        "local_memories"
+      ],
+      "parameters": [
+        "M_MAX",
+        "N_MAX",
+        "K_MAX",
+        "A_ELEM_W",
+        "ACC_W"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "start_compute",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "1-cycle pulse to begin GEMM"
+        },
+        {
+          "name": "a_rd_addr",
+          "direction": "output",
+          "width": "$clog2(M_MAX*K_MAX)",
+          "signed": false,
+          "semantics": "A read address"
+        },
+        {
+          "name": "a_rd_data",
+          "direction": "input",
+          "width": "A_ELEM_W",
+          "signed": true,
+          "semantics": "A read data, 1-cycle after addr"
+        },
+        {
+          "name": "b_rd_addr",
+          "direction": "output",
+          "width": "$clog2(K_MAX*N_MAX)",
+          "signed": false,
+          "semantics": "B read address"
+        },
+        {
+          "name": "b_rd_data",
+          "direction": "input",
+          "width": "A_ELEM_W",
+          "signed": true,
+          "semantics": "B read data, 1-cycle after addr"
+        },
+        {
+          "name": "acc_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "asserted when acc_data for (m,n) is valid"
+        },
+        {
+          "name": "acc_m",
+          "direction": "output",
+          "width": "$clog2(M_MAX)",
+          "signed": false,
+          "semantics": "row index of acc_data"
+        },
+        {
+          "name": "acc_n",
+          "direction": "output",
+          "width": "$clog2(N_MAX)",
+          "signed": false,
+          "semantics": "col index of acc_data"
+        },
+        {
+          "name": "acc_data",
+          "direction": "output",
+          "width": "ACC_W",
+          "signed": true,
+          "semantics": "wrapped int32 accumulation result"
+        },
+        {
+          "name": "compute_done",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "1-cycle pulse after last acc_valid"
+        }
+      ]
+    },
+    {
+      "name": "postproc_relu_bias",
+      "responsibility": "Add bias and apply ReLU, write output memory",
+      "dependencies": [
+        "local_memories"
+      ],
+      "parameters": [
+        "M_MAX",
+        "N_MAX",
+        "ACC_W"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "start_post",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "enable acceptance of acc stream"
+        },
+        {
+          "name": "acc_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "input accumulation valid"
+        },
+        {
+          "name": "acc_m",
+          "direction": "input",
+          "width": "$clog2(M_MAX)",
+          "signed": false,
+          "semantics": "row index"
+        },
+        {
+          "name": "acc_n",
+          "direction": "input",
+          "width": "$clog2(N_MAX)",
+          "signed": false,
+          "semantics": "col index"
+        },
+        {
+          "name": "acc_data",
+          "direction": "input",
+          "width": "ACC_W",
+          "signed": true,
+          "semantics": "acc value"
+        },
+        {
+          "name": "bias_rd_addr",
+          "direction": "output",
+          "width": "$clog2(N_MAX)",
+          "signed": false,
+          "semantics": "bias read address=acc_n"
+        },
+        {
+          "name": "bias_rd_data",
+          "direction": "input",
+          "width": "ACC_W",
+          "signed": true,
+          "semantics": "bias data, 1-cycle after addr"
+        },
+        {
+          "name": "out_wr_en",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "output memory write enable"
+        },
+        {
+          "name": "out_wr_addr",
+          "direction": "output",
+          "width": "$clog2(M_MAX*N_MAX)",
+          "signed": false,
+          "semantics": "out write address m*N_MAX+n"
+        },
+        {
+          "name": "out_wr_data",
+          "direction": "output",
+          "width": "ACC_W",
+          "signed": true,
+          "semantics": "ReLU result"
+        },
+        {
+          "name": "post_done",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "1-cycle pulse after last write"
+        }
+      ]
+    },
+    {
+      "name": "output_streamer",
+      "responsibility": "Stream output memory with ready/valid and done pulse",
+      "dependencies": [
+        "local_memories"
+      ],
+      "parameters": [
+        "M_MAX",
+        "N_MAX",
+        "ACC_W"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "start_out",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "start streaming"
+        },
+        {
+          "name": "out_rd_addr",
+          "direction": "output",
+          "width": "$clog2(M_MAX*N_MAX)",
+          "signed": false,
+          "semantics": "sequential read address"
+        },
+        {
+          "name": "out_rd_data",
+          "direction": "input",
+          "width": "ACC_W",
+          "signed": true,
+          "semantics": "output memory read data, 1-cycle after addr"
+        },
+        {
+          "name": "m_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "output valid"
+        },
+        {
+          "name": "m_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "output ready"
+        },
+        {
+          "name": "m_data",
+          "direction": "output",
+          "width": "ACC_W",
+          "signed": true,
+          "semantics": "output payload stable while stalled"
+        },
+        {
+          "name": "out_done",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "1-cycle pulse on last handshake"
+        }
+      ]
+    },
+    {
+      "name": "local_memories",
+      "responsibility": "Own A/B/bias/output memories and expose explicit read/write ports",
+      "dependencies": [],
+      "parameters": [
+        "M_MAX",
+        "N_MAX",
+        "K_MAX",
+        "A_ELEM_W",
+        "ACC_W"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "a_wr_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "A write enable"
+        },
+        {
+          "name": "a_wr_addr",
+          "direction": "input",
+          "width": "$clog2(M_MAX*K_MAX)",
+          "signed": false,
+          "semantics": "A write address"
+        },
+        {
+          "name": "a_wr_data",
+          "direction": "input",
+          "width": "A_ELEM_W",
+          "signed": true,
+          "semantics": "A write data"
+        },
+        {
+          "name": "a_rd_addr",
+          "direction": "input",
+          "width": "$clog2(M_MAX*K_MAX)",
+          "signed": false,
+          "semantics": "A read address registered"
+        },
+        {
+          "name": "a_rd_data",
+          "direction": "output",
+          "width": "A_ELEM_W",
+          "signed": true,
+          "semantics": "A read data next cycle"
+        },
+        {
+          "name": "b_wr_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "B write enable"
+        },
+        {
+          "name": "b_wr_addr",
+          "direction": "input",
+          "width": "$clog2(K_MAX*N_MAX)",
+          "signed": false,
+          "semantics": "B write address"
+        },
+        {
+          "name": "b_wr_data",
+          "direction": "input",
+          "width": "A_ELEM_W",
+          "signed": true,
+          "semantics": "B write data"
+        },
+        {
+          "name": "b_rd_addr",
+          "direction": "input",
+          "width": "$clog2(K_MAX*N_MAX)",
+          "signed": false,
+          "semantics": "B read address registered"
+        },
+        {
+          "name": "b_rd_data",
+          "direction": "output",
+          "width": "A_ELEM_W",
+          "signed": true,
+          "semantics": "B read data next cycle"
+        },
+        {
+          "name": "bias_wr_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "bias write enable"
+        },
+        {
+          "name": "bias_wr_addr",
+          "direction": "input",
+          "width": "$clog2(N_MAX)",
+          "signed": false,
+          "semantics": "bias write address"
+        },
+        {
+          "name": "bias_wr_data",
+          "direction": "input",
+          "width": "ACC_W",
+          "signed": true,
+          "semantics": "bias write data"
+        },
+        {
+          "name": "bias_rd_addr",
+          "direction": "input",
+          "width": "$clog2(N_MAX)",
+          "signed": false,
+          "semantics": "bias read address registered"
+        },
+        {
+          "name": "bias_rd_data",
+          "direction": "output",
+          "width": "ACC_W",
+          "signed": true,
+          "semantics": "bias read data next cycle"
+        },
+        {
+          "name": "out_wr_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "out write enable"
+        },
+        {
+          "name": "out_wr_addr",
+          "direction": "input",
+          "width": "$clog2(M_MAX*N_MAX)",
+          "signed": false,
+          "semantics": "out write address"
+        },
+        {
+          "name": "out_wr_data",
+          "direction": "input",
+          "width": "ACC_W",
+          "signed": true,
+          "semantics": "out write data"
+        },
+        {
+          "name": "out_rd_addr",
+          "direction": "input",
+          "width": "$clog2(M_MAX*N_MAX)",
+          "signed": false,
+          "semantics": "out read address registered"
+        },
+        {
+          "name": "out_rd_data",
+          "direction": "output",
+          "width": "ACC_W",
+          "signed": true,
+          "semantics": "out read data next cycle"
+        }
+      ]
+    }
+  ]
+}

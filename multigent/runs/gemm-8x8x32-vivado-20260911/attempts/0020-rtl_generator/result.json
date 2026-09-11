@@ -1,0 +1,14 @@
+{
+  "orchestration_error": "rtl_generator: AgentRuntimeError: No RTL changed during REPAIR_BLOCKED; regression must be NONE",
+  "status": "FAILED",
+  "errors": [
+    "AgentRuntimeError: No RTL changed during REPAIR_BLOCKED; regression must be NONE"
+  ],
+  "history": [
+    {
+      "stage": "rtl_generator",
+      "status": "ERROR",
+      "error": "No RTL changed during REPAIR_BLOCKED; regression must be NONE"
+    }
+  ]
+}

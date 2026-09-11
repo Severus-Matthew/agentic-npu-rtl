@@ -1,0 +1,43 @@
+{
+  "failure_class": "SIMULATION_TIMEOUT",
+  "root_cause": "Top-level control asserts start_post at load_done (same time as start_compute) and enters ST_COMPUTE, but postproc_relu_bias only accepts acc_valid after start_post and has no buffering/handshake with gemm_core_seq. This start/stream alignment defect corrupts output ordering/data (seen in first test mismatch) and leads to non-terminating regression progression reported as timeout.",
+  "confidence": 0.88,
+  "first_divergence": {
+    "cycle": 29460,
+    "signal_or_output": "test_directed_basic output vector",
+    "expected": "Reference row-major output begins [1,0,0,0,...] for A[0][0]=1, B[0][0]=1, zero bias.",
+    "observed": "Observed begins [2,2,0,0,...], assertion Output mismatch."
+  },
+  "evidence": [
+    {
+      "source": "verification_evidence.cocotb.stdout",
+      "observation": "First test test_directed_basic fails at 29460ns with AssertionError: Output mismatch; expected vs got differs immediately.",
+      "relevance": "Earliest authoritative functional failure in this run is wrong output, not compile/elaboration."
+    },
+    {
+      "source": "verification_evidence.cocotb.status",
+      "observation": "Overall cocotb stage marked TIMEOUT/SIMULATION_TIMEOUT after entering regression.",
+      "relevance": "Confirms run-level failure class remains SIMULATION_TIMEOUT per context."
+    },
+    {
+      "source": "current_rtl.gemm8x8x32_bias_relu_top.sv",
+      "observation": "In ST_LOAD when load_done, top asserts both start_compute and start_post in same cycle, then transitions to ST_COMPUTE.",
+      "relevance": "Creates coupling risk where postprocess activation is not tied to actual acc stream completion/phase."
+    },
+    {
+      "source": "current_rtl.postproc_relu_bias.sv",
+      "observation": "Module accepts acc_valid only when active and !pend; single-entry pending path with no backpressure/ready to gemm_core_seq.",
+      "relevance": "If activation/stream timing is off, samples can be dropped/misaligned, directly causing output mismatches and downstream completion issues."
+    }
+  ],
+  "affected_modules": [
+    "gemm8x8x32_bias_relu_top",
+    "postproc_relu_bias"
+  ],
+  "alternative_hypotheses": [
+    "gemm_core_seq pipeline/indexing bug causing duplicated first accumulations",
+    "output_streamer sequencing bug contributing to observed duplicate leading outputs"
+  ],
+  "architecture_change_required": false,
+  "additional_evidence_requested": []
+}

@@ -46,3 +46,10 @@ For ready/valid interfaces, generated source drivers must stall only before pres
 ## Synthesis boundary
 
 Verified RTL is handed to the external Synopsys integration. PPA/timing/area/power/utilization values are accepted only from authoritative deterministic tool reports and are never estimated by agents.
+
+## Current executable pipeline
+
+The complete LangGraph workflow, Delta environment instructions, isolated run and
+resume commands, deterministic Vivado handoff, optimization gates and limitations
+are documented in [multigent/README.md](multigent/README.md). Vivado is optional for
+functional verification but required for PPA evaluation and final SUCCESS.

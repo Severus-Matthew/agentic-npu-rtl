@@ -66,7 +66,7 @@ def generic_fir_context() -> dict:
                 "functional": ["matches FIR reference"],
                 "verification": ["randomized stream tests"],
                 "rtl": ["synthesizable SystemVerilog"],
-                "synopsys_handoff": ["verified RTL only"],
+                "fpga_handoff": ["verified RTL only"],
             },
         },
     }
@@ -82,13 +82,13 @@ def generated_result() -> dict:
                 "path": "filter_top.sv",
                 "module": "filter_top",
                 "purpose": "top integration",
-                "content": "module filter_top #(parameter int TAPS=4) ();\nendmodule\n",
+                "content": "module filter_top #(parameter int TAPS=4) (output logic fixture_signal);\nassign fixture_signal = 1\'b0;\nendmodule\n",
             },
             {
                 "path": "filter_core.sv",
                 "module": "filter_core",
                 "purpose": "filter datapath",
-                "content": "module filter_core #(parameter int TAPS=4) ();\nendmodule\n",
+                "content": "module filter_core #(parameter int TAPS=4) (output logic fixture_signal);\nassign fixture_signal = 1\'b0;\nendmodule\n",
             },
         ],
         "contract_checks": [
@@ -236,3 +236,25 @@ def test_langgraph_node_returns_partial_state_update() -> None:
 
     assert update["rtl_status"] == "ARCHITECTURE_CONFLICT"
     assert update["history"][0]["stage"] == "rtl_generator"
+
+
+def test_rtl_placeholder_self_corrects_before_writing(tmp_path):
+    class Repairing(FakeRTLGeneratorAgent):
+        calls = 0
+        def run_structured(self, **kwargs):
+            self.calls += 1
+            output=generated_result()
+            if self.calls==1:
+                output['files'][0]['content']='module filter_top(); // placeholder\nendmodule'
+            else:
+                assert 'SEMANTIC VALIDATION REPAIR' in kwargs['task']
+            return output
+    agent=Repairing()
+    result=agent.run(generic_fir_context(),output_dir=tmp_path)
+    assert agent.calls==2 and result['status']=='RTL_GENERATED'
+    assert 'placeholder' not in (tmp_path/'filter_top.sv').read_text()
+
+
+def test_rtl_empty_module_rejected():
+    with pytest.raises(AgentRuntimeError,match='no implementation body'):
+        RTLGeneratorAgent._validate_module_file('top.sv','top','module top(); endmodule','INITIAL_GENERATION',{})

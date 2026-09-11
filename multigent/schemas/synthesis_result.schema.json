@@ -1,5 +1,74 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Synthesis Result",
-  "type": "object"
+  "title": "Deterministic Vivado result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "provider",
+    "status",
+    "metrics",
+    "manifest_sha256",
+    "bundle",
+    "return_code",
+    "reports",
+    "warnings",
+    "error"
+  ],
+  "properties": {
+    "provider": {
+      "const": "vivado"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "TIMING_FAILED",
+        "TOOL_UNAVAILABLE",
+        "CONFIGURATION_REQUIRED",
+        "STALE_OUTPUT",
+        "PROVENANCE_MISMATCH",
+        "TIMEOUT",
+        "TOOL_ERROR",
+        "IMPLEMENTATION_FAILED",
+        "DRC_FAILED",
+        "REPORT_INCOMPLETE"
+      ]
+    },
+    "metrics": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "manifest_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "bundle": {
+      "type": "string"
+    },
+    "return_code": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "reports": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
 }

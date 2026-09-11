@@ -13,9 +13,16 @@
   "properties": {
     "status": {
       "type": "string",
-      "enum": ["REPAIR_PLAN_READY", "ARCHITECTURE_ESCALATION", "EVIDENCE_INSUFFICIENT"]
+      "enum": [
+        "REPAIR_PLAN_READY",
+        "ARCHITECTURE_ESCALATION",
+        "EVIDENCE_INSUFFICIENT",
+        "VERIFICATION_REPAIR_REQUIRED"
+      ]
     },
-    "summary": {"type": "string"},
+    "summary": {
+      "type": "string"
+    },
     "diagnosis": {
       "type": "object",
       "additionalProperties": false,
@@ -31,18 +38,43 @@
         "additional_evidence_requested"
       ],
       "properties": {
-        "failure_class": {"type": "string"},
-        "root_cause": {"type": "string"},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "failure_class": {
+          "type": "string"
+        },
+        "root_cause": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
         "first_divergence": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["cycle", "signal_or_output", "expected", "observed"],
+          "required": [
+            "cycle",
+            "signal_or_output",
+            "expected",
+            "observed"
+          ],
           "properties": {
-            "cycle": {"type": ["integer", "null"], "minimum": 0},
-            "signal_or_output": {"type": "string"},
-            "expected": {"type": "string"},
-            "observed": {"type": "string"}
+            "cycle": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "signal_or_output": {
+              "type": "string"
+            },
+            "expected": {
+              "type": "string"
+            },
+            "observed": {
+              "type": "string"
+            }
           }
         },
         "evidence": {
@@ -50,31 +82,52 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["source", "observation", "relevance"],
+            "required": [
+              "source",
+              "observation",
+              "relevance"
+            ],
             "properties": {
-              "source": {"type": "string"},
-              "observation": {"type": "string"},
-              "relevance": {"type": "string"}
+              "source": {
+                "type": "string"
+              },
+              "observation": {
+                "type": "string"
+              },
+              "relevance": {
+                "type": "string"
+              }
             }
           }
         },
         "affected_modules": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
         "alternative_hypotheses": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
-        "architecture_change_required": {"type": "boolean"},
+        "architecture_change_required": {
+          "type": "boolean"
+        },
         "additional_evidence_requested": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
     "repair_plan": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "additionalProperties": false,
       "required": [
         "action",
@@ -87,44 +140,85 @@
         "regression_required"
       ],
       "properties": {
-        "action": {"type": "string", "enum": ["PATCH"]},
+        "action": {
+          "type": "string",
+          "enum": [
+            "PATCH"
+          ]
+        },
         "affected_modules": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
         "protected_modules": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
         "protected_interfaces": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
-        "recommended_change": {"type": "string"},
+        "recommended_change": {
+          "type": "string"
+        },
         "do_not_change": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
         "expected_side_effects": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
-        "regression_required": {"type": "string", "enum": ["FULL"]}
+        "regression_required": {
+          "type": "string",
+          "enum": [
+            "FULL"
+          ]
+        }
       }
     },
     "architecture_conflict": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "additionalProperties": false,
-      "required": ["category", "affected_modules", "issue", "evidence", "requested_architect_decision"],
+      "required": [
+        "category",
+        "affected_modules",
+        "issue",
+        "evidence",
+        "requested_architect_decision"
+      ],
       "properties": {
-        "category": {"type": "string"},
+        "category": {
+          "type": "string"
+        },
         "affected_modules": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
-        "issue": {"type": "string"},
-        "evidence": {"type": "string"},
-        "requested_architect_decision": {"type": "string"}
+        "issue": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "requested_architect_decision": {
+          "type": "string"
+        }
       }
     }
   }

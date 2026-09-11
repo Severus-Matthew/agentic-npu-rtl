@@ -209,7 +209,7 @@ Create machine-testable criteria for:
 - interface/protocol behavior
 - randomized regression
 - synthesizable RTL
-- deterministic Synopsys handoff requirements
+- deterministic Vivado handoff requirements
 
 Only deterministic tool reports may establish synthesis/timing/power/area/frequency/utilization results.
 
@@ -249,3 +249,11 @@ Return `SPEC_CONFLICT` only when explicit requirements cannot simultaneously hol
 - changing verification expectations after seeing RTL failures
 - modifying or fabricating synthesis reports
 - silently changing frozen architecture semantics
+
+## Frozen internal module ports
+For every module, enumerate its complete `ports` list: name, direction, symbolic
+width, signedness, and precise semantics. Define memory read latency and write/enable
+relationships and every inter-module start/done pulse in the semantics. Top ports
+must match the external interface contract. Internal producer and consumer ports
+must agree in width and timing. A responsibility-only manifest is insufficient.
+Do not leave submodule port design to downstream guesswork.

@@ -55,3 +55,20 @@ class HardwareDesignState(TypedDict, total=False):
     status: str
     history: Annotated[list[dict[str, Any]], operator.add]
     errors: Annotated[list[str], operator.add]
+
+    vivado_config: dict[str, Any]
+    vivado_executable: str
+    vivado_timeout: int
+    ppa_objective: str
+    ppa_status: str
+    best_candidate: dict[str, Any] | None
+    verifier_revision: int
+    max_verifier_revisions: int
+    frozen_hashes: dict[str, Any]
+    verified_hashes: dict[str, Any]
+    orchestration_error: str | None
+    final_report: str
+    external_vivado_bundle: str
+    diagnostic_iteration: int
+    max_diagnostic_iterations: int
+    workspace_root: str

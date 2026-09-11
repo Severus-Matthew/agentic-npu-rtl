@@ -53,3 +53,15 @@ def test_functional_repair_requires_frozen_verifier() -> None:
             task_type="FUNCTIONAL_REPAIR",
             feedback=feedback,
         )
+
+
+def test_optimization_cannot_overwrite_protected_file_with_allowed_module():
+    with pytest.raises(AgentRuntimeError,match='module-to-file'):
+        RTLGeneratorAgent._validate_module_file('top.sv','core','module core(output y); assign y=0; endmodule',
+            'PPA_OPTIMIZATION',{'top.sv':'module top; endmodule','core.sv':'module core; endmodule'})
+
+
+def test_extra_hidden_module_is_rejected():
+    with pytest.raises(AgentRuntimeError,match='exactly'):
+        RTLGeneratorAgent._validate_module_file('core.sv','core',
+            'module core; endmodule module other; endmodule','INITIAL_GENERATION',{})

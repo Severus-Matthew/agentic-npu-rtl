@@ -8,6 +8,7 @@ structured-output requests, validation, retry policy, and trace logging.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,7 +22,7 @@ from openai import OpenAI, OpenAIError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MULTIGENT_ROOT = REPO_ROOT / "multigent"
-WORKSPACE_ROOT = MULTIGENT_ROOT / "workspace"
+WORKSPACE_ROOT = Path(os.environ.get("NPU_WORKSPACE_ROOT", str(MULTIGENT_ROOT / "workspace"))).resolve()
 SCHEMA_ROOT = MULTIGENT_ROOT / "schemas"
 SKILL_ROOT = REPO_ROOT / "Skills" / "npu_multiagent_skills" / "skills"
 
@@ -306,8 +307,17 @@ class APIAgent:
         logs_dir.mkdir(parents=True, exist_ok=True)
         log_path = logs_dir / (log_name or f"{self.config.name}.json")
 
+        if log_path.exists():
+            index = 1
+            original = log_path
+            while log_path.exists():
+                log_path = original.with_name(f"{original.stem}-attempt{index}{original.suffix}")
+                index += 1
+
         trace: dict[str, Any] = {
             "agent": self.config.name,
+            "prompt_sha256": hashlib.sha256(base_prompt.encode()).hexdigest(),
+            "skill_sha256": hashlib.sha256(self.load_instructions().encode()).hexdigest(),
             "api_mode": self.config.api_mode,
             "model_requested": self.config.model,
             "schema": str(schema_path),

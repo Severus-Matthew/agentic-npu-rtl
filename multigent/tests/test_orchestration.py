@@ -153,3 +153,15 @@ def test_resume_frozen_architecture_without_rtl_starts_at_rtl() -> None:
         "rtl_context": {"frozen_architecture": {}},
     }
     assert route_start(state) == "rtl_generator"
+
+
+def test_resume_retries_pending_rtl_node_after_validation_error():
+    assert route_start({'architecture_status':'READY','rtl_status':'RTL_GENERATED',
+                        'history':[{'stage':'rtl_generator','status':'ERROR'}]})=='rtl_generator'
+
+
+def test_new_architecture_has_independent_verifier_repair_budget():
+    state={'debugger_status':'VERIFICATION_REPAIR_REQUIRED','verifier_revision':2,
+           'history':[{'stage':'verification_repair'},{'stage':'verification_repair'},
+                      {'stage':'architect','status':'READY'}]}
+    assert route_after_debugger(state)=='verification_repair'

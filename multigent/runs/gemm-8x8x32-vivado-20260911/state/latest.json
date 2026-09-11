@@ -1,0 +1,3264 @@
+{
+  "run_id": "gemm-8x8x32-vivado-20260911",
+  "user_request": "Design an 8 x 8 x 32 GEMM accelerator with bias and ReLU: Y[M,N] = ReLU(A[M,K] @ B[K,N] + bias[N]), M=8, N=8, K=32, signed int8 inputs, signed int32 accumulation and bias, two-complement int32 wrap on overflow before signed ReLU. Support reset and output backpressure.",
+  "architecture_dir": "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/architecture",
+  "architecture_version": 2,
+  "architecture_status": "READY",
+  "architecture_artifacts": {
+    "architecture_contract": "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/architecture/architecture_contract.yaml",
+    "interface_contract": "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/architecture/interface_contract.yaml",
+    "module_manifest": "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/architecture/module_manifest.json",
+    "acceptance_criteria": "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/architecture/acceptance_criteria.yaml"
+  },
+  "architecture_conflict": null,
+  "architecture_revision": 1,
+  "max_architecture_revisions": 2,
+  "rtl_context": {
+    "user_request": "Design an 8 x 8 x 32 GEMM accelerator with bias and ReLU: Y[M,N] = ReLU(A[M,K] @ B[K,N] + bias[N]), M=8, N=8, K=32, signed int8 inputs, signed int32 accumulation and bias, two-complement int32 wrap on overflow before signed ReLU. Support reset and output backpressure.",
+    "fixed_rtl_constraints": {
+      "language": "SystemVerilog",
+      "synthesizable_only": true,
+      "forbidden_constructs": [
+        "real",
+        "shortreal",
+        "delay_statements",
+        "force_release",
+        "classes"
+      ]
+    },
+    "synthesis_policy": {
+      "provider": "vivado",
+      "requires_verified_rtl": true,
+      "result_schema": "multigent/schemas/synthesis_result.schema.json",
+      "authoritative_metrics_source": "deterministic_tool_report",
+      "prohibit_metric_estimation": true
+    },
+    "frozen_architecture": {
+      "architecture_contract": {
+        "design": {
+          "name": "gemm8x8x32_bias_relu_accel",
+          "version": "1.1",
+          "description": "Fixed-size GEMM accelerator computing Y[8,8]=ReLU(A[8,32]@B[32,8]+bias[8]) with int8 inputs, int32 accumulation/bias, two's-complement int32 wrap before signed ReLU; supports reset and output backpressure."
+        },
+        "operations": [
+          {
+            "name": "op_gemm_accumulate",
+            "kind": "compute",
+            "semantics": "For each m in [0..M-1], n in [0..N-1], compute S[m,n]=sum_{k=0..K-1}(A[m,k]*B[k,n]) using signed arithmetic; each multiply is int8*int8 producing exact signed int16 then sign-extended to int32 and accumulated in int32 with two's-complement wrap on every add.",
+            "inputs": [
+              "obj_A_matrix",
+              "obj_B_matrix"
+            ],
+            "outputs": [
+              "obj_acc_matrix"
+            ]
+          },
+          {
+            "name": "op_add_bias",
+            "kind": "compute",
+            "semantics": "For each m,n compute T[m,n]=obj_acc_matrix[m,n]+obj_bias_vector[n] in signed int32 with two's-complement wrap.",
+            "inputs": [
+              "obj_acc_matrix",
+              "obj_bias_vector"
+            ],
+            "outputs": [
+              "obj_pre_relu_matrix"
+            ]
+          },
+          {
+            "name": "op_relu",
+            "kind": "compute",
+            "semantics": "For each m,n output Y[m,n]=0 if obj_pre_relu_matrix[m,n]<0 else obj_pre_relu_matrix[m,n].",
+            "inputs": [
+              "obj_pre_relu_matrix"
+            ],
+            "outputs": [
+              "obj_Y_matrix"
+            ]
+          }
+        ],
+        "data_types": [
+          {
+            "name": "int8_tc",
+            "role": "A/B elements",
+            "width_bits": 8,
+            "signed": true,
+            "representation": "two_complement",
+            "conversion_semantics": "No conversion on ingress; internal multiply sign-extends operands.",
+            "overflow_semantics": "N/A at storage width",
+            "rounding_semantics": "exact_integer"
+          },
+          {
+            "name": "int32_tc",
+            "role": "accumulator/bias/output elements",
+            "width_bits": 32,
+            "signed": true,
+            "representation": "two_complement",
+            "conversion_semantics": "int16 products sign-extended to int32 before accumulation",
+            "overflow_semantics": "wrap_modulo_2_32",
+            "rounding_semantics": "exact_integer"
+          }
+        ],
+        "data_objects": [
+          {
+            "name": "obj_A_matrix",
+            "role": "left GEMM operand",
+            "data_type": "int8_tc",
+            "dimensions": [
+              "dim_M",
+              "dim_K"
+            ],
+            "producer": "external",
+            "consumers": [
+              "op_gemm_accumulate"
+            ],
+            "external": true
+          },
+          {
+            "name": "obj_B_matrix",
+            "role": "right GEMM operand",
+            "data_type": "int8_tc",
+            "dimensions": [
+              "dim_K",
+              "dim_N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "op_gemm_accumulate"
+            ],
+            "external": true
+          },
+          {
+            "name": "obj_bias_vector",
+            "role": "per-column bias",
+            "data_type": "int32_tc",
+            "dimensions": [
+              "dim_N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "op_add_bias"
+            ],
+            "external": true
+          },
+          {
+            "name": "obj_acc_matrix",
+            "role": "post-GEMM pre-bias intermediate",
+            "data_type": "int32_tc",
+            "dimensions": [
+              "dim_M",
+              "dim_N"
+            ],
+            "producer": "op_gemm_accumulate",
+            "consumers": [
+              "op_add_bias"
+            ],
+            "external": false
+          },
+          {
+            "name": "obj_pre_relu_matrix",
+            "role": "post-bias pre-ReLU intermediate",
+            "data_type": "int32_tc",
+            "dimensions": [
+              "dim_M",
+              "dim_N"
+            ],
+            "producer": "op_add_bias",
+            "consumers": [
+              "op_relu"
+            ],
+            "external": false
+          },
+          {
+            "name": "obj_Y_matrix",
+            "role": "final output matrix",
+            "data_type": "int32_tc",
+            "dimensions": [
+              "dim_M",
+              "dim_N"
+            ],
+            "producer": "op_relu",
+            "consumers": [
+              "external"
+            ],
+            "external": true
+          }
+        ],
+        "dimensions": [
+          {
+            "name": "dim_M",
+            "semantic": "GEMM rows of A and Y; fixed by parameter M_MAX; runtime command must equal M_MAX",
+            "minimum": 8,
+            "maximum": 8,
+            "runtime_configurable": false,
+            "bound_parameter": "M_MAX"
+          },
+          {
+            "name": "dim_N",
+            "semantic": "GEMM cols of B and Y / bias length; fixed by parameter N_MAX; runtime command must equal N_MAX",
+            "minimum": 8,
+            "maximum": 8,
+            "runtime_configurable": false,
+            "bound_parameter": "N_MAX"
+          },
+          {
+            "name": "dim_K",
+            "semantic": "GEMM reduction length; fixed by parameter K_MAX; runtime command must equal K_MAX",
+            "minimum": 32,
+            "maximum": 32,
+            "runtime_configurable": false,
+            "bound_parameter": "K_MAX"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "M_MAX",
+            "default_value": "8",
+            "legality_constraint": "integer >=1",
+            "description": "Rows"
+          },
+          {
+            "name": "N_MAX",
+            "default_value": "8",
+            "legality_constraint": "integer >=1",
+            "description": "Cols"
+          },
+          {
+            "name": "K_MAX",
+            "default_value": "32",
+            "legality_constraint": "integer >=1",
+            "description": "Reduction length"
+          },
+          {
+            "name": "A_ELEM_W",
+            "default_value": "8",
+            "legality_constraint": "must be 8",
+            "description": "A/B element width"
+          },
+          {
+            "name": "ACC_W",
+            "default_value": "32",
+            "legality_constraint": "must be 32",
+            "description": "Accumulator/bias/output width"
+          }
+        ],
+        "compute": {
+          "organization": "single sequential MAC datapath plus sequential bias+ReLU postprocess",
+          "dataflow": "load-all then compute then stream-out",
+          "parallelism": "1 MAC/cycle",
+          "scheduling": "FSM-controlled deterministic nested counters"
+        },
+        "storage": [
+          {
+            "name": "mem_A",
+            "stored_objects": [
+              "obj_A_matrix"
+            ],
+            "capacity_expression": "M_MAX*K_MAX elements of A_ELEM_W",
+            "capacity_at_default_parameters": 256,
+            "access_pattern": "write during A load, read during GEMM by address m*K_MAX+k",
+            "port_requirements": "1R/1W",
+            "implementation_hint": "simple dual-port RAM",
+            "reuse_semantics": "A retained for full job",
+            "lifetime": "start of load_A to end of compute"
+          },
+          {
+            "name": "mem_B",
+            "stored_objects": [
+              "obj_B_matrix"
+            ],
+            "capacity_expression": "K_MAX*N_MAX elements of A_ELEM_W",
+            "capacity_at_default_parameters": 256,
+            "access_pattern": "write during B load, read during GEMM by address k*N_MAX+n",
+            "port_requirements": "1R/1W",
+            "implementation_hint": "simple dual-port RAM",
+            "reuse_semantics": "B retained for full job",
+            "lifetime": "start of load_B to end of compute"
+          },
+          {
+            "name": "mem_bias",
+            "stored_objects": [
+              "obj_bias_vector"
+            ],
+            "capacity_expression": "N_MAX elements of ACC_W",
+            "capacity_at_default_parameters": 8,
+            "access_pattern": "write during bias load, read during postprocess by n",
+            "port_requirements": "1R/1W",
+            "implementation_hint": "register file or RAM",
+            "reuse_semantics": "reused for each m",
+            "lifetime": "start of load_bias to end of postprocess"
+          },
+          {
+            "name": "mem_out",
+            "stored_objects": [
+              "obj_Y_matrix"
+            ],
+            "capacity_expression": "M_MAX*N_MAX elements of ACC_W",
+            "capacity_at_default_parameters": 64,
+            "access_pattern": "write during postprocess, read during output streaming",
+            "port_requirements": "1R/1W",
+            "implementation_hint": "simple dual-port RAM",
+            "reuse_semantics": "buffer decouples output backpressure",
+            "lifetime": "start of postprocess to final output beat"
+          }
+        ],
+        "pipeline": [
+          {
+            "stage": "ingress",
+            "responsibility": "accept command and load A/B/bias streams into local memories",
+            "registered": true,
+            "valid_behavior": "input beat consumed on s_valid&&s_ready",
+            "stall_behavior": "hold write enables low when not handshaken"
+          },
+          {
+            "stage": "compute",
+            "responsibility": "sequential MAC accumulation to obj_acc_matrix",
+            "registered": true,
+            "valid_behavior": "one k-step per cycle after load complete",
+            "stall_behavior": "internal stage never stalled by output backpressure"
+          },
+          {
+            "stage": "postprocess",
+            "responsibility": "bias add then ReLU then write mem_out",
+            "registered": true,
+            "valid_behavior": "one output element prepared per cycle",
+            "stall_behavior": "no external stall dependency"
+          },
+          {
+            "stage": "egress",
+            "responsibility": "stream mem_out with ready/valid",
+            "registered": true,
+            "valid_behavior": "advance read index only on m_valid&&m_ready",
+            "stall_behavior": "hold m_valid/data stable while m_ready=0"
+          }
+        ],
+        "control": {
+          "strategy": "single top FSM orchestrating submodules with start/done pulses",
+          "state_progression": "IDLE->LOAD_A->LOAD_B->LOAD_BIAS->COMPUTE->POSTPROC->OUTPUT->DONE->IDLE",
+          "counters": [
+            "cnt_a_load",
+            "cnt_b_load",
+            "cnt_bias_load",
+            "cnt_m",
+            "cnt_n",
+            "cnt_k",
+            "cnt_out"
+          ],
+          "error_behavior": "protocol/length mismatch raises sticky error and halts new work",
+          "error_recovery": "assert reset to clear sticky error and return to IDLE"
+        },
+        "reset": {
+          "style": "synchronous",
+          "polarity": "active_high",
+          "required_state": "FSM to IDLE, counters/pointers zero, valid outputs deasserted, sticky error cleared"
+        },
+        "latency_model": "Cycles = 1(cmd) + M_MAX*K_MAX loads + K_MAX*N_MAX loads + N_MAX loads + M_MAX*N_MAX*K_MAX compute + M_MAX*N_MAX postprocess + M_MAX*N_MAX output handshakes (plus output stall cycles). Default no-stall total from first cmd handshake to last output handshake: 2641 cycles.",
+        "architectural_invariants": [
+          "Exactly one job in flight.",
+          "Input order fixed: command then A(256 beats) then B(256 beats) then bias(8 beats).",
+          "Output order fixed row-major over Y[m,n].",
+          "All int32 adds wrap two's-complement before ReLU comparison.",
+          "ReLU comparator interprets wrapped int32 as signed."
+        ],
+        "open_assumptions": [
+          "Single unified input stream channel with tagged command/data classes.",
+          "No runtime-variable M/N/K; fixed at 8/8/32 per user request.",
+          "No start/clear control besides stream command and reset."
+        ]
+      },
+      "interface_contract": {
+        "protocol": "ready_valid_streaming",
+        "clock": "clk",
+        "reset": "rst (synchronous active-high)",
+        "channels": [
+          {
+            "name": "in_cmd_data",
+            "direction": "input",
+            "purpose": "command and payload ingress",
+            "data_objects": [
+              "obj_A_matrix",
+              "obj_B_matrix",
+              "obj_bias_vector"
+            ],
+            "metadata": [
+              "in_type[1:0]"
+            ],
+            "framing": "First transfer after IDLE must be CMD (in_type=0). Then exact payload sections A(in_type=1,256 beats), B(in_type=2,256 beats), BIAS(in_type=3,8 beats).",
+            "ordering": "strict section order, no interleaving",
+            "backpressure": "s_ready driven by loader availability"
+          },
+          {
+            "name": "out_y",
+            "direction": "output",
+            "purpose": "Y matrix egress",
+            "data_objects": [
+              "obj_Y_matrix"
+            ],
+            "metadata": [],
+            "framing": "64 beats per job",
+            "ordering": "row-major m outer, n inner",
+            "backpressure": "m_valid held until handshake"
+          }
+        ],
+        "signals": [
+          {
+            "name": "clk",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "clock",
+            "reset_value": "0"
+          },
+          {
+            "name": "rst",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "synchronous active-high reset",
+            "reset_value": "0"
+          },
+          {
+            "name": "s_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "input valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "s_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "input ready",
+            "reset_value": "0"
+          },
+          {
+            "name": "s_data",
+            "direction": "input",
+            "width": "32",
+            "signed": true,
+            "semantic": "payload; CMD packs {opcode[7:0],reserved[23:0]} with opcode=1 start; A/B use s_data[7:0] signed int8 and require s_data[31:8]=0; BIAS uses full signed int32",
+            "reset_value": "0"
+          },
+          {
+            "name": "s_type",
+            "direction": "input",
+            "width": "2",
+            "signed": false,
+            "semantic": "00 CMD, 01 A, 10 B, 11 BIAS",
+            "reset_value": "0"
+          },
+          {
+            "name": "m_valid",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "output valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "m_ready",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "output ready/backpressure",
+            "reset_value": "0"
+          },
+          {
+            "name": "m_data",
+            "direction": "output",
+            "width": "32",
+            "signed": true,
+            "semantic": "signed int32 Y element",
+            "reset_value": "0"
+          },
+          {
+            "name": "busy",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "1 when not IDLE",
+            "reset_value": "0"
+          },
+          {
+            "name": "done",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "1-cycle pulse when final output beat handshakes",
+            "reset_value": "0"
+          },
+          {
+            "name": "error",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "sticky protocol/length error flag",
+            "reset_value": "0"
+          }
+        ],
+        "global_handshake_rules": {
+          "transfer_condition": "channel transfer occurs iff ready && valid on rising clk",
+          "stall_behavior": "while valid=1 and ready=0, payload and metadata must remain stable"
+        }
+      },
+      "module_manifest": {
+        "top": "gemm8x8x32_bias_relu_top",
+        "modules": [
+          {
+            "name": "gemm8x8x32_bias_relu_top",
+            "responsibility": "Top-level FSM and external interface integration",
+            "dependencies": [
+              "input_loader",
+              "gemm_core_seq",
+              "postproc_relu_bias",
+              "output_streamer",
+              "local_memories"
+            ],
+            "parameters": [
+              "M_MAX",
+              "N_MAX",
+              "K_MAX",
+              "A_ELEM_W",
+              "ACC_W"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "sync active-high reset"
+              },
+              {
+                "name": "s_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "ingress valid"
+              },
+              {
+                "name": "s_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "ingress ready"
+              },
+              {
+                "name": "s_data",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "ingress payload"
+              },
+              {
+                "name": "s_type",
+                "direction": "input",
+                "width": "2",
+                "signed": false,
+                "semantics": "ingress type"
+              },
+              {
+                "name": "m_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "egress valid"
+              },
+              {
+                "name": "m_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "egress ready"
+              },
+              {
+                "name": "m_data",
+                "direction": "output",
+                "width": "32",
+                "signed": true,
+                "semantics": "egress payload"
+              },
+              {
+                "name": "busy",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "busy flag"
+              },
+              {
+                "name": "done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "completion pulse"
+              },
+              {
+                "name": "error",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "sticky error"
+              }
+            ]
+          },
+          {
+            "name": "input_loader",
+            "responsibility": "Decode ingress sections, count beats, generate memory writes and load_done/error",
+            "dependencies": [],
+            "parameters": [
+              "M_MAX",
+              "N_MAX",
+              "K_MAX",
+              "A_ELEM_W",
+              "ACC_W"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "start_load",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "1-cycle pulse to begin expecting CMD"
+              },
+              {
+                "name": "s_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "input valid"
+              },
+              {
+                "name": "s_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "input ready"
+              },
+              {
+                "name": "s_data",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "input payload"
+              },
+              {
+                "name": "s_type",
+                "direction": "input",
+                "width": "2",
+                "signed": false,
+                "semantics": "input type"
+              },
+              {
+                "name": "a_wr_en",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "A memory write enable on handshake in A section"
+              },
+              {
+                "name": "a_wr_addr",
+                "direction": "output",
+                "width": "$clog2(M_MAX*K_MAX)",
+                "signed": false,
+                "semantics": "A write address"
+              },
+              {
+                "name": "a_wr_data",
+                "direction": "output",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "A element from s_data[7:0]"
+              },
+              {
+                "name": "b_wr_en",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "B memory write enable"
+              },
+              {
+                "name": "b_wr_addr",
+                "direction": "output",
+                "width": "$clog2(K_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "B write address"
+              },
+              {
+                "name": "b_wr_data",
+                "direction": "output",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "B element from s_data[7:0]"
+              },
+              {
+                "name": "bias_wr_en",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "bias memory write enable"
+              },
+              {
+                "name": "bias_wr_addr",
+                "direction": "output",
+                "width": "$clog2(N_MAX)",
+                "signed": false,
+                "semantics": "bias write address"
+              },
+              {
+                "name": "bias_wr_data",
+                "direction": "output",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "bias int32 from s_data"
+              },
+              {
+                "name": "load_done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "1-cycle pulse when all required beats loaded"
+              },
+              {
+                "name": "error_flag",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "sticky protocol/length/type error"
+              }
+            ]
+          },
+          {
+            "name": "gemm_core_seq",
+            "responsibility": "Sequential MAC engine producing acc values to postprocess path",
+            "dependencies": [
+              "local_memories"
+            ],
+            "parameters": [
+              "M_MAX",
+              "N_MAX",
+              "K_MAX",
+              "A_ELEM_W",
+              "ACC_W"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "start_compute",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "1-cycle pulse to begin GEMM"
+              },
+              {
+                "name": "a_rd_addr",
+                "direction": "output",
+                "width": "$clog2(M_MAX*K_MAX)",
+                "signed": false,
+                "semantics": "A read address"
+              },
+              {
+                "name": "a_rd_data",
+                "direction": "input",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "A read data, 1-cycle after addr"
+              },
+              {
+                "name": "b_rd_addr",
+                "direction": "output",
+                "width": "$clog2(K_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "B read address"
+              },
+              {
+                "name": "b_rd_data",
+                "direction": "input",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "B read data, 1-cycle after addr"
+              },
+              {
+                "name": "acc_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "asserted when acc_data for (m,n) is valid"
+              },
+              {
+                "name": "acc_m",
+                "direction": "output",
+                "width": "$clog2(M_MAX)",
+                "signed": false,
+                "semantics": "row index of acc_data"
+              },
+              {
+                "name": "acc_n",
+                "direction": "output",
+                "width": "$clog2(N_MAX)",
+                "signed": false,
+                "semantics": "col index of acc_data"
+              },
+              {
+                "name": "acc_data",
+                "direction": "output",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "wrapped int32 accumulation result"
+              },
+              {
+                "name": "compute_done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "1-cycle pulse after last acc_valid"
+              }
+            ]
+          },
+          {
+            "name": "postproc_relu_bias",
+            "responsibility": "Add bias and apply ReLU, write output memory",
+            "dependencies": [
+              "local_memories"
+            ],
+            "parameters": [
+              "M_MAX",
+              "N_MAX",
+              "ACC_W"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "start_post",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "enable acceptance of acc stream"
+              },
+              {
+                "name": "acc_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "input accumulation valid"
+              },
+              {
+                "name": "acc_m",
+                "direction": "input",
+                "width": "$clog2(M_MAX)",
+                "signed": false,
+                "semantics": "row index"
+              },
+              {
+                "name": "acc_n",
+                "direction": "input",
+                "width": "$clog2(N_MAX)",
+                "signed": false,
+                "semantics": "col index"
+              },
+              {
+                "name": "acc_data",
+                "direction": "input",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "acc value"
+              },
+              {
+                "name": "bias_rd_addr",
+                "direction": "output",
+                "width": "$clog2(N_MAX)",
+                "signed": false,
+                "semantics": "bias read address=acc_n"
+              },
+              {
+                "name": "bias_rd_data",
+                "direction": "input",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "bias data, 1-cycle after addr"
+              },
+              {
+                "name": "out_wr_en",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "output memory write enable"
+              },
+              {
+                "name": "out_wr_addr",
+                "direction": "output",
+                "width": "$clog2(M_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "out write address m*N_MAX+n"
+              },
+              {
+                "name": "out_wr_data",
+                "direction": "output",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "ReLU result"
+              },
+              {
+                "name": "post_done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "1-cycle pulse after last write"
+              }
+            ]
+          },
+          {
+            "name": "output_streamer",
+            "responsibility": "Stream output memory with ready/valid and done pulse",
+            "dependencies": [
+              "local_memories"
+            ],
+            "parameters": [
+              "M_MAX",
+              "N_MAX",
+              "ACC_W"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "start_out",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "start streaming"
+              },
+              {
+                "name": "out_rd_addr",
+                "direction": "output",
+                "width": "$clog2(M_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "sequential read address"
+              },
+              {
+                "name": "out_rd_data",
+                "direction": "input",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "output memory read data, 1-cycle after addr"
+              },
+              {
+                "name": "m_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "output valid"
+              },
+              {
+                "name": "m_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "output ready"
+              },
+              {
+                "name": "m_data",
+                "direction": "output",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "output payload stable while stalled"
+              },
+              {
+                "name": "out_done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "1-cycle pulse on last handshake"
+              }
+            ]
+          },
+          {
+            "name": "local_memories",
+            "responsibility": "Own A/B/bias/output memories and expose explicit read/write ports",
+            "dependencies": [],
+            "parameters": [
+              "M_MAX",
+              "N_MAX",
+              "K_MAX",
+              "A_ELEM_W",
+              "ACC_W"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "a_wr_en",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "A write enable"
+              },
+              {
+                "name": "a_wr_addr",
+                "direction": "input",
+                "width": "$clog2(M_MAX*K_MAX)",
+                "signed": false,
+                "semantics": "A write address"
+              },
+              {
+                "name": "a_wr_data",
+                "direction": "input",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "A write data"
+              },
+              {
+                "name": "a_rd_addr",
+                "direction": "input",
+                "width": "$clog2(M_MAX*K_MAX)",
+                "signed": false,
+                "semantics": "A read address registered"
+              },
+              {
+                "name": "a_rd_data",
+                "direction": "output",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "A read data next cycle"
+              },
+              {
+                "name": "b_wr_en",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "B write enable"
+              },
+              {
+                "name": "b_wr_addr",
+                "direction": "input",
+                "width": "$clog2(K_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "B write address"
+              },
+              {
+                "name": "b_wr_data",
+                "direction": "input",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "B write data"
+              },
+              {
+                "name": "b_rd_addr",
+                "direction": "input",
+                "width": "$clog2(K_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "B read address registered"
+              },
+              {
+                "name": "b_rd_data",
+                "direction": "output",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "B read data next cycle"
+              },
+              {
+                "name": "bias_wr_en",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "bias write enable"
+              },
+              {
+                "name": "bias_wr_addr",
+                "direction": "input",
+                "width": "$clog2(N_MAX)",
+                "signed": false,
+                "semantics": "bias write address"
+              },
+              {
+                "name": "bias_wr_data",
+                "direction": "input",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "bias write data"
+              },
+              {
+                "name": "bias_rd_addr",
+                "direction": "input",
+                "width": "$clog2(N_MAX)",
+                "signed": false,
+                "semantics": "bias read address registered"
+              },
+              {
+                "name": "bias_rd_data",
+                "direction": "output",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "bias read data next cycle"
+              },
+              {
+                "name": "out_wr_en",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "out write enable"
+              },
+              {
+                "name": "out_wr_addr",
+                "direction": "input",
+                "width": "$clog2(M_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "out write address"
+              },
+              {
+                "name": "out_wr_data",
+                "direction": "input",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "out write data"
+              },
+              {
+                "name": "out_rd_addr",
+                "direction": "input",
+                "width": "$clog2(M_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "out read address registered"
+              },
+              {
+                "name": "out_rd_data",
+                "direction": "output",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "out read data next cycle"
+              }
+            ]
+          }
+        ]
+      },
+      "acceptance_criteria": {
+        "functional": [
+          "Given exact 256 A beats, 256 B beats, 8 bias beats after start command, design emits exactly 64 Y beats.",
+          "For all m,n: Y[m,n]=max(0, wrap32(sum_k(A[m,k]*B[k,n])+bias[n])).",
+          "Output order is row-major (m major then n)."
+        ],
+        "verification": [
+          ">=100 randomized jobs with random int8 A/B and int32 bias; exact integer match to reference model.",
+          "Reset tests: reset in IDLE and mid-job returns to IDLE with no stale valid/done/error.",
+          "Backpressure tests: random m_ready stalls preserve m_data stability and no loss/duplication.",
+          "Protocol error tests: wrong section type/order or wrong beat counts assert sticky error; recovery only via reset.",
+          "Completion behavior: done pulses once on final output handshake."
+        ],
+        "rtl": [
+          "SystemVerilog synthesizable subset only; no forbidden constructs.",
+          "All parameterized widths elaborate legally for constraints (M_MAX,N_MAX,K_MAX >=1).",
+          "Internal memory interfaces obey declared 1-cycle read latency and explicit write-enable semantics."
+        ],
+        "fpga_handoff": [
+          "Vivado synthesis results accepted only from deterministic tool report conforming to declared schema.",
+          "No estimated/inferred PPA claims without authoritative deterministic report."
+        ]
+      }
+    }
+  },
+  "rtl_task_type": "FUNCTIONAL_REPAIR",
+  "rtl_feedback": {
+    "source": "debugger",
+    "repair_iteration": 5,
+    "diagnosis": {
+      "failure_class": "SIMULATION_TIMEOUT",
+      "root_cause": "Control-flow misalignment between gemm8x8x32_bias_relu_top and postproc_relu_bias: top asserts start_post only after compute_done, while postproc requires active=1 at time of acc_valid to capture data. Since acc_valid occurs during compute, postproc misses the full stream, mem_out is never populated, and output_streamer emits no 64-beat frame.",
+      "confidence": 0.95,
+      "first_divergence": {
+        "cycle": 20700,
+        "signal_or_output": "test_directed_basic collected output length",
+        "expected": "64 output handshakes",
+        "observed": "0 output handshakes"
+      },
+      "evidence": [
+        {
+          "source": "verification_evidence.cocotb.stdout",
+          "observation": "test_directed_basic fails at 207000ns with AssertionError: Expected 64 outputs, got 0",
+          "relevance": "Earliest deterministic functional failure; explains timeout symptom."
+        },
+        {
+          "source": "current_rtl.gemm8x8x32_bias_relu_top.sv",
+          "observation": "ST_COMPUTE transitions to ST_POST and asserts start_post only when compute_done is true",
+          "relevance": "Postprocess activation occurs after acc stream production window."
+        },
+        {
+          "source": "current_rtl.postproc_relu_bias.sv",
+          "observation": "acc_valid is only captured inside if(active); active is set by start_post",
+          "relevance": "Any acc_valid before start_post is dropped; no buffering/ready handshake exists."
+        }
+      ],
+      "affected_modules": [
+        "gemm8x8x32_bias_relu_top",
+        "postproc_relu_bias"
+      ],
+      "alternative_hypotheses": [
+        "gemm_core_seq never asserts acc_valid",
+        "output_streamer handshake bug"
+      ],
+      "architecture_change_required": false,
+      "additional_evidence_requested": []
+    },
+    "repair_plan": {
+      "action": "PATCH",
+      "affected_modules": [
+        "gemm8x8x32_bias_relu_top",
+        "postproc_relu_bias"
+      ],
+      "protected_modules": [
+        "input_loader",
+        "gemm_core_seq",
+        "output_streamer",
+        "local_memories"
+      ],
+      "protected_interfaces": [
+        "clk",
+        "rst",
+        "s_valid",
+        "s_ready",
+        "s_data",
+        "s_type",
+        "m_valid",
+        "m_ready",
+        "m_data",
+        "busy",
+        "done",
+        "error"
+      ],
+      "recommended_change": "Align producer/consumer timing for accumulator transfer without changing interfaces: either (A) assert start_post before/during compute so postproc is active for all acc_valid beats, or (B) modify postproc to latch/queue incoming acc stream independent of start_post and begin processing at start_post. Implement minimal deterministic fix so every acc_valid from gemm_core_seq results in exactly one out_wr_en write, and post_done asserts only after processing final (m,n). Preserve existing external protocol and arithmetic semantics.",
+      "do_not_change": [
+        "Do not modify top-level port list or ready/valid semantics.",
+        "Do not change GEMM/bias/ReLU numeric behavior (int8*int8, wrap32 adds, signed ReLU).",
+        "Do not alter input section ordering/count checks or sticky error reset behavior.",
+        "Do not edit frozen tests/reference artifacts."
+      ],
+      "expected_side_effects": [
+        "Postprocess phase timing shifts internally.",
+        "Directed test should produce 64 outputs instead of 0; timeout symptom should clear if no further bugs."
+      ],
+      "regression_required": "FULL"
+    },
+    "verification_evidence": {
+      "architecture_version": 2,
+      "repair_iteration": 4,
+      "top_module": "gemm8x8x32_bias_relu_top",
+      "regression_scope": "FULL",
+      "verilator": {
+        "stage": "verilator_lint",
+        "status": "PASS",
+        "failure_class": null,
+        "return_code": 0,
+        "command": [
+          "/u/mjha1/.local/verilator-env/bin/verilator",
+          "--lint-only",
+          "--sv",
+          "-Wno-fatal",
+          "--top-module",
+          "gemm8x8x32_bias_relu_top",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm8x8x32_bias_relu_top.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/local_memories.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/output_streamer.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/postproc_relu_bias.sv"
+        ],
+        "sources": [
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm8x8x32_bias_relu_top.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/local_memories.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/output_streamer.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/postproc_relu_bias.sv"
+        ],
+        "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.191 MB sources in 7 modules, into 0.051 MB in 3 C++ files needing 0.000 MB\n- Verilator: Walltime 0.017 s (elab=0.002, cvt=0.006, bld=0.000); cpu 0.014 s on 1 threads; allocated 26.375 MB\n",
+        "stderr": "%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/output_streamer.sv:50:24: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'sent_cnt' generates 6 bits.\n                                                                                                                      : ... note: In instance 'gemm8x8x32_bias_relu_top.u_out'\n   50 |           if (sent_cnt == O_DEPTH-1) begin\n      |                        ^~\n                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.050\n                      ... Use \"/* verilator lint_off WIDTHEXPAND */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv:82:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'ca' generates 8 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_loader'\n   82 |               if (ca == A_CNT_MAX-1) st <= L_B;\n      |                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv:92:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'cb' generates 8 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_loader'\n   92 |               if (cb == B_CNT_MAX-1) st <= L_BIAS;\n      |                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv:102:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'cc' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_loader'\n  102 |         \n[TRUNCATED: full evidence retained in run artifacts]\n |                                ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:68:21: Operator ASSIGNDLY expects 8 bits on the Assign RHS, but Assign RHS's ADD generates 32 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   68 |           a_rd_addr <= m*K_MAX + k_issue;\n      |                     ^~\n                     ... For warning description see https://verilator.org/warn/WIDTHTRUNC?v=5.050\n                     ... Use \"/* verilator lint_off WIDTHTRUNC */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:69:38: Operator ADD expects 32 bits on the RHS, but RHS's VARREF 'n' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   69 |           b_rd_addr <= k_issue*N_MAX + n;\n      |                                      ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:69:21: Operator ASSIGNDLY expects 8 bits on the Assign RHS, but Assign RHS's ADD generates 32 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   69 |           b_rd_addr <= k_issue*N_MAX + n;\n      |                     ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:70:23: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'k_issue' generates 5 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   70 |           if (k_issue == K_MAX-1) req_valid <= 1'b0;\n      |                       ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:91:21: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'n' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   91 |               if (n == N_MAX-1) begin n <= '0; m <= m + 1'b1; end\n      |                     ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:86:20: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'm' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   86 |             if ((m == M_MAX-1) && (n == N_MAX-1)) begin\n      |                    ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:86:38: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'n' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   86 |             if ((m == M_MAX-1) && (n == N_MAX-1)) begin\n      |                                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:79:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'k_resp' generates 5 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   79 |           if (k_resp == K_MAX-1) begin\n      |                      ^~\n",
+        "error_diagnostics": [],
+        "top_module": "gemm8x8x32_bias_relu_top"
+      },
+      "cocotb": {
+        "stage": "cocotb_regression",
+        "status": "TIMEOUT",
+        "failure_class": "SIMULATION_TIMEOUT",
+        "tests": 0,
+        "failures": 0,
+        "seed": 12345,
+        "top_module": "gemm8x8x32_bias_relu_top",
+        "test_modules": [
+          "test_gemm8x8x32_cocotb"
+        ],
+        "results_xml": "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/verification/build/av2-r4-p0-v2/results.xml",
+        "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.183 MB sources in 7 modules, into 0.179 MB in 6 C++ files needing 0.000 MB\n- Verilator: Walltime 0.071 s (elab=0.002, cvt=0.029, bld=0.000); cpu 0.020 s on 1 threads; allocated 26.812 MB\nmake: Entering directory '/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/verification/build/av2-r4-p0-v2'\ng++  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -Os  -c -o verilator.o /u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/share/lib/verilator/verilator.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM\n[TRUNCATED: full evidence retained in run artifacts]\n-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o Vtop__ALL.o Vtop__ALL.cpp\ng++    -rdynamic verilator.o verilated.o verilated_dpi.o verilated_vpi.o verilated_threads.o Vtop__ALL.a   -Wl,-rpath,/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/libs -L/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/libs -lcocotbvpi_verilator  -pthread -lpthread -latomic -ldl   -o gemm8x8x32_bias_relu_top\nrm Vtop__ALL.verilator_deplist.tmp\nmake: Leaving directory '/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/verification/build/av2-r4-p0-v2'\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:242  in gpi_load_users                  Loaded entry library: '/sw/user/python/miniforge3-pytorch-2.10.0/lib/libpython3.12.so.1.0'\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:233  in gpi_load_users                  Running entry func 'initialize' from loaded library '/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/simulator.cpython-312-aarch64-linux-gnu.so'\n     -.--ns INFO     pygpi                              ..ib/pygpi/embed.cpp:114  in initialize                      Using Python 3.12.9 interpreter at /u/mjha1/agentic-npu-rtl/.venv/bin/python\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:74   in gpi_print_registered_impl       GPI: VPI support registered\n     0.00ns INFO     cocotb.initialize                  Seeding Python random module with 12345\n     0.00ns INFO     cocotb.initialize                  Initialized cocotb v2.1.0 from /u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb\n     0.00ns INFO     cocotb.initialize                  Running on Verilator version 5.050 2026-07-01\n     0.00ns INFO     cocotb.regression                  Running tests\n     0.00ns INFO     cocotb.regression                  running test_gemm8x8x32_cocotb.test_directed_basic (1/4)\n     0.00ns WARNING  py.warnings                        /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/tests/test_gemm8x8x32_cocotb.py:30: DeprecationWarning: The 'units' argument has been renamed to 'unit'.\n                                                          await Timer(CLK_NS // 2, units=\"ns\")\n     5.00ns WARNING  py.warnings                        /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/tests/test_gemm8x8x32_cocotb.py:39: DeprecationWarning: The 'units' argument has been renamed to 'unit'.\n                                                          await Timer(CLK_NS // 2, units=\"ns\")\n207000.00ns WARNING  cocotb.regression                  test_gemm8x8x32_cocotb.test_directed_basic failed\n                                                        Traceback (most recent call last):\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/tests/test_gemm8x8x32_cocotb.py\", line 132, in test_directed_basic\n                                                            await run_job(dut, A, B, bias, rng, backpressure=False)\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/tests/test_gemm8x8x32_cocotb.py\", line 115, in run_job\n                                                            assert len(got) == 64, f\"Expected 64 outputs, got {len(got)}\"\n                                                        AssertionError: Expected 64 outputs, got 0\n                                                        assert 0 == 64\n                                                         +  where 0 = len([])\n207000.00ns INFO     cocotb.regression                  running test_gemm8x8x32_cocotb.test_randomized_100_jobs_with_backpressure (2/4)\n",
+        "stderr": "%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/output_streamer.sv:50:24: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'sent_cnt' generates 6 bits.\n                                                                                                                      : ... note: In instance 'gemm8x8x32_bias_relu_top.u_out'\n   50 |           if (sent_cnt == O_DEPTH-1) begin\n      |                        ^~\n                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.050\n                      ... Use \"/* verilator lint_off WIDTHEXPAND */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv:82:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'ca' generates 8 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_loader'\n   82 |               if (ca == A_CNT_MAX-1) st <= L_B;\n      |                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv:92:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'cb' generates 8 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_loader'\n   92 |               if (cb == B_CNT_MAX-1) st <= L_BIAS;\n      |                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv:102:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'cc' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_loader'\n  102 |         \n[TRUNCATED: full evidence retained in run artifacts]\n |                                ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:68:21: Operator ASSIGNDLY expects 8 bits on the Assign RHS, but Assign RHS's ADD generates 32 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   68 |           a_rd_addr <= m*K_MAX + k_issue;\n      |                     ^~\n                     ... For warning description see https://verilator.org/warn/WIDTHTRUNC?v=5.050\n                     ... Use \"/* verilator lint_off WIDTHTRUNC */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:69:38: Operator ADD expects 32 bits on the RHS, but RHS's VARREF 'n' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   69 |           b_rd_addr <= k_issue*N_MAX + n;\n      |                                      ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:69:21: Operator ASSIGNDLY expects 8 bits on the Assign RHS, but Assign RHS's ADD generates 32 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   69 |           b_rd_addr <= k_issue*N_MAX + n;\n      |                     ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:70:23: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'k_issue' generates 5 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   70 |           if (k_issue == K_MAX-1) req_valid <= 1'b0;\n      |                       ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:91:21: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'n' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   91 |               if (n == N_MAX-1) begin n <= '0; m <= m + 1'b1; end\n      |                     ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:86:20: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'm' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   86 |             if ((m == M_MAX-1) && (n == N_MAX-1)) begin\n      |                    ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:86:38: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'n' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   86 |             if ((m == M_MAX-1) && (n == N_MAX-1)) begin\n      |                                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:79:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'k_resp' generates 5 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   79 |           if (k_resp == K_MAX-1) begin\n      |                      ^~\n"
+      },
+      "status": "SIMULATION_FAILURE",
+      "failure_class": "SIMULATION_TIMEOUT"
+    },
+    "frozen_verifier": true
+  },
+  "rtl_status": "RTL_GENERATED",
+  "rtl_result": {
+    "status": "RTL_GENERATED",
+    "task_type": "FUNCTIONAL_REPAIR",
+    "summary": "Patched control alignment so postprocess is active during GEMM accumulator stream and can consume all acc_valid beats; preserved interfaces and arithmetic semantics.",
+    "files": [
+      {
+        "path": "gemm8x8x32_bias_relu_top.sv",
+        "module": "gemm8x8x32_bias_relu_top",
+        "purpose": "Assert start_post concurrently with start_compute and remove deferred post start to align producer/consumer timing.",
+        "content": "module gemm8x8x32_bias_relu_top #(\n  parameter int M_MAX    = 8,\n  parameter int N_MAX    = 8,\n  parameter int K_MAX    = 32,\n  parameter int A_ELEM_W = 8,\n  parameter int ACC_W    = 32\n)(\n  input  logic                      clk,\n  input  logic                      rst,\n  input  logic                      s_valid,\n  output logic                      s_ready,\n  input  logic signed [31:0]        s_data,\n  input  logic        [1:0]         s_type,\n  output logic                      m_valid,\n  input  logic                      m_ready,\n  output logic signed [31:0]        m_data,\n  output logic                      busy,\n  output logic                      done,\n  output logic                      error\n);\n  localparam int A_DEPTH = M_MAX*K_MAX;\n  localparam int B_DEPTH = K_MAX*N_MAX;\n  localparam int O_DEPTH = M_MAX*N_MAX;\n  localparam int A_AW = (A_DEPTH > 1) ? $clog2(A_DEPTH) : 1;\n  localparam int B_AW = (B_DEPTH > 1) ? $clog2(B_DEPTH) : 1;\n  localparam int N_AW = (N_MAX   > 1) ? $clog2(N_MAX)   : 1;\n  localparam int O_AW = (O_DEPTH > 1) ? $clog2(O_DEPTH) : 1;\n\n  typedef enum logic [2:0] {\n    ST_IDLE,\n    ST_LOAD,\n    ST_COMPUTE,\n    ST_POST,\n    ST_OUTPUT,\n    ST_DONE\n  } state_t;\n\n  state_t state;\n\n  logic start_load, start_compute, start_post, start_out;\n  logic load_done, load_error;\n  logic compute_done, acc_valid;\n  logic [((M_MAX>1)?$clog2(M_MAX):1)-1:0] acc_m;\n  logic [((N_MAX>1)?$clog2(N_MAX):1)-1:0] acc_n;\n  logic signed [ACC_W-1:0] acc_data;\n  logic post_done;\n  logic out_done;\n\n  logic a_wr_en, b_wr_en, bias_wr_en, out_wr_en;\n  logic [A_AW-1:0] a_wr_addr, a_rd_addr;\n  logic [B_AW-1:0] b_wr_addr, b_rd_addr;\n  logic [N_AW-1:0] bias_wr_addr, bias_rd_addr;\n  logic [O_AW-1:0] out_wr_addr, out_rd_addr;\n  logic signed [A_ELEM_W-1:0] a_wr_data, b_wr_data, a_rd_data, b_rd_data;\n  logic signed [ACC_W-1:0] bias_wr_data, bias_rd_data, out_wr_data, out_rd_data;\n\n  logic sticky_error;\n\n  always_ff @(posedge clk) begin\n    if (rst) begin\n      state <= ST_IDLE;\n      sticky_error <= 1'b0;\n      done <= 1'b0;\n      start_load <= 1'b0;\n      start_compute <= 1'b0;\n      start_post <= 1'b0;\n      start_out <= 1'b0;\n    end else begin\n      done <= 1'b0;\n      start_load <= 1'b0;\n      start_compute <= 1'b0;\n      start_post <= 1'b0;\n      start_out <= 1'b0;\n\n      if (load_error) sticky_error <= 1'b1;\n\n      case (state)\n        ST_IDLE: begin\n          if (!sticky_error) begin\n            start_load <= 1'b1;\n            state <= ST_LOAD;\n          end\n        end\n        ST_LOAD: begin\n          if (load_done) begin\n            start_compute <= 1'b1;\n            start_post <= 1'b1;\n            state <= ST_COMPUTE;\n          end\n        end\n        ST_COMPUTE: begin\n          if (compute_done) begin\n            state <= ST_POST;\n          end\n        end\n        ST_POST: begin\n          if (post_done) begin\n            start_out <= 1'b1;\n            state <= ST_OUTPUT;\n          end\n        end\n        ST_OUTPUT: begin\n          if (out_done) begin\n            done <= 1'b1;\n            state <= ST_DONE;\n          end\n        end\n        ST_DONE: state <= ST_IDLE;\n        default: state <= ST_IDLE;\n      endcase\n    end\n  end\n\n  input_loader #(.M_MAX(M_MAX),.N_MAX(N_MAX),.K_MAX(K_MAX),.A_ELEM_W(A_ELEM_W),.ACC_W(ACC_W)) u_loader (\n    .clk(clk),.rst(rst),.start_load(start_load),.s_valid(s_valid),.s_ready(s_ready),.s_data(s_data),.s_type(s_type),\n    .a_wr_en(a_wr_en),.a_wr_addr(a_wr_addr),.a_wr_data(a_wr_data),\n    .b_wr_en(b_wr_en),.b_wr_addr(b_wr_addr),.b_wr_data(b_wr_data),\n    .bias_wr_en(bias_wr_en),.bias_wr_addr(bias_wr_addr),.bias_wr_data(bias_wr_data),\n    .load_done(load_done),.error_flag(load_error)\n  );\n\n  gemm_core_seq #(.M_MAX(M_MAX),.N_MAX(N_MAX),.K_MAX(K_MAX),.A_ELEM_W(A_ELEM_W),.ACC_W(ACC_W)) u_gemm (\n    .clk(clk),.rst(rst),.start_compute(start_compute),\n    .a_rd_addr(a_rd_addr),.a_rd_data(a_rd_data),.b_rd_addr(b_rd_addr),.b_rd_data(b_rd_data),\n    .acc_valid(acc_valid),.acc_m(acc_m),.acc_n(acc_n),.acc_data(acc_data),.compute_done(compute_done)\n  );\n\n  postproc_relu_bias #(.M_MAX(M_MAX),.N_MAX(N_MAX),.ACC_W(ACC_W)) u_post (\n    .clk(clk),.rst(rst),.start_post(start_post),.acc_valid(acc_valid),.acc_m(acc_m),.acc_n(acc_n),.acc_data(acc_data),\n    .bias_rd_addr(bias_rd_addr),.bias_rd_data(bias_rd_data),\n    .out_wr_en(out_wr_en),.out_wr_addr(out_wr_addr),.out_wr_data(out_wr_data),.post_done(post_done)\n  );\n\n  output_streamer #(.M_MAX(M_MAX),.N_MAX(N_MAX),.ACC_W(ACC_W)) u_out (\n    .clk(clk),.rst(rst),.start_out(start_out),.out_rd_addr(out_rd_addr),.out_rd_data(out_rd_data),\n    .m_valid(m_valid),.m_ready(m_ready),.m_data(m_data),.out_done(out_done)\n  );\n\n  local_memories #(.M_MAX(M_MAX),.N_MAX(N_MAX),.K_MAX(K_MAX),.A_ELEM_W(A_ELEM_W),.ACC_W(ACC_W)) u_mem (\n    .clk(clk),\n    .a_wr_en(a_wr_en),.a_wr_addr(a_wr_addr),.a_wr_data(a_wr_data),.a_rd_addr(a_rd_addr),.a_rd_data(a_rd_data),\n    .b_wr_en(b_wr_en),.b_wr_addr(b_wr_addr),.b_wr_data(b_wr_data),.b_rd_addr(b_rd_addr),.b_rd_data(b_rd_data),\n    .bias_wr_en(bias_wr_en),.bias_wr_addr(bias_wr_addr),.bias_wr_data(bias_wr_data),.bias_rd_addr(bias_rd_addr),.bias_rd_data(bias_rd_data),\n    .out_wr_en(out_wr_en),.out_wr_addr(out_wr_addr),.out_wr_data(out_wr_data),.out_rd_addr(out_rd_addr),.out_rd_data(out_rd_data)\n  );\n\n  assign busy  = (state != ST_IDLE);\n  assign error = sticky_error;\nendmodule\n"
+      },
+      {
+        "path": "postproc_relu_bias.sv",
+        "module": "postproc_relu_bias",
+        "purpose": "Keep postprocess active from start pulse and drain final pending accumulation before deactivating, ensuring one write per acc_valid and correct post_done timing.",
+        "content": "module postproc_relu_bias #(\n  parameter int M_MAX=8, N_MAX=8, ACC_W=32\n)(\n  input logic clk,\n  input logic rst,\n  input logic start_post,\n  input logic acc_valid,\n  input logic [((M_MAX>1)?$clog2(M_MAX):1)-1:0] acc_m,\n  input logic [((N_MAX>1)?$clog2(N_MAX):1)-1:0] acc_n,\n  input logic signed [ACC_W-1:0] acc_data,\n  output logic [((N_MAX>1)?$clog2(N_MAX):1)-1:0] bias_rd_addr,\n  input  logic signed [ACC_W-1:0] bias_rd_data,\n  output logic out_wr_en,\n  output logic [((M_MAX*N_MAX>1)?$clog2(M_MAX*N_MAX):1)-1:0] out_wr_addr,\n  output logic signed [ACC_W-1:0] out_wr_data,\n  output logic post_done\n);\n  localparam int M_W = (M_MAX>1)?$clog2(M_MAX):1;\n  localparam int N_W = (N_MAX>1)?$clog2(N_MAX):1;\n  localparam int O_W = ((M_MAX*N_MAX)>1)?$clog2(M_MAX*N_MAX):1;\n\n  logic active;\n  logic pend;\n  logic [M_W-1:0] pm;\n  logic [N_W-1:0] pn;\n  logic signed [ACC_W-1:0] pdata;\n  logic signed [ACC_W-1:0] sum;\n  logic [O_W-1:0] wr_addr_calc;\n\n  always_ff @(posedge clk) begin\n    if(rst) begin\n      active <= 1'b0;\n      pend <= 1'b0;\n      out_wr_en <= 1'b0;\n      out_wr_addr <= '0;\n      out_wr_data <= '0;\n      bias_rd_addr <= '0;\n      pm <= '0;\n      pn <= '0;\n      pdata <= '0;\n      post_done <= 1'b0;\n    end else begin\n      out_wr_en <= 1'b0;\n      post_done <= 1'b0;\n\n      if (start_post) active <= 1'b1;\n\n      if (active) begin\n        if (pend) begin\n          sum = pdata + bias_rd_data;\n          wr_addr_calc = O_W'((pm * N_MAX) + pn);\n          out_wr_en <= 1'b1;\n          out_wr_addr <= wr_addr_calc;\n          out_wr_data <= sum[ACC_W-1] ? '0 : sum;\n          if ((pm == M_W'(M_MAX-1)) && (pn == N_W'(N_MAX-1))) begin\n            post_done <= 1'b1;\n            active <= 1'b0;\n          end\n          pend <= 1'b0;\n        end\n\n        if (acc_valid) begin\n          bias_rd_addr <= acc_n;\n          pm <= acc_m;\n          pn <= acc_n;\n          pdata <= acc_data;\n          pend <= 1'b1;\n        end\n      end\n    end\n  end\nendmodule\n"
+      }
+    ],
+    "contract_checks": [
+      {
+        "requirement": "Repair limited to authorized affected modules",
+        "satisfied": true,
+        "evidence": "Only gemm8x8x32_bias_relu_top.sv and postproc_relu_bias.sv changed."
+      },
+      {
+        "requirement": "Postprocess captures accumulator stream produced during compute",
+        "satisfied": true,
+        "evidence": "start_post now asserted with start_compute in ST_LOAD->ST_COMPUTE transition, making postproc active before first acc_valid."
+      },
+      {
+        "requirement": "Each acc_valid yields one output-memory write with wrap32 add then signed ReLU",
+        "satisfied": true,
+        "evidence": "postproc keeps existing pdata+bias_rd_data int32 add and sign-bit ReLU; pending pipeline preserved and final element write triggers post_done."
+      },
+      {
+        "requirement": "External interface and protocol unchanged",
+        "satisfied": true,
+        "evidence": "Top-level ports/signals and ready/valid behavior unchanged; no interface edits."
+      },
+      {
+        "requirement": "Sticky error/reset semantics preserved",
+        "satisfied": true,
+        "evidence": "No changes to sticky_error handling, reset behavior, or loader protocol checks."
+      }
+    ],
+    "changed_modules": [
+      "gemm8x8x32_bias_relu_top",
+      "postproc_relu_bias"
+    ],
+    "architecture_conflict": null,
+    "blocked_reason": "",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [
+      "postproc module assumes acc_valid cadence compatible with its single pending register (as in existing architecture stream)."
+    ],
+    "regression_required": "FULL"
+  },
+  "rtl_files": [
+    "gemm8x8x32_bias_relu_top.sv",
+    "postproc_relu_bias.sv"
+  ],
+  "verification_context": {
+    "user_request": "Design an 8 x 8 x 32 GEMM accelerator with bias and ReLU: Y[M,N] = ReLU(A[M,K] @ B[K,N] + bias[N]), M=8, N=8, K=32, signed int8 inputs, signed int32 accumulation and bias, two-complement int32 wrap on overflow before signed ReLU. Support reset and output backpressure.",
+    "verification_policy": {
+      "exact_integer_match_when_applicable": true,
+      "randomized_transactions_minimum": 100,
+      "require_reset_tests": true,
+      "require_backpressure_tests_when_applicable": true,
+      "regression_wall_timeout_seconds_minimum": 120,
+      "require_completion_behavior_tests_when_defined": true,
+      "require_error_behavior_tests_when_defined": true
+    },
+    "frozen_architecture": {
+      "architecture_contract": {
+        "design": {
+          "name": "gemm8x8x32_bias_relu_accel",
+          "version": "1.1",
+          "description": "Fixed-size GEMM accelerator computing Y[8,8]=ReLU(A[8,32]@B[32,8]+bias[8]) with int8 inputs, int32 accumulation/bias, two's-complement int32 wrap before signed ReLU; supports reset and output backpressure."
+        },
+        "operations": [
+          {
+            "name": "op_gemm_accumulate",
+            "kind": "compute",
+            "semantics": "For each m in [0..M-1], n in [0..N-1], compute S[m,n]=sum_{k=0..K-1}(A[m,k]*B[k,n]) using signed arithmetic; each multiply is int8*int8 producing exact signed int16 then sign-extended to int32 and accumulated in int32 with two's-complement wrap on every add.",
+            "inputs": [
+              "obj_A_matrix",
+              "obj_B_matrix"
+            ],
+            "outputs": [
+              "obj_acc_matrix"
+            ]
+          },
+          {
+            "name": "op_add_bias",
+            "kind": "compute",
+            "semantics": "For each m,n compute T[m,n]=obj_acc_matrix[m,n]+obj_bias_vector[n] in signed int32 with two's-complement wrap.",
+            "inputs": [
+              "obj_acc_matrix",
+              "obj_bias_vector"
+            ],
+            "outputs": [
+              "obj_pre_relu_matrix"
+            ]
+          },
+          {
+            "name": "op_relu",
+            "kind": "compute",
+            "semantics": "For each m,n output Y[m,n]=0 if obj_pre_relu_matrix[m,n]<0 else obj_pre_relu_matrix[m,n].",
+            "inputs": [
+              "obj_pre_relu_matrix"
+            ],
+            "outputs": [
+              "obj_Y_matrix"
+            ]
+          }
+        ],
+        "data_types": [
+          {
+            "name": "int8_tc",
+            "role": "A/B elements",
+            "width_bits": 8,
+            "signed": true,
+            "representation": "two_complement",
+            "conversion_semantics": "No conversion on ingress; internal multiply sign-extends operands.",
+            "overflow_semantics": "N/A at storage width",
+            "rounding_semantics": "exact_integer"
+          },
+          {
+            "name": "int32_tc",
+            "role": "accumulator/bias/output elements",
+            "width_bits": 32,
+            "signed": true,
+            "representation": "two_complement",
+            "conversion_semantics": "int16 products sign-extended to int32 before accumulation",
+            "overflow_semantics": "wrap_modulo_2_32",
+            "rounding_semantics": "exact_integer"
+          }
+        ],
+        "data_objects": [
+          {
+            "name": "obj_A_matrix",
+            "role": "left GEMM operand",
+            "data_type": "int8_tc",
+            "dimensions": [
+              "dim_M",
+              "dim_K"
+            ],
+            "producer": "external",
+            "consumers": [
+              "op_gemm_accumulate"
+            ],
+            "external": true
+          },
+          {
+            "name": "obj_B_matrix",
+            "role": "right GEMM operand",
+            "data_type": "int8_tc",
+            "dimensions": [
+              "dim_K",
+              "dim_N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "op_gemm_accumulate"
+            ],
+            "external": true
+          },
+          {
+            "name": "obj_bias_vector",
+            "role": "per-column bias",
+            "data_type": "int32_tc",
+            "dimensions": [
+              "dim_N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "op_add_bias"
+            ],
+            "external": true
+          },
+          {
+            "name": "obj_acc_matrix",
+            "role": "post-GEMM pre-bias intermediate",
+            "data_type": "int32_tc",
+            "dimensions": [
+              "dim_M",
+              "dim_N"
+            ],
+            "producer": "op_gemm_accumulate",
+            "consumers": [
+              "op_add_bias"
+            ],
+            "external": false
+          },
+          {
+            "name": "obj_pre_relu_matrix",
+            "role": "post-bias pre-ReLU intermediate",
+            "data_type": "int32_tc",
+            "dimensions": [
+              "dim_M",
+              "dim_N"
+            ],
+            "producer": "op_add_bias",
+            "consumers": [
+              "op_relu"
+            ],
+            "external": false
+          },
+          {
+            "name": "obj_Y_matrix",
+            "role": "final output matrix",
+            "data_type": "int32_tc",
+            "dimensions": [
+              "dim_M",
+              "dim_N"
+            ],
+            "producer": "op_relu",
+            "consumers": [
+              "external"
+            ],
+            "external": true
+          }
+        ],
+        "dimensions": [
+          {
+            "name": "dim_M",
+            "semantic": "GEMM rows of A and Y; fixed by parameter M_MAX; runtime command must equal M_MAX",
+            "minimum": 8,
+            "maximum": 8,
+            "runtime_configurable": false,
+            "bound_parameter": "M_MAX"
+          },
+          {
+            "name": "dim_N",
+            "semantic": "GEMM cols of B and Y / bias length; fixed by parameter N_MAX; runtime command must equal N_MAX",
+            "minimum": 8,
+            "maximum": 8,
+            "runtime_configurable": false,
+            "bound_parameter": "N_MAX"
+          },
+          {
+            "name": "dim_K",
+            "semantic": "GEMM reduction length; fixed by parameter K_MAX; runtime command must equal K_MAX",
+            "minimum": 32,
+            "maximum": 32,
+            "runtime_configurable": false,
+            "bound_parameter": "K_MAX"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "M_MAX",
+            "default_value": "8",
+            "legality_constraint": "integer >=1",
+            "description": "Rows"
+          },
+          {
+            "name": "N_MAX",
+            "default_value": "8",
+            "legality_constraint": "integer >=1",
+            "description": "Cols"
+          },
+          {
+            "name": "K_MAX",
+            "default_value": "32",
+            "legality_constraint": "integer >=1",
+            "description": "Reduction length"
+          },
+          {
+            "name": "A_ELEM_W",
+            "default_value": "8",
+            "legality_constraint": "must be 8",
+            "description": "A/B element width"
+          },
+          {
+            "name": "ACC_W",
+            "default_value": "32",
+            "legality_constraint": "must be 32",
+            "description": "Accumulator/bias/output width"
+          }
+        ],
+        "compute": {
+          "organization": "single sequential MAC datapath plus sequential bias+ReLU postprocess",
+          "dataflow": "load-all then compute then stream-out",
+          "parallelism": "1 MAC/cycle",
+          "scheduling": "FSM-controlled deterministic nested counters"
+        },
+        "storage": [
+          {
+            "name": "mem_A",
+            "stored_objects": [
+              "obj_A_matrix"
+            ],
+            "capacity_expression": "M_MAX*K_MAX elements of A_ELEM_W",
+            "capacity_at_default_parameters": 256,
+            "access_pattern": "write during A load, read during GEMM by address m*K_MAX+k",
+            "port_requirements": "1R/1W",
+            "implementation_hint": "simple dual-port RAM",
+            "reuse_semantics": "A retained for full job",
+            "lifetime": "start of load_A to end of compute"
+          },
+          {
+            "name": "mem_B",
+            "stored_objects": [
+              "obj_B_matrix"
+            ],
+            "capacity_expression": "K_MAX*N_MAX elements of A_ELEM_W",
+            "capacity_at_default_parameters": 256,
+            "access_pattern": "write during B load, read during GEMM by address k*N_MAX+n",
+            "port_requirements": "1R/1W",
+            "implementation_hint": "simple dual-port RAM",
+            "reuse_semantics": "B retained for full job",
+            "lifetime": "start of load_B to end of compute"
+          },
+          {
+            "name": "mem_bias",
+            "stored_objects": [
+              "obj_bias_vector"
+            ],
+            "capacity_expression": "N_MAX elements of ACC_W",
+            "capacity_at_default_parameters": 8,
+            "access_pattern": "write during bias load, read during postprocess by n",
+            "port_requirements": "1R/1W",
+            "implementation_hint": "register file or RAM",
+            "reuse_semantics": "reused for each m",
+            "lifetime": "start of load_bias to end of postprocess"
+          },
+          {
+            "name": "mem_out",
+            "stored_objects": [
+              "obj_Y_matrix"
+            ],
+            "capacity_expression": "M_MAX*N_MAX elements of ACC_W",
+            "capacity_at_default_parameters": 64,
+            "access_pattern": "write during postprocess, read during output streaming",
+            "port_requirements": "1R/1W",
+            "implementation_hint": "simple dual-port RAM",
+            "reuse_semantics": "buffer decouples output backpressure",
+            "lifetime": "start of postprocess to final output beat"
+          }
+        ],
+        "pipeline": [
+          {
+            "stage": "ingress",
+            "responsibility": "accept command and load A/B/bias streams into local memories",
+            "registered": true,
+            "valid_behavior": "input beat consumed on s_valid&&s_ready",
+            "stall_behavior": "hold write enables low when not handshaken"
+          },
+          {
+            "stage": "compute",
+            "responsibility": "sequential MAC accumulation to obj_acc_matrix",
+            "registered": true,
+            "valid_behavior": "one k-step per cycle after load complete",
+            "stall_behavior": "internal stage never stalled by output backpressure"
+          },
+          {
+            "stage": "postprocess",
+            "responsibility": "bias add then ReLU then write mem_out",
+            "registered": true,
+            "valid_behavior": "one output element prepared per cycle",
+            "stall_behavior": "no external stall dependency"
+          },
+          {
+            "stage": "egress",
+            "responsibility": "stream mem_out with ready/valid",
+            "registered": true,
+            "valid_behavior": "advance read index only on m_valid&&m_ready",
+            "stall_behavior": "hold m_valid/data stable while m_ready=0"
+          }
+        ],
+        "control": {
+          "strategy": "single top FSM orchestrating submodules with start/done pulses",
+          "state_progression": "IDLE->LOAD_A->LOAD_B->LOAD_BIAS->COMPUTE->POSTPROC->OUTPUT->DONE->IDLE",
+          "counters": [
+            "cnt_a_load",
+            "cnt_b_load",
+            "cnt_bias_load",
+            "cnt_m",
+            "cnt_n",
+            "cnt_k",
+            "cnt_out"
+          ],
+          "error_behavior": "protocol/length mismatch raises sticky error and halts new work",
+          "error_recovery": "assert reset to clear sticky error and return to IDLE"
+        },
+        "reset": {
+          "style": "synchronous",
+          "polarity": "active_high",
+          "required_state": "FSM to IDLE, counters/pointers zero, valid outputs deasserted, sticky error cleared"
+        },
+        "latency_model": "Cycles = 1(cmd) + M_MAX*K_MAX loads + K_MAX*N_MAX loads + N_MAX loads + M_MAX*N_MAX*K_MAX compute + M_MAX*N_MAX postprocess + M_MAX*N_MAX output handshakes (plus output stall cycles). Default no-stall total from first cmd handshake to last output handshake: 2641 cycles.",
+        "architectural_invariants": [
+          "Exactly one job in flight.",
+          "Input order fixed: command then A(256 beats) then B(256 beats) then bias(8 beats).",
+          "Output order fixed row-major over Y[m,n].",
+          "All int32 adds wrap two's-complement before ReLU comparison.",
+          "ReLU comparator interprets wrapped int32 as signed."
+        ],
+        "open_assumptions": [
+          "Single unified input stream channel with tagged command/data classes.",
+          "No runtime-variable M/N/K; fixed at 8/8/32 per user request.",
+          "No start/clear control besides stream command and reset."
+        ]
+      },
+      "interface_contract": {
+        "protocol": "ready_valid_streaming",
+        "clock": "clk",
+        "reset": "rst (synchronous active-high)",
+        "channels": [
+          {
+            "name": "in_cmd_data",
+            "direction": "input",
+            "purpose": "command and payload ingress",
+            "data_objects": [
+              "obj_A_matrix",
+              "obj_B_matrix",
+              "obj_bias_vector"
+            ],
+            "metadata": [
+              "in_type[1:0]"
+            ],
+            "framing": "First transfer after IDLE must be CMD (in_type=0). Then exact payload sections A(in_type=1,256 beats), B(in_type=2,256 beats), BIAS(in_type=3,8 beats).",
+            "ordering": "strict section order, no interleaving",
+            "backpressure": "s_ready driven by loader availability"
+          },
+          {
+            "name": "out_y",
+            "direction": "output",
+            "purpose": "Y matrix egress",
+            "data_objects": [
+              "obj_Y_matrix"
+            ],
+            "metadata": [],
+            "framing": "64 beats per job",
+            "ordering": "row-major m outer, n inner",
+            "backpressure": "m_valid held until handshake"
+          }
+        ],
+        "signals": [
+          {
+            "name": "clk",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "clock",
+            "reset_value": "0"
+          },
+          {
+            "name": "rst",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "synchronous active-high reset",
+            "reset_value": "0"
+          },
+          {
+            "name": "s_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "input valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "s_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "input ready",
+            "reset_value": "0"
+          },
+          {
+            "name": "s_data",
+            "direction": "input",
+            "width": "32",
+            "signed": true,
+            "semantic": "payload; CMD packs {opcode[7:0],reserved[23:0]} with opcode=1 start; A/B use s_data[7:0] signed int8 and require s_data[31:8]=0; BIAS uses full signed int32",
+            "reset_value": "0"
+          },
+          {
+            "name": "s_type",
+            "direction": "input",
+            "width": "2",
+            "signed": false,
+            "semantic": "00 CMD, 01 A, 10 B, 11 BIAS",
+            "reset_value": "0"
+          },
+          {
+            "name": "m_valid",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "output valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "m_ready",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "output ready/backpressure",
+            "reset_value": "0"
+          },
+          {
+            "name": "m_data",
+            "direction": "output",
+            "width": "32",
+            "signed": true,
+            "semantic": "signed int32 Y element",
+            "reset_value": "0"
+          },
+          {
+            "name": "busy",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "1 when not IDLE",
+            "reset_value": "0"
+          },
+          {
+            "name": "done",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "1-cycle pulse when final output beat handshakes",
+            "reset_value": "0"
+          },
+          {
+            "name": "error",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "sticky protocol/length error flag",
+            "reset_value": "0"
+          }
+        ],
+        "global_handshake_rules": {
+          "transfer_condition": "channel transfer occurs iff ready && valid on rising clk",
+          "stall_behavior": "while valid=1 and ready=0, payload and metadata must remain stable"
+        }
+      },
+      "module_manifest": {
+        "top": "gemm8x8x32_bias_relu_top",
+        "modules": [
+          {
+            "name": "gemm8x8x32_bias_relu_top",
+            "responsibility": "Top-level FSM and external interface integration",
+            "dependencies": [
+              "input_loader",
+              "gemm_core_seq",
+              "postproc_relu_bias",
+              "output_streamer",
+              "local_memories"
+            ],
+            "parameters": [
+              "M_MAX",
+              "N_MAX",
+              "K_MAX",
+              "A_ELEM_W",
+              "ACC_W"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "sync active-high reset"
+              },
+              {
+                "name": "s_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "ingress valid"
+              },
+              {
+                "name": "s_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "ingress ready"
+              },
+              {
+                "name": "s_data",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "ingress payload"
+              },
+              {
+                "name": "s_type",
+                "direction": "input",
+                "width": "2",
+                "signed": false,
+                "semantics": "ingress type"
+              },
+              {
+                "name": "m_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "egress valid"
+              },
+              {
+                "name": "m_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "egress ready"
+              },
+              {
+                "name": "m_data",
+                "direction": "output",
+                "width": "32",
+                "signed": true,
+                "semantics": "egress payload"
+              },
+              {
+                "name": "busy",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "busy flag"
+              },
+              {
+                "name": "done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "completion pulse"
+              },
+              {
+                "name": "error",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "sticky error"
+              }
+            ]
+          },
+          {
+            "name": "input_loader",
+            "responsibility": "Decode ingress sections, count beats, generate memory writes and load_done/error",
+            "dependencies": [],
+            "parameters": [
+              "M_MAX",
+              "N_MAX",
+              "K_MAX",
+              "A_ELEM_W",
+              "ACC_W"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "start_load",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "1-cycle pulse to begin expecting CMD"
+              },
+              {
+                "name": "s_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "input valid"
+              },
+              {
+                "name": "s_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "input ready"
+              },
+              {
+                "name": "s_data",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "input payload"
+              },
+              {
+                "name": "s_type",
+                "direction": "input",
+                "width": "2",
+                "signed": false,
+                "semantics": "input type"
+              },
+              {
+                "name": "a_wr_en",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "A memory write enable on handshake in A section"
+              },
+              {
+                "name": "a_wr_addr",
+                "direction": "output",
+                "width": "$clog2(M_MAX*K_MAX)",
+                "signed": false,
+                "semantics": "A write address"
+              },
+              {
+                "name": "a_wr_data",
+                "direction": "output",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "A element from s_data[7:0]"
+              },
+              {
+                "name": "b_wr_en",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "B memory write enable"
+              },
+              {
+                "name": "b_wr_addr",
+                "direction": "output",
+                "width": "$clog2(K_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "B write address"
+              },
+              {
+                "name": "b_wr_data",
+                "direction": "output",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "B element from s_data[7:0]"
+              },
+              {
+                "name": "bias_wr_en",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "bias memory write enable"
+              },
+              {
+                "name": "bias_wr_addr",
+                "direction": "output",
+                "width": "$clog2(N_MAX)",
+                "signed": false,
+                "semantics": "bias write address"
+              },
+              {
+                "name": "bias_wr_data",
+                "direction": "output",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "bias int32 from s_data"
+              },
+              {
+                "name": "load_done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "1-cycle pulse when all required beats loaded"
+              },
+              {
+                "name": "error_flag",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "sticky protocol/length/type error"
+              }
+            ]
+          },
+          {
+            "name": "gemm_core_seq",
+            "responsibility": "Sequential MAC engine producing acc values to postprocess path",
+            "dependencies": [
+              "local_memories"
+            ],
+            "parameters": [
+              "M_MAX",
+              "N_MAX",
+              "K_MAX",
+              "A_ELEM_W",
+              "ACC_W"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "start_compute",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "1-cycle pulse to begin GEMM"
+              },
+              {
+                "name": "a_rd_addr",
+                "direction": "output",
+                "width": "$clog2(M_MAX*K_MAX)",
+                "signed": false,
+                "semantics": "A read address"
+              },
+              {
+                "name": "a_rd_data",
+                "direction": "input",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "A read data, 1-cycle after addr"
+              },
+              {
+                "name": "b_rd_addr",
+                "direction": "output",
+                "width": "$clog2(K_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "B read address"
+              },
+              {
+                "name": "b_rd_data",
+                "direction": "input",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "B read data, 1-cycle after addr"
+              },
+              {
+                "name": "acc_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "asserted when acc_data for (m,n) is valid"
+              },
+              {
+                "name": "acc_m",
+                "direction": "output",
+                "width": "$clog2(M_MAX)",
+                "signed": false,
+                "semantics": "row index of acc_data"
+              },
+              {
+                "name": "acc_n",
+                "direction": "output",
+                "width": "$clog2(N_MAX)",
+                "signed": false,
+                "semantics": "col index of acc_data"
+              },
+              {
+                "name": "acc_data",
+                "direction": "output",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "wrapped int32 accumulation result"
+              },
+              {
+                "name": "compute_done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "1-cycle pulse after last acc_valid"
+              }
+            ]
+          },
+          {
+            "name": "postproc_relu_bias",
+            "responsibility": "Add bias and apply ReLU, write output memory",
+            "dependencies": [
+              "local_memories"
+            ],
+            "parameters": [
+              "M_MAX",
+              "N_MAX",
+              "ACC_W"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "start_post",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "enable acceptance of acc stream"
+              },
+              {
+                "name": "acc_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "input accumulation valid"
+              },
+              {
+                "name": "acc_m",
+                "direction": "input",
+                "width": "$clog2(M_MAX)",
+                "signed": false,
+                "semantics": "row index"
+              },
+              {
+                "name": "acc_n",
+                "direction": "input",
+                "width": "$clog2(N_MAX)",
+                "signed": false,
+                "semantics": "col index"
+              },
+              {
+                "name": "acc_data",
+                "direction": "input",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "acc value"
+              },
+              {
+                "name": "bias_rd_addr",
+                "direction": "output",
+                "width": "$clog2(N_MAX)",
+                "signed": false,
+                "semantics": "bias read address=acc_n"
+              },
+              {
+                "name": "bias_rd_data",
+                "direction": "input",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "bias data, 1-cycle after addr"
+              },
+              {
+                "name": "out_wr_en",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "output memory write enable"
+              },
+              {
+                "name": "out_wr_addr",
+                "direction": "output",
+                "width": "$clog2(M_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "out write address m*N_MAX+n"
+              },
+              {
+                "name": "out_wr_data",
+                "direction": "output",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "ReLU result"
+              },
+              {
+                "name": "post_done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "1-cycle pulse after last write"
+              }
+            ]
+          },
+          {
+            "name": "output_streamer",
+            "responsibility": "Stream output memory with ready/valid and done pulse",
+            "dependencies": [
+              "local_memories"
+            ],
+            "parameters": [
+              "M_MAX",
+              "N_MAX",
+              "ACC_W"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "start_out",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "start streaming"
+              },
+              {
+                "name": "out_rd_addr",
+                "direction": "output",
+                "width": "$clog2(M_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "sequential read address"
+              },
+              {
+                "name": "out_rd_data",
+                "direction": "input",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "output memory read data, 1-cycle after addr"
+              },
+              {
+                "name": "m_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "output valid"
+              },
+              {
+                "name": "m_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "output ready"
+              },
+              {
+                "name": "m_data",
+                "direction": "output",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "output payload stable while stalled"
+              },
+              {
+                "name": "out_done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "1-cycle pulse on last handshake"
+              }
+            ]
+          },
+          {
+            "name": "local_memories",
+            "responsibility": "Own A/B/bias/output memories and expose explicit read/write ports",
+            "dependencies": [],
+            "parameters": [
+              "M_MAX",
+              "N_MAX",
+              "K_MAX",
+              "A_ELEM_W",
+              "ACC_W"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "a_wr_en",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "A write enable"
+              },
+              {
+                "name": "a_wr_addr",
+                "direction": "input",
+                "width": "$clog2(M_MAX*K_MAX)",
+                "signed": false,
+                "semantics": "A write address"
+              },
+              {
+                "name": "a_wr_data",
+                "direction": "input",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "A write data"
+              },
+              {
+                "name": "a_rd_addr",
+                "direction": "input",
+                "width": "$clog2(M_MAX*K_MAX)",
+                "signed": false,
+                "semantics": "A read address registered"
+              },
+              {
+                "name": "a_rd_data",
+                "direction": "output",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "A read data next cycle"
+              },
+              {
+                "name": "b_wr_en",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "B write enable"
+              },
+              {
+                "name": "b_wr_addr",
+                "direction": "input",
+                "width": "$clog2(K_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "B write address"
+              },
+              {
+                "name": "b_wr_data",
+                "direction": "input",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "B write data"
+              },
+              {
+                "name": "b_rd_addr",
+                "direction": "input",
+                "width": "$clog2(K_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "B read address registered"
+              },
+              {
+                "name": "b_rd_data",
+                "direction": "output",
+                "width": "A_ELEM_W",
+                "signed": true,
+                "semantics": "B read data next cycle"
+              },
+              {
+                "name": "bias_wr_en",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "bias write enable"
+              },
+              {
+                "name": "bias_wr_addr",
+                "direction": "input",
+                "width": "$clog2(N_MAX)",
+                "signed": false,
+                "semantics": "bias write address"
+              },
+              {
+                "name": "bias_wr_data",
+                "direction": "input",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "bias write data"
+              },
+              {
+                "name": "bias_rd_addr",
+                "direction": "input",
+                "width": "$clog2(N_MAX)",
+                "signed": false,
+                "semantics": "bias read address registered"
+              },
+              {
+                "name": "bias_rd_data",
+                "direction": "output",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "bias read data next cycle"
+              },
+              {
+                "name": "out_wr_en",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "out write enable"
+              },
+              {
+                "name": "out_wr_addr",
+                "direction": "input",
+                "width": "$clog2(M_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "out write address"
+              },
+              {
+                "name": "out_wr_data",
+                "direction": "input",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "out write data"
+              },
+              {
+                "name": "out_rd_addr",
+                "direction": "input",
+                "width": "$clog2(M_MAX*N_MAX)",
+                "signed": false,
+                "semantics": "out read address registered"
+              },
+              {
+                "name": "out_rd_data",
+                "direction": "output",
+                "width": "ACC_W",
+                "signed": true,
+                "semantics": "out read data next cycle"
+              }
+            ]
+          }
+        ]
+      },
+      "acceptance_criteria": {
+        "functional": [
+          "Given exact 256 A beats, 256 B beats, 8 bias beats after start command, design emits exactly 64 Y beats.",
+          "For all m,n: Y[m,n]=max(0, wrap32(sum_k(A[m,k]*B[k,n])+bias[n])).",
+          "Output order is row-major (m major then n)."
+        ],
+        "verification": [
+          ">=100 randomized jobs with random int8 A/B and int32 bias; exact integer match to reference model.",
+          "Reset tests: reset in IDLE and mid-job returns to IDLE with no stale valid/done/error.",
+          "Backpressure tests: random m_ready stalls preserve m_data stability and no loss/duplication.",
+          "Protocol error tests: wrong section type/order or wrong beat counts assert sticky error; recovery only via reset.",
+          "Completion behavior: done pulses once on final output handshake."
+        ],
+        "rtl": [
+          "SystemVerilog synthesizable subset only; no forbidden constructs.",
+          "All parameterized widths elaborate legally for constraints (M_MAX,N_MAX,K_MAX >=1).",
+          "Internal memory interfaces obey declared 1-cycle read latency and explicit write-enable semantics."
+        ],
+        "fpga_handoff": [
+          "Vivado synthesis results accepted only from deterministic tool report conforming to declared schema.",
+          "No estimated/inferred PPA claims without authoritative deterministic report."
+        ]
+      }
+    },
+    "provenance": {
+      "includes_generated_rtl": false,
+      "includes_rtl_generator_output": false
+    }
+  },
+  "verifier_status": "VERIFICATION_READY",
+  "verifier_result": {
+    "status": "VERIFICATION_READY",
+    "summary": "Independent cocotb verification environment for fixed 8x8x32 int8->int32 GEMM+bias+ReLU with wrap32 semantics, ready/valid protocol checks, reset, backpressure, completion pulse, sticky error/recovery, and >=100 deterministic randomized jobs.",
+    "reference_files": [
+      {
+        "path": "reference/gemm8x8x32_ref.py",
+        "purpose": "Independent golden model and integer-width helpers for wrap32/two's-complement/ReLU behavior.",
+        "content": "MASK32 = (1 << 32) - 1\n\nM = 8\nN = 8\nK = 32\n\n\ndef wrap_u32(x: int) -> int:\n    return x & MASK32\n\n\ndef to_s32(x: int) -> int:\n    x = wrap_u32(x)\n    return x - (1 << 32) if x & (1 << 31) else x\n\n\ndef to_s8(x: int) -> int:\n    x &= 0xFF\n    return x - 256 if x & 0x80 else x\n\n\ndef relu_s32(x: int) -> int:\n    sx = to_s32(x)\n    return 0 if sx < 0 else sx\n\n\ndef gemm_bias_relu_ref(A, B, bias):\n    assert len(A) == M and all(len(r) == K for r in A)\n    assert len(B) == K and all(len(r) == N for r in B)\n    assert len(bias) == N\n\n    Y = [[0 for _ in range(N)] for _ in range(M)]\n    for m in range(M):\n        for n in range(N):\n            acc_u32 = 0\n            for k in range(K):\n                a = to_s8(A[m][k])\n                b = to_s8(B[k][n])\n                prod = a * b\n                acc_u32 = wrap_u32(acc_u32 + prod)\n            pre_relu_u32 = wrap_u32(acc_u32 + to_s32(bias[n]))\n            Y[m][n] = relu_s32(pre_relu_u32)\n    return Y\n\n\ndef flatten_row_major(mat):\n    return [mat[m][n] for m in range(M) for n in range(N)]\n\n\ndef sanity_checks():\n    A0 = [[0]*K for _ in range(M)]\n    B0 = [[0]*N for _ in range(K)]\n    bias0 = [0]*N\n    y0 = gemm_bias_relu_ref(A0, B0, bias0)\n    assert all(v == 0 for v in flatten_row_major(y0))\n\n    A1 = [[0]*K for _ in range(M)]\n    B1 = [[0]*N for _ in range(K)]\n    A1[0][0] = 1\n    B1[0][0] = 1\n    y1 = gemm_bias_relu_ref(A1, B1, bias0)\n    assert y1[0][0] == 1\n\n    A2 = [[127]*K for _ in range(M)]\n    B2 = [[127]*N for _ in range(K)]\n    y2 = gemm_bias_relu_ref(A2, B2, bias0)\n    assert y2[0][0] == 127*127*K\n\n    A3 = [[0]*K for _ in range(M)]\n    B3 = [[0]*N for _ in range(K)]\n    bias3 = [-(1 << 31)] + [0]*(N-1)\n    y3 = gemm_bias_relu_ref(A3, B3, bias3)\n    assert y3[0][0] == 0\n"
+      }
+    ],
+    "test_files": [
+      {
+        "path": "tests/test_gemm8x8x32_cocotb.py",
+        "purpose": "Protocol-aware cocotb tests for functional correctness, randomized regression, reset/backpressure, completion pulse, and sticky error behavior.",
+        "categories": [
+          "functional",
+          "randomized",
+          "reset",
+          "backpressure",
+          "completion",
+          "error_protocol"
+        ],
+        "regression_groups": [
+          "smoke",
+          "targeted",
+          "full"
+        ],
+        "content": "import random\nimport cocotb\nfrom cocotb.triggers import Timer\n\nfrom reference.gemm8x8x32_ref import (\n    M, N, K, sanity_checks, gemm_bias_relu_ref, flatten_row_major, to_s32\n)\n\nCLK_NS = 10\nMAX_CYCLES_WAIT = 20000\nSEED = 12345\n\nCMD_TYPE = 0\nA_TYPE = 1\nB_TYPE = 2\nBIAS_TYPE = 3\nSTART_OPCODE = 1\n\n\ndef s32_to_u32(x: int) -> int:\n    return x & 0xFFFFFFFF\n\n\nasync def cycle(dut, s_valid=0, s_type=0, s_data=0, m_ready=1):\n    dut.clk.value = 0\n    dut.s_valid.value = s_valid\n    dut.s_type.value = s_type\n    dut.s_data.value = s32_to_u32(s_data)\n    dut.m_ready.value = m_ready\n    await Timer(CLK_NS // 2, units=\"ns\")\n\n    in_hs = int(dut.s_valid.value) and int(dut.s_ready.value)\n    out_hs = int(dut.m_valid.value) and int(dut.m_ready.value)\n    out_data_pre = to_s32(int(dut.m_data.value)) if int(dut.m_valid.value) else None\n    done_pre = int(dut.done.value)\n    err_pre = int(dut.error.value)\n\n    dut.clk.value = 1\n    await Timer(CLK_NS // 2, units=\"ns\")\n\n    done_post = int(dut.done.value)\n    err_post = int(dut.error.value)\n    dut.clk.value = 0\n    return {\n        \"in_hs\": in_hs,\n        \"out_hs\": out_hs,\n        \"out_data\": out_data_pre,\n        \"done_pre\": done_pre,\n        \"done_post\": done_post,\n        \"err_pre\": err_pre,\n        \"err_post\": err_post,\n        \"m_valid\": int(dut.m_valid.value),\n    }\n\n\nasync def apply_reset(dut, cycles=2):\n    for _ in range(cycles):\n        await cycle(dut, s_valid=0, s_type=0, s_data=0, m_ready=0)\n        dut.rst.value = 1\n        await cycle(dut, s_valid=0, s_type=0, s_data=0, m_ready=0)\n    dut.rst.value = 0\n    for _ in range(2):\n        await cycle(dut, s_valid=0, s_type=0, s_data=0, m_ready=0)\n\n\nasync def send_beat(dut, btype, bdata, rng):\n    while True:\n        if rng.randint(0, 3) == 0:\n            await cycle(dut, s_valid=0, s_type=0, s_data=0, m_ready=1)\n        else:\n            break\n    while True:\n        snap = await cycle(dut, s_valid=1, s_type=btype, s_data=bdata, m_ready=1)\n        if snap[\"in_hs\"]:\n            return\n\n\nasync def run_job(dut, A, B, bias, rng, backpressure=False):\n    await send_beat(dut, CMD_TYPE, START_OPCODE, rng)\n    for m in range(M):\n        for k in range(K):\n            await send_beat(dut, A_TYPE, A[m][k], rng)\n    for k in range(K):\n        for n in range(N):\n            await send_beat(dut, B_TYPE, B[k][n], rng)\n    for n in range(N):\n        await send_beat(dut, BIAS_TYPE, bias[n], rng)\n\n    expected = flatten_row_major(gemm_bias_relu_ref(A, B, bias))\n    got = []\n    done_count = 0\n\n    stall_data = None\n    for cyc in range(MAX_CYCLES_WAIT):\n        mr = rng.randint(0, 1) if backpressure else 1\n        snap = await cycle(dut, s_valid=0, s_type=0, s_data=0, m_ready=mr)\n\n        if snap[\"m_valid\"] and not mr:\n            if stall_data is None:\n                stall_data = snap[\"out_data\"]\n            else:\n                assert stall_data == snap[\"out_data\"], f\"m_data changed under stall at cycle {cyc}\"\n        else:\n            stall_data = None\n\n        if snap[\"out_hs\"]:\n            got.append(snap[\"out_data\"])\n\n        if snap[\"done_pre\"] or snap[\"done_post\"]:\n            done_count += (1 if snap[\"done_pre\"] else 0) + (1 if snap[\"done_post\"] else 0)\n\n        if len(got) == 64:\n            break\n\n    assert len(got) == 64, f\"Expected 64 outputs, got {len(got)}\"\n    assert got == expected, \"Output mismatch\"\n    assert done_count >= 1, \"done never observed\"\n\n\n@cocotb.test()\nasync def test_directed_basic(dut):\n    sanity_checks()\n    dut.rst.value = 0\n    await apply_reset(dut)\n    rng = random.Random(SEED)\n\n    A = [[0 for _ in range(K)] for _ in range(M)]\n    B = [[0 for _ in range(N)] for _ in range(K)]\n    bias = [0 for _ in range(N)]\n    A[0][0] = 1\n    B[0][0] = 1\n    await run_job(dut, A, B, bias, rng, backpressure=False)\n\n\n@cocotb.test()\nasync def test_randomized_100_jobs_with_backpressure(dut):\n    sanity_checks()\n    dut.rst.value = 0\n    await apply_reset(dut)\n    rng = random.Random(SEED)\n\n    for j in range(100):\n        A = [[rng.randint(-128, 127) for _ in range(K)] for _ in range(M)]\n        B = [[rng.randint(-128, 127) for _ in range(N)] for _ in range(K)]\n        bias = [rng.randint(-(1 << 31), (1 << 31) - 1) for _ in range(N)]\n        await run_job(dut, A, B, bias, rng, backpressure=True)\n\n\n@cocotb.test()\nasync def test_reset_idle_and_midjob(dut):\n    dut.rst.value = 0\n    await apply_reset(dut)\n    rng = random.Random(SEED + 1)\n\n    await send_beat(dut, CMD_TYPE, START_OPCODE, rng)\n    for _ in range(10):\n        await send_beat(dut, A_TYPE, 1, rng)\n\n    dut.rst.value = 1\n    for _ in range(3):\n        snap = await cycle(dut, s_valid=0, s_type=0, s_data=0, m_ready=0)\n        assert snap[\"m_valid\"] == 0\n        assert snap[\"done_pre\"] == 0 and snap[\"done_post\"] == 0\n        assert snap[\"err_pre\"] == 0 and snap[\"err_post\"] == 0\n    dut.rst.value = 0\n\n\n@cocotb.test()\nasync def test_protocol_error_sticky_and_recovery(dut):\n    dut.rst.value = 0\n    await apply_reset(dut)\n    rng = random.Random(SEED + 2)\n\n    await send_beat(dut, CMD_TYPE, START_OPCODE, rng)\n    await send_beat(dut, B_TYPE, 5, rng)\n\n    seen_err = False\n    for _ in range(50):\n        snap = await cycle(dut, s_valid=0, s_type=0, s_data=0, m_ready=1)\n        if snap[\"err_pre\"] or snap[\"err_post\"]:\n            seen_err = True\n    assert seen_err, \"error not asserted\"\n\n    for _ in range(20):\n        await cycle(dut, s_valid=1, s_type=CMD_TYPE, s_data=START_OPCODE, m_ready=1)\n    for _ in range(20):\n        snap = await cycle(dut, s_valid=0, s_type=0, s_data=0, m_ready=1)\n        assert snap[\"err_pre\"] or snap[\"err_post\"], \"error not sticky\"\n\n    dut.rst.value = 1\n    await cycle(dut, s_valid=0, s_type=0, s_data=0, m_ready=0)\n    dut.rst.value = 0\n    cleared = False\n    for _ in range(10):\n        snap = await cycle(dut, s_valid=0, s_type=0, s_data=0, m_ready=0)\n        if (snap[\"err_pre\"] == 0) and (snap[\"err_post\"] == 0):\n            cleared = True\n    assert cleared, \"error did not clear after reset\"\n"
+      }
+    ],
+    "verification_plan": {
+      "top_module": "gemm8x8x32_bias_relu_top",
+      "test_modules": [
+        "test_gemm8x8x32_cocotb"
+      ],
+      "test_categories": [
+        "functional",
+        "randomized",
+        "reset",
+        "backpressure",
+        "completion",
+        "error_protocol"
+      ],
+      "randomized_test_count": 100,
+      "seed": 12345,
+      "timeout_seconds": 180,
+      "regression_groups": {
+        "smoke": [
+          "test_gemm8x8x32_cocotb"
+        ],
+        "targeted": [
+          "test_gemm8x8x32_cocotb"
+        ],
+        "full": [
+          "test_gemm8x8x32_cocotb"
+        ]
+      },
+      "pass_criteria": "All cocotb tests pass; exact integer match to independent reference for randomized jobs; protocol/reset/backpressure/completion/error assertions all satisfied.",
+      "protocol_assumptions": [
+        "Handshake occurs on rising edge when valid&&ready.",
+        "Input framing strict: CMD then 256 A then 256 B then 8 BIAS beats.",
+        "Source holds valid and payload stable until handshake once asserted.",
+        "Output transfer counted only on m_valid&&m_ready; order must be row-major 64 beats.",
+        "error is sticky until reset; done is completion pulse on final output handshake."
+      ]
+    },
+    "architecture_conflict": null,
+    "known_verification_gaps": [
+      "No internal-memory latency probing (external contract only).",
+      "No explicit cycle-accurate latency assertion beyond bounded completion waits."
+    ]
+  },
+  "verification_plan": {
+    "top_module": "gemm8x8x32_bias_relu_top",
+    "test_modules": [
+      "test_gemm8x8x32_cocotb"
+    ],
+    "test_categories": [
+      "functional",
+      "randomized",
+      "reset",
+      "backpressure",
+      "completion",
+      "error_protocol"
+    ],
+    "randomized_test_count": 100,
+    "seed": 12345,
+    "timeout_seconds": 180,
+    "regression_groups": {
+      "smoke": [
+        "test_gemm8x8x32_cocotb"
+      ],
+      "targeted": [
+        "test_gemm8x8x32_cocotb"
+      ],
+      "full": [
+        "test_gemm8x8x32_cocotb"
+      ]
+    },
+    "pass_criteria": "All cocotb tests pass; exact integer match to independent reference for randomized jobs; protocol/reset/backpressure/completion/error assertions all satisfied.",
+    "protocol_assumptions": [
+      "Handshake occurs on rising edge when valid&&ready.",
+      "Input framing strict: CMD then 256 A then 256 B then 8 BIAS beats.",
+      "Source holds valid and payload stable until handshake once asserted.",
+      "Output transfer counted only on m_valid&&m_ready; order must be row-major 64 beats.",
+      "error is sticky until reset; done is completion pulse on final output handshake."
+    ]
+  },
+  "verification_status": "SIMULATION_TIMEOUT",
+  "verification_evidence": {
+    "architecture_version": 2,
+    "repair_iteration": 5,
+    "top_module": "gemm8x8x32_bias_relu_top",
+    "regression_scope": "FULL",
+    "verilator": {
+      "stage": "verilator_lint",
+      "status": "PASS",
+      "failure_class": null,
+      "return_code": 0,
+      "command": [
+        "/u/mjha1/.local/verilator-env/bin/verilator",
+        "--lint-only",
+        "--sv",
+        "-Wno-fatal",
+        "--top-module",
+        "gemm8x8x32_bias_relu_top",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm8x8x32_bias_relu_top.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/local_memories.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/output_streamer.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/postproc_relu_bias.sv"
+      ],
+      "sources": [
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm8x8x32_bias_relu_top.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/local_memories.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/output_streamer.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/postproc_relu_bias.sv"
+      ],
+      "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.191 MB sources in 7 modules, into 0.051 MB in 3 C++ files needing 0.000 MB\n- Verilator: Walltime 0.019 s (elab=0.003, cvt=0.007, bld=0.000); cpu 0.015 s on 1 threads; allocated 26.375 MB\n",
+      "stderr": "%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/output_streamer.sv:50:24: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'sent_cnt' generates 6 bits.\n                                                                                                                      : ... note: In instance 'gemm8x8x32_bias_relu_top.u_out'\n   50 |           if (sent_cnt == O_DEPTH-1) begin\n      |                        ^~\n                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.050\n                      ... Use \"/* verilator lint_off WIDTHEXPAND */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv:82:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'ca' generates 8 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_loader'\n   82 |               if (ca == A_CNT_MAX-1) st <= L_B;\n      |                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv:92:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'cb' generates 8 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_loader'\n   92 |               if (cb == B_CNT_MAX-1) st <= L_BIAS;\n      |                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv:102:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'cc' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_loader'\n  102 |               if (cc == C_CNT_MAX-1) begin st<=L_DONE; load_done<=1'b1; end\n      |                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:68:32: Operator ADD expects 32 bits on the RHS, but RHS's VARREF 'k_issue' generates 5 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   68 |           a_rd_addr <= m*K_MAX + k_issue;\n      |                                ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:68:21: Operator ASSIGNDLY expects 8 bits on the Assign RHS, but Assign RHS's ADD generates 32 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   68 |           a_rd_addr <= m*K_MAX + k_issue;\n      |                     ^~\n                     ... For warning description see https://verilator.org/warn/WIDTHTRUNC?v=5.050\n                     ... Use \"/* verilator lint_off WIDTHTRUNC */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:69:38: Operator ADD expects 32 bits on the RHS, but RHS's VARREF 'n' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   69 |           b_rd_addr <= k_issue*N_MAX + n;\n      |                                      ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:69:21: Operator ASSIGNDLY expects 8 bits on the Assign RHS, but Assign RHS's ADD generates 32 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   69 |           b_rd_addr <= k_issue*N_MAX + n;\n      |                     ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:70:23: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'k_issue' generates 5 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   70 |           if (k_issue == K_MAX-1) req_valid <= 1'b0;\n      |                       ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:91:21: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'n' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   91 |               if (n == N_MAX-1) begin n <= '0; m <= m + 1'b1; end\n      |                     ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:86:20: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'm' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   86 |             if ((m == M_MAX-1) && (n == N_MAX-1)) begin\n      |                    ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:86:38: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'n' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   86 |             if ((m == M_MAX-1) && (n == N_MAX-1)) begin\n      |                                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:79:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'k_resp' generates 5 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   79 |           if (k_resp == K_MAX-1) begin\n      |                      ^~\n",
+      "error_diagnostics": [],
+      "top_module": "gemm8x8x32_bias_relu_top"
+    },
+    "cocotb": {
+      "stage": "cocotb_regression",
+      "status": "TIMEOUT",
+      "failure_class": "SIMULATION_TIMEOUT",
+      "tests": 0,
+      "failures": 0,
+      "seed": 12345,
+      "top_module": "gemm8x8x32_bias_relu_top",
+      "test_modules": [
+        "test_gemm8x8x32_cocotb"
+      ],
+      "results_xml": "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/verification/build/av2-r5-p0-v2/results.xml",
+      "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.183 MB sources in 7 modules, into 0.179 MB in 6 C++ files needing 0.000 MB\n- Verilator: Walltime 0.079 s (elab=0.002, cvt=0.032, bld=0.000); cpu 0.022 s on 1 threads; allocated 26.875 MB\nmake: Entering directory '/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/verification/build/av2-r5-p0-v2'\ng++  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -Os  -c -o verilator.o /u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/share/lib/verilator/verilator.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated_dpi.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated_dpi.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated_vpi.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated_vpi.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated_threads.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated_threads.cpp\npython3 /u/mjha1/.local/verilator-env/share/verilator/bin/verilator_includer -DVL_INCLUDE_OPT=include Vtop.cpp Vtop___024root__0.cpp Vtop__Dpi.cpp Vtop___024root__Slow.cpp Vtop___024root__0__Slow.cpp Vtop__Syms__Slow.cpp > Vtop__ALL.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o Vtop__ALL.o Vtop__ALL.cpp\ng++    -rdynamic verilator.o verilated.o verilated_dpi.o verilated_vpi.o verilated_threads.o Vtop__ALL.a   -Wl,-rpath,/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/libs -L/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/libs -lcocotbvpi_verilator  -pthread -lpthread -latomic -ldl   -o gemm8x8x32_bias_relu_top\nrm Vtop__ALL.verilator_deplist.tmp\nmake: Leaving directory '/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/verification/build/av2-r5-p0-v2'\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:242  in gpi_load_users                  Loaded entry library: '/sw/user/python/miniforge3-pytorch-2.10.0/lib/libpython3.12.so.1.0'\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:233  in gpi_load_users                  Running entry func 'initialize' from loaded library '/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/simulator.cpython-312-aarch64-linux-gnu.so'\n     -.--ns INFO     pygpi                              ..ib/pygpi/embed.cpp:114  in initialize                      Using Python 3.12.9 interpreter at /u/mjha1/agentic-npu-rtl/.venv/bin/python\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:74   in gpi_print_registered_impl       GPI: VPI support registered\n     0.00ns INFO     cocotb.initialize                  Seeding Python random module with 12345\n     0.00ns INFO     cocotb.initialize                  Initialized cocotb v2.1.0 from /u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb\n     0.00ns INFO     cocotb.initialize                  Running on Verilator version 5.050 2026-07-01\n     0.00ns INFO     cocotb.regression                  Running tests\n     0.00ns INFO     cocotb.regression                  running test_gemm8x8x32_cocotb.test_directed_basic (1/4)\n     0.00ns WARNING  py.warnings                        /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/tests/test_gemm8x8x32_cocotb.py:30: DeprecationWarning: The 'units' argument has been renamed to 'unit'.\n                                                          await Timer(CLK_NS // 2, units=\"ns\")\n     5.00ns WARNING  py.warnings                        /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/tests/test_gemm8x8x32_cocotb.py:39: DeprecationWarning: The 'units' argument has been renamed to 'unit'.\n                                                          await Timer(CLK_NS // 2, units=\"ns\")\n 29460.00ns WARNING  cocotb.regression                  test_gemm8x8x32_cocotb.test_directed_basic failed\n                                                        Traceback (most recent call last):\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/tests/test_gemm8x8x32_cocotb.py\", line 132, in test_directed_basic\n                                                            await run_job(dut, A, B, bias, rng, backpressure=False)\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/tests/test_gemm8x8x32_cocotb.py\", line 116, in run_job\n                                                            assert got == expected, \"Output mismatch\"\n                                                        AssertionError: Output mismatch\n                                                        assert [2, 2, 0, 0, 0, 0, ...] == [1, 0, 0, 0, 0, 0, ...]\n 29460.00ns INFO     cocotb.regression                  running test_gemm8x8x32_cocotb.test_randomized_100_jobs_with_backpressure (2/4)\n",
+      "stderr": "%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/output_streamer.sv:50:24: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'sent_cnt' generates 6 bits.\n                                                                                                                      : ... note: In instance 'gemm8x8x32_bias_relu_top.u_out'\n   50 |           if (sent_cnt == O_DEPTH-1) begin\n      |                        ^~\n                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.050\n                      ... Use \"/* verilator lint_off WIDTHEXPAND */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv:82:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'ca' generates 8 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_loader'\n   82 |               if (ca == A_CNT_MAX-1) st <= L_B;\n      |                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv:92:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'cb' generates 8 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_loader'\n   92 |               if (cb == B_CNT_MAX-1) st <= L_BIAS;\n      |                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/input_loader.sv:102:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'cc' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_loader'\n  102 |               if (cc == C_CNT_MAX-1) begin st<=L_DONE; load_done<=1'b1; end\n      |                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:68:32: Operator ADD expects 32 bits on the RHS, but RHS's VARREF 'k_issue' generates 5 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   68 |           a_rd_addr <= m*K_MAX + k_issue;\n      |                                ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:68:21: Operator ASSIGNDLY expects 8 bits on the Assign RHS, but Assign RHS's ADD generates 32 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   68 |           a_rd_addr <= m*K_MAX + k_issue;\n      |                     ^~\n                     ... For warning description see https://verilator.org/warn/WIDTHTRUNC?v=5.050\n                     ... Use \"/* verilator lint_off WIDTHTRUNC */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:69:38: Operator ADD expects 32 bits on the RHS, but RHS's VARREF 'n' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   69 |           b_rd_addr <= k_issue*N_MAX + n;\n      |                                      ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:69:21: Operator ASSIGNDLY expects 8 bits on the Assign RHS, but Assign RHS's ADD generates 32 bits.\n                                                                                                                   : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   69 |           b_rd_addr <= k_issue*N_MAX + n;\n      |                     ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:70:23: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'k_issue' generates 5 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   70 |           if (k_issue == K_MAX-1) req_valid <= 1'b0;\n      |                       ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:91:21: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'n' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   91 |               if (n == N_MAX-1) begin n <= '0; m <= m + 1'b1; end\n      |                     ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:86:20: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'm' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   86 |             if ((m == M_MAX-1) && (n == N_MAX-1)) begin\n      |                    ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:86:38: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'n' generates 3 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   86 |             if ((m == M_MAX-1) && (n == N_MAX-1)) begin\n      |                                      ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/rtl/gemm_core_seq.sv:79:22: Operator EQ expects 32 bits on the LHS, but LHS's VARREF 'k_resp' generates 5 bits.\n                                                                                                                    : ... note: In instance 'gemm8x8x32_bias_relu_top.u_gemm'\n   79 |           if (k_resp == K_MAX-1) begin\n      |                      ^~\n"
+    },
+    "status": "SIMULATION_FAILURE",
+    "failure_class": "SIMULATION_TIMEOUT"
+  },
+  "debugger_status": "REPAIR_PLAN_READY",
+  "diagnosis": {
+    "failure_class": "SIMULATION_TIMEOUT",
+    "root_cause": "Control-flow misalignment between gemm8x8x32_bias_relu_top and postproc_relu_bias: top asserts start_post only after compute_done, while postproc requires active=1 at time of acc_valid to capture data. Since acc_valid occurs during compute, postproc misses the full stream, mem_out is never populated, and output_streamer emits no 64-beat frame.",
+    "confidence": 0.95,
+    "first_divergence": {
+      "cycle": 20700,
+      "signal_or_output": "test_directed_basic collected output length",
+      "expected": "64 output handshakes",
+      "observed": "0 output handshakes"
+    },
+    "evidence": [
+      {
+        "source": "verification_evidence.cocotb.stdout",
+        "observation": "test_directed_basic fails at 207000ns with AssertionError: Expected 64 outputs, got 0",
+        "relevance": "Earliest deterministic functional failure; explains timeout symptom."
+      },
+      {
+        "source": "current_rtl.gemm8x8x32_bias_relu_top.sv",
+        "observation": "ST_COMPUTE transitions to ST_POST and asserts start_post only when compute_done is true",
+        "relevance": "Postprocess activation occurs after acc stream production window."
+      },
+      {
+        "source": "current_rtl.postproc_relu_bias.sv",
+        "observation": "acc_valid is only captured inside if(active); active is set by start_post",
+        "relevance": "Any acc_valid before start_post is dropped; no buffering/ready handshake exists."
+      }
+    ],
+    "affected_modules": [
+      "gemm8x8x32_bias_relu_top",
+      "postproc_relu_bias"
+    ],
+    "alternative_hypotheses": [
+      "gemm_core_seq never asserts acc_valid",
+      "output_streamer handshake bug"
+    ],
+    "architecture_change_required": false,
+    "additional_evidence_requested": []
+  },
+  "repair_plan": {
+    "action": "PATCH",
+    "affected_modules": [
+      "gemm8x8x32_bias_relu_top",
+      "postproc_relu_bias"
+    ],
+    "protected_modules": [
+      "input_loader",
+      "gemm_core_seq",
+      "output_streamer",
+      "local_memories"
+    ],
+    "protected_interfaces": [
+      "clk",
+      "rst",
+      "s_valid",
+      "s_ready",
+      "s_data",
+      "s_type",
+      "m_valid",
+      "m_ready",
+      "m_data",
+      "busy",
+      "done",
+      "error"
+    ],
+    "recommended_change": "Align producer/consumer timing for accumulator transfer without changing interfaces: either (A) assert start_post before/during compute so postproc is active for all acc_valid beats, or (B) modify postproc to latch/queue incoming acc stream independent of start_post and begin processing at start_post. Implement minimal deterministic fix so every acc_valid from gemm_core_seq results in exactly one out_wr_en write, and post_done asserts only after processing final (m,n). Preserve existing external protocol and arithmetic semantics.",
+    "do_not_change": [
+      "Do not modify top-level port list or ready/valid semantics.",
+      "Do not change GEMM/bias/ReLU numeric behavior (int8*int8, wrap32 adds, signed ReLU).",
+      "Do not alter input section ordering/count checks or sticky error reset behavior.",
+      "Do not edit frozen tests/reference artifacts."
+    ],
+    "expected_side_effects": [
+      "Postprocess phase timing shifts internally.",
+      "Directed test should produce 64 outputs instead of 0; timeout symptom should clear if no further bugs."
+    ],
+    "regression_required": "FULL"
+  },
+  "synthesis_result": null,
+  "optimization_plan": null,
+  "repair_iteration": 5,
+  "max_repair_iterations": 5,
+  "ppa_iteration": 0,
+  "max_ppa_iterations": 3,
+  "needs_regression": true,
+  "failure_class": "SIMULATION_TIMEOUT",
+  "status": "REPAIR_BUDGET_EXHAUSTED",
+  "history": [
+    {
+      "stage": "architect",
+      "status": "READY",
+      "architecture_version": 1,
+      "revision": false
+    },
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "ppa_iteration": 0,
+      "files": [
+        "gemm8x8x32_bias_relu_top.sv",
+        "input_loader.sv",
+        "gemm_core_seq.sv",
+        "postproc_relu_bias.sv",
+        "output_streamer.sv",
+        "local_memories.sv"
+      ]
+    },
+    {
+      "stage": "verifier",
+      "status": "ERROR",
+      "error": "Verifier context missing required fields: ['frozen_architecture', 'provenance', 'user_request', 'verification_policy']"
+    },
+    {
+      "stage": "verifier_generation",
+      "status": "VERIFICATION_READY",
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "semantic_retry": false
+    },
+    {
+      "stage": "deterministic_verification",
+      "status": "SIMULATION_FAILURE",
+      "failure_class": "ELABORATION_ERROR"
+    },
+    {
+      "stage": "debugger",
+      "status": "EVIDENCE_INSUFFICIENT",
+      "failure_class": "ELABORATION_ERROR",
+      "repair_iteration_before": 0,
+      "repair_iteration_after": 0,
+      "affected_modules": []
+    },
+    {
+      "stage": "orchestrator",
+      "status": "FAILED",
+      "reason": "EVIDENCE_INSUFFICIENT"
+    },
+    {
+      "stage": "deterministic_verification",
+      "status": "SIMULATION_FAILURE",
+      "failure_class": "UNKNOWN"
+    },
+    {
+      "stage": "debugger",
+      "status": "VERIFICATION_REPAIR_REQUIRED",
+      "failure_class": "UNKNOWN",
+      "repair_iteration_before": 0,
+      "repair_iteration_after": 0,
+      "affected_modules": []
+    },
+    {
+      "stage": "verification_repair",
+      "status": "INDEPENDENT_REVIEW"
+    },
+    {
+      "stage": "verifier_generation",
+      "status": "VERIFICATION_READY",
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "semantic_retry": false
+    },
+    {
+      "stage": "deterministic_verification",
+      "status": "SIMULATION_FAILURE",
+      "failure_class": "UNKNOWN"
+    },
+    {
+      "stage": "debugger",
+      "status": "VERIFICATION_REPAIR_REQUIRED",
+      "failure_class": "UNKNOWN",
+      "repair_iteration_before": 0,
+      "repair_iteration_after": 0,
+      "affected_modules": []
+    },
+    {
+      "stage": "verification_repair",
+      "status": "INDEPENDENT_REVIEW"
+    },
+    {
+      "stage": "verifier_generation",
+      "status": "VERIFICATION_READY",
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "semantic_retry": false
+    },
+    {
+      "stage": "deterministic_verification",
+      "status": "SIMULATION_FAILURE",
+      "failure_class": "UNKNOWN"
+    },
+    {
+      "stage": "debugger",
+      "status": "VERIFICATION_REPAIR_REQUIRED",
+      "failure_class": "UNKNOWN",
+      "repair_iteration_before": 0,
+      "repair_iteration_after": 0,
+      "affected_modules": []
+    },
+    {
+      "stage": "orchestrator",
+      "status": "FAILED",
+      "reason": "VERIFICATION_REPAIR_REQUIRED"
+    },
+    {
+      "stage": "deterministic_verification",
+      "status": "SIMULATION_TIMEOUT",
+      "failure_class": "SIMULATION_TIMEOUT"
+    },
+    {
+      "stage": "debugger",
+      "status": "REPAIR_PLAN_READY",
+      "failure_class": "SIMULATION_TIMEOUT",
+      "repair_iteration_before": 0,
+      "repair_iteration_after": 1,
+      "affected_modules": [
+        "gemm_core_seq",
+        "postproc_relu_bias",
+        "output_streamer",
+        "local_memories",
+        "input_loader",
+        "gemm8x8x32_bias_relu_top"
+      ]
+    },
+    {
+      "stage": "rtl_generator",
+      "status": "ERROR",
+      "error": "No RTL changed during REPAIR_BLOCKED; regression must be NONE"
+    },
+    {
+      "stage": "rtl_generator",
+      "status": "ARCHITECTURE_CONFLICT",
+      "architecture_version": 1,
+      "repair_iteration": 1,
+      "ppa_iteration": 0,
+      "files": []
+    },
+    {
+      "stage": "architect",
+      "status": "READY",
+      "architecture_version": 2,
+      "revision": true
+    },
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 2,
+      "repair_iteration": 1,
+      "ppa_iteration": 0,
+      "files": [
+        "gemm8x8x32_bias_relu_top.sv",
+        "input_loader.sv",
+        "gemm_core_seq.sv",
+        "postproc_relu_bias.sv",
+        "output_streamer.sv",
+        "local_memories.sv"
+      ]
+    },
+    {
+      "stage": "verifier",
+      "status": "ERROR",
+      "error": "Verifier context missing required fields: ['frozen_architecture', 'provenance', 'user_request', 'verification_policy']"
+    },
+    {
+      "stage": "verifier_generation",
+      "status": "VERIFICATION_READY",
+      "architecture_version": 2,
+      "repair_iteration": 1,
+      "semantic_retry": false
+    },
+    {
+      "stage": "deterministic_verification",
+      "status": "SIMULATION_TIMEOUT",
+      "failure_class": "SIMULATION_TIMEOUT"
+    },
+    {
+      "stage": "debugger",
+      "status": "REPAIR_PLAN_READY",
+      "failure_class": "SIMULATION_TIMEOUT",
+      "repair_iteration_before": 1,
+      "repair_iteration_after": 2,
+      "affected_modules": [
+        "gemm8x8x32_bias_relu_top",
+        "input_loader",
+        "gemm_core_seq",
+        "postproc_relu_bias",
+        "output_streamer"
+      ]
+    },
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 2,
+      "repair_iteration": 2,
+      "ppa_iteration": 0,
+      "files": [
+        "gemm8x8x32_bias_relu_top.sv",
+        "input_loader.sv",
+        "gemm_core_seq.sv",
+        "postproc_relu_bias.sv",
+        "output_streamer.sv"
+      ]
+    },
+    {
+      "stage": "deterministic_verification",
+      "status": "SIMULATION_TIMEOUT",
+      "failure_class": "SIMULATION_TIMEOUT"
+    },
+    {
+      "stage": "debugger",
+      "status": "EVIDENCE_INSUFFICIENT",
+      "failure_class": "SIMULATION_TIMEOUT",
+      "repair_iteration_before": 2,
+      "repair_iteration_after": 2,
+      "affected_modules": []
+    },
+    {
+      "stage": "orchestrator",
+      "status": "FAILED",
+      "reason": "EVIDENCE_INSUFFICIENT"
+    },
+    {
+      "stage": "diagnostic_probe",
+      "status": "EVIDENCE_COLLECTED"
+    },
+    {
+      "stage": "debugger",
+      "status": "ERROR",
+      "error": "debugger API request failed using mode 'responses' and model 'gpt-5.3-codex': Error code: 400 - {'error': {'message': 'Your input exceeds the context window of this model. Please adjust your input and try again.', 'type': 'invalid_request_error', 'param': 'input', 'code': 'context_length_exceeded'}}"
+    },
+    {
+      "stage": "debugger",
+      "status": "REPAIR_PLAN_READY",
+      "failure_class": "SIMULATION_TIMEOUT",
+      "repair_iteration_before": 2,
+      "repair_iteration_after": 3,
+      "affected_modules": [
+        "gemm8x8x32_bias_relu_top",
+        "input_loader"
+      ]
+    },
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 2,
+      "repair_iteration": 3,
+      "ppa_iteration": 0,
+      "files": [
+        "gemm8x8x32_bias_relu_top.sv",
+        "input_loader.sv"
+      ]
+    },
+    {
+      "stage": "deterministic_verification",
+      "status": "SIMULATION_TIMEOUT",
+      "failure_class": "SIMULATION_TIMEOUT"
+    },
+    {
+      "stage": "debugger",
+      "status": "REPAIR_PLAN_READY",
+      "failure_class": "SIMULATION_TIMEOUT",
+      "repair_iteration_before": 3,
+      "repair_iteration_after": 4,
+      "affected_modules": [
+        "gemm8x8x32_bias_relu_top",
+        "postproc_relu_bias"
+      ]
+    },
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 2,
+      "repair_iteration": 4,
+      "ppa_iteration": 0,
+      "files": [
+        "gemm8x8x32_bias_relu_top.sv",
+        "postproc_relu_bias.sv"
+      ]
+    },
+    {
+      "stage": "deterministic_verification",
+      "status": "SIMULATION_TIMEOUT",
+      "failure_class": "SIMULATION_TIMEOUT"
+    },
+    {
+      "stage": "debugger",
+      "status": "REPAIR_PLAN_READY",
+      "failure_class": "SIMULATION_TIMEOUT",
+      "repair_iteration_before": 4,
+      "repair_iteration_after": 5,
+      "affected_modules": [
+        "gemm8x8x32_bias_relu_top",
+        "postproc_relu_bias"
+      ]
+    },
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 2,
+      "repair_iteration": 5,
+      "ppa_iteration": 0,
+      "files": [
+        "gemm8x8x32_bias_relu_top.sv",
+        "postproc_relu_bias.sv"
+      ]
+    },
+    {
+      "stage": "deterministic_verification",
+      "status": "SIMULATION_TIMEOUT",
+      "failure_class": "SIMULATION_TIMEOUT"
+    },
+    {
+      "stage": "repair",
+      "status": "BUDGET_EXHAUSTED",
+      "repair_iteration": 5,
+      "failure_class": "SIMULATION_TIMEOUT"
+    }
+  ],
+  "errors": [
+    "AgentRuntimeError: Verifier context missing required fields: ['frozen_architecture', 'provenance', 'user_request', 'verification_policy']",
+    "AgentRuntimeError: No RTL changed during REPAIR_BLOCKED; regression must be NONE",
+    "AgentRuntimeError: Verifier context missing required fields: ['frozen_architecture', 'provenance', 'user_request', 'verification_policy']",
+    "AgentRuntimeError: debugger API request failed using mode 'responses' and model 'gpt-5.3-codex': Error code: 400 - {'error': {'message': 'Your input exceeds the context window of this model. Please adjust your input and try again.', 'type': 'invalid_request_error', 'param': 'input', 'code': 'context_length_exceeded'}}"
+  ],
+  "vivado_config": {},
+  "vivado_executable": "vivado",
+  "vivado_timeout": 3600,
+  "ppa_objective": "lut",
+  "ppa_status": "PENDING",
+  "best_candidate": null,
+  "verifier_revision": 2,
+  "max_verifier_revisions": 2,
+  "frozen_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "174224fc0d16ffaa70ca5ce5917f071418590618085867dc554d79e260e9cd7a",
+      "architect_result.json": "c7da413b92824ac852a60c31beb4058e84b83e66232bcebdee4396c537a21df7",
+      "architecture_contract.yaml": "c4ad43954dbea6af158b41482770ebd8013cd99723979c2d350de51a356f1eb6",
+      "interface_contract.yaml": "6b1e2ba58d5615447c60756b30a0fc05dee8f3985a616ad0fe72a8e95031503d",
+      "module_manifest.json": "3eae19dc5874d954b283fd24e50d8a47d369efada5bb7e7ad680de782e681bc8"
+    },
+    "rtl": {
+      "gemm8x8x32_bias_relu_top.sv": "67a245dca0901fffe4a644ec22435cb2ebbe929192a9761080a5321ede82183d",
+      "gemm_core_seq.sv": "62c48fd048b9ec49900417c04046194b7b621cfb7d5d2ce2998073178133ea18",
+      "input_loader.sv": "62cf93acf568f6e6003f41392a00df70ab62a7b168d8da6f46cd748c93996856",
+      "local_memories.sv": "ac01abe591f81be6caa4f093c023f006e9e3c1ed23c6aa5339ba149a22831103",
+      "output_streamer.sv": "53fa032c07dad649ffdae07c5a527a0cdae360ff9333f675733d383d49712e12",
+      "postproc_relu_bias.sv": "18aac5cf6b168e8e9a49e08bfcc7af025f1d1551362645a1bd68212d6be690fb"
+    },
+    "tests": {
+      "test_gemm8x8x32_cocotb.py": "d7320bf209cd8a773088a2550b1306cf6de9a6ba32115393211feae9d1243753"
+    },
+    "reference": {
+      "gemm8x8x32_ref.py": "1091e584673c27f4616d5b19eac7a709fa5b41adb06ed0c538b2c9bf8632da52"
+    }
+  },
+  "orchestration_error": null,
+  "diagnostic_iteration": 1,
+  "max_diagnostic_iterations": 2,
+  "workspace_root": "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911"
+}

@@ -71,7 +71,7 @@ def generic_fir_context() -> dict:
                 "functional": ["matches independent FIR reference"],
                 "verification": ["at least 100 randomized streams"],
                 "rtl": ["synthesizable SystemVerilog"],
-                "synopsys_handoff": ["verified RTL only"],
+                "fpga_handoff": ["verified RTL only"],
             },
         },
         "provenance": {

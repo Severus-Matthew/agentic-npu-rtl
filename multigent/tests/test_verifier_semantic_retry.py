@@ -94,20 +94,19 @@ def test_second_semantic_failure_surfaces_without_third_call() -> None:
     runtime = StubVerifier()
     node = make_verifier_node(runtime)  # type: ignore[arg-type]
 
-    with pytest.raises(AgentRuntimeError, match="status_done"):
-        node(  # type: ignore[arg-type]
-            {
-                "run_id": "unit",
-                "user_request": "design a streaming block",
-                "verification_context": {
-                    "user_request": "design a streaming block",
-                    "verification_policy": {},
-                    "frozen_architecture": {},
-                    "provenance": {
-                        "includes_generated_rtl": False,
-                        "includes_rtl_generator_output": False,
-                    },
-                },
-            }
-        )
+    update = node({"run_id": "unit", "user_request": "design a streaming block",
+                   "verification_context": {"user_request": "design a streaming block"}})
+    assert update["verifier_status"] == "SEMANTIC_VALIDATION_FAILED"
+    assert "status_done" in update["errors"][0]
     assert runtime.calls == 2
+
+
+def test_semantic_retry_rebuilds_empty_context_after_architecture_revision(monkeypatch):
+    import multigent.orchestration.verifier_node as module
+    monkeypatch.setattr(module,'build_verification_context',lambda **kwargs:{
+        'user_request':'new contract','frozen_architecture':{'version':2},
+        'verification_policy':{},'provenance':{}})
+    retry=module._build_semantic_retry_state({'user_request':'new contract','verification_context':{}},
+                                            error=AgentRuntimeError('semantic defect'))
+    assert retry['verification_context']['frozen_architecture']=={'version':2}
+    assert retry['verification_context']['semantic_retry_feedback']['validator_error']=='semantic defect'

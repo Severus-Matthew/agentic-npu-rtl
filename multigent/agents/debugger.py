@@ -27,6 +27,17 @@ DIAGNOSIS_SCHEMA = SCHEMA_ROOT / "diagnosis.schema.json"
 REPAIR_PLAN_SCHEMA = SCHEMA_ROOT / "repair_plan.schema.json"
 
 
+def bounded_evidence(value, limit=6000):
+    """Keep prompts bounded while full deterministic evidence remains on disk."""
+    if isinstance(value, str) and len(value) > limit:
+        return value[:limit//3] + "\n[TRUNCATED: full evidence retained in run artifacts]\n" + value[-2*limit//3:]
+    if isinstance(value, dict):
+        return {key:bounded_evidence(item,limit) for key,item in value.items()}
+    if isinstance(value, list):
+        return [bounded_evidence(item,limit) for item in value[-128:]]
+    return value
+
+
 class DebuggerAgent(APIAgent):
     """Diagnose deterministic RTL failures and emit constrained repair plans."""
 
@@ -175,14 +186,14 @@ class DebuggerAgent(APIAgent):
             "repair_iteration": int(state.get("repair_iteration", 0)),
             "failure_class": failure_class,
             "verification_status": str(state.get("verification_status", "")),
-            "verification_evidence": dict(evidence),
+            "verification_evidence": bounded_evidence(dict(evidence)),
             "frozen_architecture": frozen,
             "current_rtl": rtl,
             "frozen_reference": reference,
             "frozen_tests": tests,
             "prior_diagnosis": state.get("diagnosis"),
             "prior_repair_plan": state.get("repair_plan"),
-            "history": list(state.get("history", [])),
+            "history": list(state.get("history", []))[-12:],
             "provenance": {
                 "deterministic_evidence_authoritative": True,
                 "tests_frozen_during_functional_repair": True,
@@ -253,7 +264,7 @@ class DebuggerAgent(APIAgent):
         unknown = sorted(diagnosed_modules - manifest_modules)
         if unknown:
             raise AgentRuntimeError(f"Debugger diagnosed undeclared modules: {unknown}")
-        if str(diagnosis["failure_class"]) != str(context["failure_class"]):
+        if context["failure_class"] not in {"UNKNOWN", "SIMULATION_TIMEOUT"} and str(diagnosis["failure_class"]) != str(context["failure_class"]):
             raise AgentRuntimeError(
                 "Debugger failure_class must preserve deterministic tool classification"
             )
@@ -310,6 +321,12 @@ class DebuggerAgent(APIAgent):
                 raise AgentRuntimeError(
                     f"Architecture conflict names undeclared modules: {unknown_conflict}"
                 )
+
+        elif status == "VERIFICATION_REPAIR_REQUIRED":
+            if repair_plan is not None or conflict is not None:
+                raise AgentRuntimeError("Verification repair must not authorize RTL or architecture edits")
+            if diagnosis["failure_class"] != "TESTBENCH_ERROR" or diagnosis["confidence"] < 0.8:
+                raise AgentRuntimeError("Verification repair requires high-confidence TESTBENCH_ERROR evidence")
 
         elif status == "EVIDENCE_INSUFFICIENT":
             if repair_plan is not None or conflict is not None:

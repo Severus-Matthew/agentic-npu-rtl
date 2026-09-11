@@ -1,0 +1,23 @@
+{
+  "architecture": {
+    "acceptance_criteria.yaml": "174224fc0d16ffaa70ca5ce5917f071418590618085867dc554d79e260e9cd7a",
+    "architect_result.json": "c7da413b92824ac852a60c31beb4058e84b83e66232bcebdee4396c537a21df7",
+    "architecture_contract.yaml": "c4ad43954dbea6af158b41482770ebd8013cd99723979c2d350de51a356f1eb6",
+    "interface_contract.yaml": "6b1e2ba58d5615447c60756b30a0fc05dee8f3985a616ad0fe72a8e95031503d",
+    "module_manifest.json": "3eae19dc5874d954b283fd24e50d8a47d369efada5bb7e7ad680de782e681bc8"
+  },
+  "rtl": {
+    "gemm8x8x32_bias_relu_top.sv": "728bf8e2623d2f029219f95d650554390cb179b0462ea830a634fcf4574cfa0f",
+    "gemm_core_seq.sv": "f008b6a8eb117e31b16e3cd3db8eaab0a33a215b22137fde540805bacb08fd57",
+    "input_loader.sv": "0fb6841291de506f7c45abb4411a457752bf980e8bab47817322e3dbbb21116b",
+    "local_memories.sv": "ac01abe591f81be6caa4f093c023f006e9e3c1ed23c6aa5339ba149a22831103",
+    "output_streamer.sv": "7e03ee625a8875fd1509008d1102f177cc4bf044a8e07985a27946af8356b4c4",
+    "postproc_relu_bias.sv": "a2987058d23cc9e1f97c078ed1153a325d708a0365b512dc98b173828615eb0b"
+  },
+  "tests": {
+    "test_gemm8x8x32_cocotb.py": "d7320bf209cd8a773088a2550b1306cf6de9a6ba32115393211feae9d1243753"
+  },
+  "reference": {
+    "gemm8x8x32_ref.py": "1091e584673c27f4616d5b19eac7a709fa5b41adb06ed0c538b2c9bf8632da52"
+  }
+}

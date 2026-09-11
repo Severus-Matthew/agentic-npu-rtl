@@ -1,0 +1,43 @@
+{
+  "failure_class": "SIMULATION_TIMEOUT",
+  "root_cause": "In gemm8x8x32_bias_relu_top/input_loader interaction, start_load is asserted only after CMD handshake in ST_IDLE, but input_loader transitions to L_A on that same edge and only accepts A beats afterward. The CMD beat is not handled by loader, causing section misalignment/deadlock (no progress signals ever assert).",
+  "confidence": 0.92,
+  "first_divergence": {
+    "cycle": null,
+    "signal_or_output": "ingress progress (s_ready/start_load/load_done)",
+    "expected": "After command, loader should accept exactly 256 A beats then progress to B/BIAS and eventually assert load_done.",
+    "observed": "Diagnostic trace near timeout shows state=IDLE, s_ready=0, start_* all 0, load_done/compute_done/post_done/out_done all 0; no job progress in any test."
+  },
+  "evidence": [
+    {
+      "source": "deterministic_verification.cocotb",
+      "observation": "Primary run times out at first test start (SIMULATION_TIMEOUT).",
+      "relevance": "Establishes authoritative fatal stage is functional simulation timeout."
+    },
+    {
+      "source": "diagnostic_probe.additional_diagnostics.result",
+      "observation": "All 4 tests fail by bounded timeout; sampled signals show no FSM/submodule progress and no handshake-ready activity at observed stalled point.",
+      "relevance": "Confirms systemic deadlock/progress failure, not isolated arithmetic mismatch."
+    },
+    {
+      "source": "current_rtl.gemm8x8x32_bias_relu_top.sv",
+      "observation": "cmd_hs_idle requires IDLE+s_valid+s_ready+s_type==CMD; on that handshake top pulses start_load and leaves IDLE.",
+      "relevance": "Top consumes CMD before loader is active."
+    },
+    {
+      "source": "current_rtl.input_loader.sv",
+      "observation": "start_load moves loader to L_A; loader only consumes A/B/BIAS payloads and has no CMD state.",
+      "relevance": "Interface mismatch explains dropped/misaligned first beat and non-termination."
+    }
+  ],
+  "affected_modules": [
+    "gemm8x8x32_bias_relu_top",
+    "input_loader"
+  ],
+  "alternative_hypotheses": [
+    "Secondary width warnings cause functional corruption (unlikely: non-fatal and not timeout root).",
+    "Compute/post/output internal pipeline bug independent of loader (less consistent with zero progress across all tests)."
+  ],
+  "architecture_change_required": false,
+  "additional_evidence_requested": []
+}

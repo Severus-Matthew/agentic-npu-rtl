@@ -52,7 +52,7 @@ verification:
   require_reset_tests: true
   require_backpressure_tests: true
 
-external_synopsys_handoff:
+external_fpga_handoff:
   required: true
   owner: external_team_member
   note: >-

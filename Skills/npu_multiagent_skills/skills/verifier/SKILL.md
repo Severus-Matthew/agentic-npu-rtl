@@ -136,3 +136,29 @@ Return `VERIFICATION_READY` when independent reference/tests/plan are complete, 
 - claiming completion/error coverage without referencing the defined signal
 - declaring PASS without deterministic tool evidence
 - fabricating simulator/compiler results
+
+## Simulator timing correctness
+Cocotb 2.x is the runtime. Never write signals in ReadOnly. RisingEdge observes a
+clock event, not necessarily settled downstream values; in Verilator it may resume
+after evaluation. Avoid inferring a just-completed handshake from a ready signal
+that the DUT may already have changed on that edge.
+
+Prefer a manually clocked single-owner cycle helper for portable synchronous tests:
+clock low -> drive inputs -> Timer to settle -> sample ready/valid and payload while
+clock is still low -> clock high -> Timer to settle -> return pre-edge transfer
+snapshot plus settled post-edge status -> clock low before the next drive. Use the
+contract's active edge and sufficient time resolution. Do not run Clock concurrently
+with manual clock writes. A single cycle owner coordinates all sources and sinks;
+concurrent tasks must not independently drive the same signal or clock. Sample
+completion/error outputs each cycle so transient pulses cannot be missed. Once valid
+is asserted, hold it and payload until the recorded transfer. Drive the next beat
+only in a legal writable phase. Bound every wait and cancel/join spawned tasks.
+
+Independently sanity-check the golden model using analytically known zero, identity,
+signed extrema, overflow and operation-order examples appropriate to the contract
+before sending DUT transactions. Do not compare a reference function to itself as
+an oracle test. Include assertion context for seed, transaction, expected and actual.
+Static validators cannot prove oracle correctness; these explicit reference checks
+and contract-derived tests are required. Revisions must preserve all valid failing
+cases and assertions. A defective stimulus may be corrected but never erased to
+hide a DUT failure; historical test sources remain archived by the orchestrator.

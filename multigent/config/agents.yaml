@@ -1,5 +1,5 @@
 runtime:
-  harness: codex_cli
+  harness: structured_api
   model: gpt-5.3-codex
   sandbox: read-only
   structured_outputs: true
@@ -21,9 +21,9 @@ agents:
     shared_skill: project_contract
     role_skill: debugger
     model: gpt-5.3-codex
-  ppa_judge:
+  ppa_optimizer:
     shared_skill: project_contract
-    role_skill: ppa_judge
+    role_skill: ppa_optimizer
     model: gpt-5.3-codex
   experiment_evaluator:
     shared_skill: project_contract

@@ -1,0 +1,38 @@
+{
+  "failure_class": "SIMULATION_TIMEOUT",
+  "root_cause": "Control-flow misalignment between gemm8x8x32_bias_relu_top and postproc_relu_bias: top asserts start_post only after compute_done, while postproc requires active=1 at time of acc_valid to capture data. Since acc_valid occurs during compute, postproc misses the full stream, mem_out is never populated, and output_streamer emits no 64-beat frame.",
+  "confidence": 0.95,
+  "first_divergence": {
+    "cycle": 20700,
+    "signal_or_output": "test_directed_basic collected output length",
+    "expected": "64 output handshakes",
+    "observed": "0 output handshakes"
+  },
+  "evidence": [
+    {
+      "source": "verification_evidence.cocotb.stdout",
+      "observation": "test_directed_basic fails at 207000ns with AssertionError: Expected 64 outputs, got 0",
+      "relevance": "Earliest deterministic functional failure; explains timeout symptom."
+    },
+    {
+      "source": "current_rtl.gemm8x8x32_bias_relu_top.sv",
+      "observation": "ST_COMPUTE transitions to ST_POST and asserts start_post only when compute_done is true",
+      "relevance": "Postprocess activation occurs after acc stream production window."
+    },
+    {
+      "source": "current_rtl.postproc_relu_bias.sv",
+      "observation": "acc_valid is only captured inside if(active); active is set by start_post",
+      "relevance": "Any acc_valid before start_post is dropped; no buffering/ready handshake exists."
+    }
+  ],
+  "affected_modules": [
+    "gemm8x8x32_bias_relu_top",
+    "postproc_relu_bias"
+  ],
+  "alternative_hypotheses": [
+    "gemm_core_seq never asserts acc_valid",
+    "output_streamer handshake bug"
+  ],
+  "architecture_change_required": false,
+  "additional_evidence_requested": []
+}

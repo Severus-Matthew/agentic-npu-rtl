@@ -8,10 +8,13 @@ machine-readable result consumed by LangGraph.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
+import xml.etree.ElementTree as ET
 import shutil
 import subprocess
+from multigent.tools.process import run_process
 import sys
 from pathlib import Path
 from typing import Any, Mapping
@@ -28,6 +31,7 @@ def run_cocotb_regression(
     build_dir: Path,
     report_path: Path,
     timeout_seconds: int,
+    public_signals: bool = False,
 ) -> dict[str, Any]:
     """Build and run cocotb tests in a bounded worker subprocess."""
 
@@ -66,6 +70,7 @@ def run_cocotb_regression(
     worker_result_path = build_dir / "cocotb_worker_result.json"
     results_xml = build_dir / "results.xml"
     config = {
+        "public_signals": public_signals,
         "sources": [str(path) for path in sources],
         "top_module": top_module,
         "tests_dir": str(tests_dir),
@@ -90,7 +95,7 @@ def run_cocotb_regression(
         str(config_path),
     ]
     try:
-        completed = subprocess.run(
+        completed = run_process(
             command,
             text=True,
             capture_output=True,
@@ -108,8 +113,8 @@ def run_cocotb_regression(
             "top_module": top_module,
             "test_modules": test_modules,
             "results_xml": str(results_xml),
-            "stdout": exc.stdout or "",
-            "stderr": exc.stderr or "",
+            "stdout": exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or ""),
+            "stderr": exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or ""),
         }
         _write_json(report_path, result)
         return result
@@ -141,6 +146,11 @@ def run_cocotb_regression(
             "results_xml": str(results_xml),
         }
 
+    if completed.returncode != 0 and result.get("status") == "PASS":
+        result.update(status="SIMULATION_FAILURE", failure_class="UNKNOWN")
+    build_log = completed.stdout + "\n" + completed.stderr
+    if result.get("status") == "SIMULATION_BUILD_FAILURE" and any(token in build_log for token in ("command not found", "No such file or directory", "SRE module mismatch")):
+        result.update(status="TOOL_UNAVAILABLE", failure_class=None)
     result["worker_return_code"] = completed.returncode
     result["stdout"] = completed.stdout
     result["stderr"] = completed.stderr
@@ -188,8 +198,14 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
     existing = os.environ.get("PYTHONPATH", "").strip()
     if existing:
         pythonpath_parts.append(existing)
+    # cocotb 2.x overwrites extra_env[PYTHONPATH] with sys.path.
+    # Set the worker's actual import path so both flat and reference.* imports work.
+    sys.path[:0] = [str(tests_dir), str(reference_dir), str(workspace_root)]
     extra_env = {"PYTHONPATH": os.pathsep.join(pythonpath_parts)}
 
+    for key in ("COCOTB_TEST_FILTER", "COCOTB_TESTCASE", "TESTCASE", "COCOTB_TEST_MODULES"):
+        os.environ.pop(key, None)
+    os.environ["PATH"] = str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", "")
     runner = get_runner("verilator")
     try:
         runner.build(
@@ -198,7 +214,7 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
             build_dir=build_dir,
             always=True,
             clean=True,
-            build_args=["-Wno-fatal"],
+            build_args=["-Wno-fatal"] + (["--public-flat-rw"] if config.get("public_signals") else []),
         )
     except BaseException as exc:
         result = {
@@ -232,6 +248,12 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
 
     try:
         tests, failures = get_results(results_xml)
+        expected_count = 0
+        for module in test_modules:
+            tree = ast.parse((tests_dir/(module + ".py")).read_text())
+            expected_count += sum(1 for node in ast.walk(tree) if isinstance(node, ast.AsyncFunctionDef)
+                                  and any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                                          and d.func.attr == "test" for d in node.decorator_list))
     except Exception as exc:
         text = (
             f"{type(simulation_exception).__name__}: {simulation_exception}"
@@ -264,7 +286,7 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
 
     status = (
         "PASS"
-        if failures == 0 and simulation_exception is None
+        if tests >= max(1, expected_count) and failures == 0 and simulation_exception is None and xunit_complete(results_xml)
         else "SIMULATION_FAILURE"
     )
     result = {
@@ -285,6 +307,15 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
     }
     _write_json(result_path, result)
     return result
+
+
+def xunit_complete(path: Path) -> bool:
+    """Reject vacuous passes, skipped cases, errors and malformed result files."""
+    try:
+        cases = ET.parse(path).getroot().findall('.//testcase')
+        return bool(cases) and all(not any(c.find(tag) is not None for tag in ('skipped','failure','error')) for c in cases)
+    except (ET.ParseError, OSError):
+        return False
 
 
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:

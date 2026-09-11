@@ -1,0 +1,52 @@
+{
+  "debugger_status": "VERIFICATION_REPAIR_REQUIRED",
+  "diagnosis": {
+    "failure_class": "TESTBENCH_ERROR",
+    "root_cause": "Cocotb regression cannot import frozen test dependency `reference.gemm_ref`, causing immediate regression setup failure and `$finish` before tests run.",
+    "confidence": 0.99,
+    "first_divergence": {
+      "cycle": null,
+      "signal_or_output": "cocotb test discovery/import",
+      "expected": "Test module imports `reference.gemm_ref` and starts executing tests",
+      "observed": "ModuleNotFoundError: No module named 'reference'"
+    },
+    "evidence": [
+      {
+        "source": "cocotb stderr traceback",
+        "observation": "Import fails at `from reference.gemm_ref import ...` in `test_gemm8x8x32_bias_relu.py` with ModuleNotFoundError.",
+        "relevance": "Direct fatal error causing simulation failure before any RTL functional check."
+      },
+      {
+        "source": "cocotb status/worker_error",
+        "observation": "results.xml not found; simulation terminated abnormally; tests=0 failures=0.",
+        "relevance": "Confirms no tests executed; failure is infrastructure/test environment."
+      },
+      {
+        "source": "verilator lint",
+        "observation": "PASS",
+        "relevance": "Rules out front-end RTL syntax/lint as primary failure."
+      }
+    ],
+    "affected_modules": [],
+    "alternative_hypotheses": [
+      "Potential RTL functional defects exist, but currently unobservable until test import path/environment is fixed."
+    ],
+    "architecture_change_required": false,
+    "additional_evidence_requested": [
+      "Re-run deterministic verification after fixing Python module search path so `reference.gemm_ref` is importable.",
+      "Provide first post-fix failing assertion/log if functional failures appear."
+    ]
+  },
+  "repair_plan": null,
+  "architecture_conflict": null,
+  "history": [
+    {
+      "stage": "debugger",
+      "status": "VERIFICATION_REPAIR_REQUIRED",
+      "failure_class": "UNKNOWN",
+      "repair_iteration_before": 0,
+      "repair_iteration_after": 0,
+      "affected_modules": []
+    }
+  ]
+}

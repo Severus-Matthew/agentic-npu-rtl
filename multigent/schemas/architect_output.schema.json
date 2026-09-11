@@ -14,19 +14,35 @@
   "properties": {
     "status": {
       "type": "string",
-      "enum": ["READY", "SPEC_CONFLICT"]
+      "enum": [
+        "READY",
+        "SPEC_CONFLICT"
+      ]
     },
     "conflicts": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["requirement_a", "requirement_b", "reason", "recommended_resolution"],
+        "required": [
+          "requirement_a",
+          "requirement_b",
+          "reason",
+          "recommended_resolution"
+        ],
         "properties": {
-          "requirement_a": {"type": "string"},
-          "requirement_b": {"type": "string"},
-          "reason": {"type": "string"},
-          "recommended_resolution": {"type": "string"}
+          "requirement_a": {
+            "type": "string"
+          },
+          "requirement_b": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "recommended_resolution": {
+            "type": "string"
+          }
         }
       }
     },
@@ -53,11 +69,21 @@
         "design": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["name", "version", "description"],
+          "required": [
+            "name",
+            "version",
+            "description"
+          ],
           "properties": {
-            "name": {"type": "string"},
-            "version": {"type": "string"},
-            "description": {"type": "string"}
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            }
           }
         },
         "operations": {
@@ -66,13 +92,35 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "kind", "semantics", "inputs", "outputs"],
+            "required": [
+              "name",
+              "kind",
+              "semantics",
+              "inputs",
+              "outputs"
+            ],
             "properties": {
-              "name": {"type": "string"},
-              "kind": {"type": "string"},
-              "semantics": {"type": "string"},
-              "inputs": {"type": "array", "items": {"type": "string"}},
-              "outputs": {"type": "array", "items": {"type": "string"}}
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "semantics": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "outputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           }
         },
@@ -93,14 +141,31 @@
               "rounding_semantics"
             ],
             "properties": {
-              "name": {"type": "string"},
-              "role": {"type": "string"},
-              "width_bits": {"type": "integer", "minimum": 1},
-              "signed": {"type": "boolean"},
-              "representation": {"type": "string"},
-              "conversion_semantics": {"type": "string"},
-              "overflow_semantics": {"type": "string"},
-              "rounding_semantics": {"type": "string"}
+              "name": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "width_bits": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "signed": {
+                "type": "boolean"
+              },
+              "representation": {
+                "type": "string"
+              },
+              "conversion_semantics": {
+                "type": "string"
+              },
+              "overflow_semantics": {
+                "type": "string"
+              },
+              "rounding_semantics": {
+                "type": "string"
+              }
             }
           }
         },
@@ -120,13 +185,33 @@
               "external"
             ],
             "properties": {
-              "name": {"type": "string"},
-              "role": {"type": "string"},
-              "data_type": {"type": "string"},
-              "dimensions": {"type": "array", "items": {"type": "string"}},
-              "producer": {"type": "string"},
-              "consumers": {"type": "array", "items": {"type": "string"}},
-              "external": {"type": "boolean"}
+              "name": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "data_type": {
+                "type": "string"
+              },
+              "dimensions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "producer": {
+                "type": "string"
+              },
+              "consumers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "external": {
+                "type": "boolean"
+              }
             }
           }
         },
@@ -144,12 +229,26 @@
               "bound_parameter"
             ],
             "properties": {
-              "name": {"type": "string"},
-              "semantic": {"type": "string"},
-              "minimum": {"type": "integer", "minimum": 0},
-              "maximum": {"type": "integer", "minimum": 1},
-              "runtime_configurable": {"type": "boolean"},
-              "bound_parameter": {"type": "string"}
+              "name": {
+                "type": "string"
+              },
+              "semantic": {
+                "type": "string"
+              },
+              "minimum": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "maximum": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "runtime_configurable": {
+                "type": "boolean"
+              },
+              "bound_parameter": {
+                "type": "string"
+              }
             }
           }
         },
@@ -158,24 +257,50 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "default_value", "legality_constraint", "description"],
+            "required": [
+              "name",
+              "default_value",
+              "legality_constraint",
+              "description"
+            ],
             "properties": {
-              "name": {"type": "string"},
-              "default_value": {"type": "string"},
-              "legality_constraint": {"type": "string"},
-              "description": {"type": "string"}
+              "name": {
+                "type": "string"
+              },
+              "default_value": {
+                "type": "string"
+              },
+              "legality_constraint": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
             }
           }
         },
         "compute": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["organization", "dataflow", "parallelism", "scheduling"],
+          "required": [
+            "organization",
+            "dataflow",
+            "parallelism",
+            "scheduling"
+          ],
           "properties": {
-            "organization": {"type": "string"},
-            "dataflow": {"type": "string"},
-            "parallelism": {"type": "string"},
-            "scheduling": {"type": "string"}
+            "organization": {
+              "type": "string"
+            },
+            "dataflow": {
+              "type": "string"
+            },
+            "parallelism": {
+              "type": "string"
+            },
+            "scheduling": {
+              "type": "string"
+            }
           }
         },
         "storage": {
@@ -195,15 +320,37 @@
               "lifetime"
             ],
             "properties": {
-              "name": {"type": "string"},
-              "stored_objects": {"type": "array", "items": {"type": "string"}},
-              "capacity_expression": {"type": "string"},
-              "capacity_at_default_parameters": {"type": "integer", "minimum": 1},
-              "access_pattern": {"type": "string"},
-              "port_requirements": {"type": "string"},
-              "implementation_hint": {"type": "string"},
-              "reuse_semantics": {"type": "string"},
-              "lifetime": {"type": "string"}
+              "name": {
+                "type": "string"
+              },
+              "stored_objects": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "capacity_expression": {
+                "type": "string"
+              },
+              "capacity_at_default_parameters": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "access_pattern": {
+                "type": "string"
+              },
+              "port_requirements": {
+                "type": "string"
+              },
+              "implementation_hint": {
+                "type": "string"
+              },
+              "reuse_semantics": {
+                "type": "string"
+              },
+              "lifetime": {
+                "type": "string"
+              }
             }
           }
         },
@@ -212,57 +359,121 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["stage", "responsibility", "registered", "valid_behavior", "stall_behavior"],
+            "required": [
+              "stage",
+              "responsibility",
+              "registered",
+              "valid_behavior",
+              "stall_behavior"
+            ],
             "properties": {
-              "stage": {"type": "string"},
-              "responsibility": {"type": "string"},
-              "registered": {"type": "boolean"},
-              "valid_behavior": {"type": "string"},
-              "stall_behavior": {"type": "string"}
+              "stage": {
+                "type": "string"
+              },
+              "responsibility": {
+                "type": "string"
+              },
+              "registered": {
+                "type": "boolean"
+              },
+              "valid_behavior": {
+                "type": "string"
+              },
+              "stall_behavior": {
+                "type": "string"
+              }
             }
           }
         },
         "control": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["strategy", "state_progression", "counters", "error_behavior", "error_recovery"],
+          "required": [
+            "strategy",
+            "state_progression",
+            "counters",
+            "error_behavior",
+            "error_recovery"
+          ],
           "properties": {
-            "strategy": {"type": "string"},
-            "state_progression": {"type": "string"},
-            "counters": {"type": "array", "items": {"type": "string"}},
-            "error_behavior": {"type": "string"},
-            "error_recovery": {"type": "string"}
+            "strategy": {
+              "type": "string"
+            },
+            "state_progression": {
+              "type": "string"
+            },
+            "counters": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "error_behavior": {
+              "type": "string"
+            },
+            "error_recovery": {
+              "type": "string"
+            }
           }
         },
         "reset": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["style", "polarity", "required_state"],
+          "required": [
+            "style",
+            "polarity",
+            "required_state"
+          ],
           "properties": {
-            "style": {"type": "string"},
-            "polarity": {"type": "string"},
-            "required_state": {"type": "string"}
+            "style": {
+              "type": "string"
+            },
+            "polarity": {
+              "type": "string"
+            },
+            "required_state": {
+              "type": "string"
+            }
           }
         },
-        "latency_model": {"type": "string"},
+        "latency_model": {
+          "type": "string"
+        },
         "architectural_invariants": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
         "open_assumptions": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
     "interface_contract": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["protocol", "clock", "reset", "channels", "signals", "global_handshake_rules"],
+      "required": [
+        "protocol",
+        "clock",
+        "reset",
+        "channels",
+        "signals",
+        "global_handshake_rules"
+      ],
       "properties": {
-        "protocol": {"type": "string"},
-        "clock": {"type": "string"},
-        "reset": {"type": "string"},
+        "protocol": {
+          "type": "string"
+        },
+        "clock": {
+          "type": "string"
+        },
+        "reset": {
+          "type": "string"
+        },
         "channels": {
           "type": "array",
           "items": {
@@ -279,14 +490,40 @@
               "backpressure"
             ],
             "properties": {
-              "name": {"type": "string"},
-              "direction": {"type": "string", "enum": ["input", "output"]},
-              "purpose": {"type": "string"},
-              "data_objects": {"type": "array", "items": {"type": "string"}},
-              "metadata": {"type": "array", "items": {"type": "string"}},
-              "framing": {"type": "string"},
-              "ordering": {"type": "string"},
-              "backpressure": {"type": "string"}
+              "name": {
+                "type": "string"
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "input",
+                  "output"
+                ]
+              },
+              "purpose": {
+                "type": "string"
+              },
+              "data_objects": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "metadata": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "framing": {
+                "type": "string"
+              },
+              "ordering": {
+                "type": "string"
+              },
+              "backpressure": {
+                "type": "string"
+              }
             }
           }
         },
@@ -295,24 +532,54 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "direction", "width", "signed", "semantic", "reset_value"],
+            "required": [
+              "name",
+              "direction",
+              "width",
+              "signed",
+              "semantic",
+              "reset_value"
+            ],
             "properties": {
-              "name": {"type": "string"},
-              "direction": {"type": "string", "enum": ["input", "output"]},
-              "width": {"type": "string"},
-              "signed": {"type": "boolean"},
-              "semantic": {"type": "string"},
-              "reset_value": {"type": "string"}
+              "name": {
+                "type": "string"
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "input",
+                  "output"
+                ]
+              },
+              "width": {
+                "type": "string"
+              },
+              "signed": {
+                "type": "boolean"
+              },
+              "semantic": {
+                "type": "string"
+              },
+              "reset_value": {
+                "type": "string"
+              }
             }
           }
         },
         "global_handshake_rules": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["transfer_condition", "stall_behavior"],
+          "required": [
+            "transfer_condition",
+            "stall_behavior"
+          ],
           "properties": {
-            "transfer_condition": {"type": "string"},
-            "stall_behavior": {"type": "string"}
+            "transfer_condition": {
+              "type": "string"
+            },
+            "stall_behavior": {
+              "type": "string"
+            }
           }
         }
       }
@@ -320,22 +587,87 @@
     "module_manifest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["top", "modules"],
+      "required": [
+        "top",
+        "modules"
+      ],
       "properties": {
-        "top": {"type": "string"},
+        "top": {
+          "type": "string"
+        },
         "modules": {
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "responsibility", "dependencies", "parameters", "stateful"],
+            "required": [
+              "name",
+              "responsibility",
+              "dependencies",
+              "parameters",
+              "stateful",
+              "ports"
+            ],
             "properties": {
-              "name": {"type": "string"},
-              "responsibility": {"type": "string"},
-              "dependencies": {"type": "array", "items": {"type": "string"}},
-              "parameters": {"type": "array", "items": {"type": "string"}},
-              "stateful": {"type": "boolean"}
+              "name": {
+                "type": "string"
+              },
+              "responsibility": {
+                "type": "string"
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "parameters": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "stateful": {
+                "type": "boolean"
+              },
+              "ports": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "direction",
+                    "width",
+                    "signed",
+                    "semantics"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": [
+                        "input",
+                        "output",
+                        "inout"
+                      ]
+                    },
+                    "width": {
+                      "type": "string"
+                    },
+                    "signed": {
+                      "type": "boolean"
+                    },
+                    "semantics": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -344,12 +676,37 @@
     "acceptance_criteria": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["functional", "verification", "rtl", "synopsys_handoff"],
+      "required": [
+        "functional",
+        "verification",
+        "rtl",
+        "fpga_handoff"
+      ],
       "properties": {
-        "functional": {"type": "array", "items": {"type": "string"}},
-        "verification": {"type": "array", "items": {"type": "string"}},
-        "rtl": {"type": "array", "items": {"type": "string"}},
-        "synopsys_handoff": {"type": "array", "items": {"type": "string"}}
+        "functional": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verification": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rtl": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fpga_handoff": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     }
   }

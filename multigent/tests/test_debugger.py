@@ -159,3 +159,24 @@ def test_architecture_escalation_does_not_authorize_patch() -> None:
         "requested_architect_decision": "choose one packet width and issue a revised contract",
     }
     DebuggerAgent._validate_result(result=result, context=debugger_context())
+
+
+def test_large_tool_logs_are_bounded_without_mutating_original_evidence():
+    from multigent.agents.debugger import bounded_evidence
+    evidence={'stdout':'begin'+('x'*100000)+'final-stall-state'}
+    compact=bounded_evidence(evidence)
+    assert len(compact['stdout']) < 6100
+    assert 'begin' in compact['stdout'] and 'final-stall-state' in compact['stdout']
+    assert len(evidence['stdout']) > 100000
+
+
+def test_timeout_can_be_localized_to_testbench_without_overriding_tool_status():
+    context=debugger_context()
+    context['failure_class']='SIMULATION_TIMEOUT'
+    context['verification_status']='SIMULATION_TIMEOUT'
+    result=valid_repair_result()
+    result.update(status='VERIFICATION_REPAIR_REQUIRED',repair_plan=None)
+    result['diagnosis'].update(failure_class='TESTBENCH_ERROR',affected_modules=[],
+        root_cause='Test driver waits indefinitely for an illegal transfer instead of observing the contract error response.')
+    DebuggerAgent._validate_result(result=result,context=context)
+    assert context['verification_status']=='SIMULATION_TIMEOUT'

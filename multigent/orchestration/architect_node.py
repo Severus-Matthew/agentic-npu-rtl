@@ -150,6 +150,16 @@ def make_architect_node(agent: ArchitectAgent | None = None):
                     "architecture_conflict": None,
                     "rtl_context": rtl_context,
                     "rtl_task_type": "INITIAL_GENERATION",
+                    "verification_context": {},
+                    "verifier_status": "PENDING",
+                    "verification_plan": {},
+                    "verification_status": "PENDING",
+                    "verification_evidence": None,
+                    "synthesis_result": None,
+                    "rtl_feedback": None,
+                    "best_candidate": None,
+                    "optimization_plan": None,
+                    "ppa_status": "PENDING",
                 }
             )
         return update

@@ -1,0 +1,808 @@
+{
+  "verification_context": {
+    "user_request": "Design an 8 x 8 x 32 GEMM accelerator with bias and ReLU: Y[M,N] = ReLU(A[M,K] @ B[K,N] + bias[N]), M=8, N=8, K=32, signed int8 inputs, signed int32 accumulation and bias, two-complement int32 wrap on overflow before signed ReLU. Support reset and output backpressure.",
+    "verification_policy": {
+      "exact_integer_match_when_applicable": true,
+      "randomized_transactions_minimum": 100,
+      "require_reset_tests": true,
+      "require_backpressure_tests_when_applicable": true,
+      "regression_wall_timeout_seconds_minimum": 120,
+      "require_completion_behavior_tests_when_defined": true,
+      "require_error_behavior_tests_when_defined": true
+    },
+    "frozen_architecture": {
+      "architecture_contract": {
+        "design": {
+          "name": "gemm8x8x32_bias_relu_accel",
+          "version": "1.0",
+          "description": "Fixed-size GEMM accelerator computing Y[8,8]=ReLU(A[8,32]@B[32,8]+bias[8]) with int8 inputs and int32 accumulation/wrap semantics, supporting reset and output backpressure."
+        },
+        "operations": [
+          {
+            "name": "op_load_a",
+            "kind": "ingress_load",
+            "semantics": "Load 256 signed int8 A elements in row-major order for one job.",
+            "inputs": [
+              "a_stream_payload"
+            ],
+            "outputs": [
+              "a_matrix"
+            ]
+          },
+          {
+            "name": "op_load_b",
+            "kind": "ingress_load",
+            "semantics": "Load 256 signed int8 B elements in row-major over K then N for one job.",
+            "inputs": [
+              "b_stream_payload"
+            ],
+            "outputs": [
+              "b_matrix"
+            ]
+          },
+          {
+            "name": "op_load_bias",
+            "kind": "ingress_load",
+            "semantics": "Load 8 signed int32 bias elements for one job.",
+            "inputs": [
+              "bias_stream_payload"
+            ],
+            "outputs": [
+              "bias_vector"
+            ]
+          },
+          {
+            "name": "op_gemm_accumulate",
+            "kind": "compute",
+            "semantics": "For each m in [0..7], n in [0..7], compute 32-term dot product sum_k (A[m,k]*B[k,n]) into signed int32 accumulator with two's-complement wrap on overflow each addition.",
+            "inputs": [
+              "a_matrix",
+              "b_matrix"
+            ],
+            "outputs": [
+              "acc_matrix"
+            ]
+          },
+          {
+            "name": "op_add_bias",
+            "kind": "compute",
+            "semantics": "For each output element, add bias[n] to acc_matrix[m,n] in signed int32 with two's-complement wrap on overflow.",
+            "inputs": [
+              "acc_matrix",
+              "bias_vector"
+            ],
+            "outputs": [
+              "pre_relu_matrix"
+            ]
+          },
+          {
+            "name": "op_relu",
+            "kind": "compute",
+            "semantics": "For each element x, output 0 if x<0 else x; comparison is signed int32 after wrap-complete arithmetic.",
+            "inputs": [
+              "pre_relu_matrix"
+            ],
+            "outputs": [
+              "y_matrix"
+            ]
+          },
+          {
+            "name": "op_emit_y",
+            "kind": "egress_store",
+            "semantics": "Emit 64 signed int32 Y elements in row-major order with ready/valid handshake and backpressure support.",
+            "inputs": [
+              "y_matrix"
+            ],
+            "outputs": [
+              "y_stream_payload"
+            ]
+          }
+        ],
+        "data_types": [
+          {
+            "name": "int8_s",
+            "role": "A/B elements",
+            "width_bits": 8,
+            "signed": true,
+            "representation": "two_complement",
+            "conversion_semantics": "Operands sign-extended to int32 before multiply.",
+            "overflow_semantics": "N/A at source type",
+            "rounding_semantics": "exact_integer"
+          },
+          {
+            "name": "int16_s",
+            "role": "product intermediate",
+            "width_bits": 16,
+            "signed": true,
+            "representation": "two_complement",
+            "conversion_semantics": "Exact int8*int8 product; sign-extended to int32 before accumulation.",
+            "overflow_semantics": "wrap two_complement",
+            "rounding_semantics": "exact_integer"
+          },
+          {
+            "name": "int32_s",
+            "role": "accumulator,bias,output",
+            "width_bits": 32,
+            "signed": true,
+            "representation": "two_complement",
+            "conversion_semantics": "Native compute/output type",
+            "overflow_semantics": "wrap two_complement",
+            "rounding_semantics": "exact_integer"
+          }
+        ],
+        "data_objects": [
+          {
+            "name": "a_stream_payload",
+            "role": "external serialized A elements",
+            "data_type": "int8_s",
+            "dimensions": [
+              "A_ELEMS"
+            ],
+            "producer": "external",
+            "consumers": [
+              "op_load_a"
+            ],
+            "external": true
+          },
+          {
+            "name": "b_stream_payload",
+            "role": "external serialized B elements",
+            "data_type": "int8_s",
+            "dimensions": [
+              "B_ELEMS"
+            ],
+            "producer": "external",
+            "consumers": [
+              "op_load_b"
+            ],
+            "external": true
+          },
+          {
+            "name": "bias_stream_payload",
+            "role": "external serialized bias elements",
+            "data_type": "int32_s",
+            "dimensions": [
+              "N_DIM"
+            ],
+            "producer": "external",
+            "consumers": [
+              "op_load_bias"
+            ],
+            "external": true
+          },
+          {
+            "name": "a_matrix",
+            "role": "local A operand store",
+            "data_type": "int8_s",
+            "dimensions": [
+              "M_DIM",
+              "K_DIM"
+            ],
+            "producer": "op_load_a",
+            "consumers": [
+              "op_gemm_accumulate"
+            ],
+            "external": false
+          },
+          {
+            "name": "b_matrix",
+            "role": "local B operand store",
+            "data_type": "int8_s",
+            "dimensions": [
+              "K_DIM",
+              "N_DIM"
+            ],
+            "producer": "op_load_b",
+            "consumers": [
+              "op_gemm_accumulate"
+            ],
+            "external": false
+          },
+          {
+            "name": "bias_vector",
+            "role": "local bias store",
+            "data_type": "int32_s",
+            "dimensions": [
+              "N_DIM"
+            ],
+            "producer": "op_load_bias",
+            "consumers": [
+              "op_add_bias"
+            ],
+            "external": false
+          },
+          {
+            "name": "acc_matrix",
+            "role": "post-dotproduct accumulators",
+            "data_type": "int32_s",
+            "dimensions": [
+              "M_DIM",
+              "N_DIM"
+            ],
+            "producer": "op_gemm_accumulate",
+            "consumers": [
+              "op_add_bias"
+            ],
+            "external": false
+          },
+          {
+            "name": "pre_relu_matrix",
+            "role": "bias-added results",
+            "data_type": "int32_s",
+            "dimensions": [
+              "M_DIM",
+              "N_DIM"
+            ],
+            "producer": "op_add_bias",
+            "consumers": [
+              "op_relu"
+            ],
+            "external": false
+          },
+          {
+            "name": "y_matrix",
+            "role": "final relu outputs",
+            "data_type": "int32_s",
+            "dimensions": [
+              "M_DIM",
+              "N_DIM"
+            ],
+            "producer": "op_relu",
+            "consumers": [
+              "op_emit_y"
+            ],
+            "external": false
+          },
+          {
+            "name": "y_stream_payload",
+            "role": "external serialized output elements",
+            "data_type": "int32_s",
+            "dimensions": [
+              "Y_ELEMS"
+            ],
+            "producer": "op_emit_y",
+            "consumers": [
+              "external"
+            ],
+            "external": true
+          }
+        ],
+        "dimensions": [
+          {
+            "name": "M_DIM",
+            "semantic": "Output row count M; fixed per this design to 8.",
+            "minimum": 8,
+            "maximum": 8,
+            "runtime_configurable": false,
+            "bound_parameter": "M_FIXED"
+          },
+          {
+            "name": "N_DIM",
+            "semantic": "Output column count N; fixed per this design to 8.",
+            "minimum": 8,
+            "maximum": 8,
+            "runtime_configurable": false,
+            "bound_parameter": "N_FIXED"
+          },
+          {
+            "name": "K_DIM",
+            "semantic": "Reduction dimension K; fixed per this design to 32.",
+            "minimum": 32,
+            "maximum": 32,
+            "runtime_configurable": false,
+            "bound_parameter": "K_FIXED"
+          },
+          {
+            "name": "A_ELEMS",
+            "semantic": "Serialized A element count per job, equals M_DIM*K_DIM.",
+            "minimum": 256,
+            "maximum": 256,
+            "runtime_configurable": false,
+            "bound_parameter": "A_ELEMS_FIXED"
+          },
+          {
+            "name": "B_ELEMS",
+            "semantic": "Serialized B element count per job, equals K_DIM*N_DIM.",
+            "minimum": 256,
+            "maximum": 256,
+            "runtime_configurable": false,
+            "bound_parameter": "B_ELEMS_FIXED"
+          },
+          {
+            "name": "Y_ELEMS",
+            "semantic": "Serialized Y element count per job, equals M_DIM*N_DIM.",
+            "minimum": 64,
+            "maximum": 64,
+            "runtime_configurable": false,
+            "bound_parameter": "Y_ELEMS_FIXED"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "M_FIXED",
+            "default_value": "8",
+            "legality_constraint": "integer == 8",
+            "description": "Compile-time fixed M dimension."
+          },
+          {
+            "name": "N_FIXED",
+            "default_value": "8",
+            "legality_constraint": "integer == 8",
+            "description": "Compile-time fixed N dimension."
+          },
+          {
+            "name": "K_FIXED",
+            "default_value": "32",
+            "legality_constraint": "integer == 32",
+            "description": "Compile-time fixed K dimension."
+          },
+          {
+            "name": "A_ELEMS_FIXED",
+            "default_value": "256",
+            "legality_constraint": "integer == M_FIXED*K_FIXED",
+            "description": "Total A elements per job."
+          },
+          {
+            "name": "B_ELEMS_FIXED",
+            "default_value": "256",
+            "legality_constraint": "integer == K_FIXED*N_FIXED",
+            "description": "Total B elements per job."
+          },
+          {
+            "name": "Y_ELEMS_FIXED",
+            "default_value": "64",
+            "legality_constraint": "integer == M_FIXED*N_FIXED",
+            "description": "Total Y elements per job."
+          }
+        ],
+        "compute": {
+          "organization": "Single MAC datapath with sequential nested-loop execution.",
+          "dataflow": "Load-all-then-compute-then-emit.",
+          "parallelism": "1 multiply-accumulate per cycle during GEMM phase.",
+          "scheduling": "Deterministic FSM: load A/B/bias, compute all outputs, apply bias+ReLU, stream out with backpressure."
+        },
+        "storage": [
+          {
+            "name": "a_mem",
+            "stored_objects": [
+              "a_matrix"
+            ],
+            "capacity_expression": "M_FIXED*K_FIXED elements of int8_s",
+            "capacity_at_default_parameters": 256,
+            "access_pattern": "Sequential write during load; indexed read during compute.",
+            "port_requirements": "1R/1W logical (can be time-multiplexed single-port across phases).",
+            "implementation_hint": "reg array or inferred SRAM",
+            "reuse_semantics": "Each element reused across N outputs for same m,k traversal.",
+            "lifetime": "From end of A load until compute completion."
+          },
+          {
+            "name": "b_mem",
+            "stored_objects": [
+              "b_matrix"
+            ],
+            "capacity_expression": "K_FIXED*N_FIXED elements of int8_s",
+            "capacity_at_default_parameters": 256,
+            "access_pattern": "Sequential write during load; indexed read during compute.",
+            "port_requirements": "1R/1W logical (phase-separated).",
+            "implementation_hint": "reg array or inferred SRAM",
+            "reuse_semantics": "Each element reused across M outputs for same k,n traversal.",
+            "lifetime": "From end of B load until compute completion."
+          },
+          {
+            "name": "bias_mem",
+            "stored_objects": [
+              "bias_vector"
+            ],
+            "capacity_expression": "N_FIXED elements of int32_s",
+            "capacity_at_default_parameters": 8,
+            "access_pattern": "Sequential write during load; indexed read during post-accumulate.",
+            "port_requirements": "1R/1W logical (phase-separated).",
+            "implementation_hint": "register file",
+            "reuse_semantics": "Each bias reused for all M rows.",
+            "lifetime": "From end of bias load until bias-add completion."
+          },
+          {
+            "name": "y_mem",
+            "stored_objects": [
+              "y_matrix"
+            ],
+            "capacity_expression": "M_FIXED*N_FIXED elements of int32_s",
+            "capacity_at_default_parameters": 64,
+            "access_pattern": "Indexed write during finalize; sequential read during egress.",
+            "port_requirements": "1R/1W logical; read/write not concurrent in baseline schedule.",
+            "implementation_hint": "reg array or inferred SRAM",
+            "reuse_semantics": "No arithmetic reuse; buffering for backpressured egress.",
+            "lifetime": "From finalize write until each element transmitted."
+          }
+        ],
+        "pipeline": [
+          {
+            "stage": "S0_INGRESS",
+            "responsibility": "Accept input streams and fill A/B/bias memories.",
+            "registered": true,
+            "valid_behavior": "Write on input transfer (valid&&ready).",
+            "stall_behavior": "If corresponding ready low, no counter advance and payload not consumed."
+          },
+          {
+            "stage": "S1_COMPUTE",
+            "responsibility": "Perform sequential MAC accumulation for one output element.",
+            "registered": true,
+            "valid_behavior": "One MAC update per cycle while active.",
+            "stall_behavior": "No external stall in this stage; internal deterministic progress."
+          },
+          {
+            "stage": "S2_FINALIZE",
+            "responsibility": "Add bias, apply ReLU, store y_mem.",
+            "registered": true,
+            "valid_behavior": "One output element finalized per cycle.",
+            "stall_behavior": "No external stall in this stage; internal deterministic progress."
+          },
+          {
+            "stage": "S3_EGRESS",
+            "responsibility": "Stream y_mem with output handshake.",
+            "registered": true,
+            "valid_behavior": "Advance output index only on y_valid&&y_ready.",
+            "stall_behavior": "Hold y_valid and payload stable while y_ready=0."
+          }
+        ],
+        "control": {
+          "strategy": "Central FSM with monotonic counters.",
+          "state_progression": "RESET->IDLE_WAIT_JOB->LOAD_A->LOAD_B->LOAD_BIAS->COMPUTE->FINALIZE->EMIT->DONE_PULSE->IDLE_WAIT_JOB",
+          "counters": [
+            "a_load_idx[0..255]",
+            "b_load_idx[0..255]",
+            "bias_load_idx[0..7]",
+            "m_idx[0..7]",
+            "n_idx[0..7]",
+            "k_idx[0..31]",
+            "emit_idx[0..63]"
+          ],
+          "error_behavior": "Protocol violation if input valid asserted for wrong section/state; raise sticky error flag and ignore transfers until next reset.",
+          "error_recovery": "Synchronous reset clears error flag and returns to IDLE_WAIT_JOB."
+        },
+        "reset": {
+          "style": "synchronous",
+          "polarity": "active_high",
+          "required_state": "FSM to RESET/IDLE, counters zeroed, valid outputs deasserted, error flag cleared, done deasserted; memories not required to be bulk-cleared."
+        },
+        "latency_model": "Per job cycles = input load transfers (256+256+8)=520 + compute MAC cycles (64*32)=2048 + finalize cycles 64 + output transfers (64, plus extra stall cycles from backpressure). Total no-stall latency 2696 cycles from first accepted A beat to last accepted Y beat.",
+        "architectural_invariants": [
+          "Exactly one job in flight.",
+          "Input section order is strictly A then B then bias.",
+          "Arithmetic is exact integer except mandated int32 two's-complement wrap on additions.",
+          "ReLU is applied after full wrapped accumulation and wrapped bias add.",
+          "Output order is row-major Y[m][n] with n fastest."
+        ],
+        "open_assumptions": [
+          "No start/done command channel required; job starts implicitly when A section reception begins in IDLE.",
+          "Input backpressure support is provided via per-channel ready signals though only output backpressure was explicitly requested.",
+          "Dimension is fixed to requested 8x8x32; no runtime shape programmability."
+        ]
+      },
+      "interface_contract": {
+        "protocol": "AXI-stream-like ready/valid on separate typed channels",
+        "clock": "single clk",
+        "reset": "synchronous active-high rst",
+        "channels": [
+          {
+            "name": "a_in",
+            "direction": "input",
+            "purpose": "A operand ingress",
+            "data_objects": [
+              "a_stream_payload"
+            ],
+            "metadata": [],
+            "framing": "256 beats/job, each beat carries one int8 A element.",
+            "ordering": "Row-major A[m][k], k fastest then m.",
+            "backpressure": "source obeys a_ready; transfer on a_valid&&a_ready"
+          },
+          {
+            "name": "b_in",
+            "direction": "input",
+            "purpose": "B operand ingress",
+            "data_objects": [
+              "b_stream_payload"
+            ],
+            "metadata": [],
+            "framing": "256 beats/job, each beat carries one int8 B element.",
+            "ordering": "Row-major over K,N: B[k][n], n fastest then k.",
+            "backpressure": "source obeys b_ready; transfer on b_valid&&b_ready"
+          },
+          {
+            "name": "bias_in",
+            "direction": "input",
+            "purpose": "bias ingress",
+            "data_objects": [
+              "bias_stream_payload"
+            ],
+            "metadata": [],
+            "framing": "8 beats/job, each beat carries one int32 bias element.",
+            "ordering": "bias[n] increasing n.",
+            "backpressure": "source obeys bias_ready; transfer on bias_valid&&bias_ready"
+          },
+          {
+            "name": "y_out",
+            "direction": "output",
+            "purpose": "result egress",
+            "data_objects": [
+              "y_stream_payload"
+            ],
+            "metadata": [],
+            "framing": "64 beats/job, each beat carries one int32 Y element.",
+            "ordering": "Row-major Y[m][n], n fastest then m.",
+            "backpressure": "sink controls y_ready; payload stable while y_valid && !y_ready"
+          }
+        ],
+        "signals": [
+          {
+            "name": "clk",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "clock",
+            "reset_value": "0"
+          },
+          {
+            "name": "rst",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "synchronous active-high reset",
+            "reset_value": "0"
+          },
+          {
+            "name": "a_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "A beat valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "a_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "A beat accept readiness",
+            "reset_value": "0"
+          },
+          {
+            "name": "a_data",
+            "direction": "input",
+            "width": "8",
+            "signed": true,
+            "semantic": "A element payload int8",
+            "reset_value": "0"
+          },
+          {
+            "name": "b_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "B beat valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "b_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "B beat accept readiness",
+            "reset_value": "0"
+          },
+          {
+            "name": "b_data",
+            "direction": "input",
+            "width": "8",
+            "signed": true,
+            "semantic": "B element payload int8",
+            "reset_value": "0"
+          },
+          {
+            "name": "bias_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "bias beat valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "bias_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "bias beat accept readiness",
+            "reset_value": "0"
+          },
+          {
+            "name": "bias_data",
+            "direction": "input",
+            "width": "32",
+            "signed": true,
+            "semantic": "bias element payload int32",
+            "reset_value": "0"
+          },
+          {
+            "name": "y_valid",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Y beat valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "y_ready",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Y beat ready/backpressure",
+            "reset_value": "0"
+          },
+          {
+            "name": "y_data",
+            "direction": "output",
+            "width": "32",
+            "signed": true,
+            "semantic": "Y element payload int32",
+            "reset_value": "0"
+          },
+          {
+            "name": "done",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "1-cycle pulse after final Y transfer of a job",
+            "reset_value": "0"
+          },
+          {
+            "name": "error",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "sticky protocol-error flag until reset",
+            "reset_value": "0"
+          }
+        ],
+        "global_handshake_rules": {
+          "transfer_condition": "A/B/bias/y channel transfer occurs iff valid && ready on that channel.",
+          "stall_behavior": "When valid=1 and ready=0, producer must hold payload and valid stable until transfer."
+        }
+      },
+      "module_manifest": {
+        "top": "gemm8x8x32_bias_relu_top",
+        "modules": [
+          {
+            "name": "gemm8x8x32_bias_relu_top",
+            "responsibility": "Top integration, external interface, FSM control.",
+            "dependencies": [
+              "input_loader",
+              "gemm_core_seq",
+              "postproc_relu_bias",
+              "output_streamer",
+              "local_memories"
+            ],
+            "parameters": [
+              "M_FIXED",
+              "N_FIXED",
+              "K_FIXED",
+              "A_ELEMS_FIXED",
+              "B_ELEMS_FIXED",
+              "Y_ELEMS_FIXED"
+            ],
+            "stateful": true
+          },
+          {
+            "name": "input_loader",
+            "responsibility": "Sectioned ingress handshake and write-address generation for A/B/bias.",
+            "dependencies": [],
+            "parameters": [
+              "A_ELEMS_FIXED",
+              "B_ELEMS_FIXED",
+              "N_FIXED"
+            ],
+            "stateful": true
+          },
+          {
+            "name": "gemm_core_seq",
+            "responsibility": "Sequential MAC engine and m/n/k counter progression.",
+            "dependencies": [
+              "local_memories"
+            ],
+            "parameters": [
+              "M_FIXED",
+              "N_FIXED",
+              "K_FIXED"
+            ],
+            "stateful": true
+          },
+          {
+            "name": "postproc_relu_bias",
+            "responsibility": "Bias add with int32 wrap then signed ReLU and write to y_mem.",
+            "dependencies": [
+              "local_memories"
+            ],
+            "parameters": [
+              "M_FIXED",
+              "N_FIXED"
+            ],
+            "stateful": true
+          },
+          {
+            "name": "output_streamer",
+            "responsibility": "y_mem readout with valid/ready handling and done pulse generation.",
+            "dependencies": [
+              "local_memories"
+            ],
+            "parameters": [
+              "Y_ELEMS_FIXED"
+            ],
+            "stateful": true
+          },
+          {
+            "name": "local_memories",
+            "responsibility": "Storage arrays for A/B/bias/Y and read/write muxing by phase.",
+            "dependencies": [],
+            "parameters": [
+              "M_FIXED",
+              "N_FIXED",
+              "K_FIXED"
+            ],
+            "stateful": true
+          }
+        ]
+      },
+      "acceptance_criteria": {
+        "functional": [
+          "For every job, output exactly 64 elements implementing Y[m,n]=ReLU(sum_{k=0..31}(A[m,k]*B[k,n]) + bias[n]) with signed arithmetic.",
+          "A and B multiply uses signed int8 operands; each product is exact then accumulated in signed int32.",
+          "Accumulator additions and bias addition use two's-complement int32 wrap semantics.",
+          "ReLU compares wrapped signed int32 result and outputs zero for negative values else unchanged value.",
+          "Output ordering is strict row-major m outer, n inner."
+        ],
+        "verification": [
+          "At least 100 randomized jobs with exact integer match against reference model.",
+          "Directed boundary tests include all-zero, all-max, all-min, mixed-sign, and overflow-provoking vectors.",
+          "Reset tests must verify deterministic return to IDLE, cleared done/error, and no stale output valid.",
+          "Backpressure tests must randomly deassert y_ready and confirm no loss/duplication and payload stability under stall.",
+          "Completion-behavior test must confirm done pulse after final accepted y transfer.",
+          "Error-behavior tests must inject wrong-section valid traffic and confirm sticky error until reset."
+        ],
+        "rtl": [
+          "SystemVerilog synthesizable subset only; no forbidden constructs from project constraints.",
+          "All sequential logic clocked by clk with synchronous active-high reset handling per contract.",
+          "Ready/valid protocol correctness on all channels with transfer defined as ready&&valid."
+        ],
+        "synopsys_handoff": [
+          "Synthesis/power/area/frequency/utilization claims are accepted only from deterministic tool report artifacts conforming to provided schema.",
+          "No estimated or inferred PPA metrics allowed without authoritative report."
+        ]
+      }
+    },
+    "provenance": {
+      "includes_generated_rtl": false,
+      "includes_rtl_generator_output": false
+    },
+    "verification_infrastructure_review": {
+      "category": "TESTBENCH_ERROR",
+      "instruction": "Independently revalidate your own Python imports, timing phases, handshake sampling, signed conversions, oracle arithmetic and task lifetimes against the frozen contract. Fix test infrastructure only; preserve all coverage and assertions. Do not adapt expectations to implementation behavior.",
+      "previous_own_artifacts": {
+        "reference": {
+          "gemm_ref.py": "INT8_MIN = -128\nINT8_MAX = 127\nINT32_MIN = -2147483648\nINT32_MAX = 2147483647\nMASK8 = 0xFF\nMASK32 = 0xFFFFFFFF\n\nM = 8\nN = 8\nK = 32\nA_ELEMS = M * K\nB_ELEMS = K * N\nBIAS_ELEMS = N\nY_ELEMS = M * N\n\n\ndef to_s8(x: int) -> int:\n    x &= MASK8\n    return x - 0x100 if x & 0x80 else x\n\n\ndef to_s32(x: int) -> int:\n    x &= MASK32\n    return x - 0x100000000 if x & 0x80000000 else x\n\n\ndef add_wrap_s32(a: int, b: int) -> int:\n    return to_s32((a & MASK32) + (b & MASK32))\n\n\ndef relu_s32(x: int) -> int:\n    return 0 if x < 0 else x\n\n\ndef gemm8x8x32_bias_relu(a_flat, b_flat, bias):\n    assert len(a_flat) == A_ELEMS\n    assert len(b_flat) == B_ELEMS\n    assert len(bias) == BIAS_ELEMS\n\n    a = [to_s8(v) for v in a_flat]\n    b = [to_s8(v) for v in b_flat]\n    bz = [to_s32(v) for v in bias]\n\n    y = []\n    for m in range(M):\n        for n in range(N):\n            acc = 0\n            for k in range(K):\n                prod = a[m * K + k] * b[k * N + n]\n                acc = add_wrap_s32(acc, prod)\n            pre = add_wrap_s32(acc, bz[n])\n            y.append(relu_s32(pre))\n    return y\n\n\ndef sanity_check_reference():\n    a0 = [0] * A_ELEMS\n    b0 = [0] * B_ELEMS\n    zbias = [0] * BIAS_ELEMS\n    y0 = gemm8x8x32_bias_relu(a0, b0, zbias)\n    assert y0 == [0] * Y_ELEMS\n\n    a1 = [1] * A_ELEMS\n    b1 = [1] * B_ELEMS\n    y1 = gemm8x8x32_bias_relu(a1, b1, zbias)\n    assert all(v == 32 for v in y1)\n\n    an = [-1] * A_ELEMS\n    bp = [1] * B_ELEMS\n    yn = gemm8x8x32_bias_relu(an, bp, zbias)\n    assert yn == [0] * Y_ELEMS\n\n    pre = add_wrap_s32(0x7FFFFFFF, 1)\n    assert pre == INT32_MIN\n    assert relu_s32(pre) == 0\n"
+        },
+        "tests": {
+          "test_gemm8x8x32_bias_relu.py": "import random\nimport cocotb\nfrom cocotb.triggers import Timer\nfrom reference.gemm_ref import (\n    gemm8x8x32_bias_relu,\n    sanity_check_reference,\n    to_s8,\n    to_s32,\n    A_ELEMS,\n    B_ELEMS,\n    BIAS_ELEMS,\n    Y_ELEMS,\n)\n\nCYCLE_NS = 10\nMAX_CYCLES_WAIT = 250000\nBASE_SEED = 202611\n\n\ndef i32_from_signal(v):\n    return to_s32(int(v))\n\n\nasync def cycle(dut):\n    dut.clk.value = 0\n    await Timer(CYCLE_NS / 2, units=\"ns\")\n\n    snap = {\n        \"a_ready\": int(dut.a_ready.value),\n        \"b_ready\": int(dut.b_ready.value),\n        \"bias_ready\": int(dut.bias_ready.value),\n        \"y_valid\": int(dut.y_valid.value),\n        \"y_data\": i32_from_signal(dut.y_data.value),\n        \"done\": int(dut.done.value),\n        \"error\": int(dut.error.value),\n        \"a_valid\": int(dut.a_valid.value),\n        \"b_valid\": int(dut.b_valid.value),\n        \"bias_valid\": int(dut.bias_valid.value),\n        \"y_ready\": int(dut.y_ready.value),\n    }\n    snap[\"a_xfer\"] = snap[\"a_valid\"] and snap[\"a_ready\"]\n    snap[\"b_xfer\"] = snap[\"b_valid\"] and snap[\"b_ready\"]\n    snap[\"bias_xfer\"] = snap[\"bias_valid\"] and snap[\"bias_ready\"]\n    snap[\"y_xfer\"] = snap[\"y_valid\"] and snap[\"y_ready\"]\n\n    dut.clk.value = 1\n    await Timer(CYCLE_NS / 2, units=\"ns\")\n    dut.clk.value = 0\n    return snap\n\n\nasync def apply_reset(dut, cycles=2):\n    dut.a_valid.value = 0\n    dut.b_valid.value = 0\n    dut.bias_valid.value = 0\n    dut.y_ready.value = 0\n    dut.a_data.value = 0\n    dut.b_data.value = 0\n    dut.bias_data.value = 0\n    dut.rst.value = 1\n    for _ in range(cycles):\n        s = await cycle(dut)\n        assert s[\"done\"] == 0\n        assert s[\"error\"] == 0\n        assert s[\"y_valid\"] == 0\n    dut.rst.value = 0\n    for _ in range(2):\n        s = await cycle(dut)\n        assert s[\"done\"] == 0\n        assert s[\"error\"] == 0\n\n\nasync def send_stream(dut, v_name, r_name, d_name, data, rng, idle_prob=0.2):\n    idx = 0\n    while idx < len(data):\n        while rng.random() < idle_prob:\n            getattr(dut, v_name).value = 0\n            await cycle(dut)\n        getattr(dut, d_name).value = int(data[idx])\n        getattr(dut, v_name).value = 1\n        while True:\n            s = await cycle(dut)\n            if s[r_name] == 1:\n                idx += 1\n                break\n        getattr(dut, v_name).value = 0\n\n\nasync def recv_y(dut, expected, rng, backpressure=True):\n    got = []\n    stall_tracking = False\n    stalled_data = 0\n    done_pulse_seen = False\n\n    for cyc in range(MAX_CYCLES_WAIT):\n        dut.y_ready.value = 1 if (not backpressure or rng.random() > 0.3) else 0\n        s = await cycle(dut)\n\n        if stall_tracking:\n            assert s[\"y_valid\"] == 1, f\"y_valid dropped under stall at cycle={cyc}\"\n            assert s[\"y_data\"] == stalled_data, f\"y_data changed under stall at cycle={cyc}\"\n\n        if s[\"y_valid\"] and not s[\"y_ready\"]:\n            stall_tracking = True\n            stalled_data = s[\"y_data\"]\n        else:\n            stall_tracking = False\n\n        if s[\"y_xfer\"]:\n            got.append(s[\"y_data\"])\n            if len(got) == len(expected):\n                s2 = await cycle(dut)\n                assert s2[\"done\"] == 1, \"done did not pulse after final accepted y transfer\"\n                done_pulse_seen = True\n                s3 = await cycle(dut)\n                assert s3[\"done\"] == 0, \"done must be 1-cycle pulse\"\n                break\n\n    assert len(got) == len(expected), f\"y count mismatch exp={len(expected)} got={len(got)}\"\n    assert done_pulse_seen, \"done pulse not observed\"\n    for i, (e, g) in enumerate(zip(expected, got)):\n        assert e == g, f\"y mismatch idx={i} exp={e} got={g}\"\n\n\nasync def run_job(dut, a, b, bias, rng, in_idle_prob=0.2, out_backpressure=True):\n    exp = gemm8x8x32_bias_relu(a, b, bias)\n    await send_stream(dut, \"a_valid\", \"a_ready\", \"a_data\", a, rng, idle_prob=in_idle_prob)\n    await send_stream(dut, \"b_valid\", \"b_ready\", \"b_data\", b, rng, idle_prob=in_idle_prob)\n    await send_stream(dut, \"bias_valid\", \"bias_ready\", \"bias_data\", bias, rng, idle_prob=in_idle_prob)\n    await recv_y(dut, exp, rng, backpressure=out_backpressure)\n\n\n@cocotb.test()\nasync def test_directed_boundaries(dut):\n    sanity_check_reference()\n    await apply_reset(dut)\n    rng = random.Random(BASE_SEED + 1)\n\n    cases = [\n        ([0] * A_ELEMS, [0] * B_ELEMS, [0] * BIAS_ELEMS),\n        ([127] * A_ELEMS, [127] * B_ELEMS, [0] * BIAS_ELEMS),\n        ([-128] * A_ELEMS, [-128] * B_ELEMS, [0] * BIAS_ELEMS),\n        ([(-128 if i % 2 == 0 else 127) for i in range(A_ELEMS)],\n         [(127 if i % 3 else -128) for i in range(B_ELEMS)],\n         [(-1 if i % 2 else 1) for i in range(BIAS_ELEMS)]),\n        ([127] * A_ELEMS, [127] * B_ELEMS, [0x7FFFFFFF] * BIAS_ELEMS),\n    ]\n\n    for a, b, bias in cases:\n        await run_job(dut, a, b, bias, rng, in_idle_prob=0.1, out_backpressure=True)\n\n\n@cocotb.test()\nasync def test_randomized_100_jobs(dut):\n    sanity_check_reference()\n    await apply_reset(dut)\n    rng = random.Random(BASE_SEED + 2)\n    for j in range(100):\n        a = [rng.randint(-128, 127) for _ in range(A_ELEMS)]\n        b = [rng.randint(-128, 127) for _ in range(B_ELEMS)]\n        bias = [rng.randint(-2147483648, 2147483647) for _ in range(BIAS_ELEMS)]\n        await run_job(dut, a, b, bias, rng, in_idle_prob=0.25, out_backpressure=True)\n\n\n@cocotb.test()\nasync def test_reset_during_activity(dut):\n    await apply_reset(dut)\n    rng = random.Random(BASE_SEED + 3)\n    a = [rng.randint(-128, 127) for _ in range(A_ELEMS)]\n\n    dut.a_data.value = int(a[0])\n    dut.a_valid.value = 1\n    for _ in range(10):\n        await cycle(dut)\n\n    dut.rst.value = 1\n    for _ in range(2):\n        s = await cycle(dut)\n        assert s[\"done\"] == 0\n        assert s[\"error\"] == 0\n        assert s[\"y_valid\"] == 0\n\n    dut.a_valid.value = 0\n    dut.rst.value = 0\n    for _ in range(3):\n        s = await cycle(dut)\n        assert s[\"done\"] == 0\n        assert s[\"error\"] == 0\n\n\n@cocotb.test()\nasync def test_error_sticky_wrong_section_until_reset(dut):\n    await apply_reset(dut)\n\n    dut.b_valid.value = 1\n    dut.b_data.value = 5\n    tripped = False\n    for _ in range(50):\n        s = await cycle(dut)\n        if s[\"error\"] == 1:\n            tripped = True\n            break\n    assert tripped, \"error did not assert on wrong-section valid traffic\"\n\n    dut.b_valid.value = 0\n    for _ in range(10):\n        s = await cycle(dut)\n        assert s[\"error\"] == 1\n\n    dut.rst.value = 1\n    for _ in range(2):\n        await cycle(dut)\n    dut.rst.value = 0\n    for _ in range(2):\n        s = await cycle(dut)\n        assert s[\"error\"] == 0\n\n\n@cocotb.test()\nasync def test_done_only_after_final_transfer_with_backpressure(dut):\n    await apply_reset(dut)\n    rng = random.Random(BASE_SEED + 4)\n    a = [1] * A_ELEMS\n    b = [1] * B_ELEMS\n    bias = [0] * BIAS_ELEMS\n    await run_job(dut, a, b, bias, rng, in_idle_prob=0.0, out_backpressure=True)\n"
+        }
+      }
+    }
+  },
+  "verifier_revision": 2,
+  "verifier_status": "PENDING",
+  "verification_status": "PENDING",
+  "needs_regression": true,
+  "history": [
+    {
+      "stage": "verification_repair",
+      "status": "INDEPENDENT_REVIEW"
+    }
+  ]
+}

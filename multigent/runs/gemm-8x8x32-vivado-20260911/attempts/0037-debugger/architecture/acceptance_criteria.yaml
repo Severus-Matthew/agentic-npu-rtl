@@ -1,0 +1,22 @@
+functional:
+- Given exact 256 A beats, 256 B beats, 8 bias beats after start command, design emits
+  exactly 64 Y beats.
+- 'For all m,n: Y[m,n]=max(0, wrap32(sum_k(A[m,k]*B[k,n])+bias[n])).'
+- Output order is row-major (m major then n).
+verification:
+- '>=100 randomized jobs with random int8 A/B and int32 bias; exact integer match
+  to reference model.'
+- 'Reset tests: reset in IDLE and mid-job returns to IDLE with no stale valid/done/error.'
+- 'Backpressure tests: random m_ready stalls preserve m_data stability and no loss/duplication.'
+- 'Protocol error tests: wrong section type/order or wrong beat counts assert sticky
+  error; recovery only via reset.'
+- 'Completion behavior: done pulses once on final output handshake.'
+rtl:
+- SystemVerilog synthesizable subset only; no forbidden constructs.
+- All parameterized widths elaborate legally for constraints (M_MAX,N_MAX,K_MAX >=1).
+- Internal memory interfaces obey declared 1-cycle read latency and explicit write-enable
+  semantics.
+fpga_handoff:
+- Vivado synthesis results accepted only from deterministic tool report conforming
+  to declared schema.
+- No estimated/inferred PPA claims without authoritative deterministic report.

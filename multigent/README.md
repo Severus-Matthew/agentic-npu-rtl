@@ -1,228 +1,193 @@
-# Multi-Agent Hardware RTL Runtime
+# Generalized LangGraph hardware generation
 
-This directory contains the executable multi-agent runtime for autonomous hardware architecture, RTL generation, independent verification, repair, and implementation-quality evaluation.
+The executable workflow is `multigent.orchestration.graph`. The older
+`multigent.orchestrator.graph` and `multigent.scripts.run_workflow` entry points
+forward to it. Runtime logic has no GEMM-specific dimensions, names or arithmetic.
 
-The runtime is intentionally workload-agnostic. A GEMM accelerator is one benchmark instance, not a framework default. The same agent/runtime contracts must support other architectures whose operations, dimensions, arithmetic, storage, interfaces, and module structure are different.
+## Flow and ownership
 
-All LLM roles use the same configured API model in controlled experiments so improvements can be attributed to role specialization, structured communication, deterministic feedback, and orchestration rather than different model capability.
+Natural-language request → Architect → validated frozen contracts → RTL Generator
+→ independent Verifier → deterministic Verilator lint and full cocotb regression.
+Failures go to Debugger, then constrained RTL repair, independent verification
+infrastructure review, architecture revision, or an explicit terminal failure.
+A functional PASS proceeds to the deterministic external Vivado adapter, then PPA
+Optimizer and, when justified, RTL optimization → full regression → Vivado again.
+LangGraph owns every transition and retry budget. Agents only return structured
+artifacts; they do not invoke each other.
 
-## Core rule
+Architect owns architecture; RTL Generator owns RTL; Verifier owns reference and
+tests; Debugger owns diagnosis and repair plans; PPA Optimizer owns optimization
+plans. Generation calls receive role skills from
+`Skills/npu_multiagent_skills/skills/`. Prompt/skill hashes and API usage are logged.
+Generated artifacts pass schema and semantic validation before writing.
 
-**LLMs propose. Deterministic engineering tools decide correctness and implementation metrics.**
+Verifier generation never receives RTL, RTL Generator responses, Debugger prose,
+or compiler/simulator source excerpts. On a confirmed TESTBENCH_ERROR, the graph
+sends a fixed infrastructure-review request plus the Verifier's own previous files
+and frozen contracts. Original artifacts and failures remain in attempt snapshots.
+RTL repair and optimization reuse the frozen Verifier. Architecture revision
+invalidates downstream artifacts and requires independent regeneration.
 
-## User input and deterministic context
+## Run
 
-The user supplies minimal computational/behavioral intent. A deterministic intake layer adds only fixed technical policy. Runtime code must not inject benchmark-specific microarchitecture defaults.
-
-Fixed policy:
-
-```text
-multigent/config/project_constraints.yaml
-```
-
-Deterministic context builders:
-
-```text
-multigent/intake/request_builder.py
-```
-
-The RTL and Verifier contexts are intentionally different. RTL receives the frozen architecture needed for implementation. Verifier receives the original request, frozen Architect artifacts, and verification policy but **not generated RTL source or RTL Generator output**.
-
-## Agent 1: Architect
-
-The Architect converts the minimal request into a frozen, internally consistent implementation contract and does not write RTL.
+Install `multigent/requirements.txt`; provide Verilator and its C++ build tools.
+Export the API configuration from your private `.env` (never commit credentials).
+Choose a separate workspace **before Python starts**:
 
 ```bash
-python -m multigent.agents.architect \
-  --request "design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type" \
-  --run-id dense-gemm-008
+export NPU_WORKSPACE_ROOT="$PWD/multigent/runs/my-run"
+python -m multigent.orchestration.graph \
+  --request "Design an 8 x 8 x 32 GEMM accelerator with signed int8 inputs, int32 accumulation, bias and ReLU" \
+  --run-id my-run --max-repair-iterations 5 --max-verifier-revisions 2 \
+  --max-architecture-revisions 2 --max-ppa-iterations 3
 ```
 
-On `READY` it writes:
+`NPU_WORKSPACE_ROOT` defaults to `multigent/workspace` for compatibility. Use an
+empty, dedicated directory for a new run. Do not run two processes in one workspace.
+The existing dense-gemm-008 workspace is not required by the new benchmark.
 
-```text
-multigent/workspace/architecture/
-├── architecture_contract.yaml
-├── interface_contract.yaml
-├── module_manifest.json
-├── acceptance_criteria.yaml
-└── architect_result.json
+Delta's current Conda Verilator uses unavailable Conda compiler tools. The validated
+local environment is:
+
+```bash
+export PATH="$PWD/.venv/bin:/u/mjha1/.local/verilator-env/bin:$PATH"
+export MAKEFLAGS="CXX=g++ LINK=g++ AR=ar"
 ```
 
-Before acceptance, output passes strict JSON-schema validation plus deterministic semantic cross-reference checks.
+This selects the installed system compiler/archiver. The runner also puts the active
+Python executable's directory first for Verilator's Python build helpers.
 
-## Agent 2: RTL Generator
+Resume using the **exact original request and run-id**, with the same workspace:
 
-The RTL Generator derives all implementation details from the frozen contract. It may return:
-
-```text
-RTL_GENERATED
-ARCHITECTURE_CONFLICT
-REPAIR_BLOCKED
+```bash
+python -m multigent.orchestration.graph --request "$ORIGINAL_REQUEST" \
+  --run-id my-run --resume-state "$NPU_WORKSPACE_ROOT/state/latest.json"
 ```
 
-Initial generation writes exactly the manifest modules under:
-
-```text
-multigent/workspace/rtl/
-```
-
-It may not silently change architecture/interface semantics.
-
-## Agent 3: Independent Verifier
-
-The Verifier creates:
-
-```text
-multigent/workspace/reference/*.py
-multigent/workspace/tests/*.py
-multigent/workspace/verification/verification_plan.yaml
-multigent/workspace/verification/verifier_result.json
-```
-
-Its generation context excludes generated RTL. Expected behavior is derived from the original request plus frozen architecture/interface/acceptance artifacts.
-
-The Verifier returns only:
-
-```text
-VERIFICATION_READY
-ARCHITECTURE_CONFLICT
-```
-
-`VERIFICATION_READY` does **not** mean the RTL passed. It means an independent executable reference/test environment is ready for deterministic tools.
+Resuming reruns verification before consuming PPA. Resume budgets come from the
+saved state. `--use-frozen-architecture --use-existing-rtl` also supports older
+workspaces but starts a new history; prefer saved-state resume for new runs.
 
 ## Deterministic verification
 
-After `VERIFICATION_READY`, LangGraph runs:
+Verilator lint/elaboration must pass before cocotb runs. Cocotb 2.x runner results
+must contain executed, non-skipped tests, no failures/errors, and a successful worker
+exit. Inherited test-filter variables are cleared. Seeds are fixed by the plan;
+whole-process timeouts kill the compiler/simulator process group. Build configuration
+failures are distinct from RTL failures. Individual attempts include ppa/verifier
+revision identifiers so optimization results cannot overwrite prior evidence.
 
-```text
-Verilator lint/elaboration
-        ↓ PASS
-cocotb full regression using Verilator
+Verifier generation has one semantic self-correction attempt in addition to the API
+schema retry. Exhaustion is a structured failure with a final report, not an uncaught
+traceback. Testbench repair has its own bounded graph route through Debugger. Static
+checks do **not** prove a generated golden model correct or prove coverage claims.
+The skill requires analytical oracle checks, precise cycle ownership, legal phase
+writes, signed arithmetic, held valid/payload, and preservation of failing cases.
+The real-simulator infrastructure smoke test independently checks signed extrema,
+backpressure, reset and rejection of an intentionally wrong expected result.
+
+## Vivado handoff
+
+No FPGA target is guessed. Supply `--vivado-config target.json` containing:
+
+```json
+{"part":"YOUR_EXACT_FPGA_PART","clock_port":"YOUR_CONTRACT_CLOCK","period_ns":10.0}
 ```
 
-Tool wrappers:
+An optional `xdc` path adds user constraints. For multiple clocks, the XDC must define
+all clocks and relationships. This is an out-of-context synthesis/place/route flow,
+not board integration or bitstream generation. Inspect unconstrained paths in
+`timing_summary.rpt` before making system-level timing claims.
 
-```text
-multigent/tools/verilator.py
-multigent/tools/cocotb_runner.py
-```
+After functional PASS the adapter snapshots RTL, constraints, script and hashes into
+`synthesis/<candidate>/`. `run.tcl` runs synthesis, optimization, placement, physical
+optimization, routing, utilization, timing/critical-path, power and DRC reports.
+`manifest.json` binds inputs to the verification evidence. The adapter records raw
+logs, return status, report hashes and parsed metrics in `result.json`.
 
-Verilator process return codes and cocotb xUnit results are authoritative. Infrastructure states such as `TOOL_UNAVAILABLE` are kept separate from RTL failures.
+Missing Vivado produces `TOOL_UNAVAILABLE` with **null metrics**. Missing target
+configuration, timeout, implementation failure, stale output, incomplete report
+layout, provenance mismatch, DRC and timing failures are explicit statuses. No
+optimizer call is made without complete deterministic reports. A bundle lacking
+configuration must be regenerated using an explicit target; do not edit its frozen
+manifest or script in place.
 
-Deterministic evidence is stored under:
-
-```text
-multigent/workspace/verification/
-├── verilator-lint-<tag>.json
-├── cocotb-<tag>.json
-├── verification-result-<tag>.json
-└── build/<tag>/...
-```
-
-Current deterministic routing is:
-
-```text
-PASS                -> READY_FOR_SYNTHESIS
-COMPILE_FAILURE     -> REPAIR_REQUIRED
-SIMULATION_FAILURE  -> REPAIR_REQUIRED
-SIMULATION_TIMEOUT  -> REPAIR_REQUIRED
-TOOL_UNAVAILABLE    -> VERIFICATION_TOOL_UNAVAILABLE
-```
-
-`REPAIR_REQUIRED` is currently a terminal placeholder. The next graph extension replaces it with Debugger -> constrained RTL repair -> deterministic re-verification.
-
-## LangGraph orchestration
-
-LangGraph is the communication and routing backbone. Agents do not conduct uncontrolled free-form conversations.
-
-```text
-User / checkpoint
-       ↓
-Architect
-       ↓
-RTL Generator
-   ├── ARCHITECTURE_CONFLICT ─────→ Architect revision
-   └── RTL_GENERATED
-             ↓
-Independent Verifier
-   ├── ARCHITECTURE_CONFLICT ─────→ Architect revision
-   └── VERIFICATION_READY
-             ↓
-Verilator + cocotb
-   ├── PASS ──────────────────────→ synthesis placeholder
-   └── FAIL ──────────────────────→ repair placeholder
-```
-
-Shared typed state:
-
-```text
-multigent/orchestration/state.py
-```
-
-Routing:
-
-```text
-multigent/orchestration/routes.py
-```
-
-Graph:
-
-```text
-multigent/orchestration/graph.py
-```
-
-## Resume the current dense-gemm-008 RTL at verification
-
-The current six generated RTL files can be reused without another Architect or RTL Generator API call:
+On a compatible machine with the same package installed and the prepared bundle:
 
 ```bash
-python -m multigent.orchestration.graph \
-  --request "design a GEMM_BIAS_RELU NPU of int8 x int8 x int32 type" \
-  --run-id dense-gemm-008 \
-  --use-frozen-architecture \
-  --use-existing-rtl \
-  --max-architecture-revisions 2
+python -m multigent.tools.vivado --bundle /path/to/candidate --timeout 3600
 ```
 
-This starts at the independent Verifier, then runs deterministic verification.
-
-## Dependencies
+Return the entire bundle, then rerun full verification and import its reports:
 
 ```bash
-pip install -r multigent/requirements.txt
+python -m multigent.orchestration.graph --request "$ORIGINAL_REQUEST" \
+  --run-id my-run --resume-state "$NPU_WORKSPACE_ROOT/state/latest.json" \
+  --vivado-config target.json --external-vivado-bundle /path/to/returned/candidate
 ```
 
-The Python regression wrapper uses cocotb 2.x Python Runners with Verilator. `verilator` itself must be installed/loaded and available on `PATH`.
+Import checks current RTL, target, constraints, script and raw report hashes and
+re-parses metrics. It cannot authenticate that an untrusted third party actually ran
+Vivado; only use bundles from your trusted tool host. Parsing is tested with clearly
+labeled fixtures; real Vivado validation remains required on a compatible machine.
+FPGA area is resource counts, power is Vivado's activity-dependent estimate, and
+`fmax_mhz` remains null because a frequency sweep has not been run. Reported slack and
+critical-path delay must not be misrepresented as a measured maximum frequency.
 
-API configuration:
+## Optimization and acceptance
+
+`--ppa-objective` selects `lut`, `estimated_power_w`, or `critical_path_delay_ns`
+(minimize). A plan must cite the current report manifest, name allowed modules,
+protect all others, preserve contracts, and require FULL regression. RTL cannot
+modify outside the plan. Architecture-changing optimizations stop for a new design
+decision instead of silently changing semantics. No direct free-form agent channel
+exists. Optimizer → RTL is therefore appropriate as a constrained LangGraph handoff.
+
+Only functionally verified, timing-feasible candidates are eligible. A worse/equal
+objective stops optimization and keeps the better snapshot. Exhausted budgets never
+turn an infeasible design into PASS. A missing tool is not SUCCESS. Exit code 0 means
+SUCCESS; exit code 2 includes explicit incomplete/tool-unavailable outcomes. Selected
+RTL is identified separately from the latest working candidate.
+
+## Artifacts and tests
+
+- `state/latest.json`: durable state after each node.
+- `attempts/`: pre-node source/contract/test snapshots, hashes and outcomes.
+- `logs/agent_traces/`: model configuration, usage and prompt/skill hashes.
+- `verification/`: lint, simulator results and build output.
+- `synthesis/`: portable Vivado candidate bundles.
+- `optimization/`: constrained optimizer plans.
+- `reports/final.json` and `reports/final.md`: status, selected artifact, errors and limitations.
 
 ```bash
-OPENAI_API_KEY=your_real_key
-OPENAI_BASE_URL=
-NPU_AGENT_MODEL=gpt-5.3-codex
-NPU_AGENT_API_MODE=responses
-NPU_AGENT_TRUST_ENV=false
+python -m pytest multigent/tests -q
 ```
 
-## Offline tests
+Fixtures cover non-GEMM roles, negative adapter/report/provenance cases, independent
+Verifier state projection, bounded repair, protected artifacts and a complete mocked
+LangGraph optimization cycle. The real cocotb smoke test skips only when Verilator
+is absent. No synthetic fixture metric is used as a benchmark PPA result.
 
-Before paid agent calls:
+API references: [cocotb timing model](https://docs.cocotb.org/en/v2.0.0/timing_model.html),
+[AMD report_timing](https://docs.amd.com/r/2024.1-English/ug835-vivado-tcl-commands/report_timing),
+[AMD report_timing_summary](https://docs.amd.com/r/2024.1-English/ug835-vivado-tcl-commands/report_timing_summary).
 
-```bash
-pytest \
-  multigent/tests/test_agent_runtime.py \
-  multigent/tests/test_architect.py \
-  multigent/tests/test_architect_skill.py \
-  multigent/tests/test_rtl_generator.py \
-  multigent/tests/test_verifier.py \
-  multigent/tests/test_verification_tools.py \
-  multigent/tests/test_orchestration.py \
-  -v
-```
+## Diagnostic escalation
 
-RTL Generator and Verifier tests use non-GEMM streaming FIR fixtures to guard against benchmark-specific runtime assumptions.
+`EVIDENCE_INSUFFICIENT` can trigger up to two diagnostic probes through LangGraph.
+The probe instruments **copies** of the frozen test functions with a read-only
+monitor, enables public simulator signals, and records the last 128 signal changes
+sampled every 1 ns. Each diagnostic test has a 100 us cap, distinct from the original
+full-regression policy. Diagnostic outcomes never establish PASS. Only Debugger
+receives the trace; Verifier receives no implementation-derived trace or prose.
+The same original full regression is required after any resulting RTL repair.
 
-## Technical synthesis boundary
+Architecture outputs now require complete internal module port lists, and the
+provider-neutral acceptance field is `fpga_handoff`. Historical contracts remain
+loadable; missing architectural decisions may be escalated to Architect. RTL
+semantic validation rejects placeholders, empty modules, hidden extra modules and
+module-to-file remapping during constrained changes. One bounded self-correction
+attempt occurs before an invalid RTL response becomes a terminal report.
 
-`multigent/tools/synopsys_interface.py` defines the deterministic Synopsys integration contract. The runtime never substitutes LLM-estimated timing, area, power, frequency, or utilization for authoritative tool reports.
+A saved-state resume can omit `--request` and `--run-id`; their exact original values
+are read from the state. Keep `NPU_WORKSPACE_ROOT` pointed at that same run directory.

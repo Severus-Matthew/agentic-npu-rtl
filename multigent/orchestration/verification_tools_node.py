@@ -27,7 +27,7 @@ def verification_tools_node(state: HardwareDesignState) -> dict[str, Any]:
 
     architecture_version = int(state.get("architecture_version", 0))
     repair_iteration = int(state.get("repair_iteration", 0))
-    tag = f"av{architecture_version}-r{repair_iteration}"
+    tag = f"av{architecture_version}-r{repair_iteration}-p{state.get('ppa_iteration', 0)}-v{state.get('verifier_revision', 0)}"
 
     rtl_dir = WORKSPACE_ROOT / "rtl"
     verification_dir = WORKSPACE_ROOT / "verification"

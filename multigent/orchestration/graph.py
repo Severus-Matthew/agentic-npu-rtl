@@ -32,21 +32,10 @@ from .routes import (
 )
 from .rtl_node import make_rtl_generator_node
 from .state import HardwareDesignState
+from .ppa_node import synthesis_node, make_ppa_node, route_after_synthesis, route_after_ppa
+from .artifacts import guarded, verification_repair_node, final_report_node, diagnostic_node
 from .verification_tools_node import verification_tools_node
 from .verifier_node import make_verifier_node
-
-
-def _synthesis_placeholder(state: HardwareDesignState) -> dict[str, Any]:
-    return {
-        "status": "READY_FOR_SYNTHESIS",
-        "history": [
-            {
-                "stage": "synthesis",
-                "status": "PENDING_IMPLEMENTATION",
-                "verification_status": state.get("verification_status"),
-            }
-        ],
-    }
 
 
 def _repair_exhausted_node(state: HardwareDesignState) -> dict[str, Any]:
@@ -97,30 +86,43 @@ def build_workflow_graph(
     rtl_agent: RTLGeneratorAgent | None = None,
     verifier_agent: VerifierAgent | None = None,
     debugger_agent: DebuggerAgent | None = None,
+    ppa_agent=None,
 ):
     """Compile the deterministic evidence-driven multi-agent workflow."""
 
     builder = StateGraph(HardwareDesignState)
-    builder.add_node("architect", make_architect_node(architect_agent))
-    builder.add_node("rtl_generator", make_rtl_generator_node(rtl_agent))
-    builder.add_node("verifier", make_verifier_node(verifier_agent))
-    builder.add_node("verification_tools", verification_tools_node)
-    builder.add_node("debugger", make_debugger_node(debugger_agent))
-    builder.add_node("synthesis", _synthesis_placeholder)
-    builder.add_node("repair_exhausted", _repair_exhausted_node)
-    builder.add_node("tool_unavailable", _tool_unavailable_node)
-    builder.add_node("failed", _failed_node)
+    def add_node(name, action):
+        return builder.add_node(name, action if name == "final_report" else guarded(name, action))
+    def safe_route(route):
+        return lambda state: "final_report" if state.get("orchestration_error") else route(state)
+    add_node("architect", make_architect_node(architect_agent))
+    add_node("rtl_generator", make_rtl_generator_node(rtl_agent))
+    add_node("verifier", make_verifier_node(verifier_agent))
+    add_node("verification_tools", verification_tools_node)
+    add_node("debugger", make_debugger_node(debugger_agent))
+    add_node("synthesis", synthesis_node)
+    add_node("ppa_optimizer", make_ppa_node(ppa_agent))
+    add_node("verification_repair", verification_repair_node)
+    add_node("final_report", final_report_node)
+    add_node("diagnostic_probe", diagnostic_node)
+    add_node("repair_exhausted", _repair_exhausted_node)
+    add_node("tool_unavailable", _tool_unavailable_node)
+    add_node("failed", _failed_node)
 
     builder.add_conditional_edges(START, route_start)
-    builder.add_conditional_edges("architect", route_after_architect)
-    builder.add_conditional_edges("rtl_generator", route_after_rtl)
-    builder.add_conditional_edges("verifier", route_after_verifier)
-    builder.add_conditional_edges("verification_tools", route_after_verification)
-    builder.add_conditional_edges("debugger", route_after_debugger)
-    builder.add_edge("synthesis", END)
-    builder.add_edge("repair_exhausted", END)
-    builder.add_edge("tool_unavailable", END)
-    builder.add_edge("failed", END)
+    builder.add_conditional_edges("architect", safe_route(route_after_architect))
+    builder.add_conditional_edges("rtl_generator", safe_route(route_after_rtl))
+    builder.add_conditional_edges("verifier", safe_route(route_after_verifier))
+    builder.add_conditional_edges("verification_tools", safe_route(route_after_verification))
+    builder.add_conditional_edges("debugger", safe_route(route_after_debugger))
+    builder.add_conditional_edges("synthesis", safe_route(route_after_synthesis))
+    builder.add_conditional_edges("ppa_optimizer", safe_route(route_after_ppa))
+    builder.add_conditional_edges("verification_repair", safe_route(lambda state: "verifier"))
+    builder.add_conditional_edges("diagnostic_probe", safe_route(lambda state: "debugger"))
+    builder.add_edge("final_report", END)
+    builder.add_edge("repair_exhausted", "final_report")
+    builder.add_edge("tool_unavailable", "final_report")
+    builder.add_edge("failed", "final_report")
     return builder.compile()
 
 
@@ -152,8 +154,8 @@ def main() -> None:
             "Debugger/repair loop"
         )
     )
-    parser.add_argument("--request", required=True)
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--request")
+    parser.add_argument("--run-id")
     parser.add_argument("--max-architecture-revisions", type=int, default=2)
     parser.add_argument("--max-repair-iterations", type=int, default=5)
     parser.add_argument(
@@ -171,7 +173,29 @@ def main() -> None:
         action="store_true",
         help="Resume using existing workspace/rtl/*.sv files.",
     )
+    parser.add_argument("--external-vivado-bundle", type=Path)
+    parser.add_argument("--resume-state", type=Path, help="Resume saved state; rerun verification before Vivado")
+    parser.add_argument("--vivado-config", type=Path, help="JSON with explicit part, clock_port, period_ns and optional xdc")
+    parser.add_argument("--vivado-executable", default="vivado")
+    parser.add_argument("--vivado-timeout", type=int, default=3600)
+    parser.add_argument("--max-ppa-iterations", type=int, default=3)
+    parser.add_argument("--max-verifier-revisions", type=int, default=2)
+    parser.add_argument("--ppa-objective", choices=["lut", "estimated_power_w", "critical_path_delay_ns"], default="lut")
     args = parser.parse_args()
+    if args.resume_state:
+        resume_metadata = json.loads(args.resume_state.read_text())
+        saved_workspace = Path(resume_metadata.get('workspace_root', args.resume_state.resolve().parent.parent))
+        if saved_workspace.resolve() != WORKSPACE_ROOT.resolve():
+            parser.error(f"Set NPU_WORKSPACE_ROOT={saved_workspace} before resuming; refusing to mix workspaces")
+        args.request = args.request or resume_metadata['user_request']
+        args.run_id = args.run_id or resume_metadata['run_id']
+    if not args.request or not args.run_id:
+        parser.error("A new run requires --request and --run-id")
+    import re
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", args.run_id):
+        parser.error("run-id must be a safe filename component")
+    if min(args.max_ppa_iterations, args.max_verifier_revisions) < 0 or args.vivado_timeout <= 0:
+        parser.error("Invalid iteration or timeout budget")
 
     if args.max_architecture_revisions < 0:
         raise ValueError("--max-architecture-revisions must be >= 0")
@@ -183,6 +207,7 @@ def main() -> None:
     graph = build_workflow_graph()
     initial: HardwareDesignState = {
         "run_id": args.run_id,
+        "workspace_root": str(WORKSPACE_ROOT),
         "user_request": args.request.strip(),
         "architecture_dir": str(args.architecture_dir),
         "architecture_version": 0,
@@ -192,11 +217,31 @@ def main() -> None:
         "repair_iteration": 0,
         "max_repair_iterations": args.max_repair_iterations,
         "ppa_iteration": 0,
-        "max_ppa_iterations": 3,
+        "max_ppa_iterations": args.max_ppa_iterations,
+        "max_verifier_revisions": args.max_verifier_revisions,
+        "max_diagnostic_iterations": 2,
+        "diagnostic_iteration": 0,
+        "verifier_revision": 0,
+        "vivado_config": json.loads(args.vivado_config.read_text()) if args.vivado_config else {},
+        "vivado_executable": args.vivado_executable,
+        "vivado_timeout": args.vivado_timeout,
+        "ppa_objective": args.ppa_objective,
         "history": [],
         "errors": [],
         "status": "RUNNING",
     }
+
+    if args.resume_state:
+        saved = json.loads(args.resume_state.read_text())
+        if saved.get("user_request") != args.request.strip() or saved.get("run_id") != args.run_id:
+            parser.error("Resume must use the exact original request and run-id")
+        initial.update(saved)
+        initial.update(status="RUNNING", orchestration_error=None)
+
+    if args.vivado_config:
+        initial['vivado_config'] = json.loads(args.vivado_config.read_text())
+    if args.external_vivado_bundle:
+        initial['external_vivado_bundle'] = str(args.external_vivado_bundle.resolve())
 
     if args.use_frozen_architecture:
         initial.update(
@@ -228,12 +273,18 @@ def main() -> None:
         20
         + 3 * args.max_architecture_revisions
         + 4 * args.max_repair_iterations
+        + 5 * args.max_ppa_iterations
+        + 3 * args.max_verifier_revisions
+        + 6
     )
     final_state = graph.invoke(initial, {"recursion_limit": recursion_limit})
     print(
         json.dumps(
             {
                 "status": final_state.get("status"),
+                "vivado_status": (final_state.get("synthesis_result") or {}).get("status"),
+                "final_report": final_state.get("final_report"),
+                "errors": final_state.get("errors", []),
                 "architecture_status": final_state.get("architecture_status"),
                 "architecture_version": final_state.get("architecture_version"),
                 "architecture_revision": final_state.get("architecture_revision"),
@@ -249,6 +300,9 @@ def main() -> None:
             indent=2,
         )
     )
+
+    if final_state.get("status") != "SUCCESS":
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,63 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "PPA Optimization Plan",
-  "type": "object"
+  "title": "Constrained PPA optimization plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "action",
+    "summary",
+    "evidence_manifest_sha256",
+    "affected_modules",
+    "protected_modules",
+    "recommended_change",
+    "do_not_change",
+    "preserve_contract",
+    "regression_required"
+  ],
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "OPTIMIZE",
+        "STOP"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "evidence_manifest_sha256": {
+      "type": "string"
+    },
+    "affected_modules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "protected_modules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommended_change": {
+      "type": "string"
+    },
+    "do_not_change": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "preserve_contract": {
+      "type": "boolean",
+      "const": true
+    },
+    "regression_required": {
+      "type": "string",
+      "enum": [
+        "FULL"
+      ]
+    }
+  }
 }

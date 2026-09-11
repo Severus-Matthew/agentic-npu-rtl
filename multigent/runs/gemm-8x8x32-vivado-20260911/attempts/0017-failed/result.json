@@ -1,0 +1,10 @@
+{
+  "status": "FAILED",
+  "history": [
+    {
+      "stage": "orchestrator",
+      "status": "FAILED",
+      "reason": "VERIFICATION_REPAIR_REQUIRED"
+    }
+  ]
+}

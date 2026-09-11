@@ -9,6 +9,7 @@ and the frozen Architect artifacts.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -18,7 +19,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MULTIGENT_ROOT = REPO_ROOT / "multigent"
 PROJECT_CONSTRAINTS_PATH = MULTIGENT_ROOT / "config" / "project_constraints.yaml"
-WORKSPACE_ROOT = MULTIGENT_ROOT / "workspace"
+WORKSPACE_ROOT = Path(os.environ.get("NPU_WORKSPACE_ROOT", str(MULTIGENT_ROOT / "workspace"))).resolve()
 
 
 def load_project_constraints(path: Path = PROJECT_CONSTRAINTS_PATH) -> dict[str, Any]:

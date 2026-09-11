@@ -1,0 +1,253 @@
+design:
+  name: gemm8x8x32_bias_relu_accel
+  version: '1.1'
+  description: Fixed-size GEMM accelerator computing Y[8,8]=ReLU(A[8,32]@B[32,8]+bias[8])
+    with int8 inputs, int32 accumulation/bias, two's-complement int32 wrap before
+    signed ReLU; supports reset and output backpressure.
+operations:
+- name: op_gemm_accumulate
+  kind: compute
+  semantics: For each m in [0..M-1], n in [0..N-1], compute S[m,n]=sum_{k=0..K-1}(A[m,k]*B[k,n])
+    using signed arithmetic; each multiply is int8*int8 producing exact signed int16
+    then sign-extended to int32 and accumulated in int32 with two's-complement wrap
+    on every add.
+  inputs:
+  - obj_A_matrix
+  - obj_B_matrix
+  outputs:
+  - obj_acc_matrix
+- name: op_add_bias
+  kind: compute
+  semantics: For each m,n compute T[m,n]=obj_acc_matrix[m,n]+obj_bias_vector[n] in
+    signed int32 with two's-complement wrap.
+  inputs:
+  - obj_acc_matrix
+  - obj_bias_vector
+  outputs:
+  - obj_pre_relu_matrix
+- name: op_relu
+  kind: compute
+  semantics: For each m,n output Y[m,n]=0 if obj_pre_relu_matrix[m,n]<0 else obj_pre_relu_matrix[m,n].
+  inputs:
+  - obj_pre_relu_matrix
+  outputs:
+  - obj_Y_matrix
+data_types:
+- name: int8_tc
+  role: A/B elements
+  width_bits: 8
+  signed: true
+  representation: two_complement
+  conversion_semantics: No conversion on ingress; internal multiply sign-extends operands.
+  overflow_semantics: N/A at storage width
+  rounding_semantics: exact_integer
+- name: int32_tc
+  role: accumulator/bias/output elements
+  width_bits: 32
+  signed: true
+  representation: two_complement
+  conversion_semantics: int16 products sign-extended to int32 before accumulation
+  overflow_semantics: wrap_modulo_2_32
+  rounding_semantics: exact_integer
+data_objects:
+- name: obj_A_matrix
+  role: left GEMM operand
+  data_type: int8_tc
+  dimensions:
+  - dim_M
+  - dim_K
+  producer: external
+  consumers:
+  - op_gemm_accumulate
+  external: true
+- name: obj_B_matrix
+  role: right GEMM operand
+  data_type: int8_tc
+  dimensions:
+  - dim_K
+  - dim_N
+  producer: external
+  consumers:
+  - op_gemm_accumulate
+  external: true
+- name: obj_bias_vector
+  role: per-column bias
+  data_type: int32_tc
+  dimensions:
+  - dim_N
+  producer: external
+  consumers:
+  - op_add_bias
+  external: true
+- name: obj_acc_matrix
+  role: post-GEMM pre-bias intermediate
+  data_type: int32_tc
+  dimensions:
+  - dim_M
+  - dim_N
+  producer: op_gemm_accumulate
+  consumers:
+  - op_add_bias
+  external: false
+- name: obj_pre_relu_matrix
+  role: post-bias pre-ReLU intermediate
+  data_type: int32_tc
+  dimensions:
+  - dim_M
+  - dim_N
+  producer: op_add_bias
+  consumers:
+  - op_relu
+  external: false
+- name: obj_Y_matrix
+  role: final output matrix
+  data_type: int32_tc
+  dimensions:
+  - dim_M
+  - dim_N
+  producer: op_relu
+  consumers:
+  - external
+  external: true
+dimensions:
+- name: dim_M
+  semantic: GEMM rows of A and Y; fixed by parameter M_MAX; runtime command must equal
+    M_MAX
+  minimum: 8
+  maximum: 8
+  runtime_configurable: false
+  bound_parameter: M_MAX
+- name: dim_N
+  semantic: GEMM cols of B and Y / bias length; fixed by parameter N_MAX; runtime
+    command must equal N_MAX
+  minimum: 8
+  maximum: 8
+  runtime_configurable: false
+  bound_parameter: N_MAX
+- name: dim_K
+  semantic: GEMM reduction length; fixed by parameter K_MAX; runtime command must
+    equal K_MAX
+  minimum: 32
+  maximum: 32
+  runtime_configurable: false
+  bound_parameter: K_MAX
+parameters:
+- name: M_MAX
+  default_value: '8'
+  legality_constraint: integer >=1
+  description: Rows
+- name: N_MAX
+  default_value: '8'
+  legality_constraint: integer >=1
+  description: Cols
+- name: K_MAX
+  default_value: '32'
+  legality_constraint: integer >=1
+  description: Reduction length
+- name: A_ELEM_W
+  default_value: '8'
+  legality_constraint: must be 8
+  description: A/B element width
+- name: ACC_W
+  default_value: '32'
+  legality_constraint: must be 32
+  description: Accumulator/bias/output width
+compute:
+  organization: single sequential MAC datapath plus sequential bias+ReLU postprocess
+  dataflow: load-all then compute then stream-out
+  parallelism: 1 MAC/cycle
+  scheduling: FSM-controlled deterministic nested counters
+storage:
+- name: mem_A
+  stored_objects:
+  - obj_A_matrix
+  capacity_expression: M_MAX*K_MAX elements of A_ELEM_W
+  capacity_at_default_parameters: 256
+  access_pattern: write during A load, read during GEMM by address m*K_MAX+k
+  port_requirements: 1R/1W
+  implementation_hint: simple dual-port RAM
+  reuse_semantics: A retained for full job
+  lifetime: start of load_A to end of compute
+- name: mem_B
+  stored_objects:
+  - obj_B_matrix
+  capacity_expression: K_MAX*N_MAX elements of A_ELEM_W
+  capacity_at_default_parameters: 256
+  access_pattern: write during B load, read during GEMM by address k*N_MAX+n
+  port_requirements: 1R/1W
+  implementation_hint: simple dual-port RAM
+  reuse_semantics: B retained for full job
+  lifetime: start of load_B to end of compute
+- name: mem_bias
+  stored_objects:
+  - obj_bias_vector
+  capacity_expression: N_MAX elements of ACC_W
+  capacity_at_default_parameters: 8
+  access_pattern: write during bias load, read during postprocess by n
+  port_requirements: 1R/1W
+  implementation_hint: register file or RAM
+  reuse_semantics: reused for each m
+  lifetime: start of load_bias to end of postprocess
+- name: mem_out
+  stored_objects:
+  - obj_Y_matrix
+  capacity_expression: M_MAX*N_MAX elements of ACC_W
+  capacity_at_default_parameters: 64
+  access_pattern: write during postprocess, read during output streaming
+  port_requirements: 1R/1W
+  implementation_hint: simple dual-port RAM
+  reuse_semantics: buffer decouples output backpressure
+  lifetime: start of postprocess to final output beat
+pipeline:
+- stage: ingress
+  responsibility: accept command and load A/B/bias streams into local memories
+  registered: true
+  valid_behavior: input beat consumed on s_valid&&s_ready
+  stall_behavior: hold write enables low when not handshaken
+- stage: compute
+  responsibility: sequential MAC accumulation to obj_acc_matrix
+  registered: true
+  valid_behavior: one k-step per cycle after load complete
+  stall_behavior: internal stage never stalled by output backpressure
+- stage: postprocess
+  responsibility: bias add then ReLU then write mem_out
+  registered: true
+  valid_behavior: one output element prepared per cycle
+  stall_behavior: no external stall dependency
+- stage: egress
+  responsibility: stream mem_out with ready/valid
+  registered: true
+  valid_behavior: advance read index only on m_valid&&m_ready
+  stall_behavior: hold m_valid/data stable while m_ready=0
+control:
+  strategy: single top FSM orchestrating submodules with start/done pulses
+  state_progression: IDLE->LOAD_A->LOAD_B->LOAD_BIAS->COMPUTE->POSTPROC->OUTPUT->DONE->IDLE
+  counters:
+  - cnt_a_load
+  - cnt_b_load
+  - cnt_bias_load
+  - cnt_m
+  - cnt_n
+  - cnt_k
+  - cnt_out
+  error_behavior: protocol/length mismatch raises sticky error and halts new work
+  error_recovery: assert reset to clear sticky error and return to IDLE
+reset:
+  style: synchronous
+  polarity: active_high
+  required_state: FSM to IDLE, counters/pointers zero, valid outputs deasserted, sticky
+    error cleared
+latency_model: 'Cycles = 1(cmd) + M_MAX*K_MAX loads + K_MAX*N_MAX loads + N_MAX loads
+  + M_MAX*N_MAX*K_MAX compute + M_MAX*N_MAX postprocess + M_MAX*N_MAX output handshakes
+  (plus output stall cycles). Default no-stall total from first cmd handshake to last
+  output handshake: 2641 cycles.'
+architectural_invariants:
+- Exactly one job in flight.
+- 'Input order fixed: command then A(256 beats) then B(256 beats) then bias(8 beats).'
+- Output order fixed row-major over Y[m,n].
+- All int32 adds wrap two's-complement before ReLU comparison.
+- ReLU comparator interprets wrapped int32 as signed.
+open_assumptions:
+- Single unified input stream channel with tagged command/data classes.
+- No runtime-variable M/N/K; fixed at 8/8/32 per user request.
+- No start/clear control besides stream command and reset.

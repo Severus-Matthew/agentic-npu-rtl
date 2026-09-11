@@ -1,5 +1,4 @@
-"""CLI entry point for a full multi-agent NPU RTL run.
-
-Target usage:
-    python -m multigent.scripts.run_workflow --spec <spec.yaml>
-"""
+"""Compatibility entry point for the canonical LangGraph workflow CLI."""
+from multigent.orchestration.graph import main
+if __name__ == '__main__':
+    main()

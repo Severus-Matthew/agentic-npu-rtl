@@ -139,3 +139,23 @@ For `REPAIR_PLAN_READY`:
 - changing architecture without escalation
 - broad full-design rewrites when a localized cause is supported
 - declaring PASS
+
+## Verification infrastructure repair route
+Return VERIFICATION_REPAIR_REQUIRED only with TESTBENCH_ERROR, confidence >= 0.8,
+concrete evidence of a Python/scheduling/oracle defect, and null repair_plan and
+architecture_conflict. The orchestrator archives the original failures and asks the
+independent Verifier to revalidate its own artifacts. Your prose, RTL and simulation
+logs are never forwarded to Verifier. Never classify a mere output mismatch as a
+testbench defect without contract-based evidence. UNKNOWN tool classification may be
+refined; a specific deterministic classification must remain unchanged.
+
+## Bounded diagnostic evidence
+On EVIDENCE_INSUFFICIENT the graph may run a read-only signal monitor around copies
+of the frozen tests, with a 100us diagnostic simulation cap and a bounded trace.
+`additional_diagnostics` is diagnostic evidence, never functional acceptance. Its
+cap may intentionally interrupt long randomized tests; use the first failing test's
+trace to localize the original failure. Original tests, reference and RTL are not
+modified. Do not mistake diagnostic cap expiration for a newly proven RTL defect.
+A simulator timeout is a symptom, not a proven RTL root cause. You may refine
+SIMULATION_TIMEOUT to TESTBENCH_ERROR only with concrete contract-based evidence;
+the original deterministic timeout status remains unchanged in the report.

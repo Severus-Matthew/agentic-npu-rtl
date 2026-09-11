@@ -24,7 +24,7 @@ from .base import APIAgent, AgentConfig, AgentRuntimeError, SCHEMA_ROOT
 
 VERIFIER_OUTPUT_SCHEMA = SCHEMA_ROOT / "verifier_output.schema.json"
 _FORBIDDEN_IMPORT_ROOTS = {
-    "subprocess", "socket", "requests", "urllib", "http", "pathlib", "glob", "importlib"
+    "os", "sys", "io", "builtins", "ctypes", "pickle", "shutil", "subprocess", "socket", "requests", "urllib", "http", "pathlib", "glob", "importlib"
 }
 _FORBIDDEN_CALL_NAMES = {"open", "exec", "eval", "compile", "__import__"}
 _FORBIDDEN_CALL_ATTRIBUTES = {
@@ -92,7 +92,7 @@ class VerifierAgent(APIAgent):
 
     def run_from_state(self, state: Mapping[str, Any]) -> dict[str, Any]:
         context = state.get("verification_context")
-        if not isinstance(context, Mapping):
+        if not isinstance(context, Mapping) or not context:
             user_request = state.get("user_request")
             if not isinstance(user_request, str) or not user_request.strip():
                 raise AgentRuntimeError("Verifier node requires verification_context or user_request")

@@ -104,7 +104,7 @@ module gemm_bias_relu_npu_top #(
     .a_elem(a_elem), .b_vec(b_vec), .tile_done(compute_tile_done), .lane_acc(lane_acc)
   );
 
-  postproc_relu_bias #(.TILE_N(TILE_N)) u_post (
+  postproc_relu_bias #(.TILE_N(TILE_N), .MAX_N(MAX_N)) u_post (
     .bias_enable(cfg_bias_enable), .lane_active(lane_active), .idx_n_base(idx_n_base), .cfg_n(cfg_n), .lane_acc(lane_acc), .bias_mem(buf_bias), .lane_out(lane_post)
   );
 

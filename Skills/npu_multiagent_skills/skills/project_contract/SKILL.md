@@ -227,3 +227,11 @@ A run is successful only if all required acceptance criteria are satisfied and t
 - run provenance summary
 
 No agent may call the project complete before these conditions are machine-verified.
+
+## Vivado and optimizer runtime boundary
+The active downstream provider is Vivado, using explicit FPGA/clock constraints and
+an out-of-context implementation bundle. Missing tools/reports produce null metrics
+and an incomplete outcome. The PPA Optimizer owns plans; LangGraph owns candidate
+selection. Every RTL change requires FULL regression and a fresh Vivado evaluation.
+Only comparable timing-feasible candidates may be selected. Preserve attempt
+snapshots, original failures, frozen contracts and the independent verifier.

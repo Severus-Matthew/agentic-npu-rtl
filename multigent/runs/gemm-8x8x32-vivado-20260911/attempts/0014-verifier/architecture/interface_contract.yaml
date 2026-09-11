@@ -1,0 +1,142 @@
+protocol: AXI-stream-like ready/valid on separate typed channels
+clock: single clk
+reset: synchronous active-high rst
+channels:
+- name: a_in
+  direction: input
+  purpose: A operand ingress
+  data_objects:
+  - a_stream_payload
+  metadata: []
+  framing: 256 beats/job, each beat carries one int8 A element.
+  ordering: Row-major A[m][k], k fastest then m.
+  backpressure: source obeys a_ready; transfer on a_valid&&a_ready
+- name: b_in
+  direction: input
+  purpose: B operand ingress
+  data_objects:
+  - b_stream_payload
+  metadata: []
+  framing: 256 beats/job, each beat carries one int8 B element.
+  ordering: 'Row-major over K,N: B[k][n], n fastest then k.'
+  backpressure: source obeys b_ready; transfer on b_valid&&b_ready
+- name: bias_in
+  direction: input
+  purpose: bias ingress
+  data_objects:
+  - bias_stream_payload
+  metadata: []
+  framing: 8 beats/job, each beat carries one int32 bias element.
+  ordering: bias[n] increasing n.
+  backpressure: source obeys bias_ready; transfer on bias_valid&&bias_ready
+- name: y_out
+  direction: output
+  purpose: result egress
+  data_objects:
+  - y_stream_payload
+  metadata: []
+  framing: 64 beats/job, each beat carries one int32 Y element.
+  ordering: Row-major Y[m][n], n fastest then m.
+  backpressure: sink controls y_ready; payload stable while y_valid && !y_ready
+signals:
+- name: clk
+  direction: input
+  width: '1'
+  signed: false
+  semantic: clock
+  reset_value: '0'
+- name: rst
+  direction: input
+  width: '1'
+  signed: false
+  semantic: synchronous active-high reset
+  reset_value: '0'
+- name: a_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: A beat valid
+  reset_value: '0'
+- name: a_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: A beat accept readiness
+  reset_value: '0'
+- name: a_data
+  direction: input
+  width: '8'
+  signed: true
+  semantic: A element payload int8
+  reset_value: '0'
+- name: b_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: B beat valid
+  reset_value: '0'
+- name: b_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: B beat accept readiness
+  reset_value: '0'
+- name: b_data
+  direction: input
+  width: '8'
+  signed: true
+  semantic: B element payload int8
+  reset_value: '0'
+- name: bias_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: bias beat valid
+  reset_value: '0'
+- name: bias_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: bias beat accept readiness
+  reset_value: '0'
+- name: bias_data
+  direction: input
+  width: '32'
+  signed: true
+  semantic: bias element payload int32
+  reset_value: '0'
+- name: y_valid
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Y beat valid
+  reset_value: '0'
+- name: y_ready
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Y beat ready/backpressure
+  reset_value: '0'
+- name: y_data
+  direction: output
+  width: '32'
+  signed: true
+  semantic: Y element payload int32
+  reset_value: '0'
+- name: done
+  direction: output
+  width: '1'
+  signed: false
+  semantic: 1-cycle pulse after final Y transfer of a job
+  reset_value: '0'
+- name: error
+  direction: output
+  width: '1'
+  signed: false
+  semantic: sticky protocol-error flag until reset
+  reset_value: '0'
+global_handshake_rules:
+  transfer_condition: A/B/bias/y channel transfer occurs iff valid && ready on that
+    channel.
+  stall_behavior: When valid=1 and ready=0, producer must hold payload and valid stable
+    until transfer.

@@ -1,28 +1,32 @@
 top_module: gemm_bias_relu_npu_top
 test_modules:
-- test_gemm_bias_relu
+- test_gemm_bias_relu_npu
 test_categories:
 - functional
 - protocol
 - reset
 - backpressure
-- error
 - randomized
+- error
 randomized_test_count: 100
-seed: 12345
-timeout_seconds: 180
+seed: 20260904
+timeout_seconds: 300
 regression_groups:
   smoke:
-  - test_gemm_bias_relu
+  - test_gemm_bias_relu_npu
   targeted:
-  - test_gemm_bias_relu
+  - test_gemm_bias_relu_npu
   full:
-  - test_gemm_bias_relu
-pass_criteria: 'All cocotb tests pass: exact ordered output stream equality to independent
-  reference, correct transfer counts/order, reset/error/completion-visible behavior
-  per contract, and no timeout/deadlock.'
+  - test_gemm_bias_relu_npu
+pass_criteria: All cocotb tests pass; ordered out_ch stream exactly matches independent
+  reference for every job; transfer counts match M*N; status_done observed per completed
+  legal job; status_error asserts/sticky on illegal command and clears only by reset;
+  no test timeout/deadlock.
 protocol_assumptions:
-- Transfers occur only on valid&&ready per channel.
-- While valid=1 and ready=0, producer keeps payload stable.
-- Input ordering is contract-defined row-major for A/B and increasing n for bias.
-- One job in flight; next command only after DUT ready.
+- All channel transfers occur only on valid&&ready at clk rising edge.
+- Input source drivers hold valid=1 and payload stable until handshake once a beat
+  is presented.
+- cmd_data reserved bits are required 0 for legal commands.
+- When bias_enable=0, legal jobs send zero bias transfers.
+- status_done is a one-cycle completion pulse; status_error is sticky until reset
+  as contract-defined.

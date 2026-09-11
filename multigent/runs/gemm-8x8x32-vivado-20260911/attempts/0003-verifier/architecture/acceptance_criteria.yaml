@@ -1,0 +1,29 @@
+functional:
+- For every job, output exactly 64 elements implementing Y[m,n]=ReLU(sum_{k=0..31}(A[m,k]*B[k,n])
+  + bias[n]) with signed arithmetic.
+- A and B multiply uses signed int8 operands; each product is exact then accumulated
+  in signed int32.
+- Accumulator additions and bias addition use two's-complement int32 wrap semantics.
+- ReLU compares wrapped signed int32 result and outputs zero for negative values else
+  unchanged value.
+- Output ordering is strict row-major m outer, n inner.
+verification:
+- At least 100 randomized jobs with exact integer match against reference model.
+- Directed boundary tests include all-zero, all-max, all-min, mixed-sign, and overflow-provoking
+  vectors.
+- Reset tests must verify deterministic return to IDLE, cleared done/error, and no
+  stale output valid.
+- Backpressure tests must randomly deassert y_ready and confirm no loss/duplication
+  and payload stability under stall.
+- Completion-behavior test must confirm done pulse after final accepted y transfer.
+- Error-behavior tests must inject wrong-section valid traffic and confirm sticky
+  error until reset.
+rtl:
+- SystemVerilog synthesizable subset only; no forbidden constructs from project constraints.
+- All sequential logic clocked by clk with synchronous active-high reset handling
+  per contract.
+- Ready/valid protocol correctness on all channels with transfer defined as ready&&valid.
+synopsys_handoff:
+- Synthesis/power/area/frequency/utilization claims are accepted only from deterministic
+  tool report artifacts conforming to provided schema.
+- No estimated or inferred PPA metrics allowed without authoritative report.
