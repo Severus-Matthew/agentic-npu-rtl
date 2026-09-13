@@ -271,3 +271,36 @@ def test_architecture_conflict_emits_no_tests() -> None:
         }
     )
     VerifierAgent._validate_result(result=result, context=generic_fir_context())
+
+
+def test_empty_package_markers_are_allowed_but_not_regression_modules():
+    result = verification_ready_result()
+    reference_marker = copy.deepcopy(result['reference_files'][0])
+    reference_marker.update(path='reference/__init__.py', content='')
+    result['reference_files'].append(reference_marker)
+    test_marker = copy.deepcopy(result['test_files'][0])
+    test_marker.update(path='tests/__init__.py', content=' \n')
+    result['test_files'].append(test_marker)
+    VerifierAgent._validate_result(result=result, context=generic_fir_context())
+    assert '__init__' not in result['verification_plan']['test_modules']
+
+
+@pytest.mark.parametrize('filename', ['model.py', 'test_block.py', 'init.py'])
+def test_empty_implementation_is_still_rejected(filename):
+    with pytest.raises(AgentRuntimeError, match='empty'):
+        VerifierAgent._validate_python_content(filename, '', cocotb_required=False)
+
+
+def test_package_marker_still_has_security_validation():
+    with pytest.raises(AgentRuntimeError, match='forbidden'):
+        VerifierAgent._validate_python_content('__init__.py', 'import os', cocotb_required=False)
+
+
+@pytest.mark.parametrize('category', ['reference_files', 'test_files'])
+def test_package_marker_cannot_replace_real_verification(category):
+    result = verification_ready_result()
+    marker = copy.deepcopy(result[category][0])
+    marker.update(path='__init__.py', content='')
+    result[category] = [marker]
+    with pytest.raises(AgentRuntimeError, match='package marker'):
+        VerifierAgent._validate_result(result=result, context=generic_fir_context())

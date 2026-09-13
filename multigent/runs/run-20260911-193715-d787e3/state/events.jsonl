@@ -1,0 +1,10 @@
+{"stage": "architect", "phase": "started", "time": "2026-09-11T19:37:20.817549+00:00"}
+{"stage": "architect", "phase": "finished", "time": "2026-09-11T19:40:49.127034+00:00", "status": null, "history": [{"stage": "architect", "status": "READY", "architecture_version": 1, "revision": false}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T19:40:49.130133+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T19:42:19.049851+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 0, "ppa_iteration": 0, "files": ["fc_int8_tile8.sv", "mac_tile8x8.sv"]}]}
+{"stage": "verifier", "phase": "started", "time": "2026-09-11T19:42:19.052788+00:00"}
+{"stage": "verifier", "phase": "finished", "time": "2026-09-11T19:47:44.202813+00:00", "status": null, "history": [{"stage": "verifier_generation", "status": "SEMANTIC_VALIDATION_FAILED"}]}
+{"stage": "failed", "phase": "started", "time": "2026-09-11T19:47:44.205805+00:00"}
+{"stage": "failed", "phase": "finished", "time": "2026-09-11T19:47:44.265971+00:00", "status": "FAILED", "history": [{"stage": "orchestrator", "status": "FAILED", "reason": "SEMANTIC_VALIDATION_FAILED"}]}
+{"stage": "final_report", "phase": "started", "time": "2026-09-11T19:47:44.268230+00:00"}
+{"stage": "final_report", "phase": "finished", "time": "2026-09-11T19:47:44.282021+00:00", "status": "FAILED"}

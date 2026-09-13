@@ -1,0 +1,170 @@
+protocol: ready_valid_streaming
+clock: single rising-edge clk
+reset: rst_n synchronous active-low
+channels:
+- name: cmd_chan
+  direction: input
+  purpose: job command
+  data_objects:
+  - obj_cmd_packet
+  metadata: []
+  framing: 1 beat per job command
+  ordering: must arrive before any job data streams
+  backpressure: supported via cmd_ready
+- name: vec_chan
+  direction: input
+  purpose: vector data ingress
+  data_objects:
+  - obj_vec_stream
+  metadata: []
+  framing: exactly N beats, one INT8 per beat
+  ordering: ascending vector index 0..N-1
+  backpressure: supported via vec_ready
+- name: mat_chan
+  direction: input
+  purpose: matrix data ingress
+  data_objects:
+  - obj_mat_stream
+  metadata: []
+  framing: exactly M*ceil(N/16) beats, 16 INT8 packed per beat
+  ordering: row-major by (row_idx, k_chunk_idx)
+  backpressure: supported via mat_ready
+- name: bias_chan
+  direction: input
+  purpose: optional bias ingress
+  data_objects:
+  - obj_bias_stream
+  metadata: []
+  framing: if bias_enable=1 exactly M beats else 0 beats
+  ordering: ascending row index 0..M-1
+  backpressure: supported via bias_ready
+- name: out_chan
+  direction: output
+  purpose: result egress
+  data_objects:
+  - obj_out_stream
+  metadata: []
+  framing: exactly M beats, one INT32 per beat
+  ordering: ascending row index 0..M-1
+  backpressure: supported via out_ready
+signals:
+- name: clk
+  direction: input
+  width: '1'
+  signed: false
+  semantic: clock
+  reset_value: '0'
+- name: rst_n
+  direction: input
+  width: '1'
+  signed: false
+  semantic: synchronous active-low reset
+  reset_value: '0'
+- name: cmd_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: cmd beat valid
+  reset_value: '0'
+- name: cmd_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: cmd acceptance
+  reset_value: '0'
+- name: cmd_data
+  direction: input
+  width: CMD_W
+  signed: false
+  semantic: 'command bitfields: [15:0]M,[31:16]N,[32]bias_enable,[33]relu_enable,others
+    reserved 0'
+  reset_value: '0'
+- name: vec_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: vector valid
+  reset_value: '0'
+- name: vec_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: vector ready
+  reset_value: '0'
+- name: vec_data
+  direction: input
+  width: VEC_DATA_W
+  signed: true
+  semantic: one INT8 vector element
+  reset_value: '0'
+- name: mat_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: matrix valid
+  reset_value: '0'
+- name: mat_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: matrix ready
+  reset_value: '0'
+- name: mat_data
+  direction: input
+  width: MAT_DATA_W
+  signed: false
+  semantic: 16 packed INT8 matrix elements per beat
+  reset_value: '0'
+- name: bias_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: bias valid
+  reset_value: '0'
+- name: bias_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: bias ready
+  reset_value: '0'
+- name: bias_data
+  direction: input
+  width: BIAS_DATA_W
+  signed: true
+  semantic: one INT32 bias
+  reset_value: '0'
+- name: out_valid
+  direction: output
+  width: '1'
+  signed: false
+  semantic: output valid
+  reset_value: '0'
+- name: out_ready
+  direction: input
+  width: '1'
+  signed: false
+  semantic: output ready
+  reset_value: '0'
+- name: out_data
+  direction: output
+  width: OUT_DATA_W
+  signed: true
+  semantic: one INT32 output
+  reset_value: '0'
+- name: status_busy
+  direction: output
+  width: '1'
+  signed: false
+  semantic: 1 while job active
+  reset_value: '0'
+- name: status_error
+  direction: output
+  width: '1'
+  signed: false
+  semantic: sticky error flag
+  reset_value: '0'
+global_handshake_rules:
+  transfer_condition: A channel transfer occurs only when ready && valid on same rising
+    edge.
+  stall_behavior: While valid=1 and ready=0, source must hold payload and valid stable;
+    sink state must not advance.

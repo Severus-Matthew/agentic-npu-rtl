@@ -1,0 +1,344 @@
+design:
+  name: fc_int8_tile8
+  version: 1.0.0
+  description: Buffered fully connected layer accelerator with a fixed 8x8 INT8 multiply/INT32
+    accumulate array, INT32 bias addition, and mandatory ReLU.
+operations:
+- name: gemm
+  kind: matrix_multiply
+  semantics: Mandatory. For each m,n, initialize s=0 and, for k=0 through K-1, update
+    s=wrap32(s+sign_extend32(A[m,k]*B[k,n])). Each multiplication is an exact signed
+    8x8-to-16-bit multiplication. Produce S[m,n]=s.
+  inputs:
+  - A
+  - B
+  outputs:
+  - S
+- name: bias_add
+  kind: broadcast_add
+  semantics: Mandatory after gemm for each element. D[m,n]=wrap32(S[m,n]+bias[n]).
+    Bias is broadcast across rows.
+  inputs:
+  - S
+  - bias
+  outputs:
+  - D
+- name: relu
+  kind: activation
+  semantics: Mandatory after bias_add. Interpret D as signed INT32; Y[m,n]=0 if D[m,n]<0,
+    otherwise Y[m,n]=D[m,n]. No output quantization.
+  inputs:
+  - D
+  outputs:
+  - Y
+data_types:
+- name: int8
+  role: Activation and weight elements
+  width_bits: 8
+  signed: true
+  representation: Two's-complement integer.
+  conversion_semantics: Input payload bits [7:0] are reinterpreted as signed INT8;
+    bits [31:8] are ignored.
+  overflow_semantics: All 256 input bit patterns are legal.
+  rounding_semantics: None.
+- name: int16_product
+  role: Internal multiplier result
+  width_bits: 16
+  signed: true
+  representation: Two's-complement integer.
+  conversion_semantics: Exact signed INT8 multiplication; sign-extend to 32 bits before
+    accumulation.
+  overflow_semantics: Every INT8 product fits exactly.
+  rounding_semantics: None.
+- name: int32
+  role: Accumulator, bias, biased intermediate, and output elements
+  width_bits: 32
+  signed: true
+  representation: Two's-complement integer.
+  conversion_semantics: Bias payload uses all 32 bits unchanged. Output uses the 32-bit
+    ReLU result unchanged.
+  overflow_semantics: wrap32 retains the low 32 bits of mathematical addition and
+    reinterprets them as signed. Applies independently to every accumulation and bias
+    addition; no saturation.
+  rounding_semantics: None.
+data_objects:
+- name: A
+  role: Activation matrix
+  data_type: int8
+  dimensions:
+  - M
+  - K
+  producer: external
+  consumers:
+  - gemm
+  external: true
+- name: B
+  role: Weight matrix
+  data_type: int8
+  dimensions:
+  - K
+  - N
+  producer: external
+  consumers:
+  - gemm
+  external: true
+- name: bias
+  role: Per-output-column bias vector
+  data_type: int32
+  dimensions:
+  - N
+  producer: external
+  consumers:
+  - bias_add
+  external: true
+- name: S
+  role: Logical GEMM result; physically materialized one tile at a time
+  data_type: int32
+  dimensions:
+  - M
+  - N
+  producer: gemm
+  consumers:
+  - bias_add
+  external: false
+- name: D
+  role: Combinational biased element during output emission
+  data_type: int32
+  dimensions:
+  - M
+  - N
+  producer: bias_add
+  consumers:
+  - relu
+  external: false
+- name: Y
+  role: Activated layer output matrix
+  data_type: int32
+  dimensions:
+  - M
+  - N
+  producer: relu
+  consumers:
+  - external
+  external: true
+dimensions:
+- name: M
+  semantic: Activation/output row count. Minimum 1; maximum at default parameters
+    64. Runtime legality is 1<=M<=MAX_M, not a fixed maximum of 64.
+  minimum: 1
+  maximum: 64
+  runtime_configurable: true
+  bound_parameter: MAX_M
+- name: N
+  semantic: Weight/output column count and bias length. Minimum 1; maximum at default
+    parameters 64. Runtime legality is 1<=N<=MAX_N, not a fixed maximum of 64.
+  minimum: 1
+  maximum: 64
+  runtime_configurable: true
+  bound_parameter: MAX_N
+- name: K
+  semantic: Reduction length. Minimum 1; maximum at default parameters 64. Runtime
+    legality is 1<=K<=MAX_K, not a fixed maximum of 64.
+  minimum: 1
+  maximum: 64
+  runtime_configurable: true
+  bound_parameter: MAX_K
+parameters:
+- name: MAX_M
+  default_value: '64'
+  legality_constraint: Integer, 1<=MAX_M<=256.
+  description: Maximum row count and activation-bank depth bound. Define MW=max(1,$clog2(MAX_M+1)).
+- name: MAX_N
+  default_value: '64'
+  legality_constraint: Integer, 1<=MAX_N<=256.
+  description: Maximum output column count, weight-bank depth bound, and bias depth.
+    Define NW=max(1,$clog2(MAX_N+1)).
+- name: MAX_K
+  default_value: '64'
+  legality_constraint: Integer, 1<=MAX_K<=256.
+  description: Maximum reduction length and operand-bank depth bound. Define KW=max(1,$clog2(MAX_K+1)).
+compute:
+  organization: Fixed 8x8 output-stationary outer-product array with 64 signed multipliers
+    and 64 wrapping INT32 accumulators. Full-job operands are retained locally.
+  dataflow: At reduction index k, broadcast A[8*tr+i,k] across array row i and B[k,8*tc+j]
+    down array column j. Update every valid lane (i,j) concurrently.
+  parallelism: Up to 64 MACs per MAC cycle, supplied by eight activation-bank reads
+    and eight weight-bank reads. Out-of-range rows/columns are masked. Bias addition
+    and ReLU use one scalar combinational path.
+  scheduling: 'One job at a time. Load all A, then all B, then bias. Traverse tr=0..ceil(M/8)-1,
+    outermost, and tc=0..ceil(N/8)-1. For each tile: one INIT cycle, K MAC cycles
+    with k increasing, then emit all valid tile elements before clearing the next
+    tile. Emission order is local row i increasing, then local column j increasing.
+    No load/compute/egress overlap.'
+storage:
+- name: activation_banks
+  stored_objects:
+  - A
+  capacity_expression: 8*ceil(MAX_M/8)*MAX_K*8 bits; eight banks, each ceil(MAX_M/8)*MAX_K
+    INT8 entries.
+  capacity_at_default_parameters: 32768
+  access_pattern: A[m,k] maps to bank m mod 8, address floor(m/8)*MAX_K+k. LOAD_A
+    writes one selected bank per accepted scalar. MAC reads one address per active
+    bank, using tile row tr and reduction index k.
+  port_requirements: Each bank has one synchronous write port and one combinational
+    read port. Reads and writes occur in separate phases; no read-during-write result
+    is consumed.
+  implementation_hint: Banked distributed RAM or registers with asynchronous reads;
+    do not substitute synchronous-read memory without preserving the frozen schedule.
+  reuse_semantics: Loaded once per job and retained for all column tiles. Invalid
+    lanes do not read unwritten padding and instead receive zero.
+  lifetime: From accepted A load through final output acceptance; reset invalidates
+    the job without clearing contents.
+- name: weight_banks
+  stored_objects:
+  - B
+  capacity_expression: 8*MAX_K*ceil(MAX_N/8)*8 bits; eight banks, each MAX_K*ceil(MAX_N/8)
+    INT8 entries.
+  capacity_at_default_parameters: 32768
+  access_pattern: B[k,n] maps to bank n mod 8, address k*ceil(MAX_N/8)+floor(n/8).
+    LOAD_B writes one selected bank per accepted scalar. MAC reads one address per
+    active bank.
+  port_requirements: Each bank has one synchronous write port and one combinational
+    read port. Loading and computation are mutually exclusive.
+  implementation_hint: Banked distributed RAM or registers with asynchronous reads.
+  reuse_semantics: Loaded once per job and retained for all row tiles. Invalid columns
+    receive zero without consuming unwritten padding.
+  lifetime: From accepted B load through final output acceptance; reset invalidates
+    the job.
+- name: bias_store
+  stored_objects:
+  - bias
+  capacity_expression: MAX_N*32 bits.
+  capacity_at_default_parameters: 2048
+  access_pattern: LOAD_BIAS writes bias[n] sequentially. EMIT combinationally reads
+    bias[8*tc+j] for the current output.
+  port_requirements: One synchronous write port and one combinational read port; read
+    and write phases do not overlap.
+  implementation_hint: Distributed RAM or registers.
+  reuse_semantics: Each bias is loaded once and reused for every output row.
+  lifetime: From bias loading through final output acceptance.
+- name: tile_accumulators
+  stored_objects:
+  - S
+  capacity_expression: 8*8*32 bits, independent of matrix bounds.
+  capacity_at_default_parameters: 2048
+  access_pattern: INIT synchronously clears all 64 lanes. Each MAC edge updates enabled
+    lanes. EMIT selects one lane combinationally and performs no accumulator writes.
+  port_requirements: 64 independent accumulator registers, each with one local update
+    path; one combinational 64-to-1 read selection for egress.
+  implementation_hint: Registers adjacent to the 64 MAC datapaths.
+  reuse_semantics: Partial sums stay local through all K products. No result spills
+    or full-result buffer.
+  lifetime: INIT through acceptance of the last valid element of that tile.
+pipeline:
+- stage: operand_load
+  responsibility: Decode the implicit A/B/bias section and write the accepted scalar
+    to its addressed storage.
+  registered: true
+  valid_behavior: Writes occur only on in_valid && in_ready. Section counters advance
+    only on that event.
+  stall_behavior: No transfer means no write and no counter or phase advancement.
+- stage: tile_init
+  responsibility: Clear all 64 accumulators before processing a tile.
+  registered: true
+  valid_behavior: Exactly one INIT edge per tile asserts array clear; step is deasserted.
+  stall_behavior: Unstallable internal cycle; input and output ready/valid transfers
+    are disabled.
+- stage: tile_mac
+  responsibility: Read 16 banked operands combinationally, form 64 products, and register
+    enabled wrapping accumulator updates.
+  registered: true
+  valid_behavior: One array step per MAC edge for k=0..K-1. Masked lanes hold zero
+    from INIT.
+  stall_behavior: Unstallable after complete operand loading; no external transfer
+    is needed.
+- stage: finalize_emit
+  responsibility: Select the current accumulator, add its bias with wrap32, apply
+    ReLU, and drive one output beat.
+  registered: false
+  valid_behavior: out_valid is asserted throughout EMIT. Registered tile/local indices
+    and stable memories identify the current payload. The first beat is available
+    after the final MAC edge.
+  stall_behavior: When out_ready is low, freeze indices and phase; accumulators and
+    bias remain unchanged, keeping out_data and out_last stable.
+control:
+  strategy: Single synchronous FSM; handshake-controlled loading/emission and deterministic
+    internal compute.
+  state_progression: IDLE accepts a command. A legal command enters LOAD_A, then LOAD_B,
+    LOAD_BIAS, INIT, MAC, EMIT. A nonfinal tile's last output enters INIT for the
+    next tile. The job's final output enters IDLE and pulses done. An illegal command
+    remains in IDLE and pulses error.
+  counters:
+  - Latched M[MW-1:0], N[NW-1:0], K[KW-1:0], where MW/NW/KW are parameter-derived
+    local constants.
+  - LOAD_A indices m of width MW and k of width KW; k increments fastest.
+  - LOAD_B indices k of width KW and n of width NW; n increments fastest.
+  - LOAD_BIAS index n of width NW.
+  - Tile indices tr and tc use max(1,$clog2(ceil(MAX_M/8))) and max(1,$clog2(ceil(MAX_N/8)))
+    bits respectively.
+  - MAC reduction index uses KW bits; EMIT local indices i,j each use 3 bits.
+  - Current tile extents R=min(8,M-8*tr) and C=min(8,N-8*tc) use 4 bits; masks enable
+    lanes less than R/C.
+  - All address/base calculations use explicitly widened unsigned arithmetic; memory-address
+    widths are max(1,$clog2(bank_depth)). Counter comparisons precede increments to
+    avoid terminal wrap.
+  - FSM, one-cycle done/error event registers, and operand-load validity represented
+    by phase progression.
+  error_behavior: A command with any zero dimension or a dimension exceeding its MAX
+    parameter is consumed in IDLE, pulses error, starts no job, and consumes no operand
+    beats. Reserved INT8 payload bits are ignored. Valid asserted outside its ready
+    phase causes no transfer and is not an error. Upstream violation of stalled-payload
+    stability is outside the legal protocol and is not detected. No timeout or framing
+    error detector is provided; missing beats stall loading.
+  error_recovery: 'Invalid commands require no acknowledgement: IDLE remains ready
+    for the next command. A legal but incomplete job or a protocol-corrupted job can
+    be aborted with rst; reset discards all work and permits a fresh command. There
+    is no persistent error state.'
+reset:
+  style: Synchronous to the rising edge of clk; reset has priority over every state
+    update. Ready/valid outputs are additionally suppressed while rst is high.
+  polarity: Active high.
+  required_state: Set FSM to IDLE; clear dimensions, counters, indices, done, and
+    error. Suppress busy, out_valid, out_last, and ready outputs during reset. Do
+    not bulk-clear operand memories or accumulators. A new job reloads every required
+    input and INIT clears its first tile before use. Reset abandons a pending output
+    without done.
+latency_model: Let L=M*K+K*N+N, T=ceil(M/8)*ceil(N/8), and V_t=R_t*C_t. Exactly L
+  scalar input transfers prepare the job; no compute occurs during these loading cycles.
+  Each tile then takes 1 INIT cycle, K MAC cycles, and V_t accepted output cycles.
+  If a legal command is accepted at edge 0, all subsequent required input beats are
+  immediately available, and out_ready stays high, the final output is accepted at
+  edge L+T*(K+1)+M*N. First output is accepted at edge L+K+2. Each idle LOAD cycle
+  and each stalled EMIT cycle adds one cycle. All sixteen operands for each MAC step
+  come from sixteen independent bank reads; no operand-staging cycles are hidden.
+  done is high during the cycle immediately following final output acceptance. A new
+  command can first transfer on the following edge.
+architectural_invariants:
+- Array size is always 8x8; it is not a configurable mode or parameter.
+- Only one command is in flight; accepted dimensions remain fixed until completion
+  or reset.
+- Each job receives A, B, and bias exactly once, in full, with no host replay.
+- Compute begins only after all L operand beats are accepted.
+- A tile is cleared once, receives exactly K MAC updates, and is completely emitted
+  before reuse.
+- Each legal output coordinate is emitted exactly once; padded coordinates neither
+  update useful state nor produce beats.
+- Output order is tile-major, not generally global row-major.
+- All full-job operands and the current tile remain live during any output stall.
+- No memory contents are consumed before the current job has written them, and no
+  accumulator is consumed before INIT.
+- Bias wrapping precedes signed ReLU comparison.
+open_assumptions:
+- INT8 means signed two's-complement; bias and outputs are signed INT32.
+- Overflow wraps modulo 2^32; there is no saturation, scaling, rounding, or output
+  requantization.
+- Default maximum dimensions are 64; independently parameterized maxima range from
+  1 to 256.
+- Full-job input buffering is selected to avoid retransmission and keep control regular.
+- An outer-product array is selected; a systolic topology was not required.
+- A scalar 32-bit operand/output ready-valid interface and a separate dimension command
+  channel are selected.
+- Tile-major output ordering, synchronous active-high reset, and invalid-command error
+  pulses are architectural choices.
+- Asynchronous-read banked storage and an unpipelined MAC feedback path are selected;
+  no numerical timing or throughput-frequency target is assumed.

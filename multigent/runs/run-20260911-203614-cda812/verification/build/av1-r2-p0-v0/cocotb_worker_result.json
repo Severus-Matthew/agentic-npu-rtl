@@ -1,0 +1,14 @@
+{
+  "stage": "cocotb_regression",
+  "status": "SIMULATION_FAILURE",
+  "failure_class": "UNKNOWN",
+  "tests": 2,
+  "failures": 2,
+  "seed": 12345,
+  "top_module": "mv_npu_top",
+  "test_modules": [
+    "test_mv_npu"
+  ],
+  "results_xml": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/verification/build/av1-r2-p0-v0/results.xml",
+  "worker_error": null
+}

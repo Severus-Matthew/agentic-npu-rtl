@@ -1,0 +1,196 @@
+protocol: Independent synchronous ready/valid channels with phase-controlled acceptance.
+clock: All transfers and state updates occur on rising clk edges.
+reset: Synchronous active-low rst_n.
+channels:
+- name: command
+  direction: input
+  purpose: Start one job and supply dimensions.
+  data_objects: []
+  metadata:
+  - M
+  - N
+  - K
+  framing: One transfer. cmd_data packs M at bits [M_W-1:0], N at [M_W+N_W-1:M_W],
+    and K at [CMD_W-1:M_W+N_W], where M_W=max(1,$clog2(MAX_M+1)), N_W=max(1,$clog2(MAX_N+1)),
+    K_W=max(1,$clog2(MAX_K+1)), CMD_W=M_W+N_W+K_W.
+  ordering: Accepted only while idle.
+  backpressure: cmd_ready is low while any job or status is active.
+- name: activation_input
+  direction: input
+  purpose: Load A.
+  data_objects:
+  - activations
+  metadata: []
+  framing: 'Exactly ceil(M*K/8) transfers. Transfer b carries row-major linear elements
+    8*b+l in byte lane l at a_data[8*l +: 8]. Out-of-range lanes of the final transfer
+    must be zero and are ignored.'
+  ordering: Immediately after the command and before weights.
+  backpressure: a_ready only during LOAD_A; payload must remain stable while stalled.
+- name: weight_input
+  direction: input
+  purpose: Load W.
+  data_objects:
+  - weights
+  metadata: []
+  framing: Exactly ceil(K*N/8) transfers. Transfer b carries row-major linear elements
+    8*b+l in byte lane l. Final out-of-range lanes must be zero and are ignored.
+  ordering: After all activation transfers and before bias.
+  backpressure: w_ready only during LOAD_W; payload must remain stable while stalled.
+- name: bias_input
+  direction: input
+  purpose: Load bias.
+  data_objects:
+  - bias
+  metadata: []
+  framing: Exactly ceil(N/2) transfers. Transfer b carries bias[2*b] in bits [31:0]
+    and bias[2*b+1] in bits [63:32]. The absent odd final lane must be zero and is
+    ignored.
+  ordering: After all weight transfers.
+  backpressure: bias_ready only during LOAD_BIAS; payload must remain stable while
+    stalled.
+- name: result_output
+  direction: output
+  purpose: Emit ReLU results.
+  data_objects:
+  - results
+  metadata: []
+  framing: Exactly ceil(M*N/2) transfers. Transfer b carries row-major result elements
+    2*b and 2*b+1 in lower and upper 32-bit lanes. The absent odd final lane is zero.
+  ordering: Global row-major order after all tiles finish.
+  backpressure: out_data and out_valid remain stable until out_ready&&out_valid.
+- name: status
+  direction: output
+  purpose: Report completion or rejected command.
+  data_objects: []
+  metadata:
+  - status code 0=successful completion, 1=illegal dimensions
+  framing: Exactly one transfer per accepted command; success follows final result
+    transfer, error follows invalid command without operand or result transfers.
+  ordering: Terminates the job.
+  backpressure: status_code and status_valid remain stable until status_ready&&status_valid.
+signals:
+- name: clk
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Clock.
+  reset_value: N/A
+- name: rst_n
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Synchronous active-low reset.
+  reset_value: N/A
+- name: cmd_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Command valid.
+  reset_value: N/A
+- name: cmd_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Command ready.
+  reset_value: '0'
+- name: cmd_data
+  direction: input
+  width: M_W+N_W+K_W
+  signed: false
+  semantic: Packed M, N, K command.
+  reset_value: N/A
+- name: a_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Activation payload valid.
+  reset_value: N/A
+- name: a_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Activation payload ready.
+  reset_value: '0'
+- name: a_data
+  direction: input
+  width: '64'
+  signed: false
+  semantic: Eight packed INT8 activation lanes.
+  reset_value: N/A
+- name: w_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Weight payload valid.
+  reset_value: N/A
+- name: w_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Weight payload ready.
+  reset_value: '0'
+- name: w_data
+  direction: input
+  width: '64'
+  signed: false
+  semantic: Eight packed INT8 weight lanes.
+  reset_value: N/A
+- name: bias_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Bias payload valid.
+  reset_value: N/A
+- name: bias_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Bias payload ready.
+  reset_value: '0'
+- name: bias_data
+  direction: input
+  width: '64'
+  signed: false
+  semantic: Two packed INT32 bias lanes.
+  reset_value: N/A
+- name: out_valid
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Result payload valid.
+  reset_value: '0'
+- name: out_ready
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Result payload ready.
+  reset_value: N/A
+- name: out_data
+  direction: output
+  width: '64'
+  signed: false
+  semantic: Two packed INT32 result lanes.
+  reset_value: '0'
+- name: status_valid
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Status valid.
+  reset_value: '0'
+- name: status_ready
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Status ready.
+  reset_value: N/A
+- name: status_code
+  direction: output
+  width: '2'
+  signed: false
+  semantic: 0 success; 1 illegal dimensions; other values reserved and never generated.
+  reset_value: '0'
+global_handshake_rules:
+  transfer_condition: A channel transfer occurs only when its ready and valid are
+    both 1 on a rising clock edge.
+  stall_behavior: A producer must hold valid and payload stable while valid=1 and
+    ready=0; no counter, write, or output index advances.

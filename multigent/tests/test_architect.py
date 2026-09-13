@@ -357,3 +357,58 @@ def test_semantic_validator_rejects_bound_default_outside_dimension_range() -> N
     result["architecture_contract"]["parameters"][0]["default_value"] = "32"
     with pytest.raises(AgentRuntimeError, match="lies outside"):
         ArchitectAgent._validate_contract_references(result)
+
+@pytest.mark.parametrize('revision', [False, True])
+def test_architect_semantic_failure_self_corrects_before_freezing(tmp_path, monkeypatch, revision):
+    import multigent.agents.architect as module
+    from multigent.orchestration.architect_node import _run_architect_revision
+    monkeypatch.setattr(module, 'WORKSPACE_ROOT', tmp_path)
+    good = FakeArchitectAgent().run_structured()
+    bad = copy.deepcopy(good)
+    bad['architecture_contract']['data_objects'][0]['data_type'] = 'undeclared_type'
+    calls = []
+    agent = ArchitectAgent()
+    def generate(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return bad
+        assert not (tmp_path/'architecture'/'architect_result.json').exists()
+        assert 'undeclared_type' in kwargs['task']
+        assert 'previous_candidate' in kwargs['task']
+        return good
+    monkeypatch.setattr(agent, 'run_structured', generate)
+    if revision:
+        result = _run_architect_revision(agent, user_request='Build a FIR filter',
+            feedback={'issue':'Missing control ports'}, output_dir=tmp_path/'architecture',run_id='revision')
+        assert 'Missing control ports' in calls[1]['task']
+    else:
+        result = agent.run('Build a FIR filter',output_dir=tmp_path/'architecture')
+    assert result == good and len(calls) == 2
+    assert len({c['log_name'] for c in calls}) == 2
+    assert (tmp_path/'architecture'/'architect_result.json').exists()
+
+
+def test_architect_semantic_retries_exhaust_without_overwriting_frozen_files(tmp_path, monkeypatch):
+    import multigent.agents.architect as module
+    monkeypatch.setattr(module, 'WORKSPACE_ROOT', tmp_path)
+    target=tmp_path/'architecture';target.mkdir()
+    frozen=target/'architecture_contract.yaml';frozen.write_text('existing contract')
+    bad=FakeArchitectAgent().run_structured();bad['conflicts']=['inconsistent READY']
+    agent=ArchitectAgent();calls=[]
+    def generate(**kwargs):calls.append(kwargs);return bad
+    monkeypatch.setattr(agent,'run_structured',generate)
+    with pytest.raises(AgentRuntimeError,match='exhausted after 3 candidates'):
+        agent.run('Build a filter',output_dir=target)
+    assert len(calls)==3
+    assert frozen.read_text()=='existing contract'
+
+
+def test_architect_transport_error_is_not_semantically_retried(monkeypatch):
+    agent=ArchitectAgent();calls=[]
+    def generate(**kwargs):
+        calls.append(kwargs)
+        raise AgentRuntimeError('API authentication failed')
+    monkeypatch.setattr(agent,'run_structured',generate)
+    with pytest.raises(AgentRuntimeError,match='authentication'):
+        agent.generate_validated_contract(task='request',run_id='test')
+    assert len(calls)==1

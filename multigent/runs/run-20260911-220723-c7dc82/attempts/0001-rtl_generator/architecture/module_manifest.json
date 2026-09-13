@@ -1,0 +1,582 @@
+{
+  "top": "mv_npu_top",
+  "modules": [
+    {
+      "name": "mv_npu_top",
+      "responsibility": "Top integration and external interface",
+      "dependencies": [
+        "ctrl_fsm",
+        "input_router",
+        "x_buffer_mem",
+        "mac16_core",
+        "postproc_unit",
+        "output_if"
+      ],
+      "parameters": [
+        "LANES",
+        "MAX_M",
+        "MAX_N"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "sync active-low reset"
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "input valid"
+        },
+        {
+          "name": "in_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "input ready"
+        },
+        {
+          "name": "in_data",
+          "direction": "input",
+          "width": "32",
+          "signed": false,
+          "semantics": "input payload"
+        },
+        {
+          "name": "in_type",
+          "direction": "input",
+          "width": "2",
+          "signed": false,
+          "semantics": "section type"
+        },
+        {
+          "name": "in_last",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "section end"
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "output valid"
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "output ready"
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "result data"
+        },
+        {
+          "name": "out_last",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "last result"
+        },
+        {
+          "name": "busy",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "engine busy"
+        },
+        {
+          "name": "status_err",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "error status"
+        }
+      ]
+    },
+    {
+      "name": "ctrl_fsm",
+      "responsibility": "Job/state control and counters",
+      "dependencies": [],
+      "parameters": [
+        "LANES",
+        "MAX_M",
+        "MAX_N"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "cfg_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "decoded cfg valid pulse"
+        },
+        {
+          "name": "cfg_m",
+          "direction": "input",
+          "width": "$clog2(MAX_M+1)",
+          "signed": false,
+          "semantics": "runtime M"
+        },
+        {
+          "name": "cfg_n",
+          "direction": "input",
+          "width": "$clog2(MAX_N+1)",
+          "signed": false,
+          "semantics": "runtime N"
+        },
+        {
+          "name": "cfg_bias_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "bias enable"
+        },
+        {
+          "name": "cfg_relu_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "relu enable"
+        },
+        {
+          "name": "in_beat_accepted",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "input transfer pulse"
+        },
+        {
+          "name": "out_beat_accepted",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "output transfer pulse"
+        },
+        {
+          "name": "compute_step_pulse",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "advance MAC chunk"
+        },
+        {
+          "name": "row_finalize_pulse",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "finalize current row"
+        },
+        {
+          "name": "job_done_pulse",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "job complete"
+        },
+        {
+          "name": "busy",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "busy status"
+        },
+        {
+          "name": "status_err",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "error status"
+        }
+      ]
+    },
+    {
+      "name": "input_router",
+      "responsibility": "Route input beats to cfg/x/a/bias sinks",
+      "dependencies": [],
+      "parameters": [
+        "MAX_N"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "input valid"
+        },
+        {
+          "name": "in_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "input ready"
+        },
+        {
+          "name": "in_data",
+          "direction": "input",
+          "width": "32",
+          "signed": false,
+          "semantics": "input payload"
+        },
+        {
+          "name": "in_type",
+          "direction": "input",
+          "width": "2",
+          "signed": false,
+          "semantics": "section type"
+        },
+        {
+          "name": "cfg_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "cfg pulse"
+        },
+        {
+          "name": "cfg_word",
+          "direction": "output",
+          "width": "64",
+          "signed": false,
+          "semantics": "assembled cfg over 1 beat using in_data plus zeros in upper bits"
+        },
+        {
+          "name": "x_we",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "x write enable"
+        },
+        {
+          "name": "x_waddr",
+          "direction": "output",
+          "width": "$clog2(MAX_N)",
+          "signed": false,
+          "semantics": "x write addr"
+        },
+        {
+          "name": "x_wdata",
+          "direction": "output",
+          "width": "8",
+          "signed": true,
+          "semantics": "x data"
+        },
+        {
+          "name": "a_lane_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "A lane data valid"
+        },
+        {
+          "name": "a_lane_data",
+          "direction": "output",
+          "width": "LANES*8",
+          "signed": false,
+          "semantics": "packed lane A bytes; one lane used per beat in this simple schedule"
+        },
+        {
+          "name": "bias_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "bias data valid"
+        },
+        {
+          "name": "bias_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "bias int32"
+        }
+      ]
+    },
+    {
+      "name": "x_buffer_mem",
+      "responsibility": "Store/replay x vector",
+      "dependencies": [],
+      "parameters": [
+        "MAX_N"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "we",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "write enable"
+        },
+        {
+          "name": "waddr",
+          "direction": "input",
+          "width": "$clog2(MAX_N)",
+          "signed": false,
+          "semantics": "write address"
+        },
+        {
+          "name": "wdata",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "write data"
+        },
+        {
+          "name": "raddr",
+          "direction": "input",
+          "width": "$clog2(MAX_N)",
+          "signed": false,
+          "semantics": "read address"
+        },
+        {
+          "name": "rdata",
+          "direction": "output",
+          "width": "8",
+          "signed": true,
+          "semantics": "read data, 1-cycle latency"
+        }
+      ]
+    },
+    {
+      "name": "mac16_core",
+      "responsibility": "INT8xINT8 multiply and INT32 accumulate",
+      "dependencies": [
+        "x_buffer_mem"
+      ],
+      "parameters": [
+        "LANES",
+        "MAX_N"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "start_row",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clear accumulator for new row"
+        },
+        {
+          "name": "step_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "perform one MAC step"
+        },
+        {
+          "name": "a_val",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "A element for current column"
+        },
+        {
+          "name": "x_val",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "X element for current column"
+        },
+        {
+          "name": "acc_out",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "current accumulator"
+        }
+      ]
+    },
+    {
+      "name": "postproc_unit",
+      "responsibility": "Bias add and ReLU select",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": false,
+      "ports": [
+        {
+          "name": "acc_in",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "acc input"
+        },
+        {
+          "name": "bias_in",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "bias input"
+        },
+        {
+          "name": "bias_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "enable bias"
+        },
+        {
+          "name": "relu_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "enable relu"
+        },
+        {
+          "name": "y_out",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "processed output"
+        }
+      ]
+    },
+    {
+      "name": "output_if",
+      "responsibility": "Output holding register and ready/valid handling",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "new result valid"
+        },
+        {
+          "name": "in_data",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "result data in"
+        },
+        {
+          "name": "in_last",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "last flag in"
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "stream valid"
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "stream ready"
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "stream data"
+        },
+        {
+          "name": "out_last",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "stream last"
+        },
+        {
+          "name": "out_accept_pulse",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "pulse on out_valid&&out_ready"
+        }
+      ]
+    }
+  ]
+}

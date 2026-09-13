@@ -1,0 +1,72 @@
+functional:
+- Compare every result bit-exactly against signed INT8 multiplication, per-addition
+  modulo-2^32 accumulation, optional wrapping INT32 bias, and optional signed ReLU
+  in that order.
+- Exercise all four bias/ReLU flag combinations, INT8 endpoints -128 and 127, signed
+  INT32 bias endpoints, zero, negative outputs, and bias overflow across the sign
+  boundary.
+- Test legal R and C at 1 and their configured maxima, plus row counts 15,16,17,31,32,33
+  where legal. No padding operands or padded results are permitted.
+- For each legal job, observe exactly C+b*R+C*R operand handshakes in the specified
+  section order, R ascending-row result handshakes, one final-row out_last, and one
+  successful completion after the last result.
+- For invalid dimensions, observe zero operand/result handshakes attributable to the
+  rejected job and one error completion; a subsequent legal command must execute correctly.
+- Under continuously available operands and ready sinks, measure completion against
+  the exact frozen latency formula, including h staging cycles per column, initialization,
+  finalization, and completion cycles.
+verification:
+- Run at least 100 randomized complete transactions using recorded seeds, randomized
+  dimensions and values, all feature combinations, source gaps, result stalls, and
+  completion stalls. Configure regression wall timeout to at least 120 seconds.
+- Assert ready/valid payload stability, no state advancement without required handshakes,
+  no duplicate or missing results, no command acceptance while busy, and no MAC before
+  all active staging lanes are populated.
+- Use distinct row/column-dependent operand patterns to detect transpose, replay,
+  tile-order, lane-order, and vector-retention errors.
+- Randomize ignored INT8 upper payload bits and confirm they do not affect arithmetic.
+  Exercise arbitrary full-width bias patterns.
+- Reset in IDLE, partial vector loading, partial bias loading, partial matrix loading,
+  MAC, FINALIZE, stalled EMIT, and stalled DONE. Verify cancellation, zero reset outputs,
+  and correct execution after reset with no stale data leakage.
+- Stall each source and sink for multiple cycles, including across tile boundaries
+  and on the final result. Verify completion remains held and the next command is
+  not accepted on the completion handshake edge.
+- Verify default parameters and nondefault builds including MAX_ROWS=16/MAX_COLS=1
+  and a non-power-of-two configuration. Check maximum permitted parameter elaboration
+  and guarded index widths.
+- Exercise invalid commands with zero and above-bound dimensions wherever representable.
+  Protocol-violating stimulus must be diagnosed by testbench assertions; reset must
+  restore a usable interface.
+- Use scoreboards with bounded liveness expectations only when the environment eventually
+  supplies operands and accepts outputs; the hardware has no timeout.
+rtl:
+- Generate synthesizable SystemVerilog only, with no real, shortreal, delays, force/release,
+  classes, inferred latches, or multiple procedural drivers.
+- Elaborate with concrete legal defaults and reject illegal parameter values. Keep
+  all index widths at least one bit and widen dimension/index arithmetic before additions
+  or comparisons.
+- Provide exactly sixteen logical signed 8x8 MAC lanes with INT32 accumulator registers
+  and explicit signed extension and wrapping behavior.
+- Implement the declared asynchronous vector read or equivalent combinational register
+  selection without inserting an undeclared memory-read cycle.
+- No bulk array reset is required; prove every active operand or accumulator is initialized
+  before use.
+- Top-level ports, signal signedness, reset behavior, transfer mapping, state schedule,
+  and latency must match the frozen contracts.
+fpga_handoff:
+- Vivado is the mandatory synthesis provider under the intake policy; synthesis requires
+  a passing RTL verification regression.
+- Supply reproducible batch scripts, exact Vivado version, top name, source ordering,
+  parameter overrides, FPGA part, clock constraints, and recorded invocation. Part
+  and target period must be explicit handoff inputs, not fabricated architectural
+  requirements.
+- Validate generated synthesis results against multigent/schemas/synthesis_result.schema.json
+  and retain deterministic tool logs and reports.
+- Do not report estimated or inferred PPA metrics. Populate only metrics supported
+  by the applicable deterministic report; distinguish synthesis results from implemented
+  timing results.
+- Review synthesis diagnostics for latches, unresolved modules, unsupported constructs,
+  and memory-inference changes that would violate the frozen read latency.
+- No compiler, simulator, synthesis, timing, power, or utilization result is claimed
+  by this architecture deliverable.

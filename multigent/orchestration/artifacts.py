@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 from multigent.intake.request_builder import WORKSPACE_ROOT, build_verification_context
 from multigent.tools.vivado import digest, write_json
+from .events import emit
 
 
 def hashes(root):
@@ -20,6 +21,7 @@ def inputs(state):
 
 def guarded(name, node):
     def run(state):
+        emit(WORKSPACE_ROOT, name, 'started')
         before = inputs(state)
         sequence = len(state.get('history',[]))
         snapshot = WORKSPACE_ROOT/'attempts'/f'{sequence:04d}-{name}'
@@ -62,6 +64,8 @@ def guarded(name, node):
                     'errors':state.get('errors',[])+update.get('errors',[])}
         write_json(WORKSPACE_ROOT/'state'/'latest.json',combined)
         write_json(snapshot/'result.json',update)
+        emit(WORKSPACE_ROOT, name, 'failed' if update.get('orchestration_error') else 'finished',
+             status=update.get('status'), history=update.get('history', []))
         return update
     return run
 
@@ -81,6 +85,7 @@ def verification_repair_node(state):
 
 
 def final_report_node(state):
+    emit(WORKSPACE_ROOT, 'final_report', 'started')
     root = WORKSPACE_ROOT/'reports'
     root.mkdir(parents=True,exist_ok=True)
     report = dict(state)
@@ -109,6 +114,7 @@ def final_report_node(state):
     lines.extend(state.get('errors',[]) or ['None'])
     lines += ['', '## Limitations', *report['limitations']]
     (root/'final.md').write_text('\n'.join(lines)+'\n')
+    emit(WORKSPACE_ROOT, 'final_report', 'finished', status=state.get('status'))
     return {'final_report':str(root/'final.json')}
 
 

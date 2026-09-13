@@ -1,0 +1,23 @@
+functional:
+- For any legal M,K,N, output Y equals ReLU(A*W + bias) with exact signed integer
+  math and INT32 wrap on overflow.
+- Tiling across dimensions larger than 8 is functionally equivalent to untiled reference.
+- Boundary tiles (M or N not multiple of 8) emit only legal indices; masked lanes
+  do not affect results.
+verification:
+- At least 100 randomized legal transactions varying M,K,N including boundary values
+  1,8,9,MAX.
+- Ready/valid backpressure tests on all input/output channels with payload stability
+  checks.
+- Reset tests verify deterministic state recovery from IDLE and from mid-operation.
+- Error tests verify illegal cfg (0 or >MAX dimension) sets error and blocks progress
+  until reset.
+rtl:
+- SystemVerilog synthesizable subset only; no forbidden constructs from project constraints.
+- No combinational path requiring protocol violation; transfer only on ready&&valid.
+- Module interfaces and widths must match manifest exactly.
+fpga_handoff:
+- Vivado synthesis results accepted only from deterministic tool report conforming
+  to required schema.
+- No estimated/fabricated PPA metrics permitted.
+- RTL must pass verification suite before synthesis handoff.

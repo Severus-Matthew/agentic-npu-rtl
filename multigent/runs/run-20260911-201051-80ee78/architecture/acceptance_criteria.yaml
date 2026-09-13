@@ -1,0 +1,84 @@
+functional:
+- For every accepted legal job, compare exactly M*N accepted outputs against an independent
+  integer model of increasing-k signed INT8 GEMM, wrap32 accumulation, wrap32 column-bias
+  addition, and signed ReLU.
+- Exercise -128, -1, 0, 1, and 127 input values; INT32 bias extrema; zero, positive,
+  and negative preactivations; and bias-add overflow in both directions. Compare exact
+  32-bit results without tolerance.
+- Verify A and W orientation, runtime strides, and column-wise bias broadcast using
+  asymmetric matrices with coordinate-distinct data.
+- Verify exactly M*K A, K*N W, and N B handshakes in the declared section order, and
+  no host replay. Randomize ignored upper 24 bits of A/W transfers and confirm identical
+  arithmetic.
+- Verify tile-major/local-row-major output against the explicit coordinate traversal,
+  including cases where tile-major differs from global row-major.
+- Cover dimensions 1, 7, 8, 9, and each default maximum, plus mixed rectangular shapes
+  and partial tiles on either axis. K need not be divisible by eight.
+- Verify exactly K MAC updates per tile, eight paired request/capture sequences per
+  MAC, independent zero masking of A and W lanes, and no invalid-coordinate output.
+- With no stalls, measure final handshake latency as L+ceil(M/8)*ceil(N/8)*(1+17*K)+3*M*N
+  intervals after command acceptance. Verify the stated additive delay for input gaps
+  and output stalls.
+verification:
+- Run at least 100 completed randomized legal jobs with reproducible recorded seeds,
+  randomized operands/biases, input-valid gaps, and output-ready stalls. Include back-to-back
+  jobs with changing dimensions.
+- Configure the regression wall timeout to at least 120 seconds. Treat timeout, simulation
+  failure, unknown valid payloads, assertion failure, or output mismatch as regression
+  failure.
+- Assert output valid/data/last stability during stalls; accepted input counters advance
+  only on handshakes; no memory writes occur without an input handshake; and no array
+  work or memory reads occur during EMIT stalls.
+- Verify out_last appears on exactly the final accepted result and remains stable
+  when that result is stalled. done must pulse once only after that acceptance, with
+  busy dropping and cmd_ready becoming available.
+- Test reset in IDLE, every load section, GATHER_REQ, GATHER_CAPTURE, MAC, BIAS_REQ,
+  FINALIZE, and stalled EMIT, including a stalled final result. No aborted-job output
+  or done may reappear after reset; a newly loaded job must complete correctly without
+  RAM clearing.
+- Test each zero command dimension and every representable above-bound dimension class.
+  Confirm a one-cycle error pulse, no busy assertion, no done, no data acceptance,
+  and successful acceptance/completion of the next legal command.
+- Hold a pending command stable while busy and verify it is not accepted early. Hold
+  input valid while input readiness is low and verify no unintended memory write or
+  counter advance.
+- Elaborate and test nondefault configurations including bounds of 1, non-powers-of-two,
+  8, 9, and configurations above 64. Check zero-width avoidance, parameter-derived
+  memory capacities, legal maximum addresses, and partial tiles.
+- Check that each synchronous memory request is consumed exactly at its following
+  capture/finalize edge and that masked lanes never consume stale read data.
+rtl:
+- Generate synthesizable SystemVerilog only, with the frozen top module, complete
+  matching ports, declared parameters, and fixed 8x8 compute array.
+- Do not use real, shortreal, delay statements, force/release, classes, inferred latches,
+  multiple drivers, generated clocks, or simulation-only functionality in synthesizable
+  paths.
+- Use explicit signed casts/extensions for INT8 products and explicit low-32-bit wrapping
+  before signed ReLU. Avoid unsigned promotion and unsized-expression dependence.
+- Use legal parameter-derived widths at every permitted parameter value and sufficiently
+  wide unsigned address/count intermediates. Reject illegal parameter configurations
+  at elaboration.
+- Implement three independent synchronous input memories with the contracted read
+  latency and nonoverlapping read/write phases; no dependence on unspecified read-during-write
+  behavior.
+- Keep 64 independently updated accumulators and eight operand registers per input
+  bank. Do not serialize the mandated array into fewer arithmetic lanes.
+- Reset control and output protocol state, not bulk RAM contents. Verify every unreset
+  datapath value is overwritten or cleared before any valid use.
+fpga_handoff:
+- Use the mandatory project provider Vivado and synthesize only the exact RTL revision
+  that passed the complete required verification regression.
+- Require an explicitly supplied FPGA part and clock/I/O constraints in a version-controlled,
+  noninteractive build configuration; do not silently choose a part or infer a frequency
+  target.
+- Record tool version, source and constraint hashes, parameter values, target part,
+  invocation scripts, seeds/settings where applicable, process exit status, and complete
+  logs.
+- Archive deterministic synthesis, utilization, timing, and design-rule reports. Identify
+  synthesis versus implemented timing explicitly; fail handoff on missing clocks,
+  unconstrained relevant paths, or unresolved errors.
+- Populate multigent/schemas/synthesis_result.schema.json from deterministic Vivado
+  reports only. Do not estimate or fabricate timing, area, power, frequency, or utilization;
+  report unavailable metrics as unsupported by evidence.
+- Report timing pass/fail against the supplied constraints. This contract makes no
+  PPA guarantee and asserts no tool execution or measured result.

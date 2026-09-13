@@ -1,0 +1,11 @@
+{
+  "provider": "vivado",
+  "status": "TOOL_UNAVAILABLE",
+  "metrics": null,
+  "manifest_sha256": "1081fd0e1bb867b6b66ab2117e1d923086d9cbb343640225b0b90ec19ce3e9c5",
+  "bundle": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-205759-2ecda0/synthesis/av1-r0-p0-v0-attempt4",
+  "return_code": null,
+  "reports": {},
+  "warnings": [],
+  "error": "vivado not found; prepared bundle can run on a compatible host"
+}

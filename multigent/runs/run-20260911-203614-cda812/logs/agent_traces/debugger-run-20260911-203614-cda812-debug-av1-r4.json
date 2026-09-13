@@ -1,0 +1,34 @@
+{
+  "agent": "debugger",
+  "prompt_sha256": "2e326452bb2712f520e7e87ad7db9f8d63c2a9ede678e493507242822643be07",
+  "skill_sha256": "c0d0670a8a7da96acc8d0cb33c2f50a27e9d172049696aa9f9ace6412229236c",
+  "api_mode": "responses",
+  "model_requested": "gpt-5.3-codex",
+  "schema": "/u/mjha1/agentic-npu-rtl/multigent/schemas/debugger_output.schema.json",
+  "verbosity": "low",
+  "attempts": [
+    {
+      "attempt": 1,
+      "response_id": "resp_0fcd658bb375aef3016aa46727ea6087d1ad4dbe4ae064ffa6",
+      "model_returned": "gpt-5.3-codex",
+      "status": "completed",
+      "incomplete_details": null,
+      "usage": {
+        "input_tokens": 23608,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 915,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 24523
+      },
+      "output_chars": 4221,
+      "output_text": "{\"status\":\"REPAIR_PLAN_READY\",\"summary\":\"Primary failure is functional/protocol: directed test shows first output mismatch ([3,-52] vs [3,-55]); randomized test later stalls on mat_ready due to row-hold never clearing when bias is disabled. Root cause is top-level postproc handshake integration in mv_npu_top incorrectly coupling row-result release to out_ready path and bias_valid gating.\",\"diagnosis\":{\"failure_class\":\"UNKNOWN\",\"root_cause\":\"In mv_npu_top/mv_postproc integration, completed row results are presented with pp_in_valid from hold_row_valid, but mv_postproc only consumes when (!bias_en || bias_valid). For bias_en=0, acceptance can still be blocked because in_ready depends on out_valid/out_ready; if out_valid is held and out_ready toggles low, hold_row_valid may remain asserted, which directly deasserts mat_ready (gated by !hold_row_valid), causing matrix ingress timeout. This control coupling also perturbs row handoff timing and leads to arithmetic mismatch in directed case.\",\"confidence\":0.86,\"first_divergence\":{\"cycle\":null,\"signal_or_output\":\"out_data (directed test)\",\"expected\":\"[3, -55]\",\"observed\":\"[3, -52]\"},\"evidence\":[{\"source\":\"cocotb test_directed_basic\",\"observation\":\"Assertion failure at 34ns: got [3, -52] vs expected [3, -55].\",\"relevance\":\"Earliest authoritative functional divergence before timeout symptoms.\"},{\"source\":\"cocotb test_randomized_100_jobs\",\"observation\":\"SimTimeoutError timeout waiting mat_ready during matrix send.\",\"relevance\":\"Confirms progress failure under runtime backpressure/handshake sequences.\"},{\"source\":\"rtl/mv_npu_top.sv\",\"observation\":\"mat_ready is gated by !hold_row_valid; hold_row_valid is set on last chunk and cleared only when pp_in_ready.\",\"relevance\":\"Direct mechanism for ingress stall when postproc acceptance is delayed.\"},{\"source\":\"rtl/mv_postproc.sv\",\"observation\":\"Row consume/write requires in_valid && in_ready and conditional (!bias_en || bias_valid); in_ready depends on out_valid/out_ready.\",\"relevance\":\"Explains coupling of row acceptance to output backpressure and possible retention of hold_row_valid.\"}],\"affected_modules\":[\"mv_npu_top\"],\"alternative_hypotheses\":[\"Latch warnings in mv_mac16_core combinational temporaries could cause value corruption, but current first causal control divergence is localized to top-level row/postproc handshake.\",\"Width-truncation warnings may affect large-N addressing but do not explain immediate directed mismatch and mat_ready stall at small N.\"],\"architecture_change_required\":false,\"additional_evidence_requested\":[]},\"repair_plan\":{\"action\":\"PATCH\",\"affected_modules\":[\"mv_npu_top\"],\"protected_modules\":[\"mv_ctrl_fsm\",\"mv_vec_buffer\",\"mv_mac16_core\",\"mv_postproc\",\"mv_stream_if\"],\"protected_interfaces\":[\"clk\",\"rst_n\",\"cmd_valid\",\"cmd_ready\",\"cmd_data\",\"vec_valid\",\"vec_ready\",\"vec_data\",\"mat_valid\",\"mat_ready\",\"mat_data\",\"bias_valid\",\"bias_ready\",\"bias_data\",\"out_valid\",\"out_ready\",\"out_data\",\"status_busy\",\"status_error\"],\"recommended_change\":\"In mv_npu_top, refactor row-completion handoff to a strict one-entry decoupling buffer between compute and postproc: (1) capture final_row_sum only on accepted last matrix chunk, (2) drive pp_in_valid solely from buffered-valid state, (3) clear buffered-valid only on confirmed postproc input acceptance event, and (4) make mat_ready depend on compute phase/resource availability without circular dependence that can permanently block matrix ingress. Ensure bias-disabled rows are accepted without requiring bias_valid, and preserve transfer-on-ready&&valid semantics on all channels.\",\"do_not_change\":[\"Do not modify frozen tests/reference artifacts.\",\"Do not alter architecture behavior, arithmetic semantics, or lane packing conventions.\",\"Do not change top-level port list, widths, or ready/valid protocol definitions.\",\"Do not edit protected modules; localize fix to mv_npu_top integration/control logic.\"],\"expected_side_effects\":[\"Eliminates mat_ready timeout in randomized matrix ingress.\",\"Stabilizes row-to-postproc transfer timing under out_ready backpressure.\",\"May expose any remaining arithmetic-only defects after handshake repair; requires full rerun.\"],\"regression_required\":\"FULL\"},\"architecture_conflict\":null}",
+      "validated": true
+    }
+  ],
+  "successful_attempt": 1
+}

@@ -1,0 +1,68 @@
+functional:
+- For every legal job, compare every output bit against an independent integer model
+  implementing ordered signed products, wrap32 accumulation, optional wrap32 bias,
+  and ReLU after wrapping.
+- Exercise all four bias/ReLU combinations, INT8 values -128 and 127, zero operands,
+  negative outputs, and INT32 bias extremes including additions that cross both signed
+  limits.
+- Verify dimensions 1, each configured maximum, and row counts 15, 16, 17, 31, 32,
+  and 33 where legal. Verify single-column and multi-tile vector reuse cases.
+- Verify exactly COLS + bias_enable*ROWS + ceil(ROWS/16)*COLS input transfers, exactly
+  ROWS legal outputs, ascending global row order, and out_last only on the final result.
+- Randomize ignored payload bits and inactive last-tile matrix lanes; active results
+  must remain unchanged.
+- Verify invalid commands with zero dimensions and every representable above-bound
+  class produce exactly one zero/error/last response without accepting data, then
+  permit a subsequent legal command.
+verification:
+- Run at least 100 randomized completed legal jobs with logged seeds, varied dimensions,
+  signed data, all enable combinations, input gaps, command stalls, and output backpressure;
+  enforce exact integer equality.
+- Set the regression wall timeout to at least 120 seconds. Tests must also use finite
+  cycle watchdogs consistent with their injected stalls and the architectural latency
+  bound.
+- With no stalls, check final completion at edge COLS + ceil(ROWS/16)*COLS + bias_enable*ROWS
+  + ROWS relative to command edge zero, first-result latency, invalid-command edge-one
+  completion, and next-command availability.
+- Assert output payload/metadata stability while stalled, no state advance without
+  its enabling handshake, no simultaneous MAC clear/step, and exactly COLS steps per
+  tile.
+- Test reset in IDLE, VECTOR, BIAS, MAC, stalled EMIT, final-output completion, and
+  stalled ERROR. Confirm handshakes are suppressed, aborted outputs disappear, memories
+  need not be cleared, and the next job starts cleanly.
+- Test long stalls on the last output of a tile and job; verify accumulators are not
+  cleared early and completion occurs exactly once.
+- Test early held-valid data during nonready phases and reset-based recovery after
+  an intentionally malformed source transaction; malformed transactions have no required
+  pre-reset numerical result.
+- Build and test parameter sets (1,1), (17,19), and defaults, plus elaborate (65535,65535).
+  Check all derived widths, addresses, and row-boundary arithmetic remain legal.
+- Unit-test the MAC bank across INT32 wrap using repeated signed products, and independently
+  test finalizer wrap-before-ReLU ordering.
+rtl:
+- Deliver synthesizable SystemVerilog implementing the frozen top and complete child
+  port lists; no real, shortreal, delay statements, force/release, classes, inferred
+  latches, or multiple drivers.
+- Use explicit signed interpretation for each packed matrix byte and product extension;
+  do not rely on the signedness of an aggregate packed bus.
+- Preserve 16 parallel multiplier/accumulator paths and the declared asynchronous
+  vector-read behavior; any mapping must preserve the fixed cycle contract.
+- Use parameter-derived guarded widths and widened boundary arithmetic; reject illegal
+  compile-time parameter values.
+- Reset only required control state and accumulator registers; vector and bias memory
+  contents must not be read before required loading.
+- Lint, elaborate, and simulate the frozen manifest without unresolved modules or
+  port mismatches before synthesis handoff.
+fpga_handoff:
+- Use Vivado as required by project policy and only synthesize RTL that passed the
+  required verification regression.
+- Provide reproducible batch scripts with explicit top, source list and hashes, parameter
+  values, Vivado version, target part, and supplied clock/I/O constraints. Target
+  part and timing constraints are handoff inputs, not inferred performance claims.
+- Archive deterministic synthesis reports, logs, checkpoints, and any implementation/timing
+  reports actually generated. Report unconstrained paths and timing violations explicitly.
+- Populate synthesis results according to multigent/schemas/synthesis_result.schema.json
+  using deterministic tool-report values only; do not estimate or fabricate timing,
+  frequency, power, area, or utilization.
+- Record whether timing is synthesis-only or post-route and retain the exact constraints
+  and report provenance. No timing or PPA pass threshold is imposed by this intake.

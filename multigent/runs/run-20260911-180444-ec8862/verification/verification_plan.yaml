@@ -1,0 +1,34 @@
+top_module: fc_accelerator
+test_modules:
+- test_fc_accelerator
+test_categories:
+- reference-sanity
+- minimum-and-maximum-dimensions
+- tile-edges
+- signed-arithmetic
+- INT32-wrap
+- packing-and-counts
+- randomized-exact-match
+- source-stalls
+- result-and-status-backpressure
+- illegal-dimensions
+- completion
+- reset-every-phase
+randomized_test_count: 100
+seed: 1511506142
+timeout_seconds: 180
+regression_groups:
+  smoke:
+  - test_fc_accelerator
+  targeted:
+  - test_fc_accelerator
+  full:
+  - test_fc_accelerator
+pass_criteria: 'All bounded cocotb assertions pass: exact packed results and transfer
+  counts, legal ready/valid behavior, status semantics, illegal-command rejection,
+  and reset recovery.'
+protocol_assumptions:
+- Default parameters MAX_M=MAX_N=MAX_K=64 produce 7-bit M, N, and K command fields.
+- Inputs are presented only in their prescribed phase and remain stable until handshake.
+- A synchronous low rst_n edge aborts any active job and returns the interface to
+  idle.

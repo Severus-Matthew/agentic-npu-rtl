@@ -1,0 +1,10 @@
+{
+  "status": "FAILED",
+  "history": [
+    {
+      "stage": "orchestrator",
+      "status": "FAILED",
+      "reason": "SEMANTIC_VALIDATION_FAILED"
+    }
+  ]
+}

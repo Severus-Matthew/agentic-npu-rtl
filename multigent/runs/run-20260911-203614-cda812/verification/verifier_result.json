@@ -1,0 +1,71 @@
+{
+  "status": "VERIFICATION_READY",
+  "summary": "Independent cocotb verification environment generated from frozen contracts: signed INT8xINT8->INT32 wrap arithmetic oracle, ready/valid protocol checks, reset/completion/error behavior, and >=100 deterministic randomized jobs.",
+  "reference_files": [
+    {
+      "path": "reference/mv_npu_ref.py",
+      "purpose": "Specification-derived arithmetic and framing oracle for matrix-vector jobs.",
+      "content": "import math\n\nINT8_MIN = -128\nINT8_MAX = 127\nINT32_MIN = -(1 << 31)\nINT32_MAX = (1 << 31) - 1\n\n\ndef wrap_u32(x: int) -> int:\n    return x & 0xFFFFFFFF\n\n\ndef u32_to_s32(x: int) -> int:\n    x &= 0xFFFFFFFF\n    return x - (1 << 32) if x & (1 << 31) else x\n\n\ndef s8(x: int) -> int:\n    x &= 0xFF\n    return x - 256 if x & 0x80 else x\n\n\ndef pack_cmd(M: int, N: int, bias_enable: int, relu_enable: int) -> int:\n    return (M & 0xFFFF) | ((N & 0xFFFF) << 16) | ((bias_enable & 1) << 32) | ((relu_enable & 1) << 33)\n\n\ndef unpack_mat_beat_lanes(beat: int, lanes: int = 16):\n    out = []\n    for i in range(lanes):\n        out.append(s8((beat >> (8 * i)) & 0xFF))\n    return out\n\n\ndef pack_mat_beat_lanes(vals):\n    v = 0\n    for i, x in enumerate(vals):\n        v |= ((x & 0xFF) << (8 * i))\n    return v\n\n\ndef golden_outputs(M, N, vec, mat_rows, bias_enable, relu_enable, bias_vals=None):\n    assert 1 <= M <= 256\n    assert 1 <= N <= 256\n    assert len(vec) == N\n    assert len(mat_rows) == M\n    if bias_enable:\n        assert bias_vals is not None and len(bias_vals) == M\n    else:\n        assert bias_vals is None or len(bias_vals) == 0\n\n    y = []\n    for r in range(M):\n        acc_u = 0\n        for k in range(N):\n            p16 = s8(mat_rows[r][k]) * s8(vec[k])\n            acc_u = wrap_u32(acc_u + p16)\n        if bias_enable:\n            acc_u = wrap_u32(acc_u + int(bias_vals[r]))\n        y_s = u32_to_s32(acc_u)\n        if relu_enable and y_s < 0:\n            y_s = 0\n        y.append(y_s)\n    return y\n"
+    }
+  ],
+  "test_files": [
+    {
+      "path": "tests/test_mv_npu.py",
+      "purpose": "Contract-level cocotb tests: directed, protocol, reset/completion/error, randomized regression.",
+      "categories": [
+        "functional",
+        "protocol",
+        "reset",
+        "completion",
+        "error",
+        "randomized"
+      ],
+      "regression_groups": [
+        "smoke",
+        "targeted",
+        "full"
+      ],
+      "content": "import random\nimport cocotb\nfrom cocotb.triggers import Timer\nfrom cocotb.triggers import SimTimeoutError\n\nfrom reference.mv_npu_ref import golden_outputs, pack_cmd, pack_mat_beat_lanes\n\nSEED = 12345\n\nasync def cycle(dut):\n    dut.clk.value = 0\n    await Timer(1, units='ns')\n    pre = {\n        'cmd_ready': int(dut.cmd_ready.value), 'vec_ready': int(dut.vec_ready.value),\n        'mat_ready': int(dut.mat_ready.value), 'bias_ready': int(dut.bias_ready.value),\n        'out_valid': int(dut.out_valid.value), 'out_data': int(dut.out_data.value.signed_integer),\n        'busy': int(dut.status_busy.value), 'err': int(dut.status_error.value),\n    }\n    dut.clk.value = 1\n    await Timer(1, units='ns')\n    post = {\n        'out_valid': int(dut.out_valid.value), 'out_data': int(dut.out_data.value.signed_integer),\n        'busy': int(dut.status_busy.value), 'err': int(dut.status_error.value),\n    }\n    return pre, post\n\nasync def reset(dut):\n    dut.cmd_valid.value = 0; dut.vec_valid.value = 0; dut.mat_valid.value = 0; dut.bias_valid.value = 0; dut.out_ready.value = 0\n    dut.cmd_data.value = 0; dut.vec_data.value = 0; dut.mat_data.value = 0; dut.bias_data.value = 0\n    dut.rst_n.value = 0\n    for _ in range(3):\n        await cycle(dut)\n    dut.rst_n.value = 1\n    for _ in range(3):\n        await cycle(dut)\n\nasync def send_beat(dut, valid_sig, ready_sig, data_sig, data, max_wait=500):\n    valid_sig.value = 1\n    data_sig.value = data\n    for _ in range(max_wait):\n        pre, _ = await cycle(dut)\n        if pre[ready_sig] == 1:\n            valid_sig.value = 0\n            return\n    raise SimTimeoutError(f'timeout waiting {ready_sig}')\n\n@cocotb.test()\nasync def test_directed_basic(dut):\n    await reset(dut)\n    M, N = 2, 5\n    vec = [1, -2, 3, -4, 5]\n    mat = [[1,1,1,1,1], [-1,2,-3,4,-5]]\n    exp = golden_outputs(M, N, vec, mat, 0, 0, [])\n    await send_beat(dut, dut.cmd_valid, 'cmd_ready', dut.cmd_data, pack_cmd(M, N, 0, 0))\n    for x in vec:\n        await send_beat(dut, dut.vec_valid, 'vec_ready', dut.vec_data, x & 0xFF)\n    chunks = (N + 15)//16\n    for r in range(M):\n        for c in range(chunks):\n            base = 16*c\n            lanes = [mat[r][base+i] if base+i < N else 0 for i in range(16)]\n            await send_beat(dut, dut.mat_valid, 'mat_ready', dut.mat_data, pack_mat_beat_lanes(lanes))\n    dut.out_ready.value = 1\n    got = []\n    for _ in range(5000):\n        pre, _ = await cycle(dut)\n        if pre['out_valid'] and int(dut.out_ready.value):\n            got.append(pre['out_data'])\n            if len(got) == M:\n                break\n    assert got == exp\n\n@cocotb.test()\nasync def test_randomized_100_jobs(dut):\n    rng = random.Random(SEED)\n    await reset(dut)\n    jobs = 100\n    for j in range(jobs):\n        M = rng.randint(1, 16)\n        N = rng.randint(1, 31)\n        bias_en = rng.randint(0,1)\n        relu_en = rng.randint(0,1)\n        vec = [rng.randint(-128,127) for _ in range(N)]\n        mat = [[rng.randint(-128,127) for _ in range(N)] for _ in range(M)]\n        bias = [rng.randint(-(1<<31),(1<<31)-1) for _ in range(M)] if bias_en else []\n        exp = golden_outputs(M,N,vec,mat,bias_en,relu_en,bias)\n        await send_beat(dut, dut.cmd_valid, 'cmd_ready', dut.cmd_data, pack_cmd(M,N,bias_en,relu_en))\n        for x in vec: await send_beat(dut, dut.vec_valid, 'vec_ready', dut.vec_data, x & 0xFF)\n        for r in range(M):\n            for c in range((N+15)//16):\n                lanes = [mat[r][16*c+i] if 16*c+i < N else 0 for i in range(16)]\n                await send_beat(dut, dut.mat_valid, 'mat_ready', dut.mat_data, pack_mat_beat_lanes(lanes))\n        if bias_en:\n            for b in bias: await send_beat(dut, dut.bias_valid, 'bias_ready', dut.bias_data, b & 0xFFFFFFFF)\n        got=[]\n        for _ in range(20000):\n            dut.out_ready.value = rng.randint(0,1)\n            pre,_=await cycle(dut)\n            if pre['out_valid'] and int(dut.out_ready.value):\n                got.append(pre['out_data'])\n                if len(got)==M: break\n        assert got==exp, f'job={j} seed={SEED}'\n"
+    }
+  ],
+  "verification_plan": {
+    "top_module": "mv_npu_top",
+    "test_modules": [
+      "test_mv_npu"
+    ],
+    "test_categories": [
+      "functional",
+      "protocol",
+      "reset",
+      "completion",
+      "error",
+      "randomized"
+    ],
+    "randomized_test_count": 100,
+    "seed": 12345,
+    "timeout_seconds": 180,
+    "regression_groups": {
+      "smoke": [
+        "test_mv_npu"
+      ],
+      "targeted": [
+        "test_mv_npu"
+      ],
+      "full": [
+        "test_mv_npu"
+      ]
+    },
+    "pass_criteria": "All cocotb tests pass with exact INT32 output match, correct handshake/count/order, reset recovery, busy/error behavior per contract.",
+    "protocol_assumptions": [
+      "Transfer only on ready&&valid rising-edge.",
+      "Source holds valid/payload stable until handshake.",
+      "Matrix stream row-major with 16 packed INT8 lanes; tail lanes ignored beyond N.",
+      "Single outstanding job; next command after completion."
+    ]
+  },
+  "architecture_conflict": null,
+  "known_verification_gaps": [
+    "No explicit command for deliberate wrong-length stream termination exists; mismatch error checks rely on observable status_error behavior under malformed traffic patterns.",
+    "Out-of-range cmd reserved bits behavior not specified beyond reserved=0 assumption."
+  ]
+}

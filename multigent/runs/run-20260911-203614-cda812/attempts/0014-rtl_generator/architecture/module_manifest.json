@@ -1,0 +1,541 @@
+{
+  "top": "mv_npu_top",
+  "modules": [
+    {
+      "name": "mv_npu_top",
+      "responsibility": "top integration and external interface",
+      "dependencies": [
+        "mv_ctrl_fsm",
+        "mv_vec_buffer",
+        "mv_mac16_core",
+        "mv_postproc",
+        "mv_stream_if"
+      ],
+      "parameters": [
+        "MAX_M",
+        "MAX_N",
+        "LANES",
+        "CMD_W",
+        "MAT_DATA_W",
+        "VEC_DATA_W",
+        "BIAS_DATA_W",
+        "OUT_DATA_W"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "sync active-low reset"
+        },
+        {
+          "name": "cmd_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "external cmd valid"
+        },
+        {
+          "name": "cmd_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "external cmd ready"
+        },
+        {
+          "name": "cmd_data",
+          "direction": "input",
+          "width": "CMD_W",
+          "signed": false,
+          "semantics": "external cmd payload"
+        },
+        {
+          "name": "vec_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "external vector valid"
+        },
+        {
+          "name": "vec_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "external vector ready"
+        },
+        {
+          "name": "vec_data",
+          "direction": "input",
+          "width": "VEC_DATA_W",
+          "signed": true,
+          "semantics": "external vector data"
+        },
+        {
+          "name": "mat_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "external matrix valid"
+        },
+        {
+          "name": "mat_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "external matrix ready"
+        },
+        {
+          "name": "mat_data",
+          "direction": "input",
+          "width": "MAT_DATA_W",
+          "signed": false,
+          "semantics": "external matrix payload"
+        },
+        {
+          "name": "bias_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "external bias valid"
+        },
+        {
+          "name": "bias_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "external bias ready"
+        },
+        {
+          "name": "bias_data",
+          "direction": "input",
+          "width": "BIAS_DATA_W",
+          "signed": true,
+          "semantics": "external bias payload"
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "external output valid"
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "external output ready"
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "OUT_DATA_W",
+          "signed": true,
+          "semantics": "external output payload"
+        },
+        {
+          "name": "status_busy",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "job busy"
+        },
+        {
+          "name": "status_error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "sticky error"
+        }
+      ]
+    },
+    {
+      "name": "mv_ctrl_fsm",
+      "responsibility": "job control, counters, ready generation, error checks",
+      "dependencies": [],
+      "parameters": [
+        "MAX_M",
+        "MAX_N",
+        "LANES"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "cmd_accept",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "pulse on cmd transfer"
+        },
+        {
+          "name": "cmd_data",
+          "direction": "input",
+          "width": "CMD_W",
+          "signed": false,
+          "semantics": "raw command"
+        },
+        {
+          "name": "vec_xfer",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "pulse on vector transfer"
+        },
+        {
+          "name": "mat_xfer",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "pulse on matrix transfer"
+        },
+        {
+          "name": "bias_xfer",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "pulse on bias transfer"
+        },
+        {
+          "name": "out_xfer",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "pulse on output transfer"
+        },
+        {
+          "name": "cfg_M",
+          "direction": "output",
+          "width": "16",
+          "signed": false,
+          "semantics": "latched M"
+        },
+        {
+          "name": "cfg_N",
+          "direction": "output",
+          "width": "16",
+          "signed": false,
+          "semantics": "latched N"
+        },
+        {
+          "name": "cfg_bias_en",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "bias enable"
+        },
+        {
+          "name": "cfg_relu_en",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "relu enable"
+        },
+        {
+          "name": "state_compute_en",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "compute active"
+        },
+        {
+          "name": "lane_valid_mask",
+          "direction": "output",
+          "width": "LANES",
+          "signed": false,
+          "semantics": "valid lanes for current chunk"
+        },
+        {
+          "name": "status_busy",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "busy flag"
+        },
+        {
+          "name": "status_error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "error flag"
+        }
+      ]
+    },
+    {
+      "name": "mv_vec_buffer",
+      "responsibility": "store vector and provide 16-lane read slices",
+      "dependencies": [],
+      "parameters": [
+        "MAX_N",
+        "LANES"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset valid metadata"
+        },
+        {
+          "name": "wr_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "write enable on vec transfer"
+        },
+        {
+          "name": "wr_addr",
+          "direction": "input",
+          "width": "$clog2(MAX_N)",
+          "signed": false,
+          "semantics": "vector write index"
+        },
+        {
+          "name": "wr_data",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "vector element"
+        },
+        {
+          "name": "rd_chunk_base",
+          "direction": "input",
+          "width": "$clog2(MAX_N)",
+          "signed": false,
+          "semantics": "base k index for lane0"
+        },
+        {
+          "name": "rd_data",
+          "direction": "output",
+          "width": "LANES*8",
+          "signed": true,
+          "semantics": "concatenated 16 INT8 lane values, combinational read"
+        }
+      ]
+    },
+    {
+      "name": "mv_mac16_core",
+      "responsibility": "16-lane multiply and reduction with row accumulator",
+      "dependencies": [],
+      "parameters": [
+        "LANES"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset accumulator"
+        },
+        {
+          "name": "compute_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "enable chunk compute"
+        },
+        {
+          "name": "new_row",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "pulse clears accumulator for new row"
+        },
+        {
+          "name": "lane_valid_mask",
+          "direction": "input",
+          "width": "LANES",
+          "signed": false,
+          "semantics": "mask invalid tail lanes"
+        },
+        {
+          "name": "mat_lane_data",
+          "direction": "input",
+          "width": "LANES*8",
+          "signed": true,
+          "semantics": "16 matrix INT8 values"
+        },
+        {
+          "name": "vec_lane_data",
+          "direction": "input",
+          "width": "LANES*8",
+          "signed": true,
+          "semantics": "16 vector INT8 values"
+        },
+        {
+          "name": "row_accum_out",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "current accumulated row sum"
+        },
+        {
+          "name": "row_done_pulse",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "pulse when final chunk accumulated"
+        }
+      ]
+    },
+    {
+      "name": "mv_postproc",
+      "responsibility": "bias add, relu, output hold under backpressure",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset output valid"
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "row result valid pulse"
+        },
+        {
+          "name": "in_data",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "row accumulator value"
+        },
+        {
+          "name": "bias_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "bias enable"
+        },
+        {
+          "name": "relu_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "relu enable"
+        },
+        {
+          "name": "bias_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "bias transfer pulse-qualified"
+        },
+        {
+          "name": "bias_data",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "bias value"
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "downstream ready"
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "output valid"
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "postprocessed output"
+        },
+        {
+          "name": "in_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "can accept next row result"
+        }
+      ]
+    },
+    {
+      "name": "mv_stream_if",
+      "responsibility": "channel handshake adaptation and packed-lane extraction",
+      "dependencies": [],
+      "parameters": [
+        "LANES",
+        "MAT_DATA_W"
+      ],
+      "stateful": false,
+      "ports": [
+        {
+          "name": "mat_data_in",
+          "direction": "input",
+          "width": "MAT_DATA_W",
+          "signed": false,
+          "semantics": "packed matrix beat"
+        },
+        {
+          "name": "mat_lanes_out",
+          "direction": "output",
+          "width": "LANES*8",
+          "signed": true,
+          "semantics": "unpacked signed lane vector"
+        }
+      ]
+    }
+  ]
+}

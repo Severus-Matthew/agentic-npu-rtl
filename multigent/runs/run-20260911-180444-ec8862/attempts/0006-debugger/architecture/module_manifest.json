@@ -1,0 +1,495 @@
+{
+  "top": "fc_accelerator",
+  "modules": [
+    {
+      "name": "fc_accelerator",
+      "responsibility": "Top-level wrapper exposing the frozen external interface.",
+      "dependencies": [
+        "fc_controller"
+      ],
+      "parameters": [
+        "ARRAY_ROWS",
+        "ARRAY_COLS",
+        "MAX_M",
+        "MAX_N",
+        "MAX_K"
+      ],
+      "stateful": false,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Clock."
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Synchronous active-low reset."
+        },
+        {
+          "name": "cmd_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Command valid."
+        },
+        {
+          "name": "cmd_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Command ready."
+        },
+        {
+          "name": "cmd_data",
+          "direction": "input",
+          "width": "M_W+N_W+K_W",
+          "signed": false,
+          "semantics": "Packed M,N,K."
+        },
+        {
+          "name": "a_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Activation valid."
+        },
+        {
+          "name": "a_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Activation ready."
+        },
+        {
+          "name": "a_data",
+          "direction": "input",
+          "width": "64",
+          "signed": false,
+          "semantics": "Eight activation lanes."
+        },
+        {
+          "name": "w_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Weight valid."
+        },
+        {
+          "name": "w_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Weight ready."
+        },
+        {
+          "name": "w_data",
+          "direction": "input",
+          "width": "64",
+          "signed": false,
+          "semantics": "Eight weight lanes."
+        },
+        {
+          "name": "bias_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Bias valid."
+        },
+        {
+          "name": "bias_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Bias ready."
+        },
+        {
+          "name": "bias_data",
+          "direction": "input",
+          "width": "64",
+          "signed": false,
+          "semantics": "Two bias lanes."
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Result valid."
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Result ready."
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "64",
+          "signed": false,
+          "semantics": "Two result lanes."
+        },
+        {
+          "name": "status_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Status valid."
+        },
+        {
+          "name": "status_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Status ready."
+        },
+        {
+          "name": "status_code",
+          "direction": "output",
+          "width": "2",
+          "signed": false,
+          "semantics": "Completion/error code."
+        }
+      ]
+    },
+    {
+      "name": "fc_controller",
+      "responsibility": "Decode command, enforce framing, sequence loads/tiles/output/status, and instantiate the datapath.",
+      "dependencies": [
+        "fc_datapath"
+      ],
+      "parameters": [
+        "ARRAY_ROWS",
+        "ARRAY_COLS",
+        "MAX_M",
+        "MAX_N",
+        "MAX_K"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Clock."
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Synchronous active-low reset."
+        },
+        {
+          "name": "cmd_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Command valid."
+        },
+        {
+          "name": "cmd_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "High only in IDLE."
+        },
+        {
+          "name": "cmd_data",
+          "direction": "input",
+          "width": "M_W+N_W+K_W",
+          "signed": false,
+          "semantics": "Packed M,N,K."
+        },
+        {
+          "name": "a_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Activation valid."
+        },
+        {
+          "name": "a_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "High only in LOAD_A."
+        },
+        {
+          "name": "a_data",
+          "direction": "input",
+          "width": "64",
+          "signed": false,
+          "semantics": "Eight activation lanes."
+        },
+        {
+          "name": "w_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Weight valid."
+        },
+        {
+          "name": "w_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "High only in LOAD_W."
+        },
+        {
+          "name": "w_data",
+          "direction": "input",
+          "width": "64",
+          "signed": false,
+          "semantics": "Eight weight lanes."
+        },
+        {
+          "name": "bias_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Bias valid."
+        },
+        {
+          "name": "bias_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "High only in LOAD_BIAS."
+        },
+        {
+          "name": "bias_data",
+          "direction": "input",
+          "width": "64",
+          "signed": false,
+          "semantics": "Two bias lanes."
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Held until result handshake."
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Result consumer readiness."
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "64",
+          "signed": false,
+          "semantics": "Datapath result pair; held stable during stall."
+        },
+        {
+          "name": "status_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Held until status handshake."
+        },
+        {
+          "name": "status_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Status consumer readiness."
+        },
+        {
+          "name": "status_code",
+          "direction": "output",
+          "width": "2",
+          "signed": false,
+          "semantics": "Registered completion/error code."
+        }
+      ]
+    },
+    {
+      "name": "fc_datapath",
+      "responsibility": "Store operands, perform 8x8 tiled arithmetic, finalize results, and provide paired result reads.",
+      "dependencies": [],
+      "parameters": [
+        "ARRAY_ROWS",
+        "ARRAY_COLS",
+        "MAX_M",
+        "MAX_N",
+        "MAX_K"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Clock."
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Clears accumulator validity; memories are not cleared."
+        },
+        {
+          "name": "cfg_m",
+          "direction": "input",
+          "width": "M_W",
+          "signed": false,
+          "semantics": "Registered runtime M."
+        },
+        {
+          "name": "cfg_n",
+          "direction": "input",
+          "width": "N_W",
+          "signed": false,
+          "semantics": "Registered runtime N."
+        },
+        {
+          "name": "cfg_k",
+          "direction": "input",
+          "width": "K_W",
+          "signed": false,
+          "semantics": "Registered runtime K."
+        },
+        {
+          "name": "a_we",
+          "direction": "input",
+          "width": "8",
+          "signed": false,
+          "semantics": "Per-lane synchronous activation write enables; each asserted lane writes on the rising edge."
+        },
+        {
+          "name": "a_wbase",
+          "direction": "input",
+          "width": "max(1,$clog2(MAX_M*MAX_K))",
+          "signed": false,
+          "semantics": "Linear row-major index for lane 0; lane l targets a_wbase+l."
+        },
+        {
+          "name": "a_wdata",
+          "direction": "input",
+          "width": "64",
+          "signed": false,
+          "semantics": "Eight activation write lanes."
+        },
+        {
+          "name": "w_we",
+          "direction": "input",
+          "width": "8",
+          "signed": false,
+          "semantics": "Per-lane synchronous weight write enables."
+        },
+        {
+          "name": "w_wbase",
+          "direction": "input",
+          "width": "max(1,$clog2(MAX_K*MAX_N))",
+          "signed": false,
+          "semantics": "Linear row-major index for lane 0."
+        },
+        {
+          "name": "w_wdata",
+          "direction": "input",
+          "width": "64",
+          "signed": false,
+          "semantics": "Eight weight write lanes."
+        },
+        {
+          "name": "bias_we",
+          "direction": "input",
+          "width": "2",
+          "signed": false,
+          "semantics": "Per-lane synchronous bias write enables."
+        },
+        {
+          "name": "bias_wbase",
+          "direction": "input",
+          "width": "max(1,$clog2(MAX_N))",
+          "signed": false,
+          "semantics": "Bias index for lower lane; upper lane targets bias_wbase+1."
+        },
+        {
+          "name": "bias_wdata",
+          "direction": "input",
+          "width": "64",
+          "signed": false,
+          "semantics": "Two bias write lanes."
+        },
+        {
+          "name": "tile_m_base",
+          "direction": "input",
+          "width": "M_W",
+          "signed": false,
+          "semantics": "Current tile row base, multiple of eight."
+        },
+        {
+          "name": "tile_n_base",
+          "direction": "input",
+          "width": "N_W",
+          "signed": false,
+          "semantics": "Current tile column base, multiple of eight."
+        },
+        {
+          "name": "tile_init",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "One-cycle pulse; clears all tile accumulators on the rising edge."
+        },
+        {
+          "name": "compute_step",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "One-cycle enable; on the rising edge updates all active accumulators using compute_k. Operand memories provide combinational reads before that edge."
+        },
+        {
+          "name": "compute_k",
+          "direction": "input",
+          "width": "K_W",
+          "signed": false,
+          "semantics": "Current reduction index."
+        },
+        {
+          "name": "finalize_we",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "One-cycle enable writing up to two valid ReLU results on the rising edge."
+        },
+        {
+          "name": "finalize_pair",
+          "direction": "input",
+          "width": "max(1,$clog2((ARRAY_ROWS*ARRAY_COLS+1)/2))",
+          "signed": false,
+          "semantics": "Tile-local pair index 0..31; maps to linear local elements 2*p and 2*p+1."
+        },
+        {
+          "name": "result_rpair",
+          "direction": "input",
+          "width": "max(1,$clog2((MAX_M*MAX_N+1)/2))",
+          "signed": false,
+          "semantics": "Global row-major result pair index; combinational-read address."
+        },
+        {
+          "name": "result_rdata",
+          "direction": "output",
+          "width": "64",
+          "signed": false,
+          "semantics": "Combinational pair read; lower-index element in bits 31:0, next in bits 63:32; nonexistent final lane is zero."
+        }
+      ]
+    }
+  ]
+}

@@ -71,11 +71,7 @@ class ArchitectAgent(APIAgent):
         intake_dir = WORKSPACE_ROOT / "specs" if output_dir is None else target.parent / "specs"
         persist_intake(intake, run_id=run_id, output_dir=intake_dir)
         task = self._build_architecture_task(intake)
-        result = self.run_structured(
-            task=task,
-            schema_path=ARCHITECT_OUTPUT_SCHEMA,
-            log_name=f"architect-{run_id}.json",
-        )
+        result = self.generate_validated_contract(task=task, run_id=run_id)
 
         if result["status"] == "SPEC_CONFLICT":
             conflict_path = target / "spec_conflict.json"
@@ -107,6 +103,47 @@ class ArchitectAgent(APIAgent):
         )
         self._write_json(target / "architect_result.json", result)
         return result
+
+    def generate_validated_contract(self, *, task: str, run_id: str) -> dict[str, Any]:
+        """Allow two semantic corrections inside the Architect graph stage.
+
+        Invalid candidates never become frozen files. API/transport errors retain
+        their existing policy; only successful but inconsistent contracts retry.
+        """
+        from multigent.orchestration.events import emit
+        correction = ""
+        for attempt in range(3):
+            result = self.run_structured(
+                task=task + correction,
+                schema_path=ARCHITECT_OUTPUT_SCHEMA,
+                log_name=f"architect-{run_id}-semantic-{attempt}.json",
+            )
+            if result["status"] == "SPEC_CONFLICT":
+                return result
+            try:
+                if result["conflicts"]:
+                    raise AgentRuntimeError("Architect returned READY while also reporting specification conflicts.")
+                self._validate_contract_references(result)
+                return result
+            except AgentRuntimeError as exc:
+                if attempt == 2:
+                    raise AgentRuntimeError(
+                        f"Architect semantic validation exhausted after 3 candidates: {exc}"
+                    ) from exc
+                emit(WORKSPACE_ROOT, 'architect', 'retrying',
+                     attempt=attempt + 1, error=str(exc))
+                correction = (
+                    "\n\nDETERMINISTIC CONTRACT VALIDATION FAILED\n"
+                    "Your previous candidate was rejected and has not been frozen. "
+                    "Correct the inconsistencies below and return the COMPLETE contract. "
+                    "Preserve the original request and coherent unaffected decisions. "
+                    "Do not merely suppress validation or change requirements to hide an error. "
+                    "For external/internal conflicts, decide ownership and update producers, "
+                    "consumers and interface channels consistently. If requirements genuinely "
+                    "conflict, return SPEC_CONFLICT instead of claiming READY.\n"
+                    + json.dumps({'validation_error': str(exc), 'previous_candidate': result})
+                )
+        raise AssertionError("Unreachable")
 
     @staticmethod
     def _validate_contract_references(result: Mapping[str, Any]) -> None:

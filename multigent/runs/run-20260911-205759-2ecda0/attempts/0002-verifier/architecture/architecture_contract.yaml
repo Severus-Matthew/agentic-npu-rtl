@@ -1,0 +1,411 @@
+design:
+  name: stream_matvec_int8
+  version: 1.0.0
+  description: Single-job matrix-vector accelerator with 16 row-parallel INT8 MAC
+    lanes, wrapping INT32 arithmetic, optional INT32 bias, and selectable ReLU.
+operations:
+- name: matvec
+  kind: matrix_vector_product
+  semantics: 'For each row r, initialize a signed INT32 accumulator to zero, then
+    process columns c in increasing order: acc = wrap32(acc + signed(matrix[r,c])
+    * signed(vector[c])). Produce dot_products[r]. Mandatory for every legal command.'
+  inputs:
+  - matrix
+  - vector
+  - row_count
+  - column_count
+  outputs:
+  - dot_products
+- name: add_bias
+  kind: conditional_addition
+  semantics: After each dot product is complete, produce biased_values[r] = wrap32(dot_products[r]
+    + bias[r]) when bias_enable is one; otherwise copy dot_products[r]. No bias transfers
+    occur when disabled.
+  inputs:
+  - dot_products
+  - bias
+  - bias_enable
+  outputs:
+  - biased_values
+- name: activate
+  kind: conditional_relu
+  semantics: Produce results[r] = max_signed(0, biased_values[r]) when relu_enable
+    is one; otherwise copy biased_values[r]. ReLU examines the signed result after
+    wrapping bias addition.
+  inputs:
+  - biased_values
+  - relu_enable
+  outputs:
+  - results
+- name: job_control
+  kind: transaction_control
+  semantics: Validate accepted dimensions. For a legal command, issue completion_status=0
+    only after all result transfers are accepted. For an illegal command, consume
+    no operand transfers, emit no results, and issue completion_status=1. Completion
+    acceptance permits another command.
+  inputs:
+  - row_count
+  - column_count
+  - results
+  outputs:
+  - completion_status
+data_types:
+- name: int8
+  role: Matrix and vector elements
+  width_bits: 8
+  signed: true
+  representation: Two's-complement integer
+  conversion_semantics: Decode input data bits [7:0]; ignore bits [31:8]. Multiplication
+    produces an exact signed 16-bit product, sign-extended to 32 bits.
+  overflow_semantics: Every 8-bit pattern is legal; products are exact.
+  rounding_semantics: None
+- name: int32
+  role: Bias, accumulators, intermediate values, and results
+  width_bits: 32
+  signed: true
+  representation: Two's-complement integer
+  conversion_semantics: Bias and result payloads preserve all 32 bits. Addition retains
+    the low 32 bits.
+  overflow_semantics: Modulo 2^32 wrapping for every accumulation and bias addition;
+    no saturation.
+  rounding_semantics: None
+- name: dimension_count
+  role: Runtime dimension counts
+  width_bits: 16
+  signed: false
+  representation: Unsigned binary element count
+  conversion_semantics: Counts are not minus-one encoded. Widen before internal index
+    arithmetic.
+  overflow_semantics: Out-of-range commands are rejected; counts never wrap.
+  rounding_semantics: None
+- name: boolean
+  role: Feature selections and completion status
+  width_bits: 1
+  signed: false
+  representation: Binary flag
+  conversion_semantics: Zero is false; one is true. For completion status, one means
+    invalid dimensions.
+  overflow_semantics: Not applicable
+  rounding_semantics: None
+data_objects:
+- name: matrix
+  role: Input matrix
+  data_type: int8
+  dimensions:
+  - Rows
+  - Columns
+  producer: external
+  consumers:
+  - matvec
+  external: true
+- name: vector
+  role: Input vector reused by every row tile
+  data_type: int8
+  dimensions:
+  - Columns
+  producer: external
+  consumers:
+  - matvec
+  external: true
+- name: bias
+  role: Optional per-row bias; absent from transport when disabled
+  data_type: int32
+  dimensions:
+  - Rows
+  producer: external
+  consumers:
+  - add_bias
+  external: true
+- name: row_count
+  role: Command value defining Rows
+  data_type: dimension_count
+  dimensions: []
+  producer: external
+  consumers:
+  - matvec
+  - job_control
+  external: true
+- name: column_count
+  role: Command value defining Columns
+  data_type: dimension_count
+  dimensions: []
+  producer: external
+  consumers:
+  - matvec
+  - job_control
+  external: true
+- name: bias_enable
+  role: Per-command bias selection
+  data_type: boolean
+  dimensions: []
+  producer: external
+  consumers:
+  - add_bias
+  external: true
+- name: relu_enable
+  role: Per-command activation selection
+  data_type: boolean
+  dimensions: []
+  producer: external
+  consumers:
+  - activate
+  external: true
+- name: dot_products
+  role: Logical dot-product vector; materialized one row tile at a time
+  data_type: int32
+  dimensions:
+  - Rows
+  producer: matvec
+  consumers:
+  - add_bias
+  external: false
+- name: biased_values
+  role: Combinational finalized tile values before activation
+  data_type: int32
+  dimensions:
+  - Rows
+  producer: add_bias
+  consumers:
+  - activate
+  external: false
+- name: results
+  role: Output vector, retained and emitted one tile at a time
+  data_type: int32
+  dimensions:
+  - Rows
+  producer: activate
+  consumers:
+  - external
+  - job_control
+  external: true
+- name: completion_status
+  role: Terminal job response
+  data_type: boolean
+  dimensions: []
+  producer: job_control
+  consumers:
+  - external
+  external: true
+dimensions:
+- name: Rows
+  semantic: 'Output row count R. Minimum legal value: 1. Maximum at default parameters:
+    256. Runtime legality is 1 <= R <= MAX_ROWS, not a fixed maximum of 256.'
+  minimum: 1
+  maximum: 256
+  runtime_configurable: true
+  bound_parameter: MAX_ROWS
+- name: Columns
+  semantic: 'Reduction length C. Minimum legal value: 1. Maximum at default parameters:
+    256. Runtime legality is 1 <= C <= MAX_COLS, not a fixed maximum of 256.'
+  minimum: 1
+  maximum: 256
+  runtime_configurable: true
+  bound_parameter: MAX_COLS
+parameters:
+- name: MAX_ROWS
+  default_value: '256'
+  legality_constraint: Integer, 16 <= MAX_ROWS <= 65535
+  description: Maximum accepted row count. Sixteen arithmetic lanes are fixed, not
+    parameterized.
+- name: MAX_COLS
+  default_value: '256'
+  legality_constraint: Integer, 1 <= MAX_COLS <= 65535
+  description: Maximum accepted column count and depth of retained vector storage.
+compute:
+  organization: Sixteen fixed row-parallel lanes, each containing one signed 8x8 multiplier
+    and one wrapping INT32 accumulator. A scalar vector element broadcasts to all
+    active lanes.
+  dataflow: Retain the entire vector once per job. Process row tiles in ascending
+    order. For tile t, base=16*t and h=min(16,R-base). Retain h biases and stage h
+    matrix elements for each column.
+  parallelism: One MAC per active row per MAC cycle; up to 16 MACs concurrently. Inactive
+    tail lanes neither accumulate nor emit results.
+  scheduling: 'LOAD_X for C transfers; then for every tile: TILE_INIT for one cycle,
+    optional LOAD_BIAS for h transfers, then for each column h LOAD_W transfers followed
+    by one MAC cycle; FINALIZE for one cycle; EMIT for h result transfers. No loading,
+    computation, or tile egress overlap.'
+storage:
+- name: vector_store
+  stored_objects:
+  - vector
+  capacity_expression: 8 * MAX_COLS bits
+  capacity_at_default_parameters: 2048
+  access_pattern: Write vector[c] on each LOAD_X handshake. Combinationally read vector[column_index]
+    during MAC.
+  port_requirements: One scalar write port and one asynchronous scalar read port;
+    read and write phases do not overlap.
+  implementation_hint: Register array or distributed RAM; synchronous-read block RAM
+    is not compatible with the frozen schedule.
+  reuse_semantics: Loaded exactly once and reread for every row tile; no host replay.
+  lifetime: Accepted vector transfer until command completion or reset.
+- name: matrix_staging
+  stored_objects:
+  - matrix
+  capacity_expression: 16 * 8 bits
+  capacity_at_default_parameters: 128
+  access_pattern: LOAD_W writes lane i on its scalar handshake; MAC reads all active
+    lanes together.
+  port_requirements: One indexed scalar write per cycle; sixteen parallel register
+    reads.
+  implementation_hint: Sixteen 8-bit registers.
+  reuse_semantics: Each staged element participates in exactly one MAC and is then
+    overwritten for the next column.
+  lifetime: One column of one row tile.
+- name: bias_staging
+  stored_objects:
+  - bias
+  capacity_expression: 16 * 32 bits
+  capacity_at_default_parameters: 512
+  access_pattern: LOAD_BIAS writes lane i on handshake; FINALIZE reads every active
+    lane.
+  port_requirements: One indexed scalar write per cycle; sixteen parallel register
+    reads.
+  implementation_hint: Sixteen 32-bit registers.
+  reuse_semantics: Each bias is used once; disabled bias selection does not read stored
+    bias values.
+  lifetime: One row tile.
+- name: accumulator_result_bank
+  stored_objects:
+  - dot_products
+  - results
+  capacity_expression: 16 * 32 bits
+  capacity_at_default_parameters: 512
+  access_pattern: TILE_INIT clears all lanes. MAC updates active lanes together. FINALIZE
+    overwrites active lanes with activated results. EMIT selects one lane per transfer.
+  port_requirements: Sixteen parallel register reads and writes; one scalar output
+    selection.
+  implementation_hint: Sixteen 32-bit registers. biased_values are combinational and
+    require no separate bank.
+  reuse_semantics: The bank changes role from accumulator to output tile only after
+    the final column.
+  lifetime: TILE_INIT through acceptance of the tile's last output.
+- name: command_status_registers
+  stored_objects:
+  - row_count
+  - column_count
+  - bias_enable
+  - relu_enable
+  - completion_status
+  capacity_expression: 16 + 16 + 1 + 1 + 1 bits
+  capacity_at_default_parameters: 35
+  access_pattern: Capture command fields on command handshake; capture status on validation;
+    retain through completion handshake.
+  port_requirements: Parallel register capture and read.
+  implementation_hint: Flip-flops.
+  reuse_semantics: Selections and dimensions remain fixed for the entire job.
+  lifetime: Command handshake through completion handshake.
+pipeline:
+- stage: LOAD_X
+  responsibility: Populate retained vector, one element per accepted operand transfer.
+  registered: true
+  valid_behavior: Operand acceptance is enabled only in this state or another load
+    state.
+  stall_behavior: Without a transfer, vector storage, index, and state hold.
+- stage: TILE_INIT_AND_LOAD_BIAS
+  responsibility: One unconditional TILE_INIT cycle clears accumulators and indices;
+    if enabled, subsequent LOAD_BIAS cycles capture h biases.
+  registered: true
+  valid_behavior: No operand acceptance during TILE_INIT. LOAD_BIAS accepts exactly
+    h operands.
+  stall_behavior: Bias loading holds without an operand handshake.
+- stage: LOAD_W
+  responsibility: Capture h scalar matrix elements for the current column.
+  registered: true
+  valid_behavior: Each handshake populates the next active lane. The h-th handshake
+    schedules MAC for the next cycle.
+  stall_behavior: Partially populated staging remains unchanged except on accepted
+    transfers.
+- stage: MAC
+  responsibility: Read retained vector asynchronously, multiply all active staged
+    elements, and update accumulators at the ending edge.
+  registered: true
+  valid_behavior: Exactly one cycle after each complete matrix staging group; operand
+    ready is low.
+  stall_behavior: Never stalls; operands are already retained.
+- stage: FINALIZE
+  responsibility: Combinational wrapping bias addition followed by signed ReLU selection;
+    register all active results at the ending edge.
+  registered: true
+  valid_behavior: Exactly one cycle after the last MAC of each tile.
+  stall_behavior: Never stalls; the result bank is reserved.
+- stage: EMIT
+  responsibility: Expose one retained result lane and advance on output handshake.
+  registered: false
+  valid_behavior: Output valid remains high throughout tile emission; payload comes
+    from the registered result bank and registered emit index.
+  stall_behavior: Hold bank, index, payload, and last flag while output is stalled.
+- stage: DONE
+  responsibility: Expose the registered completion status.
+  registered: false
+  valid_behavior: Completion valid remains high until accepted.
+  stall_behavior: Hold completion payload and refuse new commands until completion
+    acceptance.
+control:
+  strategy: Single synchronous FSM; at most one command is outstanding. State and
+    counters determine transfer class; no operand packet tags are needed.
+  state_progression: 'IDLE -> LOAD_X -> TILE_INIT -> optional LOAD_BIAS -> LOAD_W
+    -> MAC. MAC returns to LOAD_W for the next column or advances to FINALIZE -> EMIT.
+    EMIT advances to TILE_INIT for another tile or DONE for the final tile. DONE ->
+    IDLE on completion handshake. Invalid command: IDLE -> DONE.'
+  counters:
+  - 'Captured R and C: unsigned 16-bit counts.'
+  - 'Vector write index and column index: max(1,$clog2(MAX_COLS)) bits; compare against
+    C-1 and never increment beyond the last legal index.'
+  - 'Tile base row: max(1,$clog2(MAX_ROWS)) bits; compute base+16 and R-base using
+    at least 17-bit unsigned arithmetic.'
+  - 'Tile active height h: 5 bits, values 1..16.'
+  - 'Bias-load, matrix-load, and emit lane index: shared 4-bit index, reset at each
+    corresponding phase.'
+  - bias_enable, relu_enable, completion error bit, and FSM state.
+  error_behavior: Reject R=0, C=0, R>MAX_ROWS, or C>MAX_COLS with completion error=1.
+    Data presented outside load states is not accepted. Operand values have no illegal
+    encodings. Missing operands stall indefinitely; extra operands cannot be distinguished
+    from later untagged traffic. Source instability during a stalled transfer is a
+    protocol violation, not a hardware-detected error.
+  error_recovery: An invalid command recovers by completion handshake, then IDLE.
+    Reset aborts any incomplete or protocol-violating transaction. No timeout, clear,
+    retry, or acknowledgement signal beyond completion ready is defined.
+reset:
+  style: Synchronous to the rising clock edge
+  polarity: Active high
+  required_state: A reset edge returns the FSM to IDLE and clears counters, command/status
+    registers, and protocol state. Datapath arrays need not clear. While reset is
+    asserted, all DUT ready and valid outputs and payload outputs are zero. Reset
+    discards outstanding work without completion; the host must discard the aborted
+    transaction.
+latency_model: Let T=ceil(R/16), h_t=min(16,R-16*t), and b be bias_enable. Exact accepted
+  operand count is C+b*R+C*R; accepted result count is R. Each column of tile t requires
+  h_t loading cycles plus one MAC cycle. With all sources continuously valid and sinks
+  continuously ready, command accepted at edge 0 completes at edge L=C+sum_t[1+b*h_t+C*(h_t+1)+1+h_t]+1,
+  equivalently C+2*T+b*R+C*(R+T)+R+1. The final +1 is completion acceptance after
+  the last result. Every unfulfilled load, result, or completion handshake adds one
+  cycle in its corresponding state. Invalid commands can complete at edge 1. Following
+  completion, the earliest next command acceptance is the next edge. No throughput
+  overlap is claimed.
+architectural_invariants:
+- Exactly sixteen fixed arithmetic lanes exist; tile height only masks inactive lanes.
+- No MAC occurs before all h operands for that column have been accepted.
+- Vector storage retains all C elements until every tile finishes.
+- Each matrix element and enabled bias is transmitted exactly once.
+- Only one tile of results is live, and it is completely drained before accumulator
+  reuse.
+- Output traversal is ascending tile base followed by ascending lane, yielding global
+  ascending row order.
+- All externally visible transaction progress occurs on the specified ready/valid
+  handshake.
+- Arithmetic wraps before activation; no quantization, scaling, saturation, or alternative
+  arithmetic mode exists.
+open_assumptions:
+- Runtime row and column counts default to bounds of 256; these bounds were not supplied
+  by the user.
+- Bias is signed INT32, and outputs retain signed INT32 precision.
+- A scalar 32-bit operand channel is chosen for simple transport; 16-way arithmetic
+  parallelism does not imply 16 operands arrive per cycle.
+- Row-parallel tiling, whole-vector retention, and non-overlapped staging are chosen
+  to minimize banking and buffering complexity.
+- Commands use separate ready/valid fields; results and terminal status use independent
+  ready/valid channels.
+- Feature selections apply per job. The single-module implementation deliberately
+  keeps the small sequencer and datapath together.
+- The explicit intake synthesis provider is Vivado. No synthesis or PPA metric is
+  asserted by this contract.

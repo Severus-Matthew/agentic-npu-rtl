@@ -1,0 +1,27 @@
+functional:
+- For each job, output y[r] equals optional ReLU(optional bias + sum_k(W[r,k]*x[k]))
+  with signed INT8 inputs and signed INT32 arithmetic.
+- If bias_enable=0, bias channel transfers are illegal and must assert status_error.
+- If relu_enable=0, negative outputs are allowed unchanged.
+- Output beat count equals M and order is strictly r=0..M-1.
+verification:
+- Minimum 100 randomized jobs across legal M,N ranges including N not multiple of
+  16.
+- 'Reset test required: assert/deassert rst_n mid-idle and mid-job; design returns
+  to deterministic IDLE with status_error=0.'
+- Backpressure tests required on all ready/valid channels with random ready toggling;
+  no loss/duplication.
+- 'Completion behavior: busy rises after command acceptance and drops only after final
+  output transfer.'
+- 'Error behavior tests: out-of-range M/N, wrong stream lengths, forbidden bias traffic
+  when disabled, missing bias when enabled.'
+rtl:
+- All described behavior implementable in synthesizable SystemVerilog only; no forbidden
+  constructs (real/shortreal/delay/force/class).
+- 'Ready/valid rule enforced: transfer iff ready&&valid; payload stable while stalled.'
+- Parameter legality checks present for LANES==16 and width consistency constraints.
+fpga_handoff:
+- Vivado synthesis results accepted only from deterministic tool report matching required
+  schema.
+- No estimated/inferred PPA metrics allowed without authoritative deterministic report.
+- Handoff requires verified RTL passing functional/regression criteria before synthesis.

@@ -1,0 +1,238 @@
+protocol: Independent synchronous ready/valid channels with strict job-phase sequencing.
+clock: All transfers and state changes occur on the rising edge of clk.
+reset: Synchronous active-high rst. No transfer occurs while rst is asserted.
+channels:
+- name: command
+  direction: input
+  purpose: Start one job and provide runtime dimensions.
+  data_objects: []
+  metadata:
+  - cmd_m
+  - cmd_n
+  - cmd_k
+  framing: One transfer. Each dimension must be nonzero and no greater than its corresponding
+    MAX parameter.
+  ordering: Accepted only in IDLE.
+  backpressure: cmd_ready is high only in IDLE. Metadata must remain stable while
+    cmd_valid&&!cmd_ready.
+- name: activation_input
+  direction: input
+  purpose: Load activation_matrix.
+  data_objects:
+  - activation_matrix
+  metadata:
+  - a_last
+  framing: 'Exactly M*ceil(K/8) transfers. Beat (row,ch), in row-major order, packs
+    lane l at a_data[8*l +: 8] as A[row,8*ch+l]. Out-of-range final-chunk lanes are
+    ignored. a_last is one only on the final required beat.'
+  ordering: Immediately after command, before weight input.
+  backpressure: a_ready is asserted only in LOAD_A; payload and last remain stable
+    while stalled.
+- name: weight_input
+  direction: input
+  purpose: Load weight_matrix.
+  data_objects:
+  - weight_matrix
+  metadata:
+  - b_last
+  framing: 'Exactly K*ceil(N/8) transfers. Beat (krow,ch), in row-major order, packs
+    lane l at b_data[8*l +: 8] as B[krow,8*ch+l]. Out-of-range final-chunk lanes are
+    ignored. b_last is one only on the final required beat.'
+  ordering: After activation input and before bias input.
+  backpressure: b_ready is asserted only in LOAD_B; payload and last remain stable
+    while stalled.
+- name: bias_input
+  direction: input
+  purpose: Load bias_vector.
+  data_objects:
+  - bias_vector
+  metadata:
+  - bias_last
+  framing: 'Exactly ceil(N/8) transfers. Chunk ch packs lane l at bias_data[32*l +:
+    32] as bias[8*ch+l]. Out-of-range lanes are ignored. bias_last is one only on
+    the final required beat.'
+  ordering: After weight input and before computation.
+  backpressure: bias_ready is asserted only in LOAD_BIAS; payload and last remain
+    stable while stalled.
+- name: result_output
+  direction: output
+  purpose: Emit output_matrix.
+  data_objects:
+  - output_matrix
+  metadata:
+  - out_keep
+  - out_last
+  framing: 'Tile-major order: m_base=0,8,... outer; n_base=0,8,... inner; emit row
+    r=0..min(7,M-1-m_base). Lane c carries Y[m_base+r,n_base+c] in out_data[32*c +:
+    32]. out_keep[c]=1 exactly when n_base+c<N. Total transfers are M*ceil(N/8). out_last
+    is one only for the final transfer.'
+  ordering: Deterministic tile-major ordering defined by framing.
+  backpressure: out_valid and all payload metadata remain stable until out_ready&&out_valid.
+signals:
+- name: clk
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Clock.
+  reset_value: N/A
+- name: rst
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Synchronous active-high reset.
+  reset_value: N/A
+- name: cmd_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Command valid.
+  reset_value: 0 required during reset
+- name: cmd_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Command acceptance enable.
+  reset_value: 1 after reset edge
+- name: cmd_m
+  direction: input
+  width: $clog2(MAX_M+1)
+  signed: false
+  semantic: Runtime M.
+  reset_value: Don't care
+- name: cmd_n
+  direction: input
+  width: $clog2(MAX_N+1)
+  signed: false
+  semantic: Runtime N.
+  reset_value: Don't care
+- name: cmd_k
+  direction: input
+  width: $clog2(MAX_K+1)
+  signed: false
+  semantic: Runtime K.
+  reset_value: Don't care
+- name: a_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Activation beat valid.
+  reset_value: 0 required during reset
+- name: a_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Activation beat ready.
+  reset_value: '0'
+- name: a_data
+  direction: input
+  width: ARRAY_COLS*8
+  signed: false
+  semantic: Eight packed signed INT8 activation lanes.
+  reset_value: Don't care
+- name: a_last
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Final activation beat marker.
+  reset_value: Don't care
+- name: b_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Weight beat valid.
+  reset_value: 0 required during reset
+- name: b_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Weight beat ready.
+  reset_value: '0'
+- name: b_data
+  direction: input
+  width: ARRAY_COLS*8
+  signed: false
+  semantic: Eight packed signed INT8 weight lanes.
+  reset_value: Don't care
+- name: b_last
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Final weight beat marker.
+  reset_value: Don't care
+- name: bias_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Bias beat valid.
+  reset_value: 0 required during reset
+- name: bias_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Bias beat ready.
+  reset_value: '0'
+- name: bias_data
+  direction: input
+  width: ARRAY_COLS*32
+  signed: false
+  semantic: Eight packed signed INT32 bias lanes.
+  reset_value: Don't care
+- name: bias_last
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Final bias beat marker.
+  reset_value: Don't care
+- name: out_valid
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Result beat valid.
+  reset_value: '0'
+- name: out_ready
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Result consumer ready.
+  reset_value: Don't care
+- name: out_data
+  direction: output
+  width: ARRAY_COLS*32
+  signed: false
+  semantic: Eight packed signed INT32 result lanes.
+  reset_value: '0'
+- name: out_keep
+  direction: output
+  width: ARRAY_COLS
+  signed: false
+  semantic: Valid result-lane mask.
+  reset_value: '0'
+- name: out_last
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Final job result marker.
+  reset_value: '0'
+- name: busy
+  direction: output
+  width: '1'
+  signed: false
+  semantic: One from accepted legal command through final output transfer.
+  reset_value: '0'
+- name: done
+  direction: output
+  width: '1'
+  signed: false
+  semantic: One-cycle pulse coincident with final output transfer.
+  reset_value: '0'
+- name: error
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Sticky malformed-command or framing indication.
+  reset_value: '0'
+global_handshake_rules:
+  transfer_condition: A channel transfers exactly when its valid and ready are both
+    one on a rising edge.
+  stall_behavior: A producer must hold payload and metadata stable while valid is
+    one and ready is zero. State associated with a channel advances only on transfer.

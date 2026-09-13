@@ -1,0 +1,14 @@
+{
+  "stage": "cocotb_regression",
+  "status": "SIMULATION_FAILURE",
+  "failure_class": "UNKNOWN",
+  "tests": 4,
+  "failures": 4,
+  "seed": 12345,
+  "top_module": "gemm8x8x32_bias_relu_top",
+  "test_modules": [
+    "test_gemm8x8x32_cocotb"
+  ],
+  "results_xml": "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/diagnostics/probe-1-attempt32/build/results.xml",
+  "worker_error": null
+}

@@ -1,5 +1,68 @@
 # Generalized LangGraph hardware generation
 
+## Live browser interface and model selection
+
+Launch on Delta (no Tk/X11/display server or additional UI dependencies needed):
+
+```bash
+cd /u/mjha1/agentic-npu-rtl
+bash multigent/scripts/start_ui.sh --port 8765
+```
+
+In a terminal on your laptop, keep an SSH tunnel running:
+
+```bash
+ssh -N -L 8765:127.0.0.1:8765 mjha1@dtai-login.delta.ncsa.illinois.edu
+```
+
+Open the **full localhost link printed by the server**, including its `#` session
+token. The server listens only on loopback. The token stays in browser session
+storage and API keys remain on the server. This is a private, single-user tool,
+not a public web deployment. Keep the UI server running while a run is active;
+restarting it does not reattach its process monitor. Existing saved artifacts remain
+viewable and a lost process monitor is explicitly identified.
+
+Choose GPT-5.3 Codex, GPT-5.6 Sol, or GPT-6 Astra at the top, enter any hardware
+request, and click **Start pipeline**. Each run gets a unique directory under
+`multigent/runs/`. The model is fixed for that run and recorded in state. Model
+switching is available before the next run; all five roles use the chosen model.
+The selector and request are disabled while the server has an active run.
+
+The left panel groups generated files by role and opens them as read-only text.
+Earlier attempts and logs can also be expanded. Simulator build products and files
+outside the run are excluded. Large previews are explicitly truncated. The right
+panel follows real `started`/`finished`/`failed` events from LangGraph, polling every
+1.5 seconds. A finished stage is not a functional PASS. Diagnostic and repair loops
+are shown, and missing Vivado or failed checks never become fabricated success.
+Older runs without events use recorded history and may have no recorded model ID.
+On narrow screens the panels stack vertically; use a desktop-width browser for the
+side-by-side view. This UI launches new runs; saved-state resume remains a CLI action.
+Vivado target configuration also remains in the CLI for now.
+
+CLI model selection:
+
+```bash
+export NPU_WORKSPACE_ROOT="$PWD/multigent/runs/my-new-run"
+python -m multigent.orchestration.graph --model gpt-6-astra \
+  --request "YOUR HARDWARE REQUEST" --run-id my-new-run
+```
+
+Resuming a run with a recorded model preserves that model; changing it requires a
+new run. `NPU_AGENT_REASONING_EFFORT` continues to control reasoning separately.
+
+Check actual API access and structured-output compatibility for all three models:
+
+```bash
+.venv/bin/python -m multigent.scripts.check_models \
+  --output multigent/reports/model-check.json
+```
+
+This sends one small arithmetic/friendly-sentence prompt per model, checks the
+answer and strict JSON response, and records returned model IDs and usage. All
+three passed with the configured Delta API account on 2026-09-11. This is an API
+compatibility check, not a hardware-generation benchmark. UI/model additions bring
+the repository suite to **139 passing tests** (13.42 seconds in the recorded run).
+
 The executable workflow is `multigent.orchestration.graph`. The older
 `multigent.orchestrator.graph` and `multigent.scripts.run_workflow` entry points
 forward to it. Runtime logic has no GEMM-specific dimensions, names or arithmetic.
@@ -191,3 +254,40 @@ attempt occurs before an invalid RTL response becomes a terminal report.
 
 A saved-state resume can omit `--request` and `--run-id`; their exact original values
 are read from the state. Keep `NPU_WORKSPACE_ROOT` pointed at that same run directory.
+
+## Architect contract self-correction
+
+Initial generation and downstream architecture revision share a semantic validation
+loop: one candidate plus at most two corrected candidates. The Architect receives
+the exact relational validation errors and its rejected candidate, while retaining
+the original request and any revision feedback. Invalid candidates are never written
+as frozen architecture artifacts. Genuine SPEC_CONFLICT responses stop normally;
+transport/authentication errors do not trigger semantic retries. Retry API calls
+have distinct trace filenames and emit an Architect `retrying` progress event.
+Exhaustion remains a reported failure, rather than a silently accepted contract.
+These corrections occur within the Architect LangGraph stage; downstream handoffs
+remain controlled by the graph and only occur after successful validation.
+The limit is separate from the budget for revising an accepted architecture after
+RTL/verification feedback. Changes apply to newly started Python processes.
+
+## Independent Testbench Generator
+
+The UI now calls the former Independent Verifier the **Independent Testbench
+Generator**: it writes reference models and cocotb tests from frozen contracts;
+Verilator/cocotb then execute the deterministic checks. Internal `verifier` stage
+IDs and artifact paths remain compatible with older runs.
+
+The completion/error signal check accepts handle aliases, literal `getattr` reads,
+and snapshot-key assertions across generated tests and reference/helper files.
+It no longer requires the exact spelling `dut.signal` inside the test file itself.
+This check establishes syntactic references only, not executed coverage or proven
+DUT-to-snapshot dataflow. Bare comments or documentation strings do not satisfy it.
+Functional simulation remains required for acceptance.
+
+Signal-reference uncertainty is now advisory rather than a generation gate.
+Findings are saved in `verification/static_review.json` with `ADVISORY_ONLY` status,
+so they remain visible in the file browser without blocking simulation or spending
+semantic retries. Empty implementations, invalid syntax/schema, ownership violations,
+forbidden capabilities, and regression-plan mismatches remain hard errors. Actual
+simulation failures and missing tool results still cannot become PASS. The static
+review neither proves coverage nor proves that coverage is missing.

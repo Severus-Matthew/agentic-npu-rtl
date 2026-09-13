@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="cocotb tests"><testsuite name="test_mv_npu" errors="0" failures="2" skipped="0" tests="2" time="0.021" timestamp="2026-09-11T20:40:07.453835+00:00" hostname="gh-login02.delta.ncsa.illinois.edu"><testcase classname="test_mv_npu" name="test_directed_basic" time="0.002"><failure message="assert [3, -52] == [3, -55]" type="AssertionError">Traceback (most recent call last):
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py", line 71, in test_directed_basic
+    assert got == exp
+AssertionError: assert [3, -52] == [3, -55]
+</failure><properties><property name="cocotb" value="True" /><property name="random_seed" value="12345" /><property name="file" value="/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py" /><property name="line" value="47" /><property name="sim_time_unit" value="ns" /><property name="sim_time_start" value="0.0" /><property name="sim_time_stop" value="34.0" /><property name="sim_time_duration" value="34.0" /><property name="sim_time_ratio" value="15099.675686317696" /></properties><system-err>Test failed with COCOTB_RANDOM_SEED=12345
+</system-err></testcase><testcase classname="test_mv_npu" name="test_randomized_100_jobs" time="0.019"><failure message="timeout waiting mat_ready" type="SimTimeoutError">Traceback (most recent call last):
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py", line 92, in test_randomized_100_jobs
+    await send_beat(dut, dut.mat_valid, 'mat_ready', dut.mat_data, pack_mat_beat_lanes(lanes))
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py", line 45, in send_beat
+    raise SimTimeoutError(f'timeout waiting {ready_sig}')
+cocotb.triggers.SimTimeoutError: timeout waiting mat_ready
+</failure><properties><property name="cocotb" value="True" /><property name="random_seed" value="12345" /><property name="file" value="/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py" /><property name="line" value="73" /><property name="sim_time_unit" value="ns" /><property name="sim_time_start" value="34.001" /><property name="sim_time_stop" value="1106.001" /><property name="sim_time_duration" value="1072.0" /><property name="sim_time_ratio" value="56388.37706923432" /></properties><system-err>Test failed with COCOTB_RANDOM_SEED=12345
+</system-err></testcase></testsuite></testsuites>

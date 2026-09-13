@@ -1,0 +1,137 @@
+{
+  "top": "tiled_int8_fc",
+  "modules": [
+    {
+      "name": "tiled_int8_fc",
+      "responsibility": "Complete single-job accelerator: command validation, counted input loading, three retained input memories, tile traversal, paired synchronous operand gathering, fixed 8x8 MAC array, scalar bias/ReLU finalization, output holding, and status/reset control. One module avoids unnecessary internal protocols. All memories and datapath registers are internal to this module; there are no internal start/done ports. Memory write enables are load-state handshakes; reads are enabled only in the specified request states and consumed at the immediately following capture/finalize edge.",
+      "dependencies": [],
+      "parameters": [
+        "MAX_M",
+        "MAX_N",
+        "MAX_K"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Common rising-edge clock for control, memories, and datapath."
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Active-high synchronous reset with transfer/status gating while asserted; aborts any active job."
+        },
+        {
+          "name": "cmd_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Command valid; dimension fields and valid must remain stable until cmd_ready acceptance, unless reset cancels."
+        },
+        {
+          "name": "cmd_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Combinationally high exactly in IDLE with rst=0; command transfer is cmd_ready&&cmd_valid on a non-reset rising edge."
+        },
+        {
+          "name": "cmd_m",
+          "direction": "input",
+          "width": "max(1,$clog2(MAX_M+1))",
+          "signed": false,
+          "semantics": "M metadata sampled on command transfer; reject zero or values greater than MAX_M."
+        },
+        {
+          "name": "cmd_n",
+          "direction": "input",
+          "width": "max(1,$clog2(MAX_N+1))",
+          "signed": false,
+          "semantics": "N metadata sampled on command transfer; reject zero or values greater than MAX_N."
+        },
+        {
+          "name": "cmd_k",
+          "direction": "input",
+          "width": "max(1,$clog2(MAX_K+1))",
+          "signed": false,
+          "semantics": "K metadata sampled on command transfer; reject zero or values greater than MAX_K."
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Scalar input valid, held with in_data while stalled."
+        },
+        {
+          "name": "in_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "High exactly in LOAD_A/LOAD_W/LOAD_B outside reset. Each input handshake performs one memory write and one load-counter advance or section transition."
+        },
+        {
+          "name": "in_data",
+          "direction": "input",
+          "width": "32",
+          "signed": false,
+          "semantics": "A then W then B, with accepted counts M*K, K*N, N. A/W use signed low byte and ignore upper bits; B uses signed full word. Row-major runtime strides."
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Set at FINALIZE edge, held in EMIT, and cleared on output handshake or reset. Gated low during reset."
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "When high with out_valid on a non-reset rising edge, accepts exactly one output and permits coordinate/state advance."
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "Registered ReLU(wrap32(selected accumulator + registered bias read result)); stable until handshake. Output order is tm,tn,local row,local column with invalid coordinates omitted. Reset value zero."
+        },
+        {
+          "name": "out_last",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Registered with out_data; true only for the last valid local element of the last tile. Stable while stalled, ignored when out_valid=0, reset value zero."
+        },
+        {
+          "name": "busy",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Combinational rst=0 qualification of FSM not IDLE. Goes low after final output acceptance or reset."
+        },
+        {
+          "name": "done",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Registered one-clock pulse generated by final output handshake; default cleared each subsequent edge and suppressed/reset by rst."
+        },
+        {
+          "name": "error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Registered one-clock pulse generated by illegal command handshake; no job is started. Default cleared each subsequent edge and suppressed/reset by rst."
+        }
+      ]
+    }
+  ]
+}

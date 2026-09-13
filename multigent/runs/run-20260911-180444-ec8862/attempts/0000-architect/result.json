@@ -1,0 +1,1279 @@
+{
+  "architecture_status": "READY",
+  "architecture_dir": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/architecture",
+  "architecture_revision": 0,
+  "history": [
+    {
+      "stage": "architect",
+      "status": "READY",
+      "architecture_version": 1,
+      "revision": false
+    }
+  ],
+  "architecture_version": 1,
+  "architecture_artifacts": {
+    "architecture_contract": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/architecture/architecture_contract.yaml",
+    "interface_contract": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/architecture/interface_contract.yaml",
+    "module_manifest": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/architecture/module_manifest.json",
+    "acceptance_criteria": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/architecture/acceptance_criteria.yaml"
+  },
+  "architecture_conflict": null,
+  "rtl_context": {
+    "user_request": "Design a small AI accelerator for fully connected neural-network layers. The accelerator should primarily operate as a tiled GEMM engine, multiplying INT8 activation matrices by INT8 weight matrices, accumulating in INT32, adding a bias vector, and applying ReLU. Use an 8\u00d78 compute array and support matrices larger than the array through tiling.",
+    "fixed_rtl_constraints": {
+      "language": "SystemVerilog",
+      "synthesizable_only": true,
+      "forbidden_constructs": [
+        "real",
+        "shortreal",
+        "delay_statements",
+        "force_release",
+        "classes"
+      ]
+    },
+    "synthesis_policy": {
+      "provider": "vivado",
+      "requires_verified_rtl": true,
+      "result_schema": "multigent/schemas/synthesis_result.schema.json",
+      "authoritative_metrics_source": "deterministic_tool_report",
+      "prohibit_metric_estimation": true
+    },
+    "frozen_architecture": {
+      "architecture_contract": {
+        "design": {
+          "name": "tiled_fc_int8_accelerator",
+          "version": "1.0",
+          "description": "Fixed 8x8 tiled fully connected engine with signed INT8 operands, wrapping INT32 accumulation, bias addition, and ReLU."
+        },
+        "operations": [
+          {
+            "name": "fused_fc",
+            "kind": "tiled GEMM with fused bias and ReLU",
+            "semantics": "For every 0<=m<M and 0<=n<N: acc=0; for k=0..K-1, acc=wrap32(acc + signed(A[m,k])*signed(B[k,n])); tmp=wrap32(acc+bias[n]); Y[m,n]=0 when signed(tmp)<0, otherwise tmp. K order is strictly increasing. Bias and ReLU are mandatory.",
+            "inputs": [
+              "activation_matrix",
+              "weight_matrix",
+              "bias_vector"
+            ],
+            "outputs": [
+              "output_matrix"
+            ]
+          }
+        ],
+        "data_types": [
+          {
+            "name": "int8_operand",
+            "role": "activation and weight element",
+            "width_bits": 8,
+            "signed": true,
+            "representation": "two's-complement integer",
+            "conversion_semantics": "Sign-extend operands before multiplication.",
+            "overflow_semantics": "INT8 values are consumed without conversion; product is exact signed 16-bit.",
+            "rounding_semantics": "None."
+          },
+          {
+            "name": "int32_value",
+            "role": "bias, accumulator, and output element",
+            "width_bits": 32,
+            "signed": true,
+            "representation": "two's-complement integer",
+            "conversion_semantics": "INT8 products are sign-extended to 32 bits before addition.",
+            "overflow_semantics": "Every accumulator and bias addition wraps modulo 2^32.",
+            "rounding_semantics": "None."
+          }
+        ],
+        "data_objects": [
+          {
+            "name": "activation_matrix",
+            "role": "A matrix indexed [m,k]",
+            "data_type": "int8_operand",
+            "dimensions": [
+              "M",
+              "K"
+            ],
+            "producer": "external",
+            "consumers": [
+              "fused_fc"
+            ],
+            "external": true
+          },
+          {
+            "name": "weight_matrix",
+            "role": "B matrix indexed [k,n]",
+            "data_type": "int8_operand",
+            "dimensions": [
+              "K",
+              "N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "fused_fc"
+            ],
+            "external": true
+          },
+          {
+            "name": "bias_vector",
+            "role": "Per-output-column bias indexed [n]",
+            "data_type": "int32_value",
+            "dimensions": [
+              "N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "fused_fc"
+            ],
+            "external": true
+          },
+          {
+            "name": "output_matrix",
+            "role": "ReLU result Y indexed [m,n]",
+            "data_type": "int32_value",
+            "dimensions": [
+              "M",
+              "N"
+            ],
+            "producer": "fused_fc",
+            "consumers": [
+              "external"
+            ],
+            "external": true
+          }
+        ],
+        "dimensions": [
+          {
+            "name": "M",
+            "semantic": "Activation/output row count; legal runtime range is 1 through MAX_M, concretely 1..64 at defaults.",
+            "minimum": 1,
+            "maximum": 64,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_M"
+          },
+          {
+            "name": "N",
+            "semantic": "Weight/output column and bias length; legal runtime range is 1 through MAX_N, concretely 1..64 at defaults.",
+            "minimum": 1,
+            "maximum": 64,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_N"
+          },
+          {
+            "name": "K",
+            "semantic": "Reduction length; legal runtime range is 1 through MAX_K, concretely 1..64 at defaults.",
+            "minimum": 1,
+            "maximum": 64,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_K"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ARRAY_ROWS",
+            "default_value": "8",
+            "legality_constraint": "Must equal 8.",
+            "description": "User-required compute-array row count."
+          },
+          {
+            "name": "ARRAY_COLS",
+            "default_value": "8",
+            "legality_constraint": "Must equal 8.",
+            "description": "User-required compute-array column count."
+          },
+          {
+            "name": "MAX_M",
+            "default_value": "64",
+            "legality_constraint": "Integer >=1 and divisible by ARRAY_ROWS.",
+            "description": "Compile-time maximum M and activation-storage depth."
+          },
+          {
+            "name": "MAX_N",
+            "default_value": "64",
+            "legality_constraint": "Integer >=1 and divisible by ARRAY_COLS.",
+            "description": "Compile-time maximum N and weight/bias-storage depth."
+          },
+          {
+            "name": "MAX_K",
+            "default_value": "64",
+            "legality_constraint": "Integer >=1.",
+            "description": "Compile-time maximum reduction length."
+          }
+        ],
+        "compute": {
+          "organization": "An 8x8 array of independent signed multiply-accumulate processing elements with one INT32 accumulator per element.",
+          "dataflow": "Output-stationary: one MxN tile remains in 64 accumulators for all K steps, then receives bias and ReLU before emission.",
+          "parallelism": "Up to 64 INT8 products and 64 INT32 additions per MAC cycle; inactive boundary rows or columns are masked.",
+          "scheduling": "Load complete A, B, and bias objects once. Traverse tiles with m_base outermost and n_base innermost in increments of eight. Each tile performs one clear cycle, K increasing-k MAC cycles, one finalize cycle, then emits each valid tile row. Loading and computation do not overlap."
+        },
+        "storage": [
+          {
+            "name": "activation_store",
+            "stored_objects": [
+              "activation_matrix"
+            ],
+            "capacity_expression": "MAX_M*ceil(MAX_K/8)*8 INT8 slots",
+            "capacity_at_default_parameters": 4096,
+            "access_pattern": "Ingress writes one row-major eight-element chunk. Compute asynchronously reads one element from each of eight consecutive rows at a common k.",
+            "port_requirements": "One 64-bit synchronous write port with lane enables and eight independent asynchronous INT8 read banks organized by row modulo ARRAY_ROWS; no simultaneous load/compute requirement.",
+            "implementation_hint": "Banked distributed RAM or registers; asynchronous read, writes visible after the rising edge.",
+            "reuse_semantics": "Retains the entire activation matrix and reuses rows across all N tiles without host replay.",
+            "lifetime": "From accepted activation transfers until job completion or reset."
+          },
+          {
+            "name": "weight_store",
+            "stored_objects": [
+              "weight_matrix"
+            ],
+            "capacity_expression": "MAX_K*ceil(MAX_N/8)*8 INT8 slots",
+            "capacity_at_default_parameters": 4096,
+            "access_pattern": "Ingress writes one row-major eight-element chunk. Compute asynchronously reads eight consecutive columns at a common k.",
+            "port_requirements": "One 64-bit synchronous write port with lane enables and eight independent asynchronous INT8 column banks; no simultaneous load/compute requirement.",
+            "implementation_hint": "Banked distributed RAM or registers; asynchronous read, writes visible after the rising edge.",
+            "reuse_semantics": "Retains the entire weight matrix and reuses columns across all M tiles without host replay.",
+            "lifetime": "From accepted weight transfers until job completion or reset."
+          },
+          {
+            "name": "bias_store",
+            "stored_objects": [
+              "bias_vector"
+            ],
+            "capacity_expression": "ceil(MAX_N/8)*8 INT32 slots",
+            "capacity_at_default_parameters": 64,
+            "access_pattern": "One 256-bit ingress write and one asynchronous eight-element read per N tile.",
+            "port_requirements": "Eight INT32 banks with one synchronous write and asynchronous read per bank; phases never overlap.",
+            "implementation_hint": "Registers or distributed RAM.",
+            "reuse_semantics": "Bias values are retained and reused across all M tiles.",
+            "lifetime": "From accepted bias transfers until job completion or reset."
+          },
+          {
+            "name": "tile_accumulators",
+            "stored_objects": [
+              "output_matrix"
+            ],
+            "capacity_expression": "ARRAY_ROWS*ARRAY_COLS INT32 registers",
+            "capacity_at_default_parameters": 64,
+            "access_pattern": "All active elements update in parallel; one row is read for egress.",
+            "port_requirements": "64 parallel accumulator write paths and one combinational 256-bit row-read path.",
+            "implementation_hint": "Registers inside the compute array.",
+            "reuse_semantics": "No cross-tile reuse; storage is cleared before each tile.",
+            "lifetime": "One tile from clear through its final output transfer."
+          }
+        ],
+        "pipeline": [
+          {
+            "stage": "LOAD",
+            "responsibility": "Accept and store A, B, and bias sections in strict sequence.",
+            "registered": true,
+            "valid_behavior": "Counters advance only on ready&&valid; tlast is checked on every accepted section-final beat.",
+            "stall_behavior": "State, counters, and stored data remain unchanged without a transfer."
+          },
+          {
+            "stage": "CLEAR",
+            "responsibility": "Clear all tile accumulators and latch active row/column masks.",
+            "registered": true,
+            "valid_behavior": "Exactly one cycle per tile.",
+            "stall_behavior": "Not externally stallable."
+          },
+          {
+            "stage": "MAC",
+            "responsibility": "Read A/B vectors and perform one increasing-k array update.",
+            "registered": true,
+            "valid_behavior": "Exactly K updates; masked PEs retain zero.",
+            "stall_behavior": "Not externally stallable because all operands are local."
+          },
+          {
+            "stage": "FINALIZE",
+            "responsibility": "Add bias with wrap32 and apply signed ReLU to all active accumulators.",
+            "registered": true,
+            "valid_behavior": "Exactly one cycle per tile.",
+            "stall_behavior": "Not externally stallable."
+          },
+          {
+            "stage": "EMIT",
+            "responsibility": "Select and transfer one valid tile row.",
+            "registered": false,
+            "valid_behavior": "out_valid remains asserted with stable payload, keep, and last until transfer.",
+            "stall_behavior": "Accumulator contents, row index, payload, and metadata remain stable while stalled."
+          }
+        ],
+        "control": {
+          "strategy": "Single-job FSM; no command queue or load/compute overlap.",
+          "state_progression": "IDLE -> LOAD_A -> LOAD_B -> LOAD_BIAS -> CLEAR -> MAC -> FINALIZE -> EMIT; after a tile, advance n_base then m_base. Final output transfer pulses done and returns to IDLE. Any accepted illegal command or tlast mismatch enters ERROR.",
+          "counters": [
+            "runtime M,N,K registers",
+            "A row and chunk",
+            "B k-row and chunk",
+            "bias chunk",
+            "m_base",
+            "n_base",
+            "k_index",
+            "emit_row"
+          ],
+          "error_behavior": "error is sticky in ERROR; all ready and valid outputs are deasserted and no state or memory writes occur.",
+          "error_recovery": "Only asserted reset exits ERROR and restores IDLE."
+        },
+        "reset": {
+          "style": "Synchronous",
+          "polarity": "Active high",
+          "required_state": "On a rising edge with rst=1, enter IDLE; clear busy, error, done, out_valid, counters, masks, and accumulator validity. Operand-memory contents need not be cleared."
+        },
+        "latency_model": "Let CA=ceil(K/8), CN=ceil(N/8), TM=ceil(M/8), TN=ceil(N/8). Required load transfers are M*CA A beats, K*CN B beats, and CN bias beats. With continuous handshakes and no output stalls, cycles after command acceptance through done are M*CA + K*CN + CN + TM*TN*(K+2) + M*TN. Each tile costs clear + K MAC + finalize plus one transfer per valid row. Stalls add one cycle per unaccepted required transfer.",
+        "architectural_invariants": [
+          "At most one job is active.",
+          "Each active output receives exactly K products, one bias addition, and one ReLU.",
+          "The k_index advances only after one array MAC update.",
+          "Boundary PEs are masked and cannot affect emitted lanes.",
+          "An output row index advances only on out_ready&&out_valid.",
+          "No externally supplied matrix data must be retransmitted within a job."
+        ],
+        "open_assumptions": [
+          "Default runtime maxima are 64 for M, N, and K.",
+          "Arithmetic overflow uses two's-complement modulo wrap; no saturation or requantization is provided.",
+          "Separate ready/valid channels and full-object preloading are chosen for implementation simplicity.",
+          "Reset is the sole recovery mechanism after malformed framing or an illegal command."
+        ]
+      },
+      "interface_contract": {
+        "protocol": "Independent synchronous ready/valid channels with strict job-phase sequencing.",
+        "clock": "All transfers and state changes occur on the rising edge of clk.",
+        "reset": "Synchronous active-high rst. No transfer occurs while rst is asserted.",
+        "channels": [
+          {
+            "name": "command",
+            "direction": "input",
+            "purpose": "Start one job and provide runtime dimensions.",
+            "data_objects": [],
+            "metadata": [
+              "cmd_m",
+              "cmd_n",
+              "cmd_k"
+            ],
+            "framing": "One transfer. Each dimension must be nonzero and no greater than its corresponding MAX parameter.",
+            "ordering": "Accepted only in IDLE.",
+            "backpressure": "cmd_ready is high only in IDLE. Metadata must remain stable while cmd_valid&&!cmd_ready."
+          },
+          {
+            "name": "activation_input",
+            "direction": "input",
+            "purpose": "Load activation_matrix.",
+            "data_objects": [
+              "activation_matrix"
+            ],
+            "metadata": [
+              "a_last"
+            ],
+            "framing": "Exactly M*ceil(K/8) transfers. Beat (row,ch), in row-major order, packs lane l at a_data[8*l +: 8] as A[row,8*ch+l]. Out-of-range final-chunk lanes are ignored. a_last is one only on the final required beat.",
+            "ordering": "Immediately after command, before weight input.",
+            "backpressure": "a_ready is asserted only in LOAD_A; payload and last remain stable while stalled."
+          },
+          {
+            "name": "weight_input",
+            "direction": "input",
+            "purpose": "Load weight_matrix.",
+            "data_objects": [
+              "weight_matrix"
+            ],
+            "metadata": [
+              "b_last"
+            ],
+            "framing": "Exactly K*ceil(N/8) transfers. Beat (krow,ch), in row-major order, packs lane l at b_data[8*l +: 8] as B[krow,8*ch+l]. Out-of-range final-chunk lanes are ignored. b_last is one only on the final required beat.",
+            "ordering": "After activation input and before bias input.",
+            "backpressure": "b_ready is asserted only in LOAD_B; payload and last remain stable while stalled."
+          },
+          {
+            "name": "bias_input",
+            "direction": "input",
+            "purpose": "Load bias_vector.",
+            "data_objects": [
+              "bias_vector"
+            ],
+            "metadata": [
+              "bias_last"
+            ],
+            "framing": "Exactly ceil(N/8) transfers. Chunk ch packs lane l at bias_data[32*l +: 32] as bias[8*ch+l]. Out-of-range lanes are ignored. bias_last is one only on the final required beat.",
+            "ordering": "After weight input and before computation.",
+            "backpressure": "bias_ready is asserted only in LOAD_BIAS; payload and last remain stable while stalled."
+          },
+          {
+            "name": "result_output",
+            "direction": "output",
+            "purpose": "Emit output_matrix.",
+            "data_objects": [
+              "output_matrix"
+            ],
+            "metadata": [
+              "out_keep",
+              "out_last"
+            ],
+            "framing": "Tile-major order: m_base=0,8,... outer; n_base=0,8,... inner; emit row r=0..min(7,M-1-m_base). Lane c carries Y[m_base+r,n_base+c] in out_data[32*c +: 32]. out_keep[c]=1 exactly when n_base+c<N. Total transfers are M*ceil(N/8). out_last is one only for the final transfer.",
+            "ordering": "Deterministic tile-major ordering defined by framing.",
+            "backpressure": "out_valid and all payload metadata remain stable until out_ready&&out_valid."
+          }
+        ],
+        "signals": [
+          {
+            "name": "clk",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Clock.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "rst",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Synchronous active-high reset.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "cmd_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Command valid.",
+            "reset_value": "0 required during reset"
+          },
+          {
+            "name": "cmd_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Command acceptance enable.",
+            "reset_value": "1 after reset edge"
+          },
+          {
+            "name": "cmd_m",
+            "direction": "input",
+            "width": "$clog2(MAX_M+1)",
+            "signed": false,
+            "semantic": "Runtime M.",
+            "reset_value": "Don't care"
+          },
+          {
+            "name": "cmd_n",
+            "direction": "input",
+            "width": "$clog2(MAX_N+1)",
+            "signed": false,
+            "semantic": "Runtime N.",
+            "reset_value": "Don't care"
+          },
+          {
+            "name": "cmd_k",
+            "direction": "input",
+            "width": "$clog2(MAX_K+1)",
+            "signed": false,
+            "semantic": "Runtime K.",
+            "reset_value": "Don't care"
+          },
+          {
+            "name": "a_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Activation beat valid.",
+            "reset_value": "0 required during reset"
+          },
+          {
+            "name": "a_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Activation beat ready.",
+            "reset_value": "0"
+          },
+          {
+            "name": "a_data",
+            "direction": "input",
+            "width": "ARRAY_COLS*8",
+            "signed": false,
+            "semantic": "Eight packed signed INT8 activation lanes.",
+            "reset_value": "Don't care"
+          },
+          {
+            "name": "a_last",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Final activation beat marker.",
+            "reset_value": "Don't care"
+          },
+          {
+            "name": "b_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Weight beat valid.",
+            "reset_value": "0 required during reset"
+          },
+          {
+            "name": "b_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Weight beat ready.",
+            "reset_value": "0"
+          },
+          {
+            "name": "b_data",
+            "direction": "input",
+            "width": "ARRAY_COLS*8",
+            "signed": false,
+            "semantic": "Eight packed signed INT8 weight lanes.",
+            "reset_value": "Don't care"
+          },
+          {
+            "name": "b_last",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Final weight beat marker.",
+            "reset_value": "Don't care"
+          },
+          {
+            "name": "bias_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Bias beat valid.",
+            "reset_value": "0 required during reset"
+          },
+          {
+            "name": "bias_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Bias beat ready.",
+            "reset_value": "0"
+          },
+          {
+            "name": "bias_data",
+            "direction": "input",
+            "width": "ARRAY_COLS*32",
+            "signed": false,
+            "semantic": "Eight packed signed INT32 bias lanes.",
+            "reset_value": "Don't care"
+          },
+          {
+            "name": "bias_last",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Final bias beat marker.",
+            "reset_value": "Don't care"
+          },
+          {
+            "name": "out_valid",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Result beat valid.",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_ready",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Result consumer ready.",
+            "reset_value": "Don't care"
+          },
+          {
+            "name": "out_data",
+            "direction": "output",
+            "width": "ARRAY_COLS*32",
+            "signed": false,
+            "semantic": "Eight packed signed INT32 result lanes.",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_keep",
+            "direction": "output",
+            "width": "ARRAY_COLS",
+            "signed": false,
+            "semantic": "Valid result-lane mask.",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_last",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Final job result marker.",
+            "reset_value": "0"
+          },
+          {
+            "name": "busy",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "One from accepted legal command through final output transfer.",
+            "reset_value": "0"
+          },
+          {
+            "name": "done",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "One-cycle pulse coincident with final output transfer.",
+            "reset_value": "0"
+          },
+          {
+            "name": "error",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Sticky malformed-command or framing indication.",
+            "reset_value": "0"
+          }
+        ],
+        "global_handshake_rules": {
+          "transfer_condition": "A channel transfers exactly when its valid and ready are both one on a rising edge.",
+          "stall_behavior": "A producer must hold payload and metadata stable while valid is one and ready is zero. State associated with a channel advances only on transfer."
+        }
+      },
+      "module_manifest": {
+        "top": "fc_accelerator",
+        "modules": [
+          {
+            "name": "fc_accelerator",
+            "responsibility": "Top-level wiring for controller, operand storage, and compute array.",
+            "dependencies": [
+              "fc_controller",
+              "operand_store",
+              "gemm_array_8x8"
+            ],
+            "parameters": [
+              "ARRAY_ROWS",
+              "ARRAY_COLS",
+              "MAX_M",
+              "MAX_N",
+              "MAX_K"
+            ],
+            "stateful": false,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Clock."
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Synchronous active-high reset."
+              },
+              {
+                "name": "cmd_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Command valid."
+              },
+              {
+                "name": "cmd_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Command ready."
+              },
+              {
+                "name": "cmd_m",
+                "direction": "input",
+                "width": "$clog2(MAX_M+1)",
+                "signed": false,
+                "semantics": "Runtime M."
+              },
+              {
+                "name": "cmd_n",
+                "direction": "input",
+                "width": "$clog2(MAX_N+1)",
+                "signed": false,
+                "semantics": "Runtime N."
+              },
+              {
+                "name": "cmd_k",
+                "direction": "input",
+                "width": "$clog2(MAX_K+1)",
+                "signed": false,
+                "semantics": "Runtime K."
+              },
+              {
+                "name": "a_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Activation valid."
+              },
+              {
+                "name": "a_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Activation ready."
+              },
+              {
+                "name": "a_data",
+                "direction": "input",
+                "width": "ARRAY_COLS*8",
+                "signed": false,
+                "semantics": "Packed activation lanes."
+              },
+              {
+                "name": "a_last",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Activation final marker."
+              },
+              {
+                "name": "b_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Weight valid."
+              },
+              {
+                "name": "b_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Weight ready."
+              },
+              {
+                "name": "b_data",
+                "direction": "input",
+                "width": "ARRAY_COLS*8",
+                "signed": false,
+                "semantics": "Packed weight lanes."
+              },
+              {
+                "name": "b_last",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Weight final marker."
+              },
+              {
+                "name": "bias_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Bias valid."
+              },
+              {
+                "name": "bias_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Bias ready."
+              },
+              {
+                "name": "bias_data",
+                "direction": "input",
+                "width": "ARRAY_COLS*32",
+                "signed": false,
+                "semantics": "Packed bias lanes."
+              },
+              {
+                "name": "bias_last",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Bias final marker."
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Result valid."
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Result ready."
+              },
+              {
+                "name": "out_data",
+                "direction": "output",
+                "width": "ARRAY_COLS*32",
+                "signed": false,
+                "semantics": "Packed results."
+              },
+              {
+                "name": "out_keep",
+                "direction": "output",
+                "width": "ARRAY_COLS",
+                "signed": false,
+                "semantics": "Result lane mask."
+              },
+              {
+                "name": "out_last",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Final result marker."
+              },
+              {
+                "name": "busy",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Job active."
+              },
+              {
+                "name": "done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Final-transfer completion pulse."
+              },
+              {
+                "name": "error",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Sticky error."
+              }
+            ]
+          },
+          {
+            "name": "fc_controller",
+            "responsibility": "Decode framing, sequence loads and tiles, generate storage addresses and array start/MAC/finalize pulses, and implement output handshaking.",
+            "dependencies": [],
+            "parameters": [
+              "ARRAY_ROWS",
+              "ARRAY_COLS",
+              "MAX_M",
+              "MAX_N",
+              "MAX_K"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Clock."
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Synchronous reset."
+              },
+              {
+                "name": "external_bus",
+                "direction": "inout",
+                "width": "protocol signal bundle",
+                "signed": false,
+                "semantics": "All top-level command, input, output, status, and handshake signals with identical timing and widths to the interface contract."
+              },
+              {
+                "name": "store_write_bus",
+                "direction": "output",
+                "width": "control plus ARRAY_COLS*32",
+                "signed": false,
+                "semantics": "Synchronous A/B/bias write enables, row/chunk addresses, lane enables, and payloads; enables assert only on accepted input transfers."
+              },
+              {
+                "name": "store_read_address_bus",
+                "direction": "output",
+                "width": "parameter-derived",
+                "signed": false,
+                "semantics": "Current m_base, n_base, and k_index; addresses remain fixed for each MAC or finalize cycle."
+              },
+              {
+                "name": "a_vector",
+                "direction": "input",
+                "width": "ARRAY_ROWS*8",
+                "signed": false,
+                "semantics": "Asynchronous A vector from storage for current m_base and k."
+              },
+              {
+                "name": "b_vector",
+                "direction": "input",
+                "width": "ARRAY_COLS*8",
+                "signed": false,
+                "semantics": "Asynchronous B vector from storage for current n_base and k."
+              },
+              {
+                "name": "bias_vector",
+                "direction": "input",
+                "width": "ARRAY_COLS*32",
+                "signed": false,
+                "semantics": "Asynchronous bias vector for current n_base."
+              },
+              {
+                "name": "tile_start",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "One-cycle pulse clearing array accumulators and latching masks."
+              },
+              {
+                "name": "mac_enable",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "One-cycle enable for each k update; asserted exactly K times per tile."
+              },
+              {
+                "name": "finalize",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "One-cycle pulse adding bias and applying ReLU after the final MAC."
+              },
+              {
+                "name": "active_rows",
+                "direction": "output",
+                "width": "ARRAY_ROWS",
+                "signed": false,
+                "semantics": "Current tile row mask, stable from tile_start through emission."
+              },
+              {
+                "name": "active_cols",
+                "direction": "output",
+                "width": "ARRAY_COLS",
+                "signed": false,
+                "semantics": "Current tile column mask, stable from tile_start through emission."
+              },
+              {
+                "name": "result_row_index",
+                "direction": "output",
+                "width": "$clog2(ARRAY_ROWS)",
+                "signed": false,
+                "semantics": "Combinational array row selector; changes only after accepted output transfers."
+              },
+              {
+                "name": "array_result",
+                "direction": "input",
+                "width": "ARRAY_COLS*32",
+                "signed": false,
+                "semantics": "Selected finalized array row; stable while output is stalled."
+              }
+            ]
+          },
+          {
+            "name": "operand_store",
+            "responsibility": "Retain complete A, B, and bias objects and provide parallel asynchronous compute reads.",
+            "dependencies": [],
+            "parameters": [
+              "ARRAY_ROWS",
+              "ARRAY_COLS",
+              "MAX_M",
+              "MAX_N",
+              "MAX_K"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Write clock."
+              },
+              {
+                "name": "a_wr_en",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Writes enabled lanes of a_wr_data on the rising edge."
+              },
+              {
+                "name": "a_wr_row",
+                "direction": "input",
+                "width": "((MAX_M<=1)?1:$clog2(MAX_M))",
+                "signed": false,
+                "semantics": "Activation row address."
+              },
+              {
+                "name": "a_wr_chunk",
+                "direction": "input",
+                "width": "((MAX_K<=8)?1:$clog2((MAX_K+7)/8))",
+                "signed": false,
+                "semantics": "Activation eight-element chunk address."
+              },
+              {
+                "name": "a_wr_data",
+                "direction": "input",
+                "width": "ARRAY_COLS*8",
+                "signed": false,
+                "semantics": "Activation write data."
+              },
+              {
+                "name": "a_wr_mask",
+                "direction": "input",
+                "width": "ARRAY_COLS",
+                "signed": false,
+                "semantics": "Per-lane synchronous activation write enables."
+              },
+              {
+                "name": "b_wr_en",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Writes enabled lanes of b_wr_data on the rising edge."
+              },
+              {
+                "name": "b_wr_row",
+                "direction": "input",
+                "width": "((MAX_K<=1)?1:$clog2(MAX_K))",
+                "signed": false,
+                "semantics": "Weight k-row address."
+              },
+              {
+                "name": "b_wr_chunk",
+                "direction": "input",
+                "width": "((MAX_N<=8)?1:$clog2((MAX_N+7)/8))",
+                "signed": false,
+                "semantics": "Weight eight-element chunk address."
+              },
+              {
+                "name": "b_wr_data",
+                "direction": "input",
+                "width": "ARRAY_COLS*8",
+                "signed": false,
+                "semantics": "Weight write data."
+              },
+              {
+                "name": "b_wr_mask",
+                "direction": "input",
+                "width": "ARRAY_COLS",
+                "signed": false,
+                "semantics": "Per-lane synchronous weight write enables."
+              },
+              {
+                "name": "bias_wr_en",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Writes enabled bias lanes on the rising edge."
+              },
+              {
+                "name": "bias_wr_chunk",
+                "direction": "input",
+                "width": "((MAX_N<=8)?1:$clog2((MAX_N+7)/8))",
+                "signed": false,
+                "semantics": "Bias chunk address."
+              },
+              {
+                "name": "bias_wr_data",
+                "direction": "input",
+                "width": "ARRAY_COLS*32",
+                "signed": false,
+                "semantics": "Bias write data."
+              },
+              {
+                "name": "bias_wr_mask",
+                "direction": "input",
+                "width": "ARRAY_COLS",
+                "signed": false,
+                "semantics": "Per-lane synchronous bias write enables."
+              },
+              {
+                "name": "rd_m_base",
+                "direction": "input",
+                "width": "((MAX_M<=1)?1:$clog2(MAX_M))",
+                "signed": false,
+                "semantics": "First activation row; asynchronous read address."
+              },
+              {
+                "name": "rd_n_base",
+                "direction": "input",
+                "width": "((MAX_N<=1)?1:$clog2(MAX_N))",
+                "signed": false,
+                "semantics": "First weight/bias column; asynchronous read address."
+              },
+              {
+                "name": "rd_k",
+                "direction": "input",
+                "width": "((MAX_K<=1)?1:$clog2(MAX_K))",
+                "signed": false,
+                "semantics": "Reduction index; asynchronous read address."
+              },
+              {
+                "name": "rd_a_vector",
+                "direction": "output",
+                "width": "ARRAY_ROWS*8",
+                "signed": false,
+                "semantics": "Zero-latency combinational A values for rows rd_m_base through +7 at rd_k."
+              },
+              {
+                "name": "rd_b_vector",
+                "direction": "output",
+                "width": "ARRAY_COLS*8",
+                "signed": false,
+                "semantics": "Zero-latency combinational B values at rd_k for columns rd_n_base through +7."
+              },
+              {
+                "name": "rd_bias_vector",
+                "direction": "output",
+                "width": "ARRAY_COLS*32",
+                "signed": false,
+                "semantics": "Zero-latency combinational bias values for rd_n_base through +7."
+              }
+            ]
+          },
+          {
+            "name": "gemm_array_8x8",
+            "responsibility": "Maintain 64 accumulators, perform parallel signed MAC updates, bias/ReLU finalization, and row selection.",
+            "dependencies": [],
+            "parameters": [
+              "ARRAY_ROWS",
+              "ARRAY_COLS"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Clock."
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Clears accumulator validity and data on the rising edge."
+              },
+              {
+                "name": "tile_start",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "On the rising edge, clears all accumulators and latches masks; mutually exclusive with mac_enable and finalize."
+              },
+              {
+                "name": "mac_enable",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "On the rising edge, each active PE performs one wrapping signed MAC."
+              },
+              {
+                "name": "finalize",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "On the rising edge, each active PE adds its column bias with wrap and applies ReLU."
+              },
+              {
+                "name": "a_vector",
+                "direction": "input",
+                "width": "ARRAY_ROWS*8",
+                "signed": false,
+                "semantics": "Packed signed activation operands for one k step."
+              },
+              {
+                "name": "b_vector",
+                "direction": "input",
+                "width": "ARRAY_COLS*8",
+                "signed": false,
+                "semantics": "Packed signed weight operands for one k step."
+              },
+              {
+                "name": "bias_vector",
+                "direction": "input",
+                "width": "ARRAY_COLS*32",
+                "signed": false,
+                "semantics": "Packed signed biases used only when finalize is asserted."
+              },
+              {
+                "name": "active_rows",
+                "direction": "input",
+                "width": "ARRAY_ROWS",
+                "signed": false,
+                "semantics": "Row mask latched at tile_start."
+              },
+              {
+                "name": "active_cols",
+                "direction": "input",
+                "width": "ARRAY_COLS",
+                "signed": false,
+                "semantics": "Column mask latched at tile_start."
+              },
+              {
+                "name": "result_row_index",
+                "direction": "input",
+                "width": "$clog2(ARRAY_ROWS)",
+                "signed": false,
+                "semantics": "Combinational finalized-row selector."
+              },
+              {
+                "name": "result_data",
+                "direction": "output",
+                "width": "ARRAY_COLS*32",
+                "signed": false,
+                "semantics": "Zero-latency selected accumulator row, stable whenever accumulators and selector are stable."
+              }
+            ]
+          }
+        ]
+      },
+      "acceptance_criteria": {
+        "functional": [
+          "For every legal job, output exactly matches the specified increasing-k wrap32 GEMM, wrap32 bias addition, and signed ReLU.",
+          "Verify INT8 extrema, negative values, INT32 overflow, bias overflow, zero-after-ReLU, and positive INT32 outputs.",
+          "Verify all legal boundary dimensions including 1 and each configured maximum, plus dimensions not divisible by eight.",
+          "Verify exact tile-major output ordering and M*ceil(N/8) output transfers."
+        ],
+        "verification": [
+          "Run at least 100 randomized legal transactions with exact integer comparison against an independent model.",
+          "Check exact A, B, and bias transfer counts, lane packing, section order, tlast placement, boundary-lane masking, and no replay requirement.",
+          "Randomly stall every input and output channel; assert payload stability and absence of lost or duplicated transfers.",
+          "Test reset from every FSM phase, including output stalls, and confirm deterministic return to IDLE.",
+          "Test zero and over-maximum dimensions plus early and missing tlast; confirm sticky ERROR and reset-only recovery.",
+          "Check done is a one-cycle pulse coincident with the final accepted output transfer and busy spans the job.",
+          "Regression wall timeout shall be at least 120 seconds."
+        ],
+        "rtl": [
+          "RTL shall be synthesizable SystemVerilog and use none of real, shortreal, delays, force/release, or classes.",
+          "All parameter-dependent widths shall remain at least one bit for every legal parameter value.",
+          "Memory write enables, asynchronous-read behavior, tile_start, mac_enable, finalize, done, and stall semantics shall match this contract.",
+          "Lint/elaboration shall report no unresolved modules, inferred latches, multiple drivers, or width-dependent packing overflow."
+        ],
+        "fpga_handoff": [
+          "Only verified RTL may be submitted to Vivado.",
+          "Vivado scripts, part selection, clocks, constraints, source ordering, and top module shall be deterministic and archived.",
+          "Synthesis results shall conform to multigent/schemas/synthesis_result.schema.json.",
+          "Timing, area, power, frequency, and utilization may be reported only from deterministic tool reports; no estimated metrics are acceptable."
+        ]
+      }
+    }
+  },
+  "rtl_task_type": "INITIAL_GENERATION",
+  "verification_context": {},
+  "verifier_status": "PENDING",
+  "verification_plan": {},
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "rtl_feedback": null,
+  "best_candidate": null,
+  "optimization_plan": null,
+  "ppa_status": "PENDING",
+  "frozen_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "c2e9745d8d62364ef013a03152487d1f281e06d6a9c24f983a40baedcdc7635e",
+      "architect_result.json": "db3f5fb598faa620bf3d9dcd8d467ff306ef4c537de9af0cdccba3ab0bcb82da",
+      "architecture_contract.yaml": "d0c5d1a03f63b73bab55f85c13ffa55cba6b98ece096eb097309da4e26d45e34",
+      "interface_contract.yaml": "ca8265afa5d1a356496f9ae130a17078803297e1bb0aaba25ed7619f70ca1fa3",
+      "module_manifest.json": "9282fc9b168eeaf0d6d4511522a048ba5e402c6246a32eae70c350ff0076c08d"
+    },
+    "rtl": {},
+    "tests": {},
+    "reference": {}
+  }
+}

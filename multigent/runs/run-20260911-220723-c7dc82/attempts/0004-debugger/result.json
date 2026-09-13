@@ -1,0 +1,272 @@
+{
+  "debugger_status": "REPAIR_PLAN_READY",
+  "diagnosis": {
+    "failure_class": "UNKNOWN",
+    "root_cause": "Primary defect is in mv_npu_top control/datapath integration: cfg_m/cfg_n and bias/relu enables are decoded from wrong bit positions, compute starts immediately on cfg without enforcing section sequencing, row/output progress is driven by a_lane_valid rather than FSM-defined completion, and output emission does not honor backpressure/row-finalize protocol. This produces early divergence (output count/data mismatch) and later deadlock/timeouts.",
+    "confidence": 0.93,
+    "first_divergence": {
+      "cycle": null,
+      "signal_or_output": "out_result stream beat count/content",
+      "expected": "Exactly M outputs with correct dot/bias/relu values and final out_last",
+      "observed": "Example failure shows len(out)=10 vs expected 8; other tests hit job timeout"
+    },
+    "evidence": [
+      {
+        "source": "cocotb stdout (test_backpressure_in_out)",
+        "observation": "Assertion failure: len(out)=10 while expected M=8",
+        "relevance": "Direct violation of architectural invariant exactly one output per row"
+      },
+      {
+        "source": "cocotb stdout (test_illegal_cfg_error_recovery, test_randomized_100)",
+        "observation": "SimTimeoutError: job timeout",
+        "relevance": "Control/progress protocol can stall or fail to complete jobs"
+      },
+      {
+        "source": "frozen test pack_cfg",
+        "observation": "pack_cfg encodes M in bits[7:0], N in bits[15:8], bias_en bit16, relu_en bit17",
+        "relevance": "Authoritative expected cfg encoding"
+      },
+      {
+        "source": "rtl/mv_npu_top.sv",
+        "observation": "cfg_m<=cfg_word[15:8], cfg_n<=cfg_word[23:16], cfg_bias_en<=cfg_word[0], cfg_relu_en<=cfg_word[1]",
+        "relevance": "Deterministic decode mismatch against frozen verifier contract"
+      },
+      {
+        "source": "rtl/mv_npu_top.sv + ctrl_fsm.sv",
+        "observation": "Top drives compute_active/start_row locally and ignores ctrl_fsm pulses for sequencing; out emission tied inside a_lane_valid/col_idx path",
+        "relevance": "Explains output duplication/loss and timeout under stalls"
+      },
+      {
+        "source": "verilator lint",
+        "observation": "Only WIDTHEXPAND warnings, no fatal compile/elab errors",
+        "relevance": "Confirms failure is functional simulation, not compile-time"
+      }
+    ],
+    "affected_modules": [
+      "mv_npu_top",
+      "ctrl_fsm"
+    ],
+    "alternative_hypotheses": [
+      "x_buffer_mem read latency misalignment contributes to arithmetic mismatch",
+      "output_if may drop in_valid pulses if producer protocol is violated upstream"
+    ],
+    "architecture_change_required": false,
+    "additional_evidence_requested": []
+  },
+  "repair_plan": {
+    "action": "PATCH",
+    "affected_modules": [
+      "mv_npu_top",
+      "ctrl_fsm"
+    ],
+    "protected_modules": [
+      "input_router",
+      "x_buffer_mem",
+      "mac16_core",
+      "postproc_unit",
+      "output_if"
+    ],
+    "protected_interfaces": [
+      "clk",
+      "rst_n",
+      "in_valid",
+      "in_ready",
+      "in_data",
+      "in_type",
+      "in_last",
+      "out_valid",
+      "out_ready",
+      "out_data",
+      "out_last",
+      "busy",
+      "status_err"
+    ],
+    "recommended_change": "1) Fix cfg decode in mv_npu_top to match frozen verifier encoding (M[7:0], N[15:8], bias_en[16], relu_en[17]) with proper zero-extension to MW/NW. 2) Rework control so job progression follows contract sections and FSM pulses: load X first, then consume A for exactly M*N elements, finalize exactly once per row, optional bias per row only when enabled, emit exactly M outputs in row order. 3) Gate counter/state advances strictly on ready&&valid handshakes; hold output payload/valid during out_ready=0; prevent duplicate finalize/output on stalls. 4) Ensure illegal cfg handling and recovery semantics in ctrl_fsm: status_err latches in ERROR for invalid bounds and clears on next legal cfg accept; busy reflects active legal job only. 5) Align top-level start_row/step_valid/out_in_valid generation with FSM-defined compute_step/row_finalize/job_done events rather than raw in_beat acceptance.",
+    "do_not_change": [
+      "Do not modify frozen tests or reference model",
+      "Do not change module interfaces or signal widths at top level",
+      "Do not alter arithmetic semantics (INT8 signed multiply, INT32 wrap, optional bias, optional ReLU)",
+      "Do not change input section ordering contract"
+    ],
+    "expected_side_effects": [
+      "Cycle timing/latency per job may shift to contract-compliant behavior",
+      "Width warnings may reduce after cfg decode correction"
+    ],
+    "regression_required": "FULL"
+  },
+  "architecture_conflict": null,
+  "repair_iteration": 1,
+  "rtl_task_type": "FUNCTIONAL_REPAIR",
+  "rtl_feedback": {
+    "source": "debugger",
+    "repair_iteration": 1,
+    "diagnosis": {
+      "failure_class": "UNKNOWN",
+      "root_cause": "Primary defect is in mv_npu_top control/datapath integration: cfg_m/cfg_n and bias/relu enables are decoded from wrong bit positions, compute starts immediately on cfg without enforcing section sequencing, row/output progress is driven by a_lane_valid rather than FSM-defined completion, and output emission does not honor backpressure/row-finalize protocol. This produces early divergence (output count/data mismatch) and later deadlock/timeouts.",
+      "confidence": 0.93,
+      "first_divergence": {
+        "cycle": null,
+        "signal_or_output": "out_result stream beat count/content",
+        "expected": "Exactly M outputs with correct dot/bias/relu values and final out_last",
+        "observed": "Example failure shows len(out)=10 vs expected 8; other tests hit job timeout"
+      },
+      "evidence": [
+        {
+          "source": "cocotb stdout (test_backpressure_in_out)",
+          "observation": "Assertion failure: len(out)=10 while expected M=8",
+          "relevance": "Direct violation of architectural invariant exactly one output per row"
+        },
+        {
+          "source": "cocotb stdout (test_illegal_cfg_error_recovery, test_randomized_100)",
+          "observation": "SimTimeoutError: job timeout",
+          "relevance": "Control/progress protocol can stall or fail to complete jobs"
+        },
+        {
+          "source": "frozen test pack_cfg",
+          "observation": "pack_cfg encodes M in bits[7:0], N in bits[15:8], bias_en bit16, relu_en bit17",
+          "relevance": "Authoritative expected cfg encoding"
+        },
+        {
+          "source": "rtl/mv_npu_top.sv",
+          "observation": "cfg_m<=cfg_word[15:8], cfg_n<=cfg_word[23:16], cfg_bias_en<=cfg_word[0], cfg_relu_en<=cfg_word[1]",
+          "relevance": "Deterministic decode mismatch against frozen verifier contract"
+        },
+        {
+          "source": "rtl/mv_npu_top.sv + ctrl_fsm.sv",
+          "observation": "Top drives compute_active/start_row locally and ignores ctrl_fsm pulses for sequencing; out emission tied inside a_lane_valid/col_idx path",
+          "relevance": "Explains output duplication/loss and timeout under stalls"
+        },
+        {
+          "source": "verilator lint",
+          "observation": "Only WIDTHEXPAND warnings, no fatal compile/elab errors",
+          "relevance": "Confirms failure is functional simulation, not compile-time"
+        }
+      ],
+      "affected_modules": [
+        "mv_npu_top",
+        "ctrl_fsm"
+      ],
+      "alternative_hypotheses": [
+        "x_buffer_mem read latency misalignment contributes to arithmetic mismatch",
+        "output_if may drop in_valid pulses if producer protocol is violated upstream"
+      ],
+      "architecture_change_required": false,
+      "additional_evidence_requested": []
+    },
+    "repair_plan": {
+      "action": "PATCH",
+      "affected_modules": [
+        "mv_npu_top",
+        "ctrl_fsm"
+      ],
+      "protected_modules": [
+        "input_router",
+        "x_buffer_mem",
+        "mac16_core",
+        "postproc_unit",
+        "output_if"
+      ],
+      "protected_interfaces": [
+        "clk",
+        "rst_n",
+        "in_valid",
+        "in_ready",
+        "in_data",
+        "in_type",
+        "in_last",
+        "out_valid",
+        "out_ready",
+        "out_data",
+        "out_last",
+        "busy",
+        "status_err"
+      ],
+      "recommended_change": "1) Fix cfg decode in mv_npu_top to match frozen verifier encoding (M[7:0], N[15:8], bias_en[16], relu_en[17]) with proper zero-extension to MW/NW. 2) Rework control so job progression follows contract sections and FSM pulses: load X first, then consume A for exactly M*N elements, finalize exactly once per row, optional bias per row only when enabled, emit exactly M outputs in row order. 3) Gate counter/state advances strictly on ready&&valid handshakes; hold output payload/valid during out_ready=0; prevent duplicate finalize/output on stalls. 4) Ensure illegal cfg handling and recovery semantics in ctrl_fsm: status_err latches in ERROR for invalid bounds and clears on next legal cfg accept; busy reflects active legal job only. 5) Align top-level start_row/step_valid/out_in_valid generation with FSM-defined compute_step/row_finalize/job_done events rather than raw in_beat acceptance.",
+      "do_not_change": [
+        "Do not modify frozen tests or reference model",
+        "Do not change module interfaces or signal widths at top level",
+        "Do not alter arithmetic semantics (INT8 signed multiply, INT32 wrap, optional bias, optional ReLU)",
+        "Do not change input section ordering contract"
+      ],
+      "expected_side_effects": [
+        "Cycle timing/latency per job may shift to contract-compliant behavior",
+        "Width warnings may reduce after cfg decode correction"
+      ],
+      "regression_required": "FULL"
+    },
+    "verification_evidence": {
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "top_module": "mv_npu_top",
+      "regression_scope": "FULL",
+      "verilator": {
+        "stage": "verilator_lint",
+        "status": "PASS",
+        "failure_class": null,
+        "return_code": 0,
+        "command": [
+          "/u/mjha1/.local/verilator-env/bin/verilator",
+          "--lint-only",
+          "--sv",
+          "-Wno-fatal",
+          "--top-module",
+          "mv_npu_top",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/ctrl_fsm.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/input_router.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mac16_core.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mv_npu_top.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/output_if.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/postproc_unit.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/x_buffer_mem.sv"
+        ],
+        "sources": [
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/ctrl_fsm.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/input_router.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mac16_core.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mv_npu_top.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/output_if.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/postproc_unit.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/x_buffer_mem.sv"
+        ],
+        "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.178 MB sources in 8 modules, into 0.027 MB in 3 C++ files needing 0.000 MB\n- Verilator: Walltime 0.034 s (elab=0.005, cvt=0.010, bld=0.000); cpu 0.010 s on 1 threads; allocated 26.000 MB\n",
+        "stderr": "%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/ctrl_fsm.sv:33:52: Operator GT expects 32 bits on the LHS, but LHS's VARREF 'cfg_m' generates 9 bits.\n                                                                                                              : ... note: In instance 'mv_npu_top.u_ctrl'\n   33 |         if ((cfg_m == 0) || (cfg_n == 0) || (cfg_m > MAX_M) || (cfg_n > MAX_N)) begin\n      |                                                    ^\n                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.050\n                      ... Use \"/* verilator lint_off WIDTHEXPAND */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/ctrl_fsm.sv:33:71: Operator GT expects 32 bits on the LHS, but LHS's VARREF 'cfg_n' generates 9 bits.\n                                                                                                              : ... note: In instance 'mv_npu_top.u_ctrl'\n   33 |         if ((cfg_m == 0) || (cfg_n == 0) || (cfg_m > MAX_M) || (cfg_n > MAX_N)) begin\n      |                                                                       ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mv_npu_top.sv:69:22: Operator ASSIGNW expects 9 bits on the Assign RHS, but Assign RHS's SEL generates 8 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top'\n   69 |   assign cfg_m       = cfg_word[15:8];\n      |                      ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mv_npu_top.sv:70:22: Operator ASSIGNW expects 9 bits on the Assign RHS, but Assign RHS's SEL generates 8 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top'\n   70 |   assign cfg_n       = cfg_word[23:16];\n      |                      ^\n",
+        "error_diagnostics": [],
+        "top_module": "mv_npu_top"
+      },
+      "cocotb": {
+        "stage": "cocotb_regression",
+        "status": "SIMULATION_FAILURE",
+        "failure_class": "UNKNOWN",
+        "tests": 5,
+        "failures": 5,
+        "seed": 20260911,
+        "top_module": "mv_npu_top",
+        "test_modules": [
+          "test_mv_npu"
+        ],
+        "results_xml": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/verification/build/av1-r0-p0-v0/results.xml",
+        "worker_error": null,
+        "worker_return_code": 1,
+        "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.169 MB sources in 8 modules, into 0.110 MB in 6 C++ files needing 0.000 MB\n- Verilator: Walltime 0.070 s (elab=0.001, cvt=0.027, bld=0.000); cpu 0.015 s on 1 threads; allocated 26.312 MB\nmake: Entering directory '/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/verification/build/av1-r0-p0-v0'\ng++  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -Os  -c -o verilator.o /u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/share/lib/verilator/verilator.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_\n[TRUNCATED: full evidence retained in run artifacts]\n                                          assert 10 == 8\n                                                         +  where 10 = len([(0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), ...])\n150765.00ns INFO     cocotb.regression                  running test_mv_npu.test_illegal_cfg_error_recovery (4/5)\n300816.00ns WARNING  cocotb.regression                  test_mv_npu.test_illegal_cfg_error_recovery failed\n                                                        Traceback (most recent call last):\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py\", line 153, in test_illegal_cfg_error_recovery\n                                                            await run_job(dut, cfg, x, a, [], out_ready_fn=lambda: 1, src_idle_rng=random.Random(SEED + 4))\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py\", line 94, in run_job\n                                                            raise SimTimeoutError(\"job timeout\")\n                                                        cocotb.triggers.SimTimeoutError: job timeout\n300816.00ns INFO     cocotb.regression                  running test_mv_npu.test_randomized_100 (5/5)\n450831.00ns WARNING  cocotb.regression                  test_mv_npu.test_randomized_100 failed\n                                                        Traceback (most recent call last):\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py\", line 174, in test_randomized_100\n                                                            await run_job(dut, cfg, x, a, b, out_ready_fn=lambda: 1 if out_rng.randint(0, 3) else 0, src_idle_rng=rng)\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py\", line 94, in run_job\n                                                            raise SimTimeoutError(\"job timeout\")\n                                                        cocotb.triggers.SimTimeoutError: job timeout\n450831.00ns INFO     cocotb.regression                  *****************************************************************************************************\n                                                        ** TEST                                         STATUS  SIM TIME (ns)  REAL TIME (s)  RATIO (ns/s) **\n                                                        *****************************************************************************************************\n                                                        ** test_mv_npu.test_smoke_directed               FAIL          60.00           0.00      25720.98  **\n                                                        ** test_mv_npu.test_reset_idle_and_active        FAIL      150015.00           1.56      96054.79  **\n                                                        ** test_mv_npu.test_backpressure_in_out          FAIL         690.00           0.01      82663.18  **\n                                                        ** test_mv_npu.test_illegal_cfg_error_recovery   FAIL      150051.00           1.61      93438.42  **\n                                                        ** test_mv_npu.test_randomized_100               FAIL      150015.00           1.66      90523.23  **\n                                                        *****************************************************************************************************\n                                                        ** TESTS=5 PASS=0 FAIL=5 SKIP=0                            450831.00           4.84      93112.79  **\n                                                        *****************************************************************************************************\n- :0: Verilog $finish\n",
+        "stderr": "%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/ctrl_fsm.sv:33:52: Operator GT expects 32 bits on the LHS, but LHS's VARREF 'cfg_m' generates 9 bits.\n                                                                                                              : ... note: In instance 'mv_npu_top.u_ctrl'\n   33 |         if ((cfg_m == 0) || (cfg_n == 0) || (cfg_m > MAX_M) || (cfg_n > MAX_N)) begin\n      |                                                    ^\n                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.050\n                      ... Use \"/* verilator lint_off WIDTHEXPAND */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/ctrl_fsm.sv:33:71: Operator GT expects 32 bits on the LHS, but LHS's VARREF 'cfg_n' generates 9 bits.\n                                                                                                              : ... note: In instance 'mv_npu_top.u_ctrl'\n   33 |         if ((cfg_m == 0) || (cfg_n == 0) || (cfg_m > MAX_M) || (cfg_n > MAX_N)) begin\n      |                                                                       ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mv_npu_top.sv:69:22: Operator ASSIGNW expects 9 bits on the Assign RHS, but Assign RHS's SEL generates 8 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top'\n   69 |   assign cfg_m       = cfg_word[15:8];\n      |                      ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mv_npu_top.sv:70:22: Operator ASSIGNW expects 9 bits on the Assign RHS, but Assign RHS's SEL generates 8 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top'\n   70 |   assign cfg_n       = cfg_word[23:16];\n      |                      ^\n"
+      },
+      "status": "SIMULATION_FAILURE",
+      "failure_class": "UNKNOWN"
+    },
+    "frozen_verifier": true
+  },
+  "needs_regression": true,
+  "history": [
+    {
+      "stage": "debugger",
+      "status": "REPAIR_PLAN_READY",
+      "failure_class": "UNKNOWN",
+      "repair_iteration_before": 0,
+      "repair_iteration_after": 1,
+      "affected_modules": [
+        "mv_npu_top",
+        "ctrl_fsm"
+      ]
+    }
+  ]
+}

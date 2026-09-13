@@ -1,0 +1,42 @@
+{
+  "failure_class": "UNKNOWN",
+  "root_cause": "Top-level ready gating incorrectly ties mat_ready to pp_in_ready, while pp_in_ready is driven by output/backpressure state in mv_postproc. During matrix ingestion this creates a deadlock path that can keep mat_ready low and block all mat transfers.",
+  "confidence": 0.88,
+  "first_divergence": {
+    "cycle": null,
+    "signal_or_output": "mat_ready",
+    "expected": "mat_ready should assert during COMPUTE_ROWS when matrix beats are expected (subject to control-state legality).",
+    "observed": "mat_ready stays deasserted until send_beat timeout (SimTimeoutError: timeout waiting mat_ready)."
+  },
+  "evidence": [
+    {
+      "source": "cocotb log test_directed_basic",
+      "observation": "Failure at send_beat on mat channel with SimTimeoutError waiting mat_ready.",
+      "relevance": "First authoritative functional failure after successful build/lint."
+    },
+    {
+      "source": "cocotb log test_randomized_100_jobs",
+      "observation": "Same timeout waiting mat_ready during matrix send.",
+      "relevance": "Confirms systematic handshake bug, not data-dependent arithmetic mismatch."
+    },
+    {
+      "source": "rtl/mv_npu_top.sv",
+      "observation": "mat_ready is defined as ... && pp_in_ready; pp_in_ready originates from mv_postproc in_ready (depends on out_valid/out_ready).",
+      "relevance": "Direct causal coupling of matrix ingress to output-side readiness can deadlock compute ingress."
+    },
+    {
+      "source": "frozen interface/architecture contract",
+      "observation": "Matrix channel must support backpressure but accept beats during compute phase independently of unrelated channel deadlock; staged control requires phased progress.",
+      "relevance": "Current coupling violates intended phased flow/handshake independence."
+    }
+  ],
+  "affected_modules": [
+    "mv_npu_top"
+  ],
+  "alternative_hypotheses": [
+    "Potential control-counter desynchronization between mv_ctrl_fsm and top local counters.",
+    "Potential row_done/new_row alignment issue in MAC path causing downstream starvation."
+  ],
+  "architecture_change_required": false,
+  "additional_evidence_requested": []
+}

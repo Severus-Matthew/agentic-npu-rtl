@@ -1,0 +1,27 @@
+top_module: mv_npu_top
+test_modules:
+- test_mv_npu
+test_categories:
+- functional
+- protocol
+- reset
+- completion
+- error
+- randomized
+randomized_test_count: 100
+seed: 12345
+timeout_seconds: 180
+regression_groups:
+  smoke:
+  - test_mv_npu
+  targeted:
+  - test_mv_npu
+  full:
+  - test_mv_npu
+pass_criteria: All cocotb tests pass with exact INT32 output match, correct handshake/count/order,
+  reset recovery, busy/error behavior per contract.
+protocol_assumptions:
+- Transfer only on ready&&valid rising-edge.
+- Source holds valid/payload stable until handshake.
+- Matrix stream row-major with 16 packed INT8 lanes; tail lanes ignored beyond N.
+- Single outstanding job; next command after completion.

@@ -1,0 +1,10 @@
+{"stage": "architect", "phase": "started", "time": "2026-09-11T20:40:49.454083+00:00"}
+{"stage": "architect", "phase": "finished", "time": "2026-09-11T20:44:11.530495+00:00", "status": null, "history": [{"stage": "architect", "status": "READY", "architecture_version": 1, "revision": false}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T20:44:11.534665+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T20:45:36.807455+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 0, "ppa_iteration": 0, "files": ["stream_matvec_int8_16.sv", "int8_mac16_bank.sv", "int32_bias_relu.sv"]}]}
+{"stage": "verifier", "phase": "started", "time": "2026-09-11T20:45:36.810404+00:00"}
+{"stage": "verifier", "phase": "finished", "time": "2026-09-11T20:51:20.047264+00:00", "status": null, "history": [{"stage": "verifier_generation", "status": "SEMANTIC_VALIDATION_FAILED"}]}
+{"stage": "failed", "phase": "started", "time": "2026-09-11T20:51:20.050060+00:00"}
+{"stage": "failed", "phase": "finished", "time": "2026-09-11T20:51:20.112775+00:00", "status": "FAILED", "history": [{"stage": "orchestrator", "status": "FAILED", "reason": "SEMANTIC_VALIDATION_FAILED"}]}
+{"stage": "final_report", "phase": "started", "time": "2026-09-11T20:51:20.115249+00:00"}
+{"stage": "final_report", "phase": "finished", "time": "2026-09-11T20:51:20.129361+00:00", "status": "FAILED"}

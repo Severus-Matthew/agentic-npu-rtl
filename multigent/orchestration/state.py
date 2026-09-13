@@ -14,6 +14,7 @@ class HardwareDesignState(TypedDict, total=False):
     """Shared state for the Architect/RTL/verification/repair/synthesis workflow."""
 
     run_id: str
+    model: str
     user_request: str
 
     architecture_dir: str

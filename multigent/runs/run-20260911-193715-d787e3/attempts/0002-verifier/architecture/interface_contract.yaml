@@ -1,0 +1,184 @@
+protocol: Single-clock custom ready-valid command, scalar input, and scalar output
+  channels; busy/done/error status.
+clock: clk; all transfers and state updates occur on rising edges.
+reset: rst, synchronous active high. While high, suppress cmd_ready, in_ready, out_valid,
+  busy, out_last, done, and error. A rising edge with rst asserted aborts the job
+  and restores IDLE.
+channels:
+- name: command
+  direction: input
+  purpose: Start one fully connected layer evaluation.
+  data_objects: []
+  metadata:
+  - 'cmd_m: unsigned M on its own MW-bit signal'
+  - 'cmd_n: unsigned N on its own NW-bit signal'
+  - 'cmd_k: unsigned K on its own KW-bit signal'
+  framing: Exactly one command transfer per attempted job. Dimensions are separate
+    simultaneous fields, not packed into in_data. Legal commands are followed by one
+    operand frame.
+  ordering: Commands are accepted only in IDLE. No same-edge command acceptance at
+    the final output edge.
+  backpressure: cmd_ready is high exactly when IDLE and !rst. The producer holds cmd_valid
+    and all dimension fields stable until acceptance.
+- name: operand_input
+  direction: input
+  purpose: Load all job operands.
+  data_objects:
+  - A
+  - B
+  - bias
+  metadata: []
+  framing: 'One element per accepted 32-bit in_data beat. First M*K beats: A[m,k],
+    m outermost and k innermost, INT8 in bits [7:0], bits [31:8] ignored. Next K*N
+    beats: B[k,n], k outermost and n innermost, with the same INT8 packing. Final
+    N beats: bias[n] in all bits [31:0], n increasing. Section boundaries are determined
+    solely by accepted-beat counts; no header, last, padding, or partial-vector beat
+    exists.'
+  ordering: A section, then B section, then bias section; exactly M*K+K*N+N accepted
+    beats per legal job.
+  backpressure: in_ready is high exactly in LOAD_A, LOAD_B, or LOAD_BIAS while !rst.
+    Producer retains the full in_data payload and in_valid while stalled. The first
+    operand can transfer no earlier than the edge after command acceptance.
+- name: result_output
+  direction: output
+  purpose: Deliver activated INT32 output elements.
+  data_objects:
+  - Y
+  metadata:
+  - out_last marks the final result beat of the job
+  framing: One Y[m,n] in out_data[31:0] per accepted beat; exactly M*N beats. For
+    tr increasing, then tc increasing, emit i=0..min(8,M-8*tr)-1, then j=0..min(8,N-8*tc)-1,
+    with m=8*tr+i and n=8*tc+j. No padded-lane beats. out_last=1 only on coordinate
+    (M-1,N-1), which is last in this traversal.
+  ordering: Tile-row-major traversal with local row-major emission. Output coordinates
+    are implicit from the accepted command and beat order.
+  backpressure: out_valid is high exactly in EMIT while !rst. Hold out_data, out_last,
+    and out_valid until out_ready accepts the beat.
+- name: status
+  direction: output
+  purpose: Expose job occupancy, completion, and rejected commands.
+  data_objects: []
+  metadata:
+  - busy
+  - done
+  - error
+  framing: busy is a level. done is a one-cycle event after final output acceptance.
+    error is a one-cycle event after an invalid command acceptance; consecutive invalid
+    commands may produce adjacent high cycles.
+  ordering: A legal completed job produces one done and no error. An invalid command
+    produces one error and no done. Reset abort produces neither.
+  backpressure: No acknowledgement or backpressure; consumers must observe event cycles.
+signals:
+- name: clk
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Rising-edge clock.
+  reset_value: Not applicable.
+- name: rst
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Active-high synchronous reset; also suppresses external handshake outputs
+    combinationally.
+  reset_value: Externally driven high for reset.
+- name: cmd_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Command fields are valid.
+  reset_value: Externally driven; ignored during reset.
+- name: cmd_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: IDLE && !rst.
+  reset_value: 0 while rst is high; 1 after reset deassertion in IDLE.
+- name: cmd_m
+  direction: input
+  width: max(1,$clog2(MAX_M+1))
+  signed: false
+  semantic: Runtime M; legal range 1 through MAX_M.
+  reset_value: Externally driven; ignored without command transfer.
+- name: cmd_n
+  direction: input
+  width: max(1,$clog2(MAX_N+1))
+  signed: false
+  semantic: Runtime N; legal range 1 through MAX_N.
+  reset_value: Externally driven; ignored without command transfer.
+- name: cmd_k
+  direction: input
+  width: max(1,$clog2(MAX_K+1))
+  signed: false
+  semantic: Runtime K; legal range 1 through MAX_K.
+  reset_value: Externally driven; ignored without command transfer.
+- name: in_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: in_data is valid for the next implicit operand position.
+  reset_value: Externally driven; ignored during reset.
+- name: in_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: '!rst && FSM is one of LOAD_A, LOAD_B, LOAD_BIAS.'
+  reset_value: '0.'
+- name: in_data
+  direction: input
+  width: '32'
+  signed: false
+  semantic: Raw transport bits; interpretation depends on the current implicit operand
+    section.
+  reset_value: Externally driven; ignored without input transfer.
+- name: out_valid
+  direction: output
+  width: '1'
+  signed: false
+  semantic: EMIT && !rst.
+  reset_value: '0.'
+- name: out_ready
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Consumer can accept the current output.
+  reset_value: Externally driven; ignored when out_valid is 0.
+- name: out_data
+  direction: output
+  width: '32'
+  signed: true
+  semantic: Current INT32 ReLU result when out_valid; zero otherwise.
+  reset_value: '0.'
+- name: out_last
+  direction: output
+  width: '1'
+  signed: false
+  semantic: out_valid && current coordinate is (M-1,N-1).
+  reset_value: '0.'
+- name: busy
+  direction: output
+  width: '1'
+  signed: false
+  semantic: '!rst && FSM!=IDLE; high from legal command acceptance through the cycle
+    preceding final output acceptance.'
+  reset_value: '0.'
+- name: done
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Registered one-cycle completion event caused only by acceptance of out_last;
+    gated low by rst.
+  reset_value: '0.'
+- name: error
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Registered one-cycle rejected-command event; gated low by rst.
+  reset_value: '0.'
+global_handshake_rules:
+  transfer_condition: At a rising edge with rst=0, a channel transfers exactly when
+    its valid && ready is 1. Reset overrides all transfers.
+  stall_behavior: A producer asserting valid must retain valid and every payload/metadata
+    bit until acceptance, except that reset cancels pending transactions. Consumers
+    may change ready freely. State advances only on the relevant accepted transfer
+    or an explicitly unstallable INIT/MAC edge.

@@ -1,0 +1,143 @@
+{
+  "top": "stream_matvec_int8",
+  "modules": [
+    {
+      "name": "stream_matvec_int8",
+      "responsibility": "Implement the complete bounded matrix-vector transaction engine: command validation, retained vector, scalar operand staging, sixteen MAC lanes, bias/ReLU finalization, ordered output, completion, and reset. No submodules or internal start/done links. Array writes occur only on the corresponding load handshake; vector reads are combinational with zero registered latency; MAC and FINALIZE updates occur only in their named states.",
+      "dependencies": [],
+      "parameters": [
+        "MAX_ROWS",
+        "MAX_COLS"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Rising-edge clock for all state and transfers."
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Synchronous active-high reset; suppress ready/valid and zero output payloads while high."
+        },
+        {
+          "name": "cmd_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Command valid; all command fields held through a stall."
+        },
+        {
+          "name": "cmd_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "IDLE && !rst; command capture and validation occur on handshake."
+        },
+        {
+          "name": "cmd_rows",
+          "direction": "input",
+          "width": "16",
+          "signed": false,
+          "semantics": "Unsigned row count captured with command; legal 1..MAX_ROWS."
+        },
+        {
+          "name": "cmd_cols",
+          "direction": "input",
+          "width": "16",
+          "signed": false,
+          "semantics": "Unsigned column count captured with command; legal 1..MAX_COLS."
+        },
+        {
+          "name": "cmd_bias_enable",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Captured command flag enabling bias input sections and addition."
+        },
+        {
+          "name": "cmd_relu_enable",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Captured command flag enabling ReLU after wrapping bias addition."
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Operand valid; held with payload until accepted."
+        },
+        {
+          "name": "in_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "!rst && state in {LOAD_X,LOAD_BIAS,LOAD_W}; each handshake writes precisely one indexed storage element."
+        },
+        {
+          "name": "in_data",
+          "direction": "input",
+          "width": "32",
+          "signed": false,
+          "semantics": "LOAD_X or LOAD_W captures signed bits [7:0], ignoring upper bits; LOAD_BIAS captures all 32 bits as signed bias. Ordering is fixed by the operand channel contract."
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "EMIT && !rst; remains asserted while current result is stalled."
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Result acceptance qualifier; advances emit index or exits EMIT only on handshake."
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "Selected registered result lane; stable during stall; zero when out_valid=0."
+        },
+        {
+          "name": "out_last",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "out_valid && tile_base+emit_index==R-1, using widened index arithmetic; stable during stall."
+        },
+        {
+          "name": "done_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "DONE && !rst; level handshake, not a pulse. Asserted in the cycle following final output acceptance or invalid-command acceptance."
+        },
+        {
+          "name": "done_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Completion acceptance qualifier; handshake transitions DONE to IDLE."
+        },
+        {
+          "name": "done_error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Registered invalid-dimension status gated by done_valid; held during completion stall; zero otherwise."
+        }
+      ]
+    }
+  ]
+}

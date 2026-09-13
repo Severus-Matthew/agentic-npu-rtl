@@ -1,0 +1,14 @@
+{
+  "stage": "cocotb_regression",
+  "status": "SIMULATION_BUILD_FAILURE",
+  "failure_class": "ELABORATION_ERROR",
+  "tests": 0,
+  "failures": 0,
+  "seed": 20260904,
+  "top_module": "gemm_bias_relu_npu_top",
+  "test_modules": [
+    "test_gemm_bias_relu_npu"
+  ],
+  "results_xml": "/u/mjha1/agentic-npu-rtl/multigent/workspace/verification/build/av1-r1/results.xml",
+  "worker_error": "RuntimeError: Command failed with return code: 2"
+}

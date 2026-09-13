@@ -1,0 +1,234 @@
+{
+  "top": "stream_matvec_int8_16",
+  "modules": [
+    {
+      "name": "stream_matvec_int8_16",
+      "responsibility": "Own command validation, FSM/counters, vector and bias staging, lane selection, stream framing, and child-module control. Vector and bias stores use synchronous handshake-qualified writes and zero-cycle asynchronous reads, with no simultaneous read/write requirement. MAC clear is a one-cycle event on the last VECTOR handshake or the last output handshake of a nonfinal tile; MAC step is exactly a MAC input handshake. They never coincide. No internal start/done ports exist; the last MAC handshake advances to EMIT, and the final output handshake completes the job.",
+      "dependencies": [
+        "int8_mac16_bank",
+        "int32_bias_relu"
+      ],
+      "parameters": [
+        "MAX_ROWS",
+        "MAX_COLS"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Rising-edge clock shared by all state"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Active-low synchronous state reset; suppress all top-level handshakes while low"
+        },
+        {
+          "name": "cfg_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Command valid; fields remain stable while stalled"
+        },
+        {
+          "name": "cfg_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "High exactly in IDLE with rst_n=1; low during reset"
+        },
+        {
+          "name": "cfg_rows",
+          "direction": "input",
+          "width": "max(1,$clog2(MAX_ROWS+1))",
+          "signed": false,
+          "semantics": "Rows captured on command handshake; reject zero or values above MAX_ROWS"
+        },
+        {
+          "name": "cfg_cols",
+          "direction": "input",
+          "width": "max(1,$clog2(MAX_COLS+1))",
+          "signed": false,
+          "semantics": "Columns captured on command handshake; reject zero or values above MAX_COLS"
+        },
+        {
+          "name": "cfg_bias_enable",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Captured command bias enable and bias-section presence"
+        },
+        {
+          "name": "cfg_relu_enable",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Captured command ReLU enable"
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Implicit-section input payload valid"
+        },
+        {
+          "name": "in_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "High exactly in VECTOR, BIAS, or MAC with rst_n=1"
+        },
+        {
+          "name": "in_data",
+          "direction": "input",
+          "width": "128",
+          "signed": false,
+          "semantics": "VECTOR uses [7:0]; BIAS uses [31:0]; MAC lane j uses [8*j+7:8*j]. All unused bits are ignored."
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "High exactly in EMIT or ERROR with rst_n=1"
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Output acceptance qualifier"
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "Finalizer result in valid EMIT; zero in ERROR, reset, or invalid cycles"
+        },
+        {
+          "name": "out_last",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Valid final global row or valid error response; otherwise zero"
+        },
+        {
+          "name": "out_error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "One for valid ERROR response only; otherwise zero"
+        }
+      ]
+    },
+    {
+      "name": "int8_mac16_bank",
+      "responsibility": "Implement exactly 16 signed INT8 multiplication paths and 16 wrapping INT32 accumulator registers. At a rising edge, reset has priority over clear, which has priority over step; otherwise hold. No additional pipeline or handshake state.",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Connected to top clk"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Connected to top rst_n; synchronous low clears all 16 accumulators"
+        },
+        {
+          "name": "clear",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Top-generated tile-initialization pulse, high on the last VECTOR transfer or last nonfinal-tile output transfer; clears every accumulator at that edge"
+        },
+        {
+          "name": "step",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Top-generated rst_n && state==MAC && in_valid && in_ready; one accumulation on this edge; never coincides with clear"
+        },
+        {
+          "name": "vector_value",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "Top vector_store[k] asynchronous read, stable for the step edge; broadcast to all lanes; ignored without step"
+        },
+        {
+          "name": "matrix_values",
+          "direction": "input",
+          "width": "128",
+          "signed": false,
+          "semantics": "Connected to top in_data. Lane j independently interprets [8*j+7:8*j] as signed INT8; sampled only on step."
+        },
+        {
+          "name": "accumulators",
+          "direction": "output",
+          "width": "512",
+          "signed": false,
+          "semantics": "Lane j is signed INT32 bits [32*j+31:32*j]. Combinational view of registers; updated immediately after clear/step edges. Top selects lane j during EMIT. Each step adds the sign-extended exact signed product modulo 2^32."
+        }
+      ]
+    },
+    {
+      "name": "int32_bias_relu",
+      "responsibility": "Combinational scalar postprocessing: optional wrapping INT32 bias addition followed by optional signed ReLU. No clock, reset, enables for storage, start, done, or internal state.",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": false,
+      "ports": [
+        {
+          "name": "dot_value",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "Top selects accumulator bits [32*j+31:32*j] as signed; meaningful during EMIT"
+        },
+        {
+          "name": "bias_value",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "Top bias_store[j] asynchronous read when bias is enabled; top drives zero when disabled"
+        },
+        {
+          "name": "bias_enable",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Connected to captured cfg_bias_enable; zero bypasses bias_value"
+        },
+        {
+          "name": "relu_enable",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Connected to captured cfg_relu_enable"
+        },
+        {
+          "name": "result_value",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "Zero-cycle combinational result: adjusted=wrap32(dot_value+bias_value) when enabled, else dot_value; output zero iff relu_enable && adjusted[31], otherwise adjusted. Top gates this onto out_data only during valid EMIT."
+        }
+      ]
+    }
+  ]
+}

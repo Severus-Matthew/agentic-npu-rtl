@@ -1,0 +1,53 @@
+{
+  "failure_class": "UNKNOWN",
+  "root_cause": "Primary defect is in mv_npu_top control/datapath integration: cfg_m/cfg_n and bias/relu enables are decoded from wrong bit positions, compute starts immediately on cfg without enforcing section sequencing, row/output progress is driven by a_lane_valid rather than FSM-defined completion, and output emission does not honor backpressure/row-finalize protocol. This produces early divergence (output count/data mismatch) and later deadlock/timeouts.",
+  "confidence": 0.93,
+  "first_divergence": {
+    "cycle": null,
+    "signal_or_output": "out_result stream beat count/content",
+    "expected": "Exactly M outputs with correct dot/bias/relu values and final out_last",
+    "observed": "Example failure shows len(out)=10 vs expected 8; other tests hit job timeout"
+  },
+  "evidence": [
+    {
+      "source": "cocotb stdout (test_backpressure_in_out)",
+      "observation": "Assertion failure: len(out)=10 while expected M=8",
+      "relevance": "Direct violation of architectural invariant exactly one output per row"
+    },
+    {
+      "source": "cocotb stdout (test_illegal_cfg_error_recovery, test_randomized_100)",
+      "observation": "SimTimeoutError: job timeout",
+      "relevance": "Control/progress protocol can stall or fail to complete jobs"
+    },
+    {
+      "source": "frozen test pack_cfg",
+      "observation": "pack_cfg encodes M in bits[7:0], N in bits[15:8], bias_en bit16, relu_en bit17",
+      "relevance": "Authoritative expected cfg encoding"
+    },
+    {
+      "source": "rtl/mv_npu_top.sv",
+      "observation": "cfg_m<=cfg_word[15:8], cfg_n<=cfg_word[23:16], cfg_bias_en<=cfg_word[0], cfg_relu_en<=cfg_word[1]",
+      "relevance": "Deterministic decode mismatch against frozen verifier contract"
+    },
+    {
+      "source": "rtl/mv_npu_top.sv + ctrl_fsm.sv",
+      "observation": "Top drives compute_active/start_row locally and ignores ctrl_fsm pulses for sequencing; out emission tied inside a_lane_valid/col_idx path",
+      "relevance": "Explains output duplication/loss and timeout under stalls"
+    },
+    {
+      "source": "verilator lint",
+      "observation": "Only WIDTHEXPAND warnings, no fatal compile/elab errors",
+      "relevance": "Confirms failure is functional simulation, not compile-time"
+    }
+  ],
+  "affected_modules": [
+    "mv_npu_top",
+    "ctrl_fsm"
+  ],
+  "alternative_hypotheses": [
+    "x_buffer_mem read latency misalignment contributes to arithmetic mismatch",
+    "output_if may drop in_valid pulses if producer protocol is violated upstream"
+  ],
+  "architecture_change_required": false,
+  "additional_evidence_requested": []
+}

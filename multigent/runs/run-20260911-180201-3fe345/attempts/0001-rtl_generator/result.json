@@ -1,0 +1,74 @@
+{
+  "rtl_status": "ARCHITECTURE_CONFLICT",
+  "rtl_result": {
+    "status": "ARCHITECTURE_CONFLICT",
+    "task_type": "INITIAL_GENERATION",
+    "summary": "Frozen manifest is insufficient to implement full specified behavior without adding interfaces/control signals not present in module contracts.",
+    "files": [],
+    "contract_checks": [
+      {
+        "requirement": "Implement all frozen operations including tiled GEMM over M,N,K with boundary masking and mandatory bias+ReLU",
+        "satisfied": false,
+        "evidence": "control_fsm ports expose only cfg_latched/cfg_error inputs and m0/n0/k_idx outputs; it has no M/K/N inputs, no handshake/status inputs from datapath, and no control outputs (step_en/clear_tile/stage enables), so required loop/schedule progression cannot be implemented from frozen interfaces."
+      },
+      {
+        "requirement": "Preserve module manifest exactly (no invented ports/modules)",
+        "satisfied": false,
+        "evidence": "To realize specified sequencing, top/control/compute blocks need additional frozen signals (e.g., runtime dims into controller, per-stage ready/valid coordination, tile/post/emit done handshakes). These are absent from declared ports."
+      },
+      {
+        "requirement": "Output ordering tile-major with boundary masking and legal-index emission only",
+        "satisfied": false,
+        "evidence": "output_unit only receives in_valid/in_data and single emit_enable bit; no tile indices or runtime M/N are provided at its interface, so deterministic global ordering/boundary decision cannot be derived internally from declared contract alone."
+      }
+    ],
+    "changed_modules": [],
+    "architecture_conflict": {
+      "category": "Missing/underspecified interface contract",
+      "affected_modules": [
+        "fc_tiled_gemm_top",
+        "control_fsm",
+        "output_unit",
+        "pe_array_8x8"
+      ],
+      "issue": "Current frozen port contracts do not carry enough control/state information to implement the required tile loops, k-step handshakes, boundary masking, and stage progression while preserving architecture semantics.",
+      "evidence": "1) control_fsm lacks M/K/N inputs and datapath handshake inputs, yet must drive nested loops and stalls. 2) control_fsm exposes no control outputs (except counters) to drive pe_array step_en/clear_tile or post/emit phases. 3) output_unit lacks index/context inputs for boundary masking/order derivation. 4) pe_array requires step_en/clear_tile but their source/control timing is not representable via existing inter-module contracts.",
+      "requested_architect_decision": "Freeze additional interfaces/control ownership: (a) provide control_fsm inputs for M_reg/K_reg/N_reg and stage handshake/status, and outputs for step_en/clear_tile/post_valid sequencing; (b) define where tm_idx/tn_idx live and expose them; (c) provide output_unit with sufficient index/context (or move boundary/order control to top) to enforce tile-major masked emission deterministically."
+    },
+    "blocked_reason": "",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [
+      "Any attempt to proceed without these decisions would require inventing hidden control behavior, violating frozen-architecture rules."
+    ],
+    "regression_required": "NONE"
+  },
+  "rtl_files": [],
+  "architecture_conflict": {
+    "category": "Missing/underspecified interface contract",
+    "affected_modules": [
+      "fc_tiled_gemm_top",
+      "control_fsm",
+      "output_unit",
+      "pe_array_8x8"
+    ],
+    "issue": "Current frozen port contracts do not carry enough control/state information to implement the required tile loops, k-step handshakes, boundary masking, and stage progression while preserving architecture semantics.",
+    "evidence": "1) control_fsm lacks M/K/N inputs and datapath handshake inputs, yet must drive nested loops and stalls. 2) control_fsm exposes no control outputs (except counters) to drive pe_array step_en/clear_tile or post/emit phases. 3) output_unit lacks index/context inputs for boundary masking/order derivation. 4) pe_array requires step_en/clear_tile but their source/control timing is not representable via existing inter-module contracts.",
+    "requested_architect_decision": "Freeze additional interfaces/control ownership: (a) provide control_fsm inputs for M_reg/K_reg/N_reg and stage handshake/status, and outputs for step_en/clear_tile/post_valid sequencing; (b) define where tm_idx/tn_idx live and expose them; (c) provide output_unit with sufficient index/context (or move boundary/order control to top) to enforce tile-major masked emission deterministically."
+  },
+  "needs_regression": false,
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "history": [
+    {
+      "stage": "rtl_generator",
+      "status": "ARCHITECTURE_CONFLICT",
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "ppa_iteration": 0,
+      "files": []
+    }
+  ]
+}

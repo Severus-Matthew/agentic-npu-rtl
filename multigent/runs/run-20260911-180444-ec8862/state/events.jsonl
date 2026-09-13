@@ -1,0 +1,16 @@
+{"stage": "architect", "phase": "started", "time": "2026-09-11T18:04:46.715457+00:00"}
+{"stage": "architect", "phase": "finished", "time": "2026-09-11T18:06:50.167543+00:00", "status": null, "history": [{"stage": "architect", "status": "READY", "architecture_version": 1, "revision": false}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T18:06:50.170990+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T18:06:58.559271+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "ARCHITECTURE_CONFLICT", "architecture_version": 1, "repair_iteration": 0, "ppa_iteration": 0, "files": []}]}
+{"stage": "architect", "phase": "started", "time": "2026-09-11T18:06:58.561686+00:00"}
+{"stage": "architect", "phase": "finished", "time": "2026-09-11T18:09:02.538655+00:00", "status": null, "history": [{"stage": "architect", "status": "READY", "architecture_version": 2, "revision": true}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T18:09:02.541542+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T18:10:44.998399+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 2, "repair_iteration": 0, "ppa_iteration": 0, "files": ["fc_accelerator.sv", "fc_controller.sv", "fc_datapath.sv"]}]}
+{"stage": "verifier", "phase": "started", "time": "2026-09-11T18:10:45.001293+00:00"}
+{"stage": "verifier", "phase": "finished", "time": "2026-09-11T18:13:34.154516+00:00", "status": null, "history": [{"stage": "verifier_generation", "status": "VERIFICATION_READY", "architecture_version": 2, "repair_iteration": 0, "semantic_retry": true, "semantic_retry_error": "verification_plan.test_modules must reference exactly the generated test files"}]}
+{"stage": "verification_tools", "phase": "started", "time": "2026-09-11T18:13:34.156872+00:00"}
+{"stage": "verification_tools", "phase": "finished", "time": "2026-09-11T18:13:40.046024+00:00", "status": "REPAIR_REQUIRED", "history": [{"stage": "deterministic_verification", "status": "SIMULATION_FAILURE", "failure_class": "UNKNOWN"}]}
+{"stage": "debugger", "phase": "started", "time": "2026-09-11T18:13:40.048917+00:00"}
+{"stage": "debugger", "phase": "failed", "time": "2026-09-11T18:13:52.207127+00:00", "status": "FAILED", "history": [{"stage": "debugger", "status": "ERROR", "error": "Debugger diagnosed undeclared modules: ['test_fc_accelerator.py']"}]}
+{"stage": "final_report", "phase": "started", "time": "2026-09-11T18:13:52.209700+00:00"}
+{"stage": "final_report", "phase": "finished", "time": "2026-09-11T18:13:52.227119+00:00", "status": "FAILED"}

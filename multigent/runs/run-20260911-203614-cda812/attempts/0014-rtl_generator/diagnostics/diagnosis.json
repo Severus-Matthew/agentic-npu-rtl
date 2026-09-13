@@ -1,0 +1,42 @@
+{
+  "failure_class": "UNKNOWN",
+  "root_cause": "In mv_npu_top, mat_ready is gated by can_accept_last_chunk (depends on hold_row_valid/pp_in_ready), introducing a combinational/progress dependency that can prevent final-chunk acceptance and stall matrix ingress indefinitely. This violates intended streaming progress and causes cocotb send_beat timeout on mat_ready before functional checking.",
+  "confidence": 0.89,
+  "first_divergence": {
+    "cycle": null,
+    "signal_or_output": "mat_ready",
+    "expected": "mat_ready eventually asserts during COMPUTE_ROWS to accept matrix beats.",
+    "observed": "Both tests fail with SimTimeoutError: timeout waiting mat_ready."
+  },
+  "evidence": [
+    {
+      "source": "cocotb test_directed_basic",
+      "observation": "Failure at line sending matrix beat: timeout waiting mat_ready at 1026ns.",
+      "relevance": "First authoritative fatal failure in functional simulation."
+    },
+    {
+      "source": "cocotb test_randomized_100_jobs",
+      "observation": "Same timeout waiting mat_ready at matrix send path.",
+      "relevance": "Confirms systematic ingress deadlock, not data-specific mismatch."
+    },
+    {
+      "source": "rtl/mv_npu_top.sv",
+      "observation": "mat_ready = ... && ((!mat_is_last_chunk) || can_accept_last_chunk), where can_accept_last_chunk = (!hold_row_valid) && pp_in_ready.",
+      "relevance": "Direct control condition that can block matrix acceptance based on downstream postproc readiness."
+    },
+    {
+      "source": "verilator lint",
+      "observation": "Build/elaboration pass; only warnings (including latch inference) and no fatal compile errors.",
+      "relevance": "Confirms primary failure is runtime protocol/progress, not compile legality."
+    }
+  ],
+  "affected_modules": [
+    "mv_npu_top"
+  ],
+  "alternative_hypotheses": [
+    "Latch-inferred combinational temps in mv_npu_top/mv_mac16_core may cause X/unstable internal values but do not explain earliest mat_ready timeout as directly as gating deadlock.",
+    "DONE/out_xfer exit condition interplay in mv_ctrl_fsm could contribute to later completion issues after ingress deadlock is fixed."
+  ],
+  "architecture_change_required": false,
+  "additional_evidence_requested": []
+}

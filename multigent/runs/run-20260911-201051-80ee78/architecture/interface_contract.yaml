@@ -1,0 +1,193 @@
+protocol: Independent command, scalar input-data, and scalar output-data ready/valid
+  channels; single active job. Unqueued done/error status pulses and busy status.
+  All transfers occur on rising clk edges outside reset.
+clock: clk; one clock domain, rising-edge sequential behavior.
+reset: rst; active-high synchronous state reset. While asserted, cmd_ready, in_ready,
+  out_valid, busy, done, and error are forced low. Hold through at least one rising
+  edge.
+channels:
+- name: command
+  direction: input
+  purpose: Start a fully connected layer job and latch runtime dimensions.
+  data_objects: []
+  metadata:
+  - cmd_m
+  - cmd_n
+  - cmd_k
+  framing: Exactly one transfer per attempted job. M, N, and K occupy separate named
+    signal fields and are sampled together; there is no packed command payload or
+    opcode. An illegal transfer produces error and requires no input section.
+  ordering: Commands are accepted only in IDLE. A legal command is followed by its
+    entire input sequence and output completion before another command is accepted.
+  backpressure: cmd_ready is high exactly when IDLE and rst=0. The producer holds
+    cmd_valid and all dimension fields stable while stalled.
+- name: input_data
+  direction: input
+  purpose: Load the complete activation matrix, weight matrix, and bias vector.
+  data_objects:
+  - A
+  - W
+  - B
+  metadata: []
+  framing: After an accepted legal command, section 1 contains exactly M*K transfers
+    A[m,k], m outer and k inner; section 2 contains exactly K*N transfers W[k,n],
+    k outer and n inner; section 3 contains exactly N transfers B[n], n increasing.
+    A/W transfer packing is element bits [7:0], with [31:8] ignored. Bias packing
+    is B[n][31:0]. Boundaries are determined only by accepted-transfer counts, with
+    no header, tag, padding, or last marker. Total is M*K+K*N+N transfers.
+  ordering: A then W then B, using runtime row strides K and N rather than maximum-parameter
+    strides. Inputs are transmitted once per job. Partial compute tiles require no
+    padded input transfers.
+  backpressure: in_ready is high exactly in LOAD_A, LOAD_W, or LOAD_B when rst=0.
+    It first becomes high in the cycle following legal command acceptance. A continuous
+    producer may cross section boundaries without bubbles. Hold in_valid and in_data
+    stable while stalled.
+- name: output_data
+  direction: output
+  purpose: Return rectified INT32 results.
+  data_objects:
+  - Y
+  metadata:
+  - out_last
+  framing: Exactly M*N transfers per completed job. Each transfer carries one Y element
+    in out_data[31:0]. out_last is a separate one-bit field asserted only on the final
+    element. For tm ascending, then tn ascending, let r=min(8,M-8*tm) and c=min(8,N-8*tn);
+    emit local i=0..r-1, then j=0..c-1, carrying Y[8*tm+i,8*tn+j]. No padding or tile
+    markers.
+  ordering: Tile-major with local row-major order as defined by the framing algorithm.
+    Final transfer is Y[M-1,N-1].
+  backpressure: out_valid is asserted after FINALIZE and held through acceptance.
+    out_data and out_last remain stable while out_valid&&!out_ready. The engine does
+    no further computation while this output is pending.
+- name: status
+  direction: output
+  purpose: Report active-job state, successful completion, and command rejection.
+  data_objects: []
+  metadata:
+  - busy
+  - done
+  - error
+  framing: busy is a level. done is a one-cycle pulse immediately following final
+    output acceptance. error is a one-cycle pulse immediately following acceptance
+    of an illegal command. These indications have no ready signal and are not transactions.
+  ordering: A legal command raises busy after acceptance; final output acceptance
+    lowers busy and pulses done. Rejected commands never raise busy or produce done.
+  backpressure: None; the environment must observe event pulses. Output backpressure
+    postpones done.
+signals:
+- name: clk
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Common rising-edge clock.
+  reset_value: Not applicable.
+- name: rst
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Active-high synchronous reset; inhibits all transfers while high.
+  reset_value: Driven high by environment during reset.
+- name: cmd_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Command fields are valid; held with fields until accepted.
+  reset_value: Environment drives 0.
+- name: cmd_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Command acceptance enabled only in IDLE outside reset.
+  reset_value: 0 while rst=1; 1 after reset release in IDLE.
+- name: cmd_m
+  direction: input
+  width: max(1,$clog2(MAX_M+1))
+  signed: false
+  semantic: Unsigned M, legal range 1..MAX_M; sampled on command handshake.
+  reset_value: Not applicable; ignored without command handshake.
+- name: cmd_n
+  direction: input
+  width: max(1,$clog2(MAX_N+1))
+  signed: false
+  semantic: Unsigned N, legal range 1..MAX_N; sampled on command handshake.
+  reset_value: Not applicable; ignored without command handshake.
+- name: cmd_k
+  direction: input
+  width: max(1,$clog2(MAX_K+1))
+  signed: false
+  semantic: Unsigned K, legal range 1..MAX_K; sampled on command handshake.
+  reset_value: Not applicable; ignored without command handshake.
+- name: in_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: in_data is valid; held with payload until input handshake.
+  reset_value: Environment drives 0.
+- name: in_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Input acceptance enabled only during the three input-loading states.
+  reset_value: '0.'
+- name: in_data
+  direction: input
+  width: '32'
+  signed: false
+  semantic: 'Transport bits: signed int8 in [7:0] during A/W sections with upper bits
+    ignored; signed int32 in [31:0] during B section.'
+  reset_value: Not applicable; ignored without input handshake.
+- name: out_valid
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Registered output is pending; qualified low during reset.
+  reset_value: '0.'
+- name: out_ready
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Consumer can accept the presented output at the next rising edge.
+  reset_value: Not applicable; no output transfer during reset.
+- name: out_data
+  direction: output
+  width: '32'
+  signed: true
+  semantic: Registered signed INT32 Y element; meaningful only with out_valid. Holds
+    its last value when no replacement is finalized.
+  reset_value: 0 after a reset edge.
+- name: out_last
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Registered final-job-element flag, meaningful only with out_valid; stable
+    with out_data during stalls.
+  reset_value: 0 after a reset edge.
+- name: busy
+  direction: output
+  width: '1'
+  signed: false
+  semantic: High exactly when a legal job is active, from command acceptance through
+    the cycle containing final output acceptance; low during reset.
+  reset_value: '0.'
+- name: done
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Registered one-cycle pulse after the final output handshake; no pulse
+    on reset abort or rejected command.
+  reset_value: '0.'
+- name: error
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Registered one-cycle pulse after an accepted command containing an illegal
+    dimension; accelerator remains idle.
+  reset_value: '0.'
+global_handshake_rules:
+  transfer_condition: At a rising clk edge, a ready/valid channel transfers iff rst=0
+    and its ready&&valid are both 1. Status signals have no handshake. Reset overrides
+    otherwise apparent handshakes.
+  stall_behavior: A producer must retain valid and every associated payload/metadata
+    field until acceptance while valid&&!ready, except that reset may cancel the transaction.
+    Ready may vary independently. Nonaccepted transfers never advance counters or
+    write memories.

@@ -1,0 +1,22 @@
+functional:
+- For each legal job, output y[r]=ReLU_sel(sum_c(A[r,c]*x[c])+bias_sel) with exact
+  integer arithmetic and declared wrap semantics.
+- If bias disabled, bias stream must not be required; if enabled, exactly M bias beats
+  consumed.
+- If relu enabled, all negative outputs clamp to 0; non-negative unchanged.
+- Output beat count equals M and out_last asserted only on final beat.
+verification:
+- Minimum 100 randomized legal transactions across varying M,N within bounds.
+- Include reset tests from active processing and idle.
+- Include backpressure tests on both input and output ready/valid.
+- Include illegal config tests (M=0, N=0, M>MAX_M, N>MAX_N) and verify ERROR behavior/recovery.
+- Check exact transfer ordering and counts for CFG/X/A/BIAS sections.
+rtl:
+- SystemVerilog synthesizable subset only; no forbidden constructs.
+- 'Ready/valid rule enforced: transfer iff ready&&valid, stable payload during stall.'
+- Parameterization must elaborate for defaults LANES=16, MAX_M=256, MAX_N=256.
+fpga_handoff:
+- Vivado synthesis results accepted only from deterministic tool report per provided
+  schema.
+- No estimated/fabricated PPA metrics permitted.
+- RTL verification must pass before synthesis handoff.

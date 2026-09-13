@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
+from multigent.models import MODELS, DEFAULT_MODEL, validate_model
 
 from langgraph.graph import END, START, StateGraph
 
@@ -155,6 +157,7 @@ def main() -> None:
         )
     )
     parser.add_argument("--request")
+    parser.add_argument('--model', choices=list(MODELS), help='Model for every agent in this run')
     parser.add_argument("--run-id")
     parser.add_argument("--max-architecture-revisions", type=int, default=2)
     parser.add_argument("--max-repair-iterations", type=int, default=5)
@@ -191,6 +194,15 @@ def main() -> None:
         args.run_id = args.run_id or resume_metadata['run_id']
     if not args.request or not args.run_id:
         parser.error("A new run requires --request and --run-id")
+    saved_model = resume_metadata.get('model') if args.resume_state else None
+    if saved_model and args.model and saved_model != args.model:
+        parser.error('A resumed run keeps its original model. Start a new run to switch models.')
+    selected_model = args.model or saved_model or os.getenv('NPU_AGENT_MODEL', DEFAULT_MODEL)
+    try:
+        validate_model(selected_model)
+    except ValueError as exc:
+        parser.error(str(exc))
+    os.environ['NPU_AGENT_MODEL'] = selected_model
     import re
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", args.run_id):
         parser.error("run-id must be a safe filename component")
@@ -207,6 +219,7 @@ def main() -> None:
     graph = build_workflow_graph()
     initial: HardwareDesignState = {
         "run_id": args.run_id,
+        "model": selected_model,
         "workspace_root": str(WORKSPACE_ROOT),
         "user_request": args.request.strip(),
         "architecture_dir": str(args.architecture_dir),
@@ -237,6 +250,7 @@ def main() -> None:
             parser.error("Resume must use the exact original request and run-id")
         initial.update(saved)
         initial.update(status="RUNNING", orchestration_error=None)
+        initial['model'] = selected_model
 
     if args.vivado_config:
         initial['vivado_config'] = json.loads(args.vivado_config.read_text())

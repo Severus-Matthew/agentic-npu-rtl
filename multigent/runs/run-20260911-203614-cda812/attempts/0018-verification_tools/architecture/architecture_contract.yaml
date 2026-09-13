@@ -1,0 +1,312 @@
+design:
+  name: mv_npu_rv16_int8
+  version: '1.0'
+  description: Matrix-vector inference accelerator using 16 parallel INT8 MAC lanes,
+    INT32 accumulation, optional INT32 bias add, optional ReLU, ready/valid streaming
+    I/O.
+operations:
+- name: op_decode_command
+  kind: control
+  semantics: Latch one command packet on cmd channel transfer; defines one job parameters
+    and feature enables.
+  inputs:
+  - obj_cmd_packet
+  outputs:
+  - obj_job_config
+- name: op_load_vector
+  kind: data_ingress
+  semantics: Load input vector elements x[0..N-1] into local vector SRAM in ascending
+    index order, using N from obj_job_config.
+  inputs:
+  - obj_vec_stream
+  - obj_job_config
+  outputs:
+  - obj_vec_buffer
+- name: op_compute_row_dot
+  kind: compute
+  semantics: For each row r in 0..M-1, compute sum_{k=0..N-1}(W[r,k]*x[k]) with INT8
+    signed multiply and INT32 signed accumulation. Products are exact 16-bit signed
+    then sign-extended to INT32 before add. Accumulation wraps modulo 2^32 (two's
+    complement).
+  inputs:
+  - obj_mat_stream
+  - obj_vec_buffer
+  - obj_job_config
+  outputs:
+  - obj_row_accum
+- name: op_optional_bias
+  kind: compute
+  semantics: If bias_enable=1, y_pre = row_accum + bias[r] using INT32 signed add
+    with wrap modulo 2^32; else y_pre = row_accum.
+  inputs:
+  - obj_row_accum
+  - obj_bias_stream
+  - obj_job_config
+  outputs:
+  - obj_pre_act
+- name: op_optional_relu
+  kind: compute
+  semantics: If relu_enable=1, y = max(0,y_pre) in INT32 signed domain; else y = y_pre.
+  inputs:
+  - obj_pre_act
+  - obj_job_config
+  outputs:
+  - obj_out_stream
+data_types:
+- name: dt_int8
+  role: matrix/vector element
+  width_bits: 8
+  signed: true
+  representation: two_complement
+  conversion_semantics: No implicit conversion on transport; compute sign-extends
+    for multiply inputs.
+  overflow_semantics: N/A at storage
+  rounding_semantics: exact_integer
+- name: dt_int32
+  role: accumulator/output/bias/metadata signed payload
+  width_bits: 32
+  signed: true
+  representation: two_complement
+  conversion_semantics: INT8 products sign-extended before accumulation.
+  overflow_semantics: wrap_modulo_2^32
+  rounding_semantics: exact_integer
+- name: dt_cmd
+  role: job control packet
+  width_bits: 64
+  signed: false
+  representation: bitfield
+  conversion_semantics: bit-exact decode
+  overflow_semantics: N/A
+  rounding_semantics: N/A
+data_objects:
+- name: obj_cmd_packet
+  role: incoming job descriptor
+  data_type: dt_cmd
+  dimensions: []
+  producer: external
+  consumers:
+  - op_decode_command
+  external: true
+- name: obj_job_config
+  role: latched decoded command fields
+  data_type: dt_int32
+  dimensions: []
+  producer: op_decode_command
+  consumers:
+  - op_load_vector
+  - op_compute_row_dot
+  - op_optional_bias
+  - op_optional_relu
+  external: false
+- name: obj_vec_stream
+  role: incoming vector elements
+  data_type: dt_int8
+  dimensions:
+  - dim_N
+  producer: external
+  consumers:
+  - op_load_vector
+  external: true
+- name: obj_vec_buffer
+  role: local stored vector
+  data_type: dt_int8
+  dimensions:
+  - dim_N
+  producer: op_load_vector
+  consumers:
+  - op_compute_row_dot
+  external: false
+- name: obj_mat_stream
+  role: incoming matrix elements row-major
+  data_type: dt_int8
+  dimensions:
+  - dim_M
+  - dim_N
+  producer: external
+  consumers:
+  - op_compute_row_dot
+  external: true
+- name: obj_row_accum
+  role: per-row dot result before bias
+  data_type: dt_int32
+  dimensions:
+  - dim_M
+  producer: op_compute_row_dot
+  consumers:
+  - op_optional_bias
+  external: false
+- name: obj_bias_stream
+  role: incoming per-row bias values
+  data_type: dt_int32
+  dimensions:
+  - dim_M
+  producer: external
+  consumers:
+  - op_optional_bias
+  external: true
+- name: obj_pre_act
+  role: post-bias pre-activation value
+  data_type: dt_int32
+  dimensions:
+  - dim_M
+  producer: op_optional_bias
+  consumers:
+  - op_optional_relu
+  external: false
+- name: obj_out_stream
+  role: output vector values
+  data_type: dt_int32
+  dimensions:
+  - dim_M
+  producer: op_optional_relu
+  consumers:
+  - external
+  external: true
+dimensions:
+- name: dim_M
+  semantic: number of matrix rows / output elements per job; runtime legal range 1..MAX_M
+    bounded by parameter MAX_M
+  minimum: 1
+  maximum: 256
+  runtime_configurable: true
+  bound_parameter: MAX_M
+- name: dim_N
+  semantic: number of matrix columns / vector length per job; runtime legal range
+    1..MAX_N bounded by parameter MAX_N
+  minimum: 1
+  maximum: 256
+  runtime_configurable: true
+  bound_parameter: MAX_N
+parameters:
+- name: MAX_M
+  default_value: '256'
+  legality_constraint: integer >=1
+  description: compile-time bound for runtime M
+- name: MAX_N
+  default_value: '256'
+  legality_constraint: integer >=1
+  description: compile-time bound for runtime N and vector SRAM depth
+- name: LANES
+  default_value: '16'
+  legality_constraint: must equal 16
+  description: parallel INT8 MAC lanes (fixed by requirement)
+- name: CMD_W
+  default_value: '64'
+  legality_constraint: must be >=56
+  description: command payload width
+- name: MAT_DATA_W
+  default_value: '128'
+  legality_constraint: must equal LANES*8
+  description: matrix stream payload width, 16 INT8 per beat
+- name: VEC_DATA_W
+  default_value: '8'
+  legality_constraint: must equal 8
+  description: vector stream payload width, 1 INT8 per beat
+- name: BIAS_DATA_W
+  default_value: '32'
+  legality_constraint: must equal 32
+  description: bias stream payload width, 1 INT32 per beat
+- name: OUT_DATA_W
+  default_value: '32'
+  legality_constraint: must equal 32
+  description: output stream payload width, 1 INT32 per beat
+compute:
+  organization: single-engine SIMD dot-product datapath with 16 parallel MAC lanes
+    and one shared INT32 accumulator
+  dataflow: row-stationary accumulation; vector preloaded once per job, matrix streamed
+    row-major during compute
+  parallelism: 16-way inner-product parallelism across k dimension chunks of 16
+  scheduling: 'phased: command load -> vector preload -> per-row compute (stream matrix
+    chunks) -> optional bias consume -> optional ReLU -> output emit; no overlap between
+    jobs'
+storage:
+- name: vec_sram
+  stored_objects:
+  - obj_vec_buffer
+  capacity_expression: MAX_N * 8 bits
+  capacity_at_default_parameters: 2048
+  access_pattern: write sequential during vector load; read LANES elements per compute
+    iteration via 16-bank organization
+  port_requirements: 1 write path + 16 parallel read lanes per cycle during compute
+  implementation_hint: banked distributed RAM or register-file banks
+  reuse_semantics: reused for all M rows within job
+  lifetime: from end of vector load until job completion
+- name: row_acc_reg
+  stored_objects:
+  - obj_row_accum
+  capacity_expression: 1 * 32 bits
+  capacity_at_default_parameters: 32
+  access_pattern: reset per row then accumulate each compute cycle
+  port_requirements: 1 read + 1 write per cycle
+  implementation_hint: register
+  reuse_semantics: reused each row
+  lifetime: within one row compute
+- name: cfg_regs
+  stored_objects:
+  - obj_job_config
+  capacity_expression: 1 command context
+  capacity_at_default_parameters: 64
+  access_pattern: write on cmd accept, read throughout job
+  port_requirements: single read/write
+  implementation_hint: register set
+  reuse_semantics: static during job
+  lifetime: job duration
+pipeline:
+- stage: S0_ingress
+  responsibility: ready/valid handshakes and payload capture for cmd/vector/matrix/bias
+  registered: true
+  valid_behavior: capture only on ready&&valid
+  stall_behavior: when downstream not ready, deassert ready and hold state
+- stage: S1_lane_mul
+  responsibility: 16 signed INT8 multiplies for current matrix chunk and vector chunk
+  registered: true
+  valid_behavior: operate when compute_valid
+  stall_behavior: hold pipeline registers when stalled
+- stage: S2_reduce_accum
+  responsibility: sum 16 products and add into INT32 row accumulator
+  registered: true
+  valid_behavior: update accumulator once per accepted chunk
+  stall_behavior: no accumulator update while stalled
+- stage: S3_postproc_egress
+  responsibility: optional bias add, optional ReLU, output ready/valid drive
+  registered: true
+  valid_behavior: emit one output per completed row when out_ready||!out_valid
+  stall_behavior: hold output data/valid until accepted
+control:
+  strategy: central FSM with counters
+  state_progression: IDLE->LOAD_VEC->COMPUTE_ROWS->DONE then back IDLE after final
+    output handshake
+  counters:
+  - row_idx:0..M-1
+  - k_chunk_idx:0..ceil(N/16)-1
+  - vec_load_idx:0..N-1
+  - lane_valid_mask for final partial chunk
+  error_behavior: 'protocol/runtime error raises sticky error flag and halts new progress;
+    errors: cmd fields out of range, unexpected stream length mismatch, bias stream
+    present when disabled or absent when enabled'
+  error_recovery: assert soft reset input rst_n low then high to clear error and return
+    IDLE
+reset:
+  style: synchronous
+  polarity: active_low
+  required_state: FSM IDLE, counters zero, valid outputs low, ready low until idle-init
+    complete, sticky error cleared
+latency_model: Per job cycles = 1 cmd + N vector-load + M*ceil(N/16) matrix-compute-chunks
+  + M output; plus M bias input cycles when bias_enable=1. Throughput inside a row
+  is one 16-element chunk per cycle after pipeline fill. Final chunk uses lane_valid_mask
+  for N mod 16.
+architectural_invariants:
+- LANES fixed at 16
+- One vector element transferred per vec beat
+- Sixteen matrix INT8 elements packed per matrix beat
+- Output order strictly row index ascending
+- Bias stream consumed iff bias_enable=1, exactly M beats
+- ReLU applied iff relu_enable=1
+open_assumptions:
+- Single outstanding job; next command accepted only after current job completes
+- 'Host provides exact transfer counts per command: vector N, matrix M*ceil(N/16),
+  bias M if enabled'
+- Matrix stream packs lanes as payload bits [8*i+7:8*i]=element k_base+i where k_base=16*k_chunk_idx;
+  invalid lanes on final partial chunk ignored by lane_valid_mask
+- Missing k elements beyond N in final chunk are treated as zero contribution
+- No separate clear/error-ack interface; reset is only recovery

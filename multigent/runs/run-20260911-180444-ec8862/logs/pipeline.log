@@ -1,0 +1,23 @@
+{
+  "status": "FAILED",
+  "vivado_status": null,
+  "final_report": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/reports/final.json",
+  "errors": [
+    "AgentRuntimeError: Debugger diagnosed undeclared modules: ['test_fc_accelerator.py']"
+  ],
+  "architecture_status": "READY",
+  "architecture_version": 2,
+  "architecture_revision": 1,
+  "rtl_status": "RTL_GENERATED",
+  "rtl_files": [
+    "fc_accelerator.sv",
+    "fc_controller.sv",
+    "fc_datapath.sv"
+  ],
+  "verifier_status": "VERIFICATION_READY",
+  "verification_status": "SIMULATION_FAILURE",
+  "debugger_status": null,
+  "repair_iteration": 0,
+  "failure_class": "UNKNOWN",
+  "architecture_conflict": null
+}

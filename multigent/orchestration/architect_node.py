@@ -46,11 +46,7 @@ that evidence, preserve unaffected decisions when technically coherent, and prod
 a complete self-consistent replacement contract. Do not ask the RTL Generator to
 silently work around an unresolved architecture defect.
 """
-    result = agent.run_structured(
-        task=task,
-        schema_path=ARCHITECT_OUTPUT_SCHEMA,
-        log_name=f"architect-{run_id}.json",
-    )
+    result = agent.generate_validated_contract(task=task, run_id=run_id)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     if result["status"] == "SPEC_CONFLICT":

@@ -17,8 +17,8 @@ venv/
 # multigent/workspace/logs/agent_traces/*.json
 
 # Rebuildable simulator output
-multigent/workspace/verification/build/
-multigent/runs/**/build/
-multigent/runs/**/sim_build/
-*.vcd
-*.fst
+# multigent/workspace/verification/build/
+# multigent/runs/**/build/
+# multigent/runs/**/sim_build/
+# *.vcd
+# *.fst
