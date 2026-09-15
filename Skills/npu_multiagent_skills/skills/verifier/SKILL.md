@@ -31,7 +31,8 @@ Never edit RTL, architecture contracts, synthesis reports, repair plans, or opti
 ### 1. Reconstruct the external contract
 From the frozen contracts identify:
 - top module name
-- top-level signals and directions
+- top-level signals, explicit taxonomy roles, semantic classes, channel bindings,
+  protocol profiles, and directions
 - clock and reset semantics
 - legal runtime parameters/configuration
 - input channel framing and ordering
@@ -39,6 +40,11 @@ From the frozen contracts identify:
 - ready/valid or other transfer rules
 - completion/error behavior
 - exact requested functional transformation
+
+Use `signal.role`, `signal.semantic_class`, and the channel's `protocol_profile` as
+the authoritative interface classification. Never infer them from a signal's name
+or loose keyword matching. Combine their coverage tags for generic obligations and
+use contract semantic text for exact design-specific behavior.
 
 Do not assume a particular accelerator family, tensor rank, operation, width, signedness, arithmetic format, interface, or dimension naming scheme.
 
@@ -75,6 +81,22 @@ A legal randomized source pattern is: optionally idle before a beat -> assert va
 
 ### 4. Cover the contract, not a benchmark template
 Derive directed cases from actual operations, datatypes, runtime bounds, parameters, partial-vector/tile behavior, and error rules.
+
+The runtime supplies a deterministic interface coverage plan instantiated from
+`multigent/taxonomy/interface_coverage_templates.yaml`. Every generated test file
+must declare the obligation IDs it implements in its structured
+`coverage_obligations` field and in one module-level literal collection:
+
+```python
+COVERAGE_OBLIGATIONS = {
+    "channel.request.handshake_states",
+    "channel.request.stall_stability",
+}
+```
+
+Across all generated test modules, cover every supplied obligation ID and invent no
+additional ID. Implement the listed bins and checks in executable cocotb behavior;
+the declaration provides traceability but does not replace the test logic.
 
 When applicable include:
 - smallest legal jobs
@@ -124,6 +146,39 @@ Generated reference/test files must:
 ## Architecture Escalation
 If frozen contracts are insufficient or contradictory such that an executable oracle cannot be defined without a new architectural/interface decision, return `ARCHITECTURE_CONFLICT` with affected modules, exact contradiction, frozen evidence, and requested Architect decision. Do not silently invent semantics.
 
+Architect owns observable hardware behavior, not your coverage implementation.
+Choose coverage field names/types, reachable predicates/bins, helper structure,
+stimulus distributions and test schedules yourself from the frozen semantics.
+Feature/concept IDs are traceability requirements, not Architect-defined Python
+variables. Missing prior test sources means generate a fresh complete suite.
+The runtime persists JSON source strings verbatim; it does not later fill in
+function bodies. Imports, declarations and comments are not executable tests.
+Keep prose compact and emit actual decorated async test functions and helpers.
+For a source-completion correction, the runtime may reuse your valid coverage/plan
+metadata and request only the planned file bodies with a smaller output schema.
+This is one normal counted correction, not an additional hidden retry. All merged
+artifacts still pass the full deterministic pre-save and runtime checks.
+
+The deterministic regression elaborates the design without parameter overrides.
+Use the declared default expressions as this run's configuration/bounds; generic
+parameterizability is not ambiguity about a declared default. Additional parameter
+sweeps require separate run configuration. `execution_configuration` records this
+setup without changing the frozen hardware contract.
+
+An event-driven oracle does not need an exact cycle-by-cycle ready schedule or an
+exact completion offset unless the contract promises one. Check transfer counts,
+partial ordering and functional results; use finite watchdogs for liveness rather
+than inventing a timing promise. Generate only physically encodable configurations.
+Acceptance via handshake and legality are separate decisions: explicitly accepted
+illegal commands may enter error without creating a pending legal job. Interpret
+these transition rules together, not as a contradiction.
+
+Escalate only when two incompatible observable outcomes remain possible and no
+contract statement resolves the choice. Cite both outcomes and the exact evidence.
+Do not demand Architect decisions for verifier-owned implementation choices.
+Real arithmetic/framing/protocol contradictions remain architecture conflicts,
+even when discovered while correcting a prior verifier artifact.
+
 ## Completion Status
 Return `VERIFICATION_READY` when independent reference/tests/plan are complete, or `ARCHITECTURE_CONFLICT` when verification requires an architectural decision. Never return functional PASS.
 
@@ -143,13 +198,14 @@ clock event, not necessarily settled downstream values; in Verilator it may resu
 after evaluation. Avoid inferring a just-completed handshake from a ready signal
 that the DUT may already have changed on that edge.
 
-Prefer a manually clocked single-owner cycle helper for portable synchronous tests:
-clock low -> drive inputs -> Timer to settle -> sample ready/valid and payload while
-clock is still low -> clock high -> Timer to settle -> return pre-edge transfer
-snapshot plus settled post-edge status -> clock low before the next drive. Use the
-contract's active edge and sufficient time resolution. Do not run Clock concurrently
-with manual clock writes. A single cycle owner coordinates all sources and sinks;
-concurrent tasks must not independently drive the same signal or clock. Sample
+Start one free-running `Clock(...).start()` task per test, consistent with the
+trusted coverage monitor. Never write the clock manually. For a rising-edge
+contract: FallingEdge -> drive inputs -> small sub-half-cycle Timer to settle ->
+snapshot ready/valid/payload -> RisingEdge commits the recorded transfer -> inspect
+settled post-edge status separately. Hold the snapshotted values through the active
+edge. Each source/sink has one signal owner; concurrent tasks must not independently
+drive the same signal. Use the contract's active edge and sufficient resolution.
+Do not infer handshake from post-edge valid/ready. Sample
 completion/error outputs each cycle so transient pulses cannot be missed. Once valid
 is asserted, hold it and payload until the recorded transfer. Drive the next beat
 only in a legal writable phase. Bound every wait and cancel/join spawned tasks.
@@ -162,3 +218,8 @@ Static validators cannot prove oracle correctness; these explicit reference chec
 and contract-derived tests are required. Revisions must preserve all valid failing
 cases and assertions. A defective stimulus may be corrected but never erased to
 hide a DUT failure; historical test sources remain archived by the orchestrator.
+
+Python loop nesting is not protocol evidence: clearing valid after handshake or
+before presenting a beat is legal even inside a while loop. The trusted runtime
+monitor checks actual stalled valid/payload stability and cocotb-coverage records
+observed scenarios; static declarations alone cannot satisfy those obligations.

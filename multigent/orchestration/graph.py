@@ -1,8 +1,9 @@
-"""Executable LangGraph for architecture, RTL, verification, and repair.
+"""Executable LangGraph for contract-derived verification, RTL and repair.
 
-Verifier generation is independent from RTL source. Deterministic Verilator/cocotb
-status controls PASS/FAIL. Functional failures route through an evidence-driven
-Debugger and back to the RTL Generator while preserving the same verifier artifacts.
+The independent Verifier and its TB-only Reviewer run before initial RTL generation.
+Deterministic Verilator/cocotb status controls PASS/FAIL. Functional failures route
+through an evidence-driven Debugger and back to the RTL Generator while preserving
+the approved verifier artifacts.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from multigent.agents.architect import ArchitectAgent
 from multigent.agents.debugger import DebuggerAgent
 from multigent.agents.rtl_generator import RTLGeneratorAgent
 from multigent.agents.verifier import VerifierAgent
+from multigent.agents.verifier_review import VerifierReviewAgent
 from multigent.intake.request_builder import WORKSPACE_ROOT, build_rtl_context
 
 from .architect_node import make_architect_node
@@ -28,6 +30,7 @@ from .routes import (
     route_after_rtl,
     route_after_verification,
     route_after_verifier,
+    route_after_verifier_review,
     route_start,
 )
 from .rtl_node import make_rtl_generator_node
@@ -36,6 +39,7 @@ from .ppa_node import synthesis_node, make_ppa_node, route_after_synthesis, rout
 from .artifacts import guarded, verification_repair_node, final_report_node, diagnostic_node
 from .verification_tools_node import verification_tools_node
 from .verifier_node import make_verifier_node
+from .verifier_review_node import make_verifier_review_node
 
 
 def _repair_exhausted_node(state: HardwareDesignState) -> dict[str, Any]:
@@ -85,6 +89,7 @@ def build_workflow_graph(
     architect_agent: ArchitectAgent | None = None,
     rtl_agent: RTLGeneratorAgent | None = None,
     verifier_agent: VerifierAgent | None = None,
+    verifier_review_agent: VerifierReviewAgent | None = None,
     debugger_agent: DebuggerAgent | None = None,
     ppa_agent=None,
 ):
@@ -98,6 +103,12 @@ def build_workflow_graph(
     add_node("architect", make_architect_node(architect_agent))
     add_node("rtl_generator", make_rtl_generator_node(rtl_agent))
     add_node("verifier", make_verifier_node(verifier_agent))
+    # The review uses the same configured model/API as generation, but a separate
+    # concise call and read-only scope. No source generation occurs in this node.
+    review_agent = verifier_review_agent
+    if review_agent is None and getattr(verifier_agent, "config", None) is not None:
+        review_agent = VerifierReviewAgent(model=verifier_agent.config.model, api_mode=verifier_agent.config.api_mode)
+    add_node("verifier_review", make_verifier_review_node(review_agent))
     add_node("verification_tools", verification_tools_node)
     add_node("debugger", make_debugger_node(debugger_agent))
     add_node("synthesis", synthesis_node)
@@ -113,6 +124,7 @@ def build_workflow_graph(
     builder.add_conditional_edges("architect", safe_route(route_after_architect))
     builder.add_conditional_edges("rtl_generator", safe_route(route_after_rtl))
     builder.add_conditional_edges("verifier", safe_route(route_after_verifier))
+    builder.add_conditional_edges("verifier_review", safe_route(route_after_verifier_review))
     builder.add_conditional_edges("verification_tools", safe_route(route_after_verification))
     builder.add_conditional_edges("debugger", safe_route(route_after_debugger))
     builder.add_conditional_edges("synthesis", safe_route(route_after_synthesis))
@@ -150,7 +162,7 @@ def _existing_rtl_files() -> list[str]:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Run LangGraph Architect -> RTL -> independent verification -> "
+            "Run LangGraph Architect -> Verifier -> TB review -> RTL -> simulation -> "
             "Debugger/repair loop"
         )
     )
@@ -180,6 +192,14 @@ def main() -> None:
     parser.add_argument("--vivado-timeout", type=int, default=3600)
     parser.add_argument("--max-ppa-iterations", type=int, default=3)
     parser.add_argument("--max-verifier-revisions", type=int, default=2)
+    parser.add_argument(
+        "--verification-only",
+        action="store_true",
+        help=(
+            "Stop successfully after deterministic Verilator/cocotb verification; "
+            "do not invoke Vivado synthesis or PPA optimization."
+        ),
+    )
     parser.add_argument("--ppa-objective", choices=["lut", "estimated_power_w", "critical_path_delay_ns"], default="lut")
     args = parser.parse_args()
     if args.resume_state:
@@ -219,6 +239,7 @@ def main() -> None:
         "ppa_iteration": 0,
         "max_ppa_iterations": args.max_ppa_iterations,
         "max_verifier_revisions": args.max_verifier_revisions,
+        "verification_only": args.verification_only,
         "max_diagnostic_iterations": 2,
         "diagnostic_iteration": 0,
         "verifier_revision": 0,
@@ -237,6 +258,19 @@ def main() -> None:
             parser.error("Resume must use the exact original request and run-id")
         initial.update(saved)
         initial.update(status="RUNNING", orchestration_error=None)
+        # Resuming must not expand the recorded retry budget; CLI can lower it.
+        initial["max_architecture_revisions"] = min(
+            int(saved.get("max_architecture_revisions", 0)),
+            args.max_architecture_revisions,
+        )
+        initial["max_repair_iterations"] = min(
+            int(saved.get("max_repair_iterations", 0)), args.max_repair_iterations
+        )
+        initial["max_verifier_revisions"] = min(
+            int(saved.get("max_verifier_revisions", 0)), args.max_verifier_revisions
+        )
+        if args.verification_only:
+            initial["verification_only"] = True
 
     if args.vivado_config:
         initial['vivado_config'] = json.loads(args.vivado_config.read_text())
@@ -274,7 +308,7 @@ def main() -> None:
         + 3 * args.max_architecture_revisions
         + 4 * args.max_repair_iterations
         + 5 * args.max_ppa_iterations
-        + 3 * args.max_verifier_revisions
+        + 4 * args.max_verifier_revisions
         + 6
     )
     final_state = graph.invoke(initial, {"recursion_limit": recursion_limit})

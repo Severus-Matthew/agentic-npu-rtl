@@ -6,6 +6,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from multigent.verifier_tool.coverage.protocol.plan import build_interface_coverage_plan
+from multigent.verifier_tool.coverage.operation.plan import merge_coverage_plans, operation_plan_for_tests
+from multigent.verifier_tool.coverage.stimulus import HISTORY_FILE, rebuild_stimulus_history
 from multigent.agents.base import AgentRuntimeError
 from multigent.intake.request_builder import WORKSPACE_ROOT
 from multigent.tools.cocotb_runner import run_cocotb_regression
@@ -85,6 +88,25 @@ def verification_tools_node(state: HardwareDesignState) -> dict[str, Any]:
         )
 
     test_modules = [str(item) for item in plan["regression_groups"]["full"]]
+    frozen = state["verification_context"]["frozen_architecture"]
+    verifier_result = state.get("verifier_result") or {}
+    coverage_plan = merge_coverage_plans(
+        build_interface_coverage_plan(
+            frozen["interface_contract"]
+        ),
+        operation_plan_for_tests(
+            list(verifier_result.get("operation_coverage", [])),
+            [item["content"] for item in verifier_result.get("test_files", [])],
+            frozen["architecture_contract"], frozen["interface_contract"],
+        ),
+    )
+    coverage_plan["requirements"] = {
+        "randomized_transactions_minimum": int(
+            state["verification_context"]["verification_policy"].get(
+                "randomized_transactions_minimum", 0
+            )
+        )
+    }
     simulation = run_cocotb_regression(
         rtl_dir=rtl_dir,
         top_module=top_module,
@@ -95,8 +117,29 @@ def verification_tools_node(state: HardwareDesignState) -> dict[str, Any]:
         build_dir=verification_dir / "build" / tag,
         report_path=verification_dir / f"cocotb-{tag}.json",
         timeout_seconds=int(plan["timeout_seconds"]),
+        coverage_plan=coverage_plan,
+        coverage_report_path=verification_dir / f"functional-coverage-{tag}.json",
+        stimulus_ledger_report_path=verification_dir
+        / f"stimulus-ledger-{tag}.json",
+    )
+    stimulus_history = rebuild_stimulus_history(verification_dir)
+    history_summary = {
+        "path": str(verification_dir / HISTORY_FILE),
+        "run_count": stimulus_history["run_count"],
+        "stimulus_count": stimulus_history["stimulus_count"],
+        "unique_stimulus_count": stimulus_history["unique_stimulus_count"],
+        "duplicate_execution_count": stimulus_history[
+            "duplicate_execution_count"
+        ],
+    }
+    simulation["stimulus_history"] = history_summary
+    # run_cocotb_regression wrote its report before the cumulative history existed;
+    # rewrite the versioned result so standalone readers see the same evidence.
+    (verification_dir / f"cocotb-{tag}.json").write_text(
+        json.dumps(simulation, indent=2) + "\n", encoding="utf-8"
     )
     aggregate["cocotb"] = simulation
+    aggregate["stimulus_history"] = history_summary
 
     if simulation["status"] == "TOOL_UNAVAILABLE":
         aggregate["status"] = "TOOL_UNAVAILABLE"
@@ -121,12 +164,15 @@ def verification_tools_node(state: HardwareDesignState) -> dict[str, Any]:
         )
 
     failure_class = str(simulation.get("failure_class") or "UNKNOWN")
-    aggregate["status"] = "SIMULATION_FAILURE"
+    coverage_failure = simulation["status"] == "COVERAGE_FAILURE"
+    aggregate["status"] = "COVERAGE_FAILURE" if coverage_failure else "SIMULATION_FAILURE"
     aggregate["failure_class"] = failure_class
     _write_aggregate(verification_dir, tag, aggregate)
     return _state_update(
         verification_status=(
-            "SIMULATION_TIMEOUT"
+            "COVERAGE_FAILURE"
+            if coverage_failure
+            else "SIMULATION_TIMEOUT"
             if simulation["status"] == "TIMEOUT"
             else "SIMULATION_FAILURE"
         ),

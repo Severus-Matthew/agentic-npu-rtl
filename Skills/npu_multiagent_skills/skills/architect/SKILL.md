@@ -137,6 +137,7 @@ Do not reference a clear/acknowledge/retry command or signal unless it exists in
 For every logical channel define:
 - name
 - direction
+- protocol profile from `multigent/taxonomy/interface_protocol_profiles.yaml`
 - purpose
 - declared data object(s) carried on the channel
 - metadata carried on the channel
@@ -146,11 +147,19 @@ For every logical channel define:
 
 For every signal define:
 - name
+- exactly one role from `multigent/taxonomy/interface_signal_roles.yaml`
+- semantic class from `multigent/taxonomy/interface_semantic_classes.yaml` when required
+- declared channel name for channel-bound roles, otherwise `null`
 - direction
 - width expression
 - signedness
 - semantic meaning
 - reset value
+
+Signal names are identifiers, not semantic classifiers. Role defines transport or
+lifecycle behavior, semantic class defines what a carried value means, and protocol
+profile defines channel-level rules. The runtime rejects unknown taxonomy values,
+invalid bindings, and inconsistent directions.
 
 The interface description must be sufficient to implement a decoder/encoder without guessing. For every packet/section/transfer class, explicitly state:
 - which fields or element(s) are carried in one transfer
@@ -172,6 +181,16 @@ Before declaring a compute schedule, reconcile it with ingress/egress bandwidth 
 - state whether loading and compute overlap
 - if overlap is claimed, define the buffering/banking that permits it
 - reflect these cycles in the latency/throughput model
+
+Phase accounting is always required. The Architect may choose an exact-latency
+microarchitecture even when the user did not prescribe one, but an exact cycle
+claim is contractual and must be fully testable. Define the reference acceptance
+event, completion event, whether the reference edge is cycle zero or one, every
+included transfer/compute/output cycle, whether a release-handshake cycle is
+already included, and how each legal stall on each channel changes the count. Use
+a handshake-derived finite liveness bound instead only when latency is genuinely
+variable; never leave an exact-looking formula with an ambiguous counting origin
+or stall convention.
 
 For every compute step, explicitly account for the cycles required to populate its operand staging storage from the declared interfaces. If one compute step consumes multiple operands but an interface supplies fewer operands per transfer, the unavoidable staging cycles must appear in the schedule and latency model.
 
@@ -202,6 +221,8 @@ Create machine-testable criteria for:
 - functional semantics
 - data-type/arithmetic semantics
 - legal runtime bounds and boundary cases
+- illegal boundary cases only when their encodings are physically representable at
+  the applicable parameterization
 - exact input framing/packing/transfer counts
 - operand staging/order and partial-vector/tile behavior when applicable
 - output ordering

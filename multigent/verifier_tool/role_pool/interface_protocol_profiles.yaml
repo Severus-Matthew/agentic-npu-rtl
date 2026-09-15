@@ -1,0 +1,48 @@
+taxonomy:
+  name: accelerator_interface_protocol_profiles
+  version: "0.1"
+  scope: protocol rules attached to each logical accelerator channel
+  rules:
+    - Every channel selects exactly one profile.
+    - A custom profile still requires complete framing, ordering, and backpressure semantics in the contract.
+
+protocol_profiles:
+  custom:
+    description: Fully contract-defined channel without a standardized protocol assumption.
+    coverage_tags: [contract_defined_protocol]
+
+  ready_valid:
+    description: Decoupled transfer channel using producer valid and consumer ready.
+    coverage_tags: [handshake, backpressure, stall_stability]
+
+  credit_based:
+    description: Transfer channel whose availability is controlled by explicit credits.
+    coverage_tags: [credit_empty, credit_full, flow_control]
+
+  axi4:
+    description: AMBA AXI4 memory-mapped channel behavior.
+    coverage_tags: [handshake, backpressure, alignment, burst_length, burst_type, 4k_boundary, response_partition, outstanding_ids, ordering]
+
+  axi4_lite:
+    description: AMBA AXI4-Lite single-transfer memory-mapped behavior.
+    coverage_tags: [handshake, backpressure, alignment, byte_enable, response_partition]
+
+  apb:
+    description: AMBA APB peripheral access behavior.
+    coverage_tags: [setup_access_phase, wait_state, byte_enable, error_response]
+
+  tilelink:
+    description: TileLink request/response channel behavior as further frozen by the contract.
+    coverage_tags: [handshake, backpressure, opcode_partition, source_id, response_partition, ordering]
+
+  wishbone:
+    description: Wishbone memory-mapped transfer behavior as further frozen by the contract.
+    coverage_tags: [request_acknowledge, wait_state, byte_enable, error_response]
+
+  avalon_mm:
+    description: Avalon memory-mapped channel behavior.
+    coverage_tags: [wait_state, burst_length, byte_enable, response_partition]
+
+  avalon_st:
+    description: Avalon streaming channel behavior.
+    coverage_tags: [handshake, backpressure, framing, empty_symbols]

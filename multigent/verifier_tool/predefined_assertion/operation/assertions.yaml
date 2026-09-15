@@ -1,0 +1,77 @@
+taxonomy:
+  name: accelerator_operation_predefined_assertions
+  version: "0.1"
+  scope: code-owned and reviewer-visible correctness properties for known operations
+
+families:
+  matrix_multiply:
+    feature_checks:
+      tiling: [tile traversal covers every logical coordinate exactly once, inactive tile lanes and padding cannot affect logical results]
+      runtime_shape: [accepted dimensions are snapshotted for the job, result shape exactly matches accepted M by N]
+      transpose_modes: [the oracle indexes each operand according to its accepted transpose mode]
+      batching: [each accepted batch produces exactly one ordered result matrix]
+      operand_layout: [serialization and indexing match each accepted layout]
+      leading_dimension_stride: [padding and stride gaps never contribute to arithmetic]
+      numeric_format: [decode conversion and result representation match the selected format]
+      mixed_precision: [extension and conversion occur at the contract defined stages]
+      signedness_modes: [sign and zero extension match the accepted modes]
+      floating_point_special_values: [NaN infinity signed zero and subnormal behavior match the stated policy]
+      accumulator_initialization: [the initial accumulator is applied exactly once per output element]
+      alpha_beta_scaling: [alpha and beta are applied in the contract defined precision and order]
+      bias: [bias indexing and broadcast axis match the contract]
+      activation: [activation is applied after the contract defined preceding operations]
+      fused_post_op_order: [the exact contract defined post operation order is preserved]
+      quantization: [scale and zero point indexing and arithmetic order match the contract]
+      rounding_mode: [ties and signed values follow the selected rounding mode]
+      overflow_policy: [overflow is handled at every contract defined arithmetic stage]
+      sparsity: [sparse metadata decodes to the same logical dense operands and malformed metadata follows contract behavior]
+      masking_predication: [masked elements follow the contract defined retain zero or skip behavior]
+      broadcasting: [the broadcast source index is correct for every output element]
+      complex_arithmetic: [real imaginary and optional conjugation signs match complex multiplication]
+      tail_padding_policy: [inactive lanes and padding cannot affect any logical result]
+      split_k_reduction: [every K term contributes exactly once and partial sums combine according to numeric policy]
+      result_layout_order: [every result coordinate appears exactly once in the promised order]
+      configuration_snapshot: [an accepted job uses one coherent configuration and later updates affect only the contract defined job]
+      illegal_configuration: [illegal work produces no unintended result and recovery follows the contract]
+      multi_job_ordering: [results and completion events associate with exactly one accepted job]
+      memory_aliasing: [read and write visibility follows the frozen aliasing rule]
+    required_properties:
+      oracle_equivalence:
+        applies_when: always
+        check: Every transferred logical result element equals an independent matrix multiplication oracle after all contract defined numeric and post processing stages.
+      accepted_operand_accounting:
+        applies_when: always
+        check: Count actual accepted operand transfers independently of producer loop counts. A job consumes exactly the elements and metadata required by its accepted shape, with no loss duplication or cross job mixing; unexpected input transfers fail even if final arithmetic happens to match.
+      contract_phase_consumption:
+        applies_when: the external contract restricts command or operand acceptance to particular phases or ordering
+        check: An independent checker follows accepted command and operand transfer events and rejects consumption in a forbidden phase or after the required operand count.
+      exact_result_accounting:
+        applies_when: always
+        check: Each accepted legal job produces exactly M times N logical results, with no missing or extra output.
+      no_unsolicited_stream_output:
+        applies_when: results use an externally visible streaming transfer channel
+        check: A continuing stream checker rejects any output transfer that cannot be associated with one accepted non aborted job.
+      result_coordinate_order:
+        applies_when: always
+        check: Each output is associated with the correct matrix coordinate and appears in the contract defined order.
+      framing_consistency:
+        applies_when: input or output framing markers exist
+        check: Final markers occur only on the final required transfer and agree with the accepted job dimensions.
+      completion_association:
+        applies_when: completion or done status exists
+        check: Completion occurs once per accepted completed job and never substitutes for unchecked or missing result transfers.
+      tail_independence:
+        applies_when: partial tiles padding masks or inactive lanes exist
+        check: Changing values outside the logical M N K region cannot change any logical result.
+      configuration_atomicity:
+        applies_when: runtime configuration can change while work is pending
+        check: Each job is evaluated using the one configuration snapshot promised by the contract.
+      arithmetic_policy_stage_order:
+        applies_when: overflow rounding quantization scaling bias or activation is defined
+        check: The oracle and checks apply every numeric policy at the exact contract defined stage and order.
+      reset_abort_no_ghost_result:
+        applies_when: reset can interrupt work
+        check: Reset handling follows the contract and no pre reset partial job leaks into a later result.
+      illegal_job_isolation:
+        applies_when: illegal encodings or configurations have defined behavior
+        check: An illegal job follows its error policy without corrupting preceding or following legal jobs.

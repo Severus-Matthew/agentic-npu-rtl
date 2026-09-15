@@ -24,6 +24,7 @@ from .base import APIAgent, AgentConfig, AgentRuntimeError, SCHEMA_ROOT
 RTL_GENERATOR_OUTPUT_SCHEMA = SCHEMA_ROOT / "rtl_generator_output.schema.json"
 TASK_TYPES = {
     "INITIAL_GENERATION",
+    "CONTRACT_FIXED",
     "FUNCTIONAL_REPAIR",
     "SYNTHESIS_REPAIR",
     "PPA_OPTIMIZATION",
@@ -124,10 +125,13 @@ class RTLGeneratorAgent(APIAgent):
             feedback=feedback,
             run_id=str(state.get("run_id", "langgraph")),
         )
+        emitted_files = [item["path"] for item in result["files"]]
+        if result["status"] == "RTL_GENERATED" and task_type == "CONTRACT_FIXED" and not emitted_files:
+            emitted_files = sorted(self._load_existing_rtl(WORKSPACE_ROOT / "rtl"))
         return {
             "rtl_status": result["status"],
             "rtl_result": result,
-            "rtl_files": [item["path"] for item in result["files"]],
+            "rtl_files": emitted_files,
             "architecture_conflict": result["architecture_conflict"],
             "needs_regression": result["regression_required"] != "NONE",
             "verification_status": "PENDING",
@@ -208,7 +212,7 @@ class RTLGeneratorAgent(APIAgent):
             )
 
         if status == "RTL_GENERATED":
-            if not files:
+            if not files and task_type != "CONTRACT_FIXED":
                 raise AgentRuntimeError("RTL_GENERATED requires at least one RTL file")
             if result["architecture_conflict"] is not None:
                 raise AgentRuntimeError("RTL_GENERATED cannot also contain architecture_conflict")
@@ -266,6 +270,8 @@ class RTLGeneratorAgent(APIAgent):
                 )
                 if task_type in {"FUNCTIONAL_REPAIR", "PPA_OPTIMIZATION"} and result["regression_required"] != "FULL":
                     raise AgentRuntimeError(f"{task_type} RTL changes require FULL regression")
+                if task_type == "CONTRACT_FIXED" and result["regression_required"] != "FULL":
+                    raise AgentRuntimeError("CONTRACT_FIXED requires full verification even when RTL is unchanged")
 
         elif status == "ARCHITECTURE_CONFLICT":
             if files or changed_modules:
@@ -339,6 +345,16 @@ class RTLGeneratorAgent(APIAgent):
                 )
             if feedback.get("frozen_verifier") is not True:
                 raise AgentRuntimeError("FUNCTIONAL_REPAIR must preserve the frozen verifier")
+        elif task_type == "CONTRACT_FIXED":
+            patch = feedback.get("contract_patch")
+            if feedback.get("source") != "architect_contract_patch" or not isinstance(patch, Mapping):
+                raise AgentRuntimeError("CONTRACT_FIXED requires the exact Architect contract patch")
+            if patch.get("status") != "PATCH_READY" or not patch.get("edits"):
+                raise AgentRuntimeError("CONTRACT_FIXED requires a non-empty PATCH_READY edit list")
+            previous_version = feedback.get("previous_contract_version")
+            current_version = feedback.get("current_contract_version")
+            if not isinstance(previous_version, int) or current_version != previous_version + 1:
+                raise AgentRuntimeError("CONTRACT_FIXED requires consecutive contract versions")
 
     @staticmethod
     def _build_task(
@@ -373,6 +389,11 @@ GENERIC RULES
 4. Generate synthesizable SystemVerilog and never claim deterministic tool PASS.
 5. For repair modes, use existing RTL and authorized feedback. Emit only modules that
    actually need modification; untouched files remain in the workspace.
+   CONTRACT_FIXED means Architect locally amended the contract. Read the exact patch,
+   latest frozen contract and existing RTL. Modify only RTL behavior needed to conform
+   to the amended contract. If existing RTL already conforms, return RTL_GENERATED
+   with empty files/changed_modules, explicit satisfied contract_checks and FULL
+   regression. This is not initial generation and never rewrite RTL merely for style.
 6. FUNCTIONAL_REPAIR may change only modules listed in
    feedback.repair_plan.affected_modules, must not change protected_modules or any
    frozen interface/test/reference behavior, and requires FULL regression.

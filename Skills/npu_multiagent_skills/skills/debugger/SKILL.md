@@ -78,8 +78,12 @@ Examples:
 - output lane index advances one cycle ahead of payload -> duplicate/missing transaction
 - source/destination counter advances without handshake -> dropped or duplicated stream beat
 
-### 5. Distinguish implementation defect from architecture defect
-Return an architecture escalation only if the frozen contract itself is contradictory or requires a new architecture/interface decision. Do not escalate merely because the current RTL implemented the contract incorrectly.
+### 5. Treat the approved TB as the executable answer sheet
+Contract questions were resolved before RTL generation. The Debugger has no Architect
+route and never requests a contract change. Diagnose an observed mismatch against the
+approved frozen TB. Prefer an RTL repair when RTL evidence supports it. Use the narrow
+Verifier-repair exception only when deterministic evidence proves a high-confidence
+Python, golden-model, or generated-operation-checker defect.
 
 ### 6. Produce the smallest repair plan supported by evidence
 A repair plan must specify:
@@ -101,8 +105,6 @@ Inspect prior diagnosis/repair attempts. Do not repeatedly propose the same conc
 
 ## Status Rules
 Return `REPAIR_PLAN_READY` when deterministic evidence supports a coherent RTL-only patch.
-
-Return `ARCHITECTURE_ESCALATION` only when a new Architect decision is genuinely required. Include a structured conflict identifying the exact frozen contradiction/decision.
 
 Return `EVIDENCE_INSUFFICIENT` when the failure is under-observed. Request specific additional deterministic evidence rather than inventing a broad patch.
 
@@ -142,8 +144,7 @@ For `REPAIR_PLAN_READY`:
 
 ## Verification infrastructure repair route
 Return VERIFICATION_REPAIR_REQUIRED only with TESTBENCH_ERROR, confidence >= 0.8,
-concrete evidence of a Python/scheduling/oracle defect, and null repair_plan and
-architecture_conflict. The orchestrator archives the original failures and asks the
+concrete evidence of a Python/scheduling/oracle defect, and null repair_plan. The orchestrator archives the original failures and asks the
 independent Verifier to revalidate its own artifacts. Your prose, RTL and simulation
 logs are never forwarded to Verifier. Never classify a mere output mismatch as a
 testbench defect without contract-based evidence. UNKNOWN tool classification may be

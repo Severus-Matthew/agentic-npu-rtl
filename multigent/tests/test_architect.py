@@ -31,6 +31,16 @@ class FakeArchitectAgent(ArchitectAgent):
                     {
                         "name": "filter",
                         "kind": "FIR",
+                        "coverage_family": "fir",
+                        "coverage_family_source": "catalog",
+                        "features": [
+                            "tap_count",
+                            "stream_length",
+                            "coefficient_values",
+                            "sample_values",
+                            "numeric_behavior",
+                        ],
+                        "feature_extensions": [],
                         "semantics": "y[t] is the weighted sum of the current and previous samples",
                         "inputs": ["sample_stream", "coefficient_vector"],
                         "outputs": ["result_stream"],
@@ -170,6 +180,7 @@ class FakeArchitectAgent(ArchitectAgent):
                     {
                         "name": "sample_in",
                         "direction": "input",
+                        "protocol_profile": "ready_valid",
                         "purpose": "input sample stream",
                         "data_objects": ["sample_stream"],
                         "metadata": [],
@@ -180,6 +191,7 @@ class FakeArchitectAgent(ArchitectAgent):
                     {
                         "name": "coefficients",
                         "direction": "input",
+                        "protocol_profile": "ready_valid",
                         "purpose": "coefficient loading",
                         "data_objects": ["coefficient_vector"],
                         "metadata": ["coefficient_index"],
@@ -190,6 +202,7 @@ class FakeArchitectAgent(ArchitectAgent):
                     {
                         "name": "result_out",
                         "direction": "output",
+                        "protocol_profile": "ready_valid",
                         "purpose": "filtered output stream",
                         "data_objects": ["result_stream"],
                         "metadata": [],
@@ -198,7 +211,30 @@ class FakeArchitectAgent(ArchitectAgent):
                         "backpressure": "supported",
                     },
                 ],
-                "signals": [],
+                "signals": [
+                    {
+                        "name": "clk",
+                        "role": "clock",
+                        "semantic_class": None,
+                        "channel": None,
+                        "direction": "input",
+                        "width": "1",
+                        "signed": False,
+                        "semantic": "rising-edge clock",
+                        "reset_value": "not applicable",
+                    },
+                    {
+                        "name": "rst",
+                        "role": "reset",
+                        "semantic_class": None,
+                        "channel": None,
+                        "direction": "input",
+                        "width": "1",
+                        "signed": False,
+                        "semantic": "synchronous active-high reset",
+                        "reset_value": "not applicable",
+                    },
+                ],
                 "global_handshake_rules": {
                     "transfer_condition": "valid && ready",
                     "stall_behavior": "payload remains stable while stalled",
@@ -213,7 +249,10 @@ class FakeArchitectAgent(ArchitectAgent):
                         "dependencies": ["filter_core"],
                         "parameters": ["TAPS"],
                         "stateful": True,
-                        "ports": [{"name":"clk", "direction":"input", "width":"1", "signed":False, "semantics":"rising-edge clock"}],
+                        "ports": [
+                            {"name":"clk", "direction":"input", "width":"1", "signed":False, "semantics":"rising-edge clock"},
+                            {"name":"rst", "direction":"input", "width":"1", "signed":False, "semantics":"active-high reset"},
+                        ],
                     },
                     {
                         "name": "filter_core",
@@ -242,6 +281,28 @@ def test_generic_non_gemm_output_satisfies_architect_schema() -> None:
     Draft202012Validator(architect_schema()).validate(
         FakeArchitectAgent().run_structured()
     )
+
+
+def test_architect_operation_features_are_closed_and_complete() -> None:
+    result = copy.deepcopy(FakeArchitectAgent().run_structured())
+    result["architecture_contract"]["operations"][0]["features"].remove(
+        "numeric_behavior"
+    )
+    with pytest.raises(AgentRuntimeError, match="feature selection mismatch"):
+        ArchitectAgent._validate_contract_references(result)
+
+    result = copy.deepcopy(FakeArchitectAgent().run_structured())
+    result["architecture_contract"]["operations"][0]["features"].append(
+        "invented_feature"
+    )
+    with pytest.raises(AgentRuntimeError, match="invented_feature"):
+        ArchitectAgent._validate_contract_references(result)
+
+    result = copy.deepcopy(FakeArchitectAgent().run_structured())
+    result["architecture_contract"]["operations"][0]["feature_extensions"] = [
+        "coefficient_reload_during_stream"
+    ]
+    ArchitectAgent._validate_contract_references(result)
 
 
 def test_dimension_maximum_must_be_concrete_integer() -> None:
@@ -357,3 +418,48 @@ def test_semantic_validator_rejects_bound_default_outside_dimension_range() -> N
     result["architecture_contract"]["parameters"][0]["default_value"] = "32"
     with pytest.raises(AgentRuntimeError, match="lies outside"):
         ArchitectAgent._validate_contract_references(result)
+
+
+def test_semantic_validator_rejects_unknown_signal_role() -> None:
+    result = copy.deepcopy(FakeArchitectAgent().run_structured())
+    result["interface_contract"]["signals"][0]["role"] = "clockish"
+    with pytest.raises(AgentRuntimeError, match="unknown role"):
+        ArchitectAgent._validate_contract_references(result)
+
+
+def test_semantic_validator_rejects_channel_role_without_channel() -> None:
+    result = copy.deepcopy(FakeArchitectAgent().run_structured())
+    result["interface_contract"]["signals"].append(
+        {
+            "name": "sample_valid",
+            "role": "valid",
+            "semantic_class": None,
+            "channel": None,
+            "direction": "input",
+            "width": "1",
+            "signed": False,
+            "semantic": "sample transfer is available",
+            "reset_value": "0",
+        }
+    )
+    result["module_manifest"]["modules"][0]["ports"].append(
+        {
+            "name": "sample_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": False,
+            "semantics": "sample transfer is available",
+        }
+    )
+    with pytest.raises(AgentRuntimeError, match="requires a channel"):
+        ArchitectAgent._validate_contract_references(result)
+
+
+def test_architect_prompt_contains_external_signal_role_taxonomy() -> None:
+    task = ArchitectAgent._build_architecture_task(
+        build_architect_intake("design a streaming accelerator")
+    )
+    assert "SIGNAL ROLE TAXONOMY" in task
+    assert "- valid:" in task
+    assert "- completion:" in task
+    assert "Never infer any of these fields" in task

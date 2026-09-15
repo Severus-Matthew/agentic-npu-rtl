@@ -36,6 +36,7 @@ def make_rtl_generator_node(
         update = runtime.run_from_state(node_state)
         return {
             **update,
+            "rtl_contract_version": architecture_version,
             "history": [
                 {
                     "stage": "rtl_generator",

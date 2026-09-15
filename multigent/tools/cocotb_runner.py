@@ -32,6 +32,9 @@ def run_cocotb_regression(
     report_path: Path,
     timeout_seconds: int,
     public_signals: bool = False,
+    coverage_plan: Mapping[str, Any] | None = None,
+    coverage_report_path: Path | None = None,
+    stimulus_ledger_report_path: Path | None = None,
 ) -> dict[str, Any]:
     """Build and run cocotb tests in a bounded worker subprocess."""
 
@@ -69,6 +72,18 @@ def run_cocotb_regression(
     config_path = build_dir / "cocotb_worker_config.json"
     worker_result_path = build_dir / "cocotb_worker_result.json"
     results_xml = build_dir / "results.xml"
+    coverage_config_path = build_dir / "functional_coverage_config.json"
+    if coverage_plan is not None:
+        if coverage_report_path is None:
+            raise ValueError("coverage_report_path is required with coverage_plan")
+        coverage_report_path = coverage_report_path.resolve()
+        _write_json(coverage_config_path, coverage_plan)
+        if coverage_report_path.exists():
+            coverage_report_path.unlink()
+    if stimulus_ledger_report_path is not None:
+        stimulus_ledger_report_path = stimulus_ledger_report_path.resolve()
+        if stimulus_ledger_report_path.exists():
+            stimulus_ledger_report_path.unlink()
     config = {
         "public_signals": public_signals,
         "sources": [str(path) for path in sources],
@@ -80,6 +95,18 @@ def run_cocotb_regression(
         "build_dir": str(build_dir),
         "results_xml": str(results_xml),
         "worker_result_path": str(worker_result_path),
+        "coverage_config_path": (
+            str(coverage_config_path) if coverage_plan is not None else None
+        ),
+        "coverage_plan": dict(coverage_plan) if coverage_plan is not None else None,
+        "coverage_report_path": (
+            str(coverage_report_path) if coverage_report_path is not None else None
+        ),
+        "stimulus_ledger_report_path": (
+            str(stimulus_ledger_report_path)
+            if stimulus_ledger_report_path is not None
+            else None
+        ),
     }
     _write_json(config_path, config)
     if worker_result_path.exists():
@@ -97,6 +124,10 @@ def run_cocotb_regression(
     try:
         completed = run_process(
             command,
+            # The caller may import this variant by sys.path from a comparison
+            # directory. That in-process path is not inherited by a new Python
+            # worker; resolve the loaded package's root, not the caller's cwd.
+            cwd=str(Path(__file__).resolve().parents[2]),
             text=True,
             capture_output=True,
             timeout=timeout_seconds,
@@ -154,6 +185,14 @@ def run_cocotb_regression(
     result["worker_return_code"] = completed.returncode
     result["stdout"] = completed.stdout
     result["stderr"] = completed.stderr
+    if stimulus_ledger_report_path is not None:
+        result["stimulus_ledger"] = _finalize_stimulus_ledger(
+            stimulus_ledger_report_path,
+            status=str(result.get("status", "UNKNOWN")),
+            seed=seed,
+            top_module=top_module,
+            test_modules=test_modules,
+        )
     _write_json(report_path, result)
     return result
 
@@ -202,6 +241,16 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
     # Set the worker's actual import path so both flat and reference.* imports work.
     sys.path[:0] = [str(tests_dir), str(reference_dir), str(workspace_root)]
     extra_env = {"PYTHONPATH": os.pathsep.join(pythonpath_parts)}
+    coverage_config = config.get("coverage_config_path")
+    coverage_report = config.get("coverage_report_path")
+    stimulus_ledger_report = config.get("stimulus_ledger_report_path")
+    if coverage_config and coverage_report:
+        extra_env["NPU_FUNCTIONAL_COVERAGE_CONFIG"] = str(coverage_config)
+        extra_env["NPU_FUNCTIONAL_COVERAGE_REPORT"] = str(coverage_report)
+        if stimulus_ledger_report:
+            extra_env["NPU_STIMULUS_LEDGER_REPORT"] = str(
+                stimulus_ledger_report
+            )
 
     for key in ("COCOTB_TEST_FILTER", "COCOTB_TESTCASE", "TESTCASE", "COCOTB_TEST_MODULES"):
         os.environ.pop(key, None)
@@ -231,6 +280,9 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
         }
         _write_json(result_path, result)
         return result
+
+    if coverage_config and config.get("coverage_plan") is not None:
+        _write_json(Path(str(coverage_config)), config["coverage_plan"])
 
     simulation_exception: BaseException | None = None
     try:
@@ -284,15 +336,35 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
         _write_json(result_path, result)
         return result
 
-    status = (
+    coverage = evaluate_functional_coverage_report(
+        Path(str(coverage_report)) if coverage_report else None,
+        Path(str(coverage_config)) if coverage_config else None,
+    )
+    simulation_pass = (
         "PASS"
         if tests >= max(1, expected_count) and failures == 0 and simulation_exception is None and xunit_complete(results_xml)
         else "SIMULATION_FAILURE"
     )
+    status = (
+        "COVERAGE_FAILURE"
+        if (
+            simulation_pass == "PASS"
+            and coverage_config
+            and coverage_report
+            and coverage.get("status") != "PASS"
+        )
+        else simulation_pass
+    )
     result = {
         "stage": "cocotb_regression",
         "status": status,
-        "failure_class": None if status == "PASS" else "UNKNOWN",
+        "failure_class": (
+            None
+            if status == "PASS"
+            else "COVERAGE_MISS"
+            if status == "COVERAGE_FAILURE"
+            else "UNKNOWN"
+        ),
         "tests": tests,
         "failures": failures,
         "seed": seed,
@@ -304,6 +376,7 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
             if simulation_exception is None
             else f"{type(simulation_exception).__name__}: {simulation_exception}"
         ),
+        "functional_coverage": coverage,
     }
     _write_json(result_path, result)
     return result
@@ -316,6 +389,159 @@ def xunit_complete(path: Path) -> bool:
         return bool(cases) and all(not any(c.find(tag) is not None for tag in ('skipped','failure','error')) for c in cases)
     except (ET.ParseError, OSError):
         return False
+
+
+def evaluate_functional_coverage_report(
+    report_path: Path | None, config_path: Path | None
+) -> dict[str, Any]:
+    """Recompute closure from runner-owned plan and monitor-produced hit counts."""
+
+    if report_path is None or config_path is None:
+        return {
+            "status": "NOT_CONFIGURED",
+            "missing_bins": [],
+            "covered_bins": [],
+            "bin_hits": {},
+        }
+    if not report_path.is_file():
+        return {
+            "status": "FAIL",
+            "coverage_percent": 0.0,
+            "missing_bins": ["runtime_report_missing"],
+            "covered_bins": [],
+            "bin_hits": {},
+            "report_path": str(report_path),
+        }
+    try:
+        plan = json.loads(config_path.read_text(encoding="utf-8"))
+        raw = json.loads(report_path.read_text(encoding="utf-8"))
+        observed = {
+            str(obligation["id"]): {
+                str(item["name"]): int(item["hits"])
+                for item in obligation.get("bins", [])
+            }
+            for obligation in raw.get("obligations", [])
+        }
+        missing: list[str] = []
+        covered: list[str] = []
+        bin_hits: dict[str, int] = {}
+        hit_bins = 0
+        total_bins = 0
+        for obligation in plan.get("obligations", []):
+            obligation_id = str(obligation["id"])
+            for item in obligation.get("bins", []):
+                required = bool(item.get("required", True))
+                bin_name = str(item["name"])
+                count = observed.get(obligation_id, {}).get(bin_name, 0)
+                bin_id = f"{obligation_id}.{bin_name}"
+                bin_hits[bin_id] = count
+                if count > 0:
+                    covered.append(bin_id)
+                if required:
+                    total_bins += 1
+                    hit_bins += int(count > 0)
+                if required and count == 0:
+                    missing.append(bin_id)
+        assertion_failures = list(map(str, raw.get("assertion_failures", [])))
+        minimum_randomized = int(
+            plan.get("requirements", {}).get("randomized_transactions_minimum", 0)
+        )
+        randomized_samples = int(raw.get("randomized_operation_samples", 0))
+        ledger_enabled = bool(raw.get("stimulus_ledger_enabled", False))
+        randomized_transactions = int(
+            raw.get("randomized_stimuli", 0)
+            if ledger_enabled
+            else randomized_samples
+        )
+        if randomized_transactions < minimum_randomized:
+            missing.append(
+                f"runtime.randomized_transactions.minimum_{minimum_randomized}"
+            )
+        return {
+            "status": "PASS" if not missing and not assertion_failures else "FAIL",
+            "samples": int(raw.get("samples", 0)),
+            "operation_samples": int(raw.get("operation_samples", 0)),
+            "directed_operation_samples": int(
+                raw.get("directed_operation_samples", 0)
+            ),
+            "randomized_operation_samples": randomized_samples,
+            "stimulus_count": int(raw.get("stimulus_count", 0)),
+            "directed_stimuli": int(raw.get("directed_stimuli", 0)),
+            "randomized_stimuli": int(raw.get("randomized_stimuli", 0)),
+            "randomized_transactions_observed": randomized_transactions,
+            "stimulus_ledger_enabled": ledger_enabled,
+            "randomized_transactions_minimum": minimum_randomized,
+            "coverage_engine": str(raw.get("coverage_engine", "")),
+            "required_bins": total_bins,
+            "hit_bins": hit_bins,
+            "coverage_percent": (
+                100.0 if not total_bins else 100.0 * hit_bins / total_bins
+            ),
+            "missing_bins": missing,
+            "covered_bins": sorted(covered),
+            "bin_hits": dict(sorted(bin_hits.items())),
+            "assertion_failures": assertion_failures,
+            "failure_records": list(raw.get("failure_records", [])),
+            "last_observed_snapshot": dict(
+                raw.get("last_observed_snapshot", {})
+                if isinstance(raw.get("last_observed_snapshot", {}), Mapping)
+                else {}
+            ),
+            "operation_sampling": list(raw.get("operation_sampling", [])),
+            "report_path": str(report_path),
+        }
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        return {
+            "status": "FAIL",
+            "coverage_percent": 0.0,
+            "missing_bins": ["invalid_runtime_report"],
+            "covered_bins": [],
+            "bin_hits": {},
+            "error": f"{type(exc).__name__}: {exc}",
+            "report_path": str(report_path),
+        }
+
+
+def _finalize_stimulus_ledger(
+    path: Path,
+    *,
+    status: str,
+    seed: int,
+    top_module: str,
+    test_modules: list[str],
+) -> dict[str, Any]:
+    """Attach reproducibility metadata and return a compact result summary."""
+
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        raw = {}
+    records = raw.get("records", [])
+    if not isinstance(records, list):
+        records = []
+    ledger = {
+        "schema_version": 1,
+        "status": status,
+        "seed": seed,
+        "top_module": top_module,
+        "test_modules": list(test_modules),
+        "stimulus_count": len(records),
+        "directed_stimuli": sum(
+            1 for item in records if isinstance(item, Mapping) and item.get("kind") == "directed"
+        ),
+        "randomized_stimuli": sum(
+            1 for item in records if isinstance(item, Mapping) and item.get("kind") == "randomized"
+        ),
+        "records": records,
+    }
+    _write_json(path, ledger)
+    return {
+        "path": str(path),
+        "status": status,
+        "stimulus_count": ledger["stimulus_count"],
+        "directed_stimuli": ledger["directed_stimuli"],
+        "randomized_stimuli": ledger["randomized_stimuli"],
+    }
 
 
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:

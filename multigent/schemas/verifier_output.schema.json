@@ -8,6 +8,7 @@
     "summary",
     "reference_files",
     "test_files",
+    "operation_coverage",
     "verification_plan",
     "architecture_conflict",
     "known_verification_gaps"
@@ -36,7 +37,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["path", "purpose", "categories", "regression_groups", "content"],
+        "required": ["path", "purpose", "categories", "regression_groups", "coverage_obligations", "content"],
         "properties": {
           "path": {"type": "string"},
           "purpose": {"type": "string"},
@@ -48,7 +49,67 @@
             "type": "array",
             "items": {"type": "string", "enum": ["smoke", "targeted", "full"]}
           },
+          "coverage_obligations": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
           "content": {"type": "string"}
+        }
+      }
+    },
+    "operation_coverage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operation_name", "family", "coverpoints"],
+        "properties": {
+          "operation_name": {"type": "string", "minLength": 1},
+          "family": {"type": "string", "minLength": 1},
+          "coverpoints": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "concept", "field", "source", "description", "bins"],
+              "properties": {
+                "id": {"type": "string", "minLength": 1},
+                "concept": {"type": "string", "minLength": 1},
+                "field": {"type": "string", "minLength": 1},
+                "source": {"type": "string", "enum": ["baseline", "architect_extension", "llm_extension"]},
+                "description": {"type": "string", "minLength": 1},
+                "bins": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name", "intent", "predicate"],
+                    "properties": {
+                      "name": {"type": "string", "minLength": 1},
+                      "intent": {"type": "string", "minLength": 1},
+                      "predicate": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["op", "args"],
+                        "properties": {
+                          "op": {
+                            "type": "string",
+                            "enum": ["eq", "neq", "lt", "lte", "gt", "gte", "between", "one_of", "mod_eq", "mod_ne", "truthy", "falsy"]
+                          },
+                          "args": {
+                            "type": "array",
+                            "items": {"type": ["integer", "number", "string", "boolean"]}
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },

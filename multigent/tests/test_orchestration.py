@@ -35,6 +35,7 @@ def test_langgraph_compiles_repair_nodes() -> None:
         "architect",
         "rtl_generator",
         "verifier",
+        "verifier_review",
         "verification_tools",
         "debugger",
         "synthesis",
@@ -44,8 +45,8 @@ def test_langgraph_compiles_repair_nodes() -> None:
     } <= nodes
 
 
-def test_architect_ready_routes_to_rtl() -> None:
-    assert route_after_architect({"architecture_status": "READY"}) == "rtl_generator"
+def test_architect_ready_routes_to_pre_rtl_verifier() -> None:
+    assert route_after_architect({"architecture_status": "READY"}) == "verifier"
 
 
 def test_rtl_conflict_routes_back_to_architect_with_budget() -> None:
@@ -66,7 +67,7 @@ def test_rtl_conflict_stops_when_architecture_budget_exhausted() -> None:
     assert route_after_rtl(state) == "failed"
 
 
-def test_initial_generated_rtl_routes_to_independent_verifier() -> None:
+def test_unreviewed_generated_rtl_routes_to_independent_verifier() -> None:
     assert route_after_rtl(
         {"rtl_status": "RTL_GENERATED", "rtl_task_type": "INITIAL_GENERATION"}
     ) == "verifier"
@@ -78,12 +79,24 @@ def test_functional_repair_reuses_frozen_verifier() -> None:
         "rtl_task_type": "FUNCTIONAL_REPAIR",
         "verifier_status": "VERIFICATION_READY",
         "verification_plan": {"top_module": "top"},
+        "verifier_review_status": "APPROVED",
     }
     assert route_after_rtl(state) == "verification_tools"
 
 
-def test_verifier_ready_routes_to_deterministic_tools() -> None:
-    assert route_after_verifier({"verifier_status": "VERIFICATION_READY"}) == "verification_tools"
+def test_verifier_ready_routes_to_definition_review() -> None:
+    assert route_after_verifier({"verifier_status": "VERIFICATION_READY"}) == "verifier_review"
+
+
+def test_approved_tb_routes_to_initial_rtl_before_simulation() -> None:
+    state = {
+        "verifier_review_status": "APPROVED",
+        "verifier_status": "VERIFICATION_READY",
+        "verification_plan": {"top_module": "top"},
+        "rtl_status": "PENDING",
+    }
+    from multigent.orchestration.routes import route_after_verifier_review
+    assert route_after_verifier_review(state) == "rtl_generator"
 
 
 def test_verifier_architecture_conflict_uses_revision_budget() -> None:
@@ -117,15 +130,6 @@ def test_debugger_plan_routes_to_functional_repair() -> None:
     assert route_after_debugger({"debugger_status": "REPAIR_PLAN_READY"}) == "rtl_generator"
 
 
-def test_debugger_architecture_escalation_uses_architecture_budget() -> None:
-    state = {
-        "debugger_status": "ARCHITECTURE_ESCALATION",
-        "architecture_revision": 0,
-        "max_architecture_revisions": 2,
-    }
-    assert route_after_debugger(state) == "architect"
-
-
 def test_debugger_insufficient_evidence_stops() -> None:
     assert route_after_debugger({"debugger_status": "EVIDENCE_INSUFFICIENT"}) == "failed"
 
@@ -134,8 +138,34 @@ def test_pass_routes_to_synthesis() -> None:
     assert route_after_verification({"verification_status": "PASS"}) == "synthesis"
 
 
+def test_verification_only_pass_routes_to_final_report() -> None:
+    state = {"verification_status": "PASS", "verification_only": True}
+    assert route_after_verification(state) == "final_report"
+
+
 def test_tool_unavailable_is_not_mislabeled_as_rtl_failure() -> None:
     assert route_after_verification({"verification_status": "TOOL_UNAVAILABLE"}) == "tool_unavailable"
+
+
+def test_coverage_miss_routes_to_independent_verifier_repair() -> None:
+    state = {
+        "verification_status": "COVERAGE_FAILURE",
+        "verifier_revision": 0,
+        "max_verifier_revisions": 2,
+    }
+    assert route_after_verification(state) == "verification_repair"
+
+
+def test_semantic_verifier_failure_routes_to_bounded_verifier_repair() -> None:
+    state = {
+        "verifier_status": "SEMANTIC_VALIDATION_FAILED",
+        "verifier_revision": 0,
+        "max_verifier_revisions": 2,
+    }
+    assert route_after_verifier(state) == "verification_repair"
+
+    state["verifier_revision"] = 2
+    assert route_after_verifier(state) == "failed"
 
 
 def test_resume_existing_rtl_starts_at_verifier() -> None:
@@ -147,12 +177,12 @@ def test_resume_existing_rtl_starts_at_verifier() -> None:
     assert route_start(state) == "verifier"
 
 
-def test_resume_frozen_architecture_without_rtl_starts_at_rtl() -> None:
+def test_resume_frozen_architecture_without_rtl_starts_at_verifier() -> None:
     state = {
         "architecture_status": "READY",
         "rtl_context": {"frozen_architecture": {}},
     }
-    assert route_start(state) == "rtl_generator"
+    assert route_start(state) == "verifier"
 
 
 def test_resume_retries_pending_rtl_node_after_validation_error():

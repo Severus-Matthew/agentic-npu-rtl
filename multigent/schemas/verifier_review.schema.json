@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pre-simulation coverage and assertion review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "summary", "findings"],
+  "properties": {
+    "status": {"type": "string", "enum": ["APPROVED", "VERIFIER_REPAIR_REQUIRED"]},
+    "summary": {"type": "string"},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "requirement", "evidence", "recommended_change"],
+        "properties": {
+          "category": {"type": "string", "enum": ["COVERAGE_DEFINITION", "MISSING_ASSERTION", "INVALID_ASSERTION", "MISSING_STIMULUS", "INVALID_STIMULUS_MAPPING"]},
+          "requirement": {"type": "string", "minLength": 1},
+          "evidence": {"type": "string", "minLength": 1},
+          "recommended_change": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

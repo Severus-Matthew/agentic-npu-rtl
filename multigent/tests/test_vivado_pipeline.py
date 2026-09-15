@@ -88,7 +88,10 @@ def test_ppa_scope_enforced():
 
 
 def test_optimization_reuses_verifier_and_full_tools():
-    assert route_after_rtl({'rtl_status':'RTL_GENERATED','rtl_task_type':'PPA_OPTIMIZATION','verifier_status':'VERIFICATION_READY','verification_plan':{'full':['test_top']}})=='verification_tools'
+    assert route_after_rtl({'rtl_status':'RTL_GENERATED','rtl_task_type':'PPA_OPTIMIZATION',
+                            'verifier_status':'VERIFICATION_READY',
+                            'verifier_review_status':'APPROVED',
+                            'verification_plan':{'full':['test_top']}})=='verification_tools'
 
 
 def test_debugger_testbench_route_is_bounded():
@@ -163,13 +166,19 @@ def test_graph_optimization_runs_full_regression_again(tmp_path,monkeypatch):
                     'evidence_manifest_sha256':'hash','recommended_change':'Simplify redundant mux',
                     'summary':'fixture','do_not_change':['contracts']}
     monkeypatch.setattr(module,'verification_tools_node',verify)
+    def review(state):
+        calls.append('review')
+        return {'verifier_review_status': 'APPROVED',
+                'verifier_review_hashes': artifacts.review_definition_hashes(state)}
+    monkeypatch.setattr(module,'make_verifier_review_node',lambda _: review)
     monkeypatch.setattr(module,'synthesis_node',synthesize)
     graph=build_workflow_graph(rtl_agent=RTL(),verifier_agent=Verifier(),ppa_agent=Optimizer())
     result=graph.invoke({'run_id':'fixture','user_request':'streaming block','architecture_dir':str(tmp_path/'architecture'),
-                         'architecture_status':'READY','rtl_context':{'frozen_architecture':contract},
+                         'architecture_status':'READY','architecture_version':1,
+                         'rtl_context':{'frozen_architecture':contract},
                          'rtl_task_type':'INITIAL_GENERATION','ppa_iteration':0,'max_ppa_iterations':1,'history':[]})
     assert result['status']=='SUCCESS',result
-    assert calls==['rtl:INITIAL_GENERATION','verifier','regression','vivado','optimizer','rtl:PPA_OPTIMIZATION','regression','vivado']
+    assert calls==['verifier','review','rtl:INITIAL_GENERATION','regression','vivado','optimizer','rtl:PPA_OPTIMIZATION','regression','vivado']
     assert (tmp_path/'reports/final.json').is_file()
 
 
@@ -210,6 +219,183 @@ def test_verification_repair_does_not_forward_debugger_prose(tmp_path,monkeypatc
     assert 'RTL_SOURCE_SECRET' not in json.dumps(update)
 
 
+def test_verification_repair_forwards_only_first_owned_cocotb_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(artifacts, 'WORKSPACE_ROOT', tmp_path)
+    monkeypatch.setattr(
+        artifacts, 'build_verification_context',
+        lambda **kwargs: {'user_request': 'identity'},
+    )
+    stdout = '''compiler output must stay out
+  10ns WARNING  cocotb.regression test_core.test_a failed
+Traceback (most recent call last):
+  File "tests/test_core.py", line 9
+AssertionError: expected 1 observed 0
+  12ns INFO     cocotb.regression running test_core.test_b
+second test output
+'''
+    update = artifacts.verification_repair_node({
+        'user_request': 'identity', 'architecture_dir': str(tmp_path),
+        'verification_evidence': {'cocotb': {'stdout': stdout}},
+    })
+    review = update['verification_context']['verification_infrastructure_review']
+    excerpt = review['first_failure_excerpt']
+    assert 'test_a failed' in excerpt
+    assert 'AssertionError: expected 1 observed 0' in excerpt
+    assert 'compiler output' not in excerpt
+    assert 'test_b' not in excerpt
+
+
+def test_semantic_verifier_repair_forwards_exact_missing_concepts(tmp_path, monkeypatch):
+    monkeypatch.setattr(artifacts, 'WORKSPACE_ROOT', tmp_path)
+    monkeypatch.setattr(
+        artifacts,
+        'build_verification_context',
+        lambda **kwargs: {'user_request': 'gemm', 'frozen_architecture': {}},
+    )
+    update = artifacts.verification_repair_node(
+        {
+            'user_request': 'gemm',
+            'architecture_dir': str(tmp_path),
+            'verifier_status': 'SEMANTIC_VALIDATION_FAILED',
+            'verifier_revision': 0,
+            'verifier_draft': {
+                'status': 'VERIFICATION_READY',
+                'test_files': [{'path': 'tests/test_gemm.py', 'content': 'old source'}],
+            },
+            'errors': [
+                "Invalid operation coverage: operation gemm baseline concepts "
+                "mismatch; missing=['fixed_cmd_word_mapping', "
+                "'int8_signed_saturation'], wrong_sources=[]"
+            ],
+        }
+    )
+
+    review = update['verification_context']['semantic_validation_review']
+    assert review['missing_concepts'] == [
+        'fixed_cmd_word_mapping',
+        'int8_signed_saturation',
+    ]
+    assert 'missing=[' in review['validator_error']
+    assert review['previous_verifier_output']['test_files'][0]['content'] == 'old source'
+    assert 'not an architecture conflict' in review['instruction']
+    assert 'Start from previous_verifier_output' in review['instruction']
+    assert update['verifier_revision'] == 1
+    assert update['history'][0]['status'] == 'SEMANTIC_CORRECTION'
+
+
+def test_semantic_repair_without_draft_requests_fresh_generation(tmp_path, monkeypatch):
+    monkeypatch.setattr(artifacts, 'WORKSPACE_ROOT', tmp_path)
+    monkeypatch.setattr(
+        artifacts, 'build_verification_context',
+        lambda **kwargs: {'user_request': 'identity'},
+    )
+    update = artifacts.verification_repair_node({
+        'user_request': 'identity', 'architecture_dir': str(tmp_path),
+        'verifier_status': 'SEMANTIC_VALIDATION_FAILED', 'errors': ['missing fields'],
+    })
+    review = update['verification_context']['semantic_validation_review']
+    assert 'previous_verifier_output' not in review
+    assert 'generate a fresh complete oracle and test suite' in review['instruction']
+
+
+def test_verification_repair_does_not_freeze_invalid_prior_operation_bins(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(artifacts, 'WORKSPACE_ROOT', tmp_path)
+    monkeypatch.setattr(
+        artifacts,
+        'build_verification_context',
+        lambda **kwargs: {'user_request': 'identity'},
+    )
+    verification = tmp_path / 'verification'
+    verification.mkdir()
+    (verification / 'stimulus-ledger-first.json').write_text(
+        json.dumps(
+            {
+                'seed': 7,
+                'records': [
+                    {
+                        'id': 'test_op:000001',
+                        'digest': 'abc',
+                        'kind': 'directed',
+                        'stimulus': {'x': 1},
+                        'expected': {'y': 1},
+                        'covered_bins': ['operation.op.size.one'],
+                        'operation_samples': [],
+                    }
+                ],
+            }
+        )
+    )
+    update = artifacts.verification_repair_node(
+        {
+            'user_request': 'identity',
+            'architecture_dir': str(tmp_path),
+            'verification_evidence': {
+                'cocotb': {
+                    'functional_coverage': {
+                        'status': 'FAIL',
+                        'missing_bins': ['operation.op.impossible.old_bin'],
+                        'covered_bins': ['operation.op.size.one'],
+                        'bin_hits': {
+                            'operation.op.size.one': 1,
+                            'operation.op.impossible.old_bin': 0,
+                        },
+                    }
+                }
+            },
+        }
+    )
+    review = update['verification_context']['coverage_closure_review']
+    assert review['missing_bins'] == ['operation.op.impossible.old_bin']
+    assert review['covered_bins'] == ['operation.op.size.one']
+    assert review['bin_hits']['operation.op.size.one'] == 1
+    assert review['stimulus_summary']['stimulus_count'] == 1
+    assert review['stimulus_summary']['payload_mode'] == 'SUMMARY_ONLY'
+    assert review['stimulus_summary']['exact_payloads_in_prompt'] is False
+    assert 'records' not in review['stimulus_summary']
+    assert (verification / 'stimulus-history.json').is_file()
+    assert 'not a frozen Architect contract' in review['instruction']
+    assert 'replace any impossible' in review['instruction']
+    assert 'field names are verifier-owned' in review['instruction']
+
+
+def test_final_report_lists_covered_missing_bins_and_stimulus_history(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(artifacts, 'WORKSPACE_ROOT', tmp_path)
+    history_path = tmp_path / 'verification' / 'stimulus-history.json'
+    state = {
+        'status': 'FAILED',
+        'user_request': 'identity',
+        'verification_status': 'COVERAGE_FAILURE',
+        'verification_evidence': {
+            'cocotb': {
+                'functional_coverage': {
+                    'status': 'FAIL',
+                    'coverage_percent': 50.0,
+                    'covered_bins': ['operation.op.mode.normal'],
+                    'missing_bins': ['operation.op.mode.edge'],
+                    'bin_hits': {'operation.op.mode.normal': 3},
+                }
+            },
+            'stimulus_history': {
+                'path': str(history_path),
+                'stimulus_count': 4,
+                'unique_stimulus_count': 3,
+                'duplicate_execution_count': 1,
+            },
+        },
+        'errors': [],
+    }
+    artifacts.final_report_node(state)
+    report = (tmp_path / 'reports' / 'final.md').read_text(encoding='utf-8')
+    assert 'operation.op.mode.normal (hits: 3)' in report
+    assert 'operation.op.mode.edge' in report
+    assert str(history_path) in report
+    assert 'Executed records: 4' in report
+
+
 def test_optimizer_keeps_better_baseline(tmp_path,monkeypatch):
     baseline={'architecture_version':1,'synthesis_result':{'status':'PASS','metrics':{'lut':50}}}
     state={'architecture_version':1,'verification_status':'PASS','synthesis_result':{'status':'PASS','metrics':{'lut':70}},
@@ -235,6 +421,55 @@ def test_diagnostic_probe_preserves_original_test_and_is_not_acceptance(tmp_path
     assert result['purpose']=='DIAGNOSTIC_ONLY_NOT_ACCEPTANCE'
     assert (tmp_path/'tests/test_top.py').read_text()==original
     assert '@diagnostic' in (tmp_path/'probe/tests/test_top.py').read_text()
+
+
+def test_diagnostic_copy_removes_contract_coverage_wrapper(tmp_path, monkeypatch):
+    from multigent.tools import diagnostic
+    (tmp_path / 'tests').mkdir()
+    original = '''import cocotb
+from multigent.verifier_tool.coverage.runtime import contract_coverage
+@cocotb.test()
+@contract_coverage()
+async def check(dut):
+    assert 1 == 1
+'''
+    (tmp_path / 'tests/test_top.py').write_text(original)
+    monkeypatch.setattr(
+        diagnostic, 'run_cocotb_regression', lambda **kwargs: {'status': 'PASS'}
+    )
+    diagnostic.collect_diagnostics(
+        tmp_path,
+        {'top_module': 'top', 'regression_groups': {'full': ['test_top']}, 'seed': 1},
+        tmp_path / 'probe',
+    )
+    copied = (tmp_path / 'probe/tests/test_top.py').read_text()
+    assert '@diagnostic' in copied
+    assert '@contract_coverage' not in copied
+
+
+def test_diagnostic_copy_disables_operation_coverage_hook(tmp_path, monkeypatch):
+    from multigent.tools import diagnostic
+    (tmp_path / 'tests').mkdir()
+    original = '''import cocotb
+from multigent.verifier_tool.coverage.runtime import contract_coverage, sample_operation
+@cocotb.test()
+@contract_coverage()
+async def check(dut):
+    assert 1 == 1
+    sample_operation("op", {"size": 1}, "directed")
+'''
+    (tmp_path / 'tests/test_top.py').write_text(original)
+    monkeypatch.setattr(
+        diagnostic, 'run_cocotb_regression', lambda **kwargs: {'status': 'PASS'}
+    )
+    diagnostic.collect_diagnostics(
+        tmp_path,
+        {'top_module': 'top', 'regression_groups': {'full': ['test_top']}, 'seed': 1},
+        tmp_path / 'probe',
+    )
+    copied = (tmp_path / 'probe/tests/test_top.py').read_text()
+    assert 'sample_operation("op"' not in copied
+    assert 'None' in copied
 
 
 def test_diagnostic_route_is_bounded():

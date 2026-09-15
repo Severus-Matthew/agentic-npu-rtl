@@ -1,0 +1,80 @@
+taxonomy:
+  name: accelerator_interface_coverage_templates
+  version: "0.1"
+  scope: deterministic interface coverage obligations
+
+templates:
+  reset_behavior:
+    scope: signal
+    match:
+      role: reset
+    description: Exercise reset assertion/deassertion and verify contract reset state.
+    bins:
+      - {name: asserted, intent: Observe reset in its asserted state.}
+      - {name: deasserted, intent: Observe reset in its deasserted state.}
+      - {name: release, intent: Observe the transition from reset into operation.}
+
+  handshake_states:
+    scope: channel
+    match:
+      coverage_tag: handshake
+      required_roles: [valid, ready]
+    description: Cover all producer-valid and consumer-ready states.
+    bins:
+      - {name: idle, intent: valid=0 and ready=0}
+      - {name: receiver_ready, intent: valid=0 and ready=1}
+      - {name: backpressured, intent: valid=1 and ready=0}
+      - {name: transfer, intent: valid=1 and ready=1}
+
+  stall_stability:
+    scope: channel
+    match:
+      coverage_tag: stall_stability
+      required_roles: [valid, ready]
+      observed_roles: [payload, metadata, last, keep, transaction_id]
+    description: Exercise a stalled transfer and hold all producer-owned content stable.
+    bins:
+      - {name: one_cycle_stall, intent: Observe exactly one stalled cycle.}
+      - {name: short_stall, intent: Observe two through four consecutive stalled cycles.}
+      - {name: long_stall, intent: Observe five or more consecutive stalled cycles.}
+
+  completion_behavior:
+    scope: signal
+    match:
+      role: completion
+    description: Observe contract-defined completion and its relation to accepted work.
+    bins:
+      - {name: observed, intent: Observe completion after a legal operation.}
+      - {name: back_to_back, intent: Observe completion for consecutive legal operations.}
+
+  error_behavior:
+    scope: signal
+    match:
+      role: error
+    description: Exercise the contract-defined error indication and recovery path.
+    bins:
+      - {name: inactive, intent: Observe no error during legal operation.}
+      - {name: asserted, intent: Trigger and observe a defined illegal condition.}
+      - {name: recovered, intent: Observe the specified recovery behavior.}
+
+  address_alignment:
+    scope: signal
+    match:
+      semantic_class: address
+    description: Partition legal address values around alignment and range boundaries.
+    bins:
+      - {name: minimum, intent: Minimum legal address from the contract.}
+      - {name: aligned_interior, intent: Representative aligned non-boundary address.}
+      - {name: maximum, intent: Maximum legal address from the contract.}
+      - {name: boundary_neighbor, intent: Values immediately around a declared region boundary.}
+
+  axi4_4k_boundary:
+    scope: channel
+    match:
+      protocol_profile: axi4
+      required_semantic_classes: [address, length, size]
+    description: Exercise bursts ending at and near a 4-KiB address boundary.
+    bins:
+      - {name: ends_before_boundary, intent: Legal burst ending immediately before a 4-KiB boundary.}
+      - {name: ends_at_boundary, intent: Legal burst ending at the last byte before the boundary.}
+      - {name: would_cross_boundary, intent: Attempt a burst that would cross the boundary.}

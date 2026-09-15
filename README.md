@@ -8,8 +8,12 @@ Generic LangGraph-orchestrated RTL generation, independent verification, determi
 user request
    -> Architect
    -> frozen architecture/interface/module/acceptance contracts
-   -> RTL Generator
    -> independent Verifier
+      -> Python reference model + cocotb TB
+      -> ask Architect only if one expected behavior cannot be derived
+   -> TB-only Verifier Reviewer
+      -> repair findings return only to Verifier
+   -> RTL Generator
    -> Verilator lint/elaboration
    -> cocotb full regression
       -> PASS -> verified RTL / Synopsys handoff boundary
@@ -21,7 +25,9 @@ user request
 
 Architect/RTL/Verifier/Debugger communication occurs through LangGraph state and structured artifacts, not unrestricted agent chat. LLMs propose; deterministic engineering tools decide.
 
-Functional repair does not regenerate the verifier. The same frozen reference/tests are reused until the Architect contract changes.
+Functional repair does not regenerate the verifier. The same approved frozen
+reference/tests are reused until Verifier asks Architect and Architect actually
+changes the contract. Debugger has no contract-change route.
 
 ## Resume a run from frozen architecture and existing RTL
 

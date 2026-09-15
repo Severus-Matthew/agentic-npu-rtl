@@ -1,0 +1,59 @@
+taxonomy:
+  name: observed_operation_sampling
+  version: "0.1"
+  scope: reusable coverage sampling, not arithmetic correctness assertions
+  rules:
+    - Bindings select declared signals and fields; they never contain claimed hits or stimulus values.
+    - A missing integer_operand field may be code-bound only to the unique whole payload of the declared transfer channel when literal width and signedness exactly match the declared data type.
+    - A missing boolean_mode field may be code-bound only to the unique unsigned one-bit whole payload of the declared transfer channel.
+    - Packed slices, symbolic widths, multiple payloads, and unknown signedness are never guessed; the Verifier must declare an explicit field for them.
+    - The generated TB captures stable DUT values once and supplies one immutable snapshot.
+    - Transfer sampling requires the declared channel's valid and ready to be asserted.
+    - Features without a reusable template use a generated custom observer on the same DUT sampling pipeline.
+
+templates:
+  custom:
+    required_fields: observations
+    metadata: [observer]
+    bin_rule: verifier_defined_predicates
+    description: Call a generated synchronous observer(values, state) with runtime-read DUT fields; feed its returned value to the same coverage backend. None means no observation yet.
+  dimension:
+    required_fields: [value]
+    metadata: [dimension]
+    bin_rule: contract_dimension_boundaries
+    description: Sample one accepted dimension using the contract's minimum and maximum.
+  integer_operand:
+    required_fields: [value]
+    metadata: [data_type]
+    bin_rule: integer_value_classes
+    description: Sample an actual operand; signed decoding and extrema use a contract data type.
+  boolean_mode:
+    required_fields: [value]
+    metadata: [legal_values]
+    bin_rule: boolean_modes
+    description: Sample a real mode field; legal_values is contract binding metadata, not a claimed mode hit.
+  discrete_mode:
+    required_fields: [value]
+    metadata: [legal_values]
+    bin_rule: encoded_modes
+    description: Sample an actual encoded selector using the contract's legal encodings.
+  tile_shape:
+    required_fields: dimensions
+    metadata: [tile_parameters]
+    bin_rule: reachable_full_and_partial_tiles
+    description: Classify accepted logical dimensions using explicitly declared tile parameters.
+  channel_stall:
+    required_fields: []
+    metadata: [channel]
+    bin_rule: released_stall_length
+    description: Reuse the code-owned protocol assertion's completed stall length; sample on transfer and cancel pending state on reset.
+    bins:
+      - {name: none, intent: An actual transfer with no preceding stall., predicate: {op: eq, args: [0]}}
+      - {name: one_cycle, intent: An actual transfer after exactly one stalled observation., predicate: {op: eq, args: [1]}}
+      - {name: short, intent: An actual transfer after two through four stalled observations., predicate: {op: between, args: [2, 4]}}
+      - {name: long, intent: An actual transfer after five or more stalled observations., predicate: {op: gte, args: [5]}}
+  integer_add_overflow:
+    required_fields: [a, b]
+    metadata: [operand_types, result_type]
+    bin_rule: integer_add_input_classes
+    description: Classify an overflow-causing input pair; this does not assert correct DUT overflow handling.

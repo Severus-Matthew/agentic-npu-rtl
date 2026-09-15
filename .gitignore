@@ -18,7 +18,10 @@ venv/
 
 # Rebuildable simulator output
 multigent/workspace/verification/build/
-multigent/runs/**/build/
-multigent/runs/**/sim_build/
+sim_build/
+obj_dir/
 *.vcd
 *.fst
+
+# Generated run output (regenerate by re-running the pipeline)
+multigent/runs/

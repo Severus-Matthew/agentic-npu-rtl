@@ -6,10 +6,14 @@ forward to it. Runtime logic has no GEMM-specific dimensions, names or arithmeti
 
 ## Flow and ownership
 
-Natural-language request → Architect → validated frozen contracts → RTL Generator
-→ independent Verifier → deterministic Verilator lint and full cocotb regression.
-Failures go to Debugger, then constrained RTL repair, independent verification
-infrastructure review, architecture revision, or an explicit terminal failure.
+Natural-language request → Architect → independent Verifier generates the golden
+model and TB → TB-only Verifier Reviewer → RTL Generator → deterministic Verilator
+lint and full cocotb regression. If Verifier cannot derive one executable expected
+behavior, it asks Architect before initial RTL generation. Architect alone decides
+whether to patch the contract or confirm that the existing contract is already clear.
+The Reviewer never contacts Architect. Failures go to Debugger, then constrained RTL
+repair, high-confidence independent verification-infrastructure repair, or an
+explicit terminal failure; Debugger never changes or escalates the contract.
 A functional PASS proceeds to the deterministic external Vivado adapter, then PPA
 Optimizer and, when justified, RTL optimization → full regression → Vivado again.
 LangGraph owns every transition and retry budget. Agents only return structured
@@ -25,8 +29,13 @@ Verifier generation never receives RTL, RTL Generator responses, Debugger prose,
 or compiler/simulator source excerpts. On a confirmed TESTBENCH_ERROR, the graph
 sends a fixed infrastructure-review request plus the Verifier's own previous files
 and frozen contracts. Original artifacts and failures remain in attempt snapshots.
-RTL repair and optimization reuse the frozen Verifier. Architecture revision
-invalidates downstream artifacts and requires independent regeneration.
+RTL repair and optimization reuse the frozen, reviewed Verifier artifacts. A real
+Architecture revision invalidates them and runs Verifier again; an Architect
+`CONTRACT_CONFIRMED` decision preserves the contract version and returns its exact
+resolution to Verifier. Initial RTL generation is blocked until the current TB-only
+review approves the actual reference/tests/coverage definitions. The Verifier remains
+independent of RTL and receives an up-front first-candidate checklist for checked
+traffic, observed evidence and exact stimulus-intent labels.
 
 ## Run
 
@@ -184,7 +193,8 @@ The same original full regression is required after any resulting RTL repair.
 
 Architecture outputs now require complete internal module port lists, and the
 provider-neutral acceptance field is `fpga_handoff`. Historical contracts remain
-loadable; missing architectural decisions may be escalated to Architect. RTL
+loadable; only Verifier or RTL Generator may ask Architect for a missing design
+decision before an executable candidate is accepted. RTL
 semantic validation rejects placeholders, empty modules, hidden extra modules and
 module-to-file remapping during constrained changes. One bounded self-correction
 attempt occurs before an invalid RTL response becomes a terminal report.

@@ -16,12 +16,35 @@ from typing import Any, Mapping
 
 import yaml
 
+from multigent.verifier_tool.coverage.operation.plan import (
+    render_operation_coverage_catalog,
+    validate_architecture_operation_features,
+)
+from multigent.verifier_tool.predefined_assertion.operation import (
+    render_operation_assertion_catalog,
+)
 from multigent.intake.request_builder import build_architect_intake, persist_intake
+from multigent.verifier_tool.role_pool.interface_semantics import (
+    render_interface_semantic_catalog,
+    validate_interface_semantics,
+)
+from multigent.verifier_tool.role_pool.signal_roles import (
+    render_signal_role_catalog,
+    validate_interface_signal_roles,
+)
 
 from .base import APIAgent, AgentConfig, AgentRuntimeError, SCHEMA_ROOT, WORKSPACE_ROOT
 
 
 ARCHITECT_OUTPUT_SCHEMA = SCHEMA_ROOT / "architect_output.schema.json"
+
+
+class ContractValidationError(AgentRuntimeError):
+    """A schema-valid candidate needs an Architect correction, not a tool retry."""
+
+    def __init__(self, message: str, candidate: Mapping[str, Any]) -> None:
+        super().__init__(message)
+        self.candidate = dict(candidate)
 
 
 class ArchitectAgent(APIAgent):
@@ -137,6 +160,9 @@ class ArchitectAgent(APIAgent):
         storage_names = unique_names(arch["storage"], "storage")
         channel_names = unique_names(interface["channels"], "channel")
         del storage_names, channel_names  # uniqueness side effect is the required check
+        errors.extend(validate_interface_signal_roles(interface))
+        errors.extend(validate_interface_semantics(interface))
+        errors.extend(validate_architecture_operation_features(arch))
 
         operations = {str(item["name"]): item for item in arch["operations"]}
         objects = {str(item["name"]): item for item in arch["data_objects"]}
@@ -300,9 +326,9 @@ class ArchitectAgent(APIAgent):
 
         if errors:
             formatted = "; ".join(errors)
-            raise AgentRuntimeError(
+            raise ContractValidationError(
                 "Architect returned a structurally valid but internally inconsistent "
-                f"READY contract: {formatted}"
+                f"READY contract: {formatted}", result,
             )
 
     @staticmethod
@@ -311,6 +337,13 @@ class ArchitectAgent(APIAgent):
             dict(intake),
             sort_keys=False,
             default_flow_style=False,
+        )
+        signal_roles = render_signal_role_catalog()
+        interface_semantics = render_interface_semantic_catalog()
+        operation_coverage = (
+            render_operation_coverage_catalog()
+            + "\n"
+            + render_operation_assertion_catalog()
         )
         return f"""Design and freeze a synthesizable RTL microarchitecture from the intake envelope below.
 
@@ -326,6 +359,12 @@ Do not treat a short request as an error. Choose simple, technically justified,
 synthesizable defaults for unspecified architecture choices and record them in
 ``open_assumptions``. Return ``SPEC_CONFLICT`` only for genuinely contradictory
 explicit requirements.
+For a minimal workload request with no throughput, tiling, or exact-cycle target,
+prefer the least complicated legal compute and interface schedule that satisfies
+the operation. Do not make tiling, multi-job overlap, or exact-cycle latency a
+mandatory requirement merely to make the design sound sophisticated. This is a
+default-design preference, not a ban: select those features when explicitly
+requested or when your chosen architecture genuinely needs them.
 
 This is a GENERIC hardware architecture task. Do not assume GEMM, matrix
 multiplication, M/N/K dimensions, activation/weight/bias terminology, a MAC array,
@@ -338,14 +377,33 @@ infer or fabricate timing, area, power, frequency, or utilization values.
 
 Required design work:
 1. Define all requested operations with exact functional semantics. Every operation
-   input/output must reference a declared logical ``data_object``.
+   input/output must reference a declared logical ``data_object``. Select an exact
+   ``coverage_family`` from OPERATION FEATURE TAXONOMY for every operation, set
+   ``coverage_family_source`` to ``catalog``, and copy
+   that family's complete baseline concept set into ``features``. When kind is
+   generic but semantics identify a known family, select that known family. If no
+   catalog family genuinely applies, create a concise new family name, set its source
+   to ``novel``, and declare explicit, reusable feature names derived from the
+   requested operation semantics. For a known family, inspect its optional-concept
+   pool and copy every concept whose ``applies_when`` condition is present in this
+   design into ``feature_extensions``. Do not select a mode the contract does not
+   implement merely because it exists in the pool. Also put important contract
+   features absent from both the baseline and optional pools in
+   ``feature_extensions``; the catalog is deliberately extensible rather than a
+   closed vocabulary. For a novel family, use explicit reusable feature names.
 2. Define scalar/element ``data_types`` separately from logical ``data_objects``.
    Every data object must name its data type, dimensions, producer, consumers, and
    whether it crosses the external interface. Producer/consumer declarations must
    be reciprocal with operation outputs/inputs.
+   Interface registers, protocol state, lifecycle flags, and status need not be
+   invented as operation data objects. Every operation name referenced by a data
+   object must actually be declared; never invent a producer/consumer operation
+   merely to attach MMIO transport state.
 3. Define every runtime-varying dimension with concrete integer minimum/maximum
    bounds and any compile-time bound parameter. A bound parameter's default build
-   must fall inside the declared dimension range.
+   must fall inside the declared dimension range. If no bound parameter applies,
+   use the schema's empty representation; never emit placeholders such as ``none``,
+   ``n/a``, or an undeclared parameter name.
 4. Define all compile-time parameters with concrete defaults, legality constraints,
    and purposes. Parameter-dependent signal widths and capacities must be expressed
    symbolically rather than frozen to values valid only at the defaults.
@@ -359,6 +417,13 @@ Required design work:
 7. Account for interface bandwidth. If scalar streams load several operands for one
    parallel compute step, include the load cycles or provide sufficient prefetch/
    buffering/double-buffering to sustain the claimed throughput.
+   Phase accounting is mandatory. You may choose exact latency even when the user
+   did not prescribe it, but then the claim is contractual: freeze the reference
+   acceptance event, completion event, cycle-zero/one convention, every included
+   phase, whether each release-handshake cycle is already included, and the exact
+   effect of every legal stall on every channel. Use a handshake-derived finite
+   liveness bound only when latency is genuinely variable; never emit an exact-
+   looking formula with an ambiguous counting origin or stall convention.
 8. Define pipeline stages, valid behavior, and stall behavior.
 9. Define control strategy, state progression, counters/indices, illegal-input
    behavior, and an explicit implementable recovery path. Never reference a clear or
@@ -366,15 +431,79 @@ Required design work:
 10. Fully define logical channels and top-level signals. Each channel must list the
     declared external data objects it carries plus any metadata, framing, ordering,
     backpressure, widths, and reset behavior. Every external data object must be
-    represented by at least one interface channel.
+    represented by at least one interface channel. For every signal, assign exactly
+    one role from SIGNAL ROLE TAXONOMY below and set ``channel`` to the declared
+    channel name required by that role, or null for standalone roles. Assign
+    ``semantic_class`` from INTERFACE SEMANTICS when required by the role. Every
+    channel must select one ``protocol_profile``. Never infer any of these fields
+    from the signal name; they are explicit parts of the frozen contract. A signal
+    attached to a channel must have the direction required by that channel role:
+    in particular, do not attach output status/error metadata to an input command
+    or configuration channel. Put such metadata on an output/status channel or use
+    an appropriate standalone role.
 11. Define module decomposition with explicit responsibilities, dependencies,
     parameters, and statefulness. All dependencies and parameters must resolve.
+    Every state transition or output decision must be implementable from the
+    module's declared inputs and retained state. Freeze actual transfer/phase-done
+    feedback into controllers and final-transaction metadata into serializers when
+    they own those decisions; do not leave necessary information outside their ports.
 12. Define deterministic functional, verification, RTL, and Synopsys-handoff
-    acceptance criteria from the technical project policy.
+    acceptance criteria from the technical project policy. Require illegal-value
+    tests only for illegal encodings that are physically representable with the
+    declared signal widths and parameterization; do not require an impossible
+    over-bound encoding.
 13. Before returning READY, cross-check operations, data objects, data types, runtime
     bounds, parameters, compute schedule, storage bandwidth/capacity, pipeline,
     interface, control, reset, module manifest, and acceptance criteria. The RTL
     Generator must not need to guess architectural facts.
+
+FIRST-CONTRACT EXTERNAL-SEMANTICS PRECHECK
+------------------------------------------
+Close these decisions in the first contract wherever the chosen design exposes
+them; do not rely on the later Verifier to discover one ambiguity at a time:
+- A ready/valid transfer on a reset edge: define whether reset suppresses it, and
+  make reset-time ready values and the global transfer rule agree.
+- Reset asserted during a producer stall: explicitly say whether reset aborts the
+  pending beat and permits valid/payload withdrawal, or whether stall stability
+  survives reset. Keep the global hold rule and reset-state rule consistent.
+- Illegal-command error pulse: define whether a new command may transfer during
+  that pulse and the exact cycle in which command-ready returns.
+- Pending next command while busy: define whether its source may present and hold
+  valid/payload, whether this is a legal stall, and its release acceptance edge.
+- Final output handshake, busy deassertion, completion pulse and next command:
+  define their observable order, including command-ready during completion.
+- Indexed arithmetic recurrence: specify the initialization, exactly which k
+  values update the accumulator, and the K=1 case without double counting.
+- If an exact latency is promised, work a small legal transaction through the
+  claimed formula and every phase/stall/release-handshake cycle; otherwise use
+  partial order plus bounded liveness. Never mandate an arithmetic overflow bin
+  that legal widths and dimension bounds cannot reach.
+State only the rules applicable to your selected architecture. This is a clarity
+check, not a mandate for a particular interface, phase schedule, or accelerator.
+
+REFERENCE FIELDS
+-----------------
+``interface_contract.clock`` and ``interface_contract.reset`` are exact signal
+names declared in ``signals`` (for example clk and rst_n), not explanatory prose.
+Put edge, polarity, priority, and reset behavior in signal semantics and the
+architecture reset contract instead. This is a relational reference, not a naming
+convention: any declared clock/reset signal name is permitted.
+
+SIGNAL ROLE TAXONOMY
+--------------------
+{signal_roles}
+
+INTERFACE SEMANTICS AND PROTOCOL PROFILES
+-----------------------------------------
+{interface_semantics}
+
+OPERATION FEATURE TAXONOMY
+--------------------------
+Known family names and baseline features below are mandatory when applicable.
+Novel operations may extend this vocabulary explicitly in the frozen contract.
+Starter bins guide the later Verifier but are not Architect fields.
+
+{operation_coverage}
 
 ARCHITECT INTAKE ENVELOPE
 -------------------------
