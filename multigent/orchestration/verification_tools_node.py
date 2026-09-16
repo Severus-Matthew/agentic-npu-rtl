@@ -15,6 +15,7 @@ from multigent.tools.cocotb_runner import run_cocotb_regression
 from multigent.tools.verilator import run_verilator_lint
 
 from .state import HardwareDesignState
+from .events import emit
 
 
 def verification_tools_node(state: HardwareDesignState) -> dict[str, Any]:
@@ -39,12 +40,16 @@ def verification_tools_node(state: HardwareDesignState) -> dict[str, Any]:
     verification_dir.mkdir(parents=True, exist_ok=True)
 
     top_module = str(plan["top_module"])
+    for stage in ('cocotb_regression', 'protocol_checks', 'coverage_checks'):
+        emit(WORKSPACE_ROOT, stage, 'pending', status='NOT_RUN')
+    emit(WORKSPACE_ROOT, 'verilator_lint', 'started')
     lint = run_verilator_lint(
         rtl_dir=rtl_dir,
         top_module=top_module,
         report_path=verification_dir / f"verilator-lint-{tag}.json",
     )
 
+    emit(WORKSPACE_ROOT, 'verilator_lint', 'finished', status=lint['status'])
     aggregate: dict[str, Any] = {
         "architecture_version": architecture_version,
         "repair_iteration": repair_iteration,
@@ -107,6 +112,7 @@ def verification_tools_node(state: HardwareDesignState) -> dict[str, Any]:
             )
         )
     }
+    emit(WORKSPACE_ROOT, 'cocotb_regression', 'started')
     simulation = run_cocotb_regression(
         rtl_dir=rtl_dir,
         top_module=top_module,
@@ -122,6 +128,12 @@ def verification_tools_node(state: HardwareDesignState) -> dict[str, Any]:
         stimulus_ledger_report_path=verification_dir
         / f"stimulus-ledger-{tag}.json",
     )
+    checks = simulation_check_summary(simulation)
+    for stage, result in checks.items():
+        if stage != 'cocotb_regression':
+            emit(WORKSPACE_ROOT, stage, 'started')
+        emit(WORKSPACE_ROOT, stage, 'finished', **result)
+    aggregate['checks'] = checks
     stimulus_history = rebuild_stimulus_history(verification_dir)
     history_summary = {
         "path": str(verification_dir / HISTORY_FILE),
@@ -212,3 +224,23 @@ def _write_aggregate(
 ) -> None:
     path = verification_dir / f"verification-result-{tag}.json"
     path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+
+
+def simulation_check_summary(simulation):
+    """Separate views of one simulator run; never infer a pass from absent evidence."""
+    coverage = simulation.get('functional_coverage') or {}
+    completed = simulation.get('status') in {'PASS', 'COVERAGE_FAILURE'}
+    failures = [record for record in coverage.get('failure_records', [])
+                if 'protocol' in str(record.get('category', '')).lower()]
+    protocol = ('FAIL' if failures else 'PASS' if completed and coverage.get('samples', 0) > 0
+                and not coverage.get('assertion_failures') else 'INCOMPLETE')
+    return {
+        'cocotb_regression': {'status': 'PASS' if completed else simulation.get('status', 'NOT_RUN'),
+                             'tests': simulation.get('tests', 0), 'failures': simulation.get('failures', 0)},
+        'protocol_checks': {'status': protocol, 'failures': failures,
+                            'scope': 'Contract monitor observations from this simulation'},
+        'coverage_checks': {'status': coverage.get('status', 'NOT_RUN'),
+                            'hit_bins': coverage.get('hit_bins', 0),
+                            'required_bins': coverage.get('required_bins', 0),
+                            'missing_bins': coverage.get('missing_bins', [])},
+    }

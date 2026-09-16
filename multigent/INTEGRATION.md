@@ -116,3 +116,24 @@ checkout's `.venv` and private `.env` through local ignored symlinks.
 A CLI run should set a new `NPU_WORKSPACE_ROOT` before Python starts, choose a model,
 provide `--request` and `--run-id`, and use `--verification-only` until Vivado is ready.
 Review and repair budgets are explicit CLI flags documented in `README.md`.
+
+## Source-check and UI revision (2026-09-16)
+
+The default runtime no longer creates a Testbench Reviewer agent. The legacy node
+and checkpoint field identifiers remain compatible, but the action performs deterministic
+validation and records a hash-bound report. Contract Reviewer remains independent.
+RTL generation already had bounded semantic self-repair; it now includes its rejected
+source in correction prompts and enforces stable module/file/port/function identities.
+TB repairs preserve Python function signatures and cocotb test registration; obvious
+vacuous assertions and empty executable functions are rejected. Empty package init files
+are allowed. These checks do not prove arbitrary golden-model correctness.
+
+The UI has separate lint, cocotb, protocol and coverage blocks, generated TB/function
+inventory and individual xUnit case results. Protocol and coverage are separate evidence
+views of one simulation inside the LangGraph deterministic-verification node.
+
+Validation: full suite **422 passed in 33.03 seconds**, including malformed-preflight
+repair, source identity, vacuous assertion and per-test UI result cases. The isolated `source-check-regression-20260916` run reuses byte-identical
+RTL and TB/reference sources from `run-20260916-084820-cad227`; no agent generation was
+repeated and no generated source was manually patched. Source validation, Verilator,
+one cocotb test, protocol checks and all 31/31 required coverage bins passed.

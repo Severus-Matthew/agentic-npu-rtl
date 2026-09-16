@@ -228,6 +228,20 @@ class VerifierAgent(APIAgent):
         # the same role for a targeted correction without repeating the code-owned
         # generated protocol block in the LLM prompt.
         self.last_generated_result = dict(result)
+        if result.get("status") == "VERIFICATION_READY":
+            from .source_checks import preserve_python_api
+            prior = draft or review_draft or context.get("semantic_validation_review", {}).get("previous_verifier_output")
+            infrastructure = context.get("verification_infrastructure_review", {})
+            if not prior and infrastructure.get("previous_own_artifacts"):
+                own = infrastructure["previous_own_artifacts"]
+                prior = {field:[{"path":name,"content":src} for name,src in own.get(owner,{}).items()]
+                         for field,owner in (("test_files","tests"),("reference_files","reference"))}
+            if prior:
+                try:
+                    preserve_python_api(prior, self._with_contract_generated_blocks(result, context))
+                except (AgentRuntimeError, SyntaxError) as exc:
+                    self.last_generated_result = dict(prior)
+                    raise AgentRuntimeError(str(exc)) from exc
         return self.persist_validated_result(
             result=result, context=context, root=root
         )
@@ -1298,6 +1312,9 @@ FROZEN INPUT AND REUSED GENERATION PLAN
                 "comments are not test bodies. Return complete executable source "
                 "now, not a description of future runtime delivery."
             )
+
+        from .source_checks import validate_python_integrity
+        validate_python_integrity(filename, content)
 
     @staticmethod
     def _extract_coverage_obligations(filename: str, content: str) -> set[str]:

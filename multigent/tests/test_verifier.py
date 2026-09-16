@@ -429,7 +429,7 @@ class ContractChecker:
         observer.task = cocotb.start_soon(observer.run())
     async def run(observer):
         # LLM-GENERATED OPERATION ASSERTION [checker_liveness]
-        assert True
+        assert observer.task is not None
 '''
     VerifierAgent._validate_result(result=result, context=generic_fir_context())
 

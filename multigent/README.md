@@ -74,9 +74,9 @@ forward to it. Runtime logic has no GEMM-specific dimensions, names or arithmeti
 ## Flow and ownership
 
 Natural-language request → Architect ↔ **Contract Reviewer** → **parallel RTL Generator
-and Independent Testbench Generator** → Testbench Reviewer → deterministic Verilator
+and Independent Testbench Generator** → deterministic testbench source checks → Verilator
 lint and full cocotb regression, including the retained coverage, protocol and handoff
-checks. The reviewer agents are separate model calls with separate contexts. Review
+checks. The Contract Reviewer is a separate model call. Testbench checks are code-only validation. Review
 approval never substitutes for tool execution.
 
 The `verifier_v2` role pools, operation families, protocol profiles, coverage monitors,
@@ -115,7 +115,7 @@ FPGA target validation are deferred. `--verification-only` stops successfully at
 real functional PASS. No missing synthesis result is represented as measured PPA.
 
 Role skills are under `Skills/npu_multiagent_skills/skills/`; the new skill is
-`contract-reviewer/SKILL.md`. The UI shows the two generators side by side, both review
+`contract-reviewer/SKILL.md`. The UI shows the two generators side by side, contract review, deterministic testbench checks, separate lint/simulation/protocol/coverage
 stages and escalated architecture diagnosis. Contract review reports are browsable
 under `contract_reviews/`. CLI budgets are recorded in run state and cannot be increased
 by resuming a run.
@@ -322,3 +322,22 @@ semantic retries. Empty implementations, invalid syntax/schema, ownership violat
 forbidden capabilities, and regression-plan mismatches remain hard errors. Actual
 simulation failures and missing tool results still cannot become PASS. The static
 review neither proves coverage nor proves that coverage is missing.
+
+### Testbench integrity and visible results
+
+There is no separate Testbench Reviewer model call in the default graph. The historical
+`verifier_review` checkpoint/node keys remain for compatibility; their default action
+revalidates the saved testbench against frozen contracts and binds approval to hashes.
+The legacy reviewer implementation remains available only for explicit injection.
+Both generators receive validator errors with their own source for bounded corrections.
+Python repair preserves filenames and function signatures; RTL repair preserves module/file
+mappings and function/task names. Empty executable bodies and obvious always-true Python
+assertions are rejected. Empty `__init__.py` package files are allowed. New helpers are allowed.
+These static checks cannot establish that an arbitrary reference model is correct.
+
+The UI separates Verilator lint, cocotb regression, protocol evidence and coverage evidence.
+The latter two are evaluated from the same simulation, not separate simulator runs.
+`verification/testbench-checks.json` lists generated TB/reference files, discovered tests,
+assertion counts and source-validation status. Assertion counts are inventory, not quality
+scores. Per-attempt simulator/coverage reports remain authoritative for functional results.
+A cocotb test pass does not override missing required coverage. Missing evidence is never PASS.

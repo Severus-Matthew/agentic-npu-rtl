@@ -16,7 +16,7 @@ from .artifacts import review_definition_hashes
 
 
 def make_verifier_review_node(agent: VerifierReviewAgent | None = None):
-    runtime = agent or VerifierReviewAgent()
+    runtime = agent  # Optional legacy injection; the default flow makes no reviewer model call.
 
     def review_node(state: Mapping[str, Any]) -> dict[str, Any]:
         candidate = state.get("verifier_result")
@@ -39,11 +39,39 @@ def make_verifier_review_node(agent: VerifierReviewAgent | None = None):
             f"{state.get('run_id', 'manual')}-av{version}-ar{architecture_revision}"
             f"-r{state.get('repair_iteration', 0)}-v{revision}"
         )
-        result = runtime.review(context, candidate, run_id=tag)
-        VerifierReviewAgent.validate_result(result, context)
+        if runtime is not None:
+            result = runtime.review(context, candidate, run_id=tag)
+            VerifierReviewAgent.validate_result(result, context)
+        else:
+            try:
+                VerifierAgent._validate_prepared_result(result=candidate, context=context)
+                result = {"status": "APPROVED", "summary": "Deterministic source and contract checks passed", "findings": []}
+            except AgentRuntimeError as exc:
+                result = {"status": "VERIFIER_REPAIR_REQUIRED", "summary": str(exc), "findings": [{
+                    "category": "INVALID_ASSERTION", "requirement": "Executable contract-compliant testbench",
+                    "evidence": str(exc), "recommended_change": "Correct this validator failure while preserving existing file and function names."}]}
+        import ast
+        inventory = []
+        for field, owner in (("test_files", "tests"), ("reference_files", "reference")):
+            for item in candidate[field]:
+                try:
+                    tree = ast.parse(item['content'])
+                except SyntaxError:
+                    inventory.append({'path': owner + '/' + Path(item['path']).name, 'test_functions': [],
+                                      'assertions': 0, 'source_check': 'SYNTAX_ERROR', 'functional_result': 'NOT_RUN'})
+                    continue
+                tests = [n.name for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef)
+                         and any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                                 and d.func.attr == 'test' for d in n.decorator_list)]
+                inventory.append({"path": owner + '/' + Path(item['path']).name, "test_functions": tests,
+                                  "assertions": sum(isinstance(n, ast.Assert) for n in ast.walk(tree)),
+                                  "source_check": result['status'], "functional_result": "NOT_RUN"})
+        write_json(WORKSPACE_ROOT / "verification" / "testbench-checks.json",
+                   {"status": result['status'], "files": inventory, "definition_hashes": definition_hashes,
+                    "scope": "STATIC_SOURCE_AND_CONTRACT_CHECKS", "simulation_pass": False})
         report = {"review": result, "definition_hashes": definition_hashes,
-                  "scope": "COVERAGE_ASSERTIONS_AND_STIMULUS_INTENT",
-                  "simulation_pass": False, "stimulus_reviewed": True}
+                  "scope": "STATIC_SOURCE_AND_CONTRACT_CHECKS",
+                  "simulation_pass": False, "stimulus_reviewed": runtime is not None}
         write_json(
             WORKSPACE_ROOT / "verification" /
             f"verifier-review-av{version}-ar{architecture_revision}-r{state.get('repair_iteration', 0)}-v{revision}.json",
@@ -52,7 +80,7 @@ def make_verifier_review_node(agent: VerifierReviewAgent | None = None):
         return {"verifier_review_status": result["status"], "verifier_review_result": result,
                 "verifier_review_hashes": definition_hashes,
                 "verification_status": "PENDING",
-                "history": [{"stage": "verifier_review", "status": result["status"],
-                             "findings": result["findings"], "stimulus_reviewed": True}]}
+                "history": [{"stage": "testbench_checks", "status": result["status"],
+                             "findings": result["findings"], "stimulus_reviewed": runtime is not None}]}
 
     return review_node

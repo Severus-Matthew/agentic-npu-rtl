@@ -85,7 +85,7 @@ def guarded(name, node):
             if name == 'verification_tools':
                 definitions = review_definition_hashes(state, before)
                 if state.get('verifier_review_status') != 'APPROVED' or state.get('verifier_review_hashes') != definitions:
-                    raise ValueError('Coverage/assertion review must approve the current definitions before simulation')
+                    raise ValueError('Deterministic testbench checks must approve the current definitions before simulation')
             if name == 'synthesis' and before != state.get('verified_hashes'):
                 raise ValueError('Candidate artifacts changed since deterministic verification')
             update = node(state)

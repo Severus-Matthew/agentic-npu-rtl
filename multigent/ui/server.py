@@ -163,7 +163,29 @@ class RunManager:
                 'status': status, 'running': running, 'events': events[-500:],
                 'history': state.get('history',[])[-100:], 'errors': state.get('errors',[])[-5:],
                 'verification_status': state.get('verification_status'),
+                'simulator_cases': simulator_cases(root, state),
+                'testbench_checks': read_json(root/'verification'/'testbench-checks.json'),
+                'verification_checks': (state.get('verification_evidence') or {}).get('checks', {}),
                 'files': artifacts(root)}
+
+
+def simulator_cases(root, state):
+    """Read individual results from the latest recorded simulator attempt only."""
+    import xml.etree.ElementTree as ET
+    simulation = (state.get('verification_evidence') or {}).get('cocotb') or {}
+    filename = simulation.get('results_xml')
+    if not filename:
+        return []
+    path = Path(filename)
+    if not path.resolve().is_relative_to(root.resolve()):
+        return []
+    try:
+        cases = ET.parse(path).getroot().findall('.//testcase')
+        return [{'name': c.get('name'), 'module': c.get('classname'),
+                 'status': 'FAIL' if any(c.find(t) is not None for t in ('failure','error'))
+                 else 'SKIPPED' if c.find('skipped') is not None else 'PASS'} for c in cases]
+    except (OSError, ET.ParseError):
+        return []
 
 
 def handler(manager, token):

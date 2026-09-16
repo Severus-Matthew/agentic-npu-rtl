@@ -86,6 +86,7 @@ class RTLGeneratorAgent(APIAgent):
                 if attempt:
                     raise
                 task += ("\nSEMANTIC VALIDATION REPAIR: " + str(exc) +
+                         "\nPrevious rejected candidate: " + json.dumps(result) +
                          "\nRegenerate the complete structured result. No placeholders or omitted ports/logic. "
                          "If no files change, regression_required must be NONE. Missing frozen architectural "
                          "interface decisions require ARCHITECTURE_CONFLICT, not an unsupported patch. "
@@ -197,6 +198,7 @@ class RTLGeneratorAgent(APIAgent):
             )
 
         manifest_modules = cls._manifest_modules(context)
+        manifest = context["frozen_architecture"]["module_manifest"]
         status = result["status"]
         files = list(result["files"])
         changed_modules = [str(name) for name in result["changed_modules"]]
@@ -246,6 +248,13 @@ class RTLGeneratorAgent(APIAgent):
                 if not content.strip() or "```" in content:
                     raise AgentRuntimeError(f"RTL file {normalized} has invalid/empty content")
                 cls._validate_module_file(normalized, module, content, task_type, existing_rtl)
+                from .source_checks import sv_port_names
+                declared = next(m for m in manifest["modules"] if m["name"] == module)
+                if declared.get("ports"):
+                    expected_ports = {p["name"] for p in declared["ports"]}
+                    actual_ports = sv_port_names(content, module)
+                    if actual_ports != expected_ports:
+                        raise AgentRuntimeError(f"Module {module} ports differ from frozen contract: missing={sorted(expected_ports-actual_ports)}, extra={sorted(actual_ports-expected_ports)}")
                 declaration = re.compile(rf"\bmodule\s+(?:automatic\s+)?{re.escape(module)}\b")
                 if declaration.search(content) is None or re.search(r"\bendmodule\b", content) is None:
                     raise AgentRuntimeError(f"RTL file {normalized} does not contain complete expected module {module!r}")
@@ -314,6 +323,12 @@ class RTLGeneratorAgent(APIAgent):
         if task_type != "INITIAL_GENERATION":
             if path not in existing_rtl or declarations(existing_rtl[path]) != [module]:
                 raise AgentRuntimeError("Repair/optimization must retain the existing module-to-file mapping")
+            from .source_checks import sv_function_names, sv_port_names
+            if task_type != "CONTRACT_FIXED" and path in existing_rtl and sv_port_names(existing_rtl[path], module) != sv_port_names(content, module):
+                raise AgentRuntimeError("Repair/optimization must preserve existing RTL port names")
+            removed = sv_function_names(existing_rtl.get(path,'')) - sv_function_names(content)
+            if removed:
+                raise AgentRuntimeError(f"Repair/optimization must retain existing RTL function/task names: {sorted(removed)}")
 
     @staticmethod
     def _validate_authorized_change_scope(

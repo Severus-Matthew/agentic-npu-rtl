@@ -122,12 +122,8 @@ def build_workflow_graph(
     add_node("debugger_architecture", make_architecture_diagnosis(debugger_agent))
     add_node("rtl_generator", make_rtl_generator_node(rtl_agent))
     add_node("verifier", make_verifier_node(verifier_agent))
-    # The review uses the same configured model/API as generation, but a separate
-    # concise call and read-only scope. No source generation occurs in this node.
-    review_agent = verifier_review_agent
-    if review_agent is None and getattr(verifier_agent, "config", None) is not None:
-        review_agent = VerifierReviewAgent(model=verifier_agent.config.model, api_mode=verifier_agent.config.api_mode)
-    add_node("verifier_review", make_verifier_review_node(review_agent))
+    # Retain the checkpoint node identifier, but use code-only preflight checks.
+    add_node("verifier_review", make_verifier_review_node(verifier_review_agent))
     def run_verification(state):
         update = verification_tools_node(state)
         if update.get("verification_status") == "PASS" and state.get("verification_only"):

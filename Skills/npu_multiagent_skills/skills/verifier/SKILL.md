@@ -231,3 +231,14 @@ requested review schema. Check the supplied contracts from your role's perspecti
 do not generate or edit source. You receive neither the other generator's work nor
 its critique. Send precise contract findings to the Debugger through graph state;
 only Architect may enact an architectural amendment.
+
+## Source integrity and correction
+Validate your own output against the frozen contracts before returning it. A deterministic
+validator failure is sent back with your own rejected source for a bounded correction.
+Preserve existing filenames, module names, and function/task names during repairs. Python
+call signatures must remain stable; add new helpers when needed. Never remove a failing
+test or weaken an assertion to make a candidate pass. Empty package `__init__.py` files
+are allowed; executable functions must have real bodies. Do not emit placeholder bodies
+or always-true assertions. Source checks are not proof of behavior: complete independent
+simulation, observed protocol checks and required coverage remain mandatory.
+The default pipeline has no separate Testbench Reviewer model call.
