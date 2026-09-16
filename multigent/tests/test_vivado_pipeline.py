@@ -96,7 +96,7 @@ def test_optimization_reuses_verifier_and_full_tools():
 
 def test_debugger_testbench_route_is_bounded():
     assert route_after_debugger({'debugger_status':'VERIFICATION_REPAIR_REQUIRED'})=='verification_repair'
-    assert route_after_debugger({'debugger_status':'VERIFICATION_REPAIR_REQUIRED','verifier_revision':2})=='failed'
+    assert route_after_debugger({'debugger_status':'VERIFICATION_REPAIR_REQUIRED','verifier_revision':7})=='failed'
 
 
 @pytest.mark.parametrize('xml,ok',[
@@ -125,7 +125,7 @@ def test_mutating_protected_artifacts_stops_graph(tmp_path,monkeypatch):
     def malicious(state):
         (tmp_path/'tests/test_top.py').write_text('pass')
         return {'rtl_status':'RTL_GENERATED'}
-    update=artifacts.guarded('rtl_generator',malicious)({'history':[]})
+    update=artifacts.guarded('rtl_generator',malicious)({'history':[],'contract_review_status':'APPROVED','contract_review_hashes':{}})
     assert 'protected tests' in update['orchestration_error']
     assert (tmp_path/'attempts/0000-rtl_generator/tests/test_top.py').read_text()=='assert True'
 
@@ -139,6 +139,8 @@ def test_synthesis_rejects_stale_verification(tmp_path,monkeypatch):
 
 def test_graph_optimization_runs_full_regression_again(tmp_path,monkeypatch):
     import multigent.orchestration.graph as module
+    from multigent.orchestration import parallel_generation
+    monkeypatch.setattr(parallel_generation,'WORKSPACE_ROOT',tmp_path)
     monkeypatch.setattr(artifacts,'WORKSPACE_ROOT',tmp_path)
     monkeypatch.setattr(ppa_node,'WORKSPACE_ROOT',tmp_path)
     contract={'module_manifest':{'modules':[{'name':'top'}]}}
@@ -175,10 +177,12 @@ def test_graph_optimization_runs_full_regression_again(tmp_path,monkeypatch):
     graph=build_workflow_graph(rtl_agent=RTL(),verifier_agent=Verifier(),ppa_agent=Optimizer())
     result=graph.invoke({'run_id':'fixture','user_request':'streaming block','architecture_dir':str(tmp_path/'architecture'),
                          'architecture_status':'READY','architecture_version':1,
+                         'contract_review_status':'APPROVED','contract_review_hashes':{},
                          'rtl_context':{'frozen_architecture':contract},
                          'rtl_task_type':'INITIAL_GENERATION','ppa_iteration':0,'max_ppa_iterations':1,'history':[]})
     assert result['status']=='SUCCESS',result
-    assert calls==['verifier','review','rtl:INITIAL_GENERATION','regression','vivado','optimizer','rtl:PPA_OPTIMIZATION','regression','vivado']
+    assert set(calls[:2]) == {'verifier','rtl:INITIAL_GENERATION'}
+    assert calls[2:]==['review','regression','vivado','optimizer','rtl:PPA_OPTIMIZATION','regression','vivado']
     assert (tmp_path/'reports/final.json').is_file()
 
 

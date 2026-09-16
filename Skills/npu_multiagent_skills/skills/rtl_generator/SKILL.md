@@ -187,3 +187,11 @@ module port lists, with explicit instance connections. Missing architectural por
 contracts must be raised as ARCHITECTURE_CONFLICT so Architect can complete them.
 REPAIR_BLOCKED and ARCHITECTURE_CONFLICT emit no changed files and use
 regression_required=NONE; they do not represent successful repair.
+
+
+## Escalated contract critique
+When LangGraph explicitly requests an independent contract critique, return only the
+requested review schema. Check the supplied contracts from your role's perspective;
+do not generate or edit source. You receive neither the other generator's work nor
+its critique. Send precise contract findings to the Debugger through graph state;
+only Architect may enact an architectural amendment.

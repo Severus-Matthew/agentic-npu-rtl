@@ -1083,6 +1083,10 @@ FROZEN INPUT AND REUSED GENERATION PLAN
             reference_names.add(name)
             cls._validate_python_content(name, str(item["content"]), cocotb_required=False)
 
+        if not reference_names - {"__init__.py"}:
+            raise AgentRuntimeError("Verification needs an implementation, not only a package marker")
+        if not any(Path(str(item["path"])).name != "__init__.py" for item in tests):
+            raise AgentRuntimeError("Verification needs tests, not only a package marker")
         test_names: set[str] = set()
         test_modules: set[str] = set()
         test_contents: list[str] = []
@@ -1092,6 +1096,9 @@ FROZEN INPUT AND REUSED GENERATION PLAN
             if name in test_names:
                 raise AgentRuntimeError(f"Duplicate test filename: {name}")
             test_names.add(name)
+            if name == "__init__.py":
+                cls._validate_python_content(name, str(item["content"]), cocotb_required=False)
+                continue
             test_modules.add(Path(name).stem)
             if "full" not in set(item["regression_groups"]):
                 raise AgentRuntimeError(f"Initial verifier test file {name} must belong to full regression")
@@ -1210,7 +1217,7 @@ FROZEN INPUT AND REUSED GENERATION PLAN
 
     @staticmethod
     def _validate_python_content(filename: str, content: str, *, cocotb_required: bool) -> None:
-        if not content.strip():
+        if not content.strip() and Path(filename).name != "__init__.py":
             raise AgentRuntimeError(f"Generated Python file {filename} is empty")
         if "```" in content:
             raise AgentRuntimeError(f"Generated Python file {filename} contains Markdown fences")

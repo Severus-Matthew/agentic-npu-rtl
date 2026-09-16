@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, cast
 
@@ -44,7 +44,7 @@ class AgentConfig:
 
     name: str
     role_skill: str
-    model: str = DEFAULT_AGENT_MODEL
+    model: str = field(default_factory=lambda: os.getenv("NPU_AGENT_MODEL", DEFAULT_AGENT_MODEL))
     api_mode: str = DEFAULT_API_MODE
     timeout_seconds: int = 1800
     structured_attempts: int = 2

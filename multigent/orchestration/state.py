@@ -14,6 +14,7 @@ class HardwareDesignState(TypedDict, total=False):
     """Shared state for the Architect/RTL/verification/repair/synthesis workflow."""
 
     run_id: str
+    model: str
     user_request: str
 
     architecture_dir: str
@@ -80,3 +81,17 @@ class HardwareDesignState(TypedDict, total=False):
     diagnostic_iteration: int
     max_diagnostic_iterations: int
     workspace_root: str
+
+    contract_review_status: str
+    contract_review_result: dict[str, Any]
+    contract_review_hashes: dict[str, str]
+    contract_review_revision: int
+    max_contract_review_revisions: int
+    architecture_escalation: int
+    max_architecture_escalations: int
+    repair_cycle_iteration: int
+    rtl_branch_update: dict[str, Any]
+    tb_branch_update: dict[str, Any]
+    rtl_contract_critique: dict[str, Any]
+    tb_contract_critique: dict[str, Any]
+    escalation_result: dict[str, Any]

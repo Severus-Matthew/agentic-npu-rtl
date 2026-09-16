@@ -212,6 +212,8 @@ def make_architect_node(agent: ArchitectAgent | None = None):
 
         update: dict[str, Any] = {
             "architecture_status": result["status"],
+            "contract_review_status": "PENDING",
+            "contract_review_hashes": {},
             "architecture_dir": str(output_dir),
             "architecture_revision": revision,
             "history": [

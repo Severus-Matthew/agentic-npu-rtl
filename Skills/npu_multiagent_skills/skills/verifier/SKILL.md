@@ -223,3 +223,11 @@ Python loop nesting is not protocol evidence: clearing valid after handshake or
 before presenting a beat is legal even inside a while loop. The trusted runtime
 monitor checks actual stalled valid/payload stability and cocotb-coverage records
 observed scenarios; static declarations alone cannot satisfy those obligations.
+
+
+## Escalated contract critique
+When LangGraph explicitly requests an independent contract critique, return only the
+requested review schema. Check the supplied contracts from your role's perspective;
+do not generate or edit source. You receive neither the other generator's work nor
+its critique. Send precise contract findings to the Debugger through graph state;
+only Architect may enact an architectural amendment.

@@ -17,6 +17,7 @@ from multigent.verifier_tool.coverage.operation.plan import (
     operation_plan_for_tests,
 )
 from multigent.tools.vivado import digest, write_json
+from .events import emit
 
 
 def hashes(root):
@@ -55,6 +56,7 @@ def review_definition_hashes(state, artifact_hashes=None):
 
 def guarded(name, node):
     def run(state):
+        emit(WORKSPACE_ROOT, name, 'started')
         before = inputs(state)
         sequence = len(state.get('history',[]))
         snapshot = WORKSPACE_ROOT/'attempts'/f'{sequence:04d}-{name}'
@@ -68,15 +70,10 @@ def guarded(name, node):
             shutil.copytree(architecture,snapshot/'architecture',dirs_exist_ok=True)
         write_json(snapshot/'inputs.json',before)
         try:
-            if name == 'rtl_generator' and state.get('rtl_task_type') in {'INITIAL_GENERATION', 'CONTRACT_FIXED'}:
-                definitions = review_definition_hashes(state, before)
-                if (state.get('verifier_status') != 'VERIFICATION_READY'
-                        or state.get('verifier_review_status') != 'APPROVED'
-                        or state.get('verifier_review_hashes') != definitions):
-                    raise ValueError(
-                        'Initial or contract-fixed RTL generation requires the current '
-                        'Verifier TB and TB-only review approval'
-                    )
+            if name in {'rtl_generator', 'verifier', 'verification_tools'}:
+                if (state.get('contract_review_status') != 'APPROVED'
+                        or state.get('contract_review_hashes') != before['architecture']):
+                    raise ValueError('Current architecture requires Contract Reviewer approval')
             if name in {'rtl_generator','verification_tools','synthesis','ppa_optimizer'}:
                 frozen = state.get('frozen_hashes')
                 if frozen and before['architecture'] != frozen['architecture']:
@@ -110,6 +107,8 @@ def guarded(name, node):
                     'errors':state.get('errors',[])+update.get('errors',[])}
         write_json(WORKSPACE_ROOT/'state'/'latest.json',combined)
         write_json(snapshot/'result.json',update)
+        emit(WORKSPACE_ROOT, name, 'failed' if update.get('orchestration_error') else 'finished',
+             status=update.get('status'), history=update.get('history', []))
         return update
     return run
 
@@ -409,6 +408,7 @@ def _missing_bin_definitions(context, state, missing_bins):
 
 
 def final_report_node(state):
+    emit(WORKSPACE_ROOT, 'final_report', 'started')
     root = WORKSPACE_ROOT/'reports'
     root.mkdir(parents=True,exist_ok=True)
     report = dict(state)
@@ -477,6 +477,7 @@ def final_report_node(state):
         ]
     lines += ['', '## Limitations', *report['limitations']]
     (root/'final.md').write_text('\n'.join(lines)+'\n')
+    emit(WORKSPACE_ROOT, 'final_report', 'finished', status=state.get('status'))
     return {'final_report':str(root/'final.json')}
 
 

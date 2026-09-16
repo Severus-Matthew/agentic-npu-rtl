@@ -405,7 +405,7 @@ class DebuggerAgent(APIAgent):
         elif status == "VERIFICATION_REPAIR_REQUIRED":
             if repair_plan is not None:
                 raise AgentRuntimeError("Verification repair must not authorize RTL edits")
-            if diagnosis["failure_class"] != "TESTBENCH_ERROR" or diagnosis["confidence"] < 0.8:
+            if diagnosis["failure_class"] not in {"TESTBENCH_ERROR", "COVERAGE_MISS"} or diagnosis["confidence"] < 0.8:
                 raise AgentRuntimeError("Verification repair requires high-confidence TESTBENCH_ERROR evidence")
             if root_domain not in {
                 "GOLDEN_MODEL",
@@ -435,6 +435,11 @@ class DebuggerAgent(APIAgent):
 
 RULES
 -----
+For COVERAGE_MISS, diagnose whether missing observations originate in stimulus,
+coverage definition, or RTL behavior. A high-confidence verifier-owned coverage
+defect may return VERIFICATION_REPAIR_REQUIRED while preserving COVERAGE_MISS.
+The normal repair loop cannot amend contracts; LangGraph has a separate bounded
+architecture-escalation node after the repair budget is exhausted.
 1. Treat deterministic verification evidence as authoritative. Establish the fatal
    failure before reading current RTL and separate fatal errors from warnings.
    Use failed_run_artifacts for the actual assertion, recent all-interface snapshots,

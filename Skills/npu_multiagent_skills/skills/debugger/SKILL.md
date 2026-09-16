@@ -79,8 +79,10 @@ Examples:
 - source/destination counter advances without handshake -> dropped or duplicated stream beat
 
 ### 5. Treat the approved TB as the executable answer sheet
-Contract questions were resolved before RTL generation. The Debugger has no Architect
-route and never requests a contract change. Diagnose an observed mismatch against the
+During ordinary repairs, diagnose against the reviewed contract. After the seven-repair
+budget, LangGraph invokes a separate architecture-diagnosis task, with independent
+RTL/TB contract critiques. In that task, request minimal evidenced contract corrections
+or confirm the contract. Only Architect edits it, followed by Contract Reviewer approval. Diagnose an observed mismatch against the
 approved frozen TB. Prefer an RTL repair when RTL evidence supports it. Use the narrow
 Verifier-repair exception only when deterministic evidence proves a high-confidence
 Python, golden-model, or generated-operation-checker defect.

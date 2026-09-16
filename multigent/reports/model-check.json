@@ -1,0 +1,68 @@
+[
+  {
+    "model": "gpt-5.3-codex",
+    "status": "PASS",
+    "returned_model": "gpt-5.3-codex",
+    "output": {
+      "total": 12,
+      "sentence": "There are 12 marbles in the box\u2014plenty for a fun game!"
+    },
+    "seconds": 3.48,
+    "usage": {
+      "input_tokens": 63,
+      "input_tokens_details": {
+        "cache_write_tokens": 0,
+        "cached_tokens": 0
+      },
+      "output_tokens": 34,
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "total_tokens": 97
+    }
+  },
+  {
+    "model": "gpt-5.6-sol",
+    "status": "PASS",
+    "returned_model": "gpt-5.6-sol",
+    "output": {
+      "total": 12,
+      "sentence": "You have 12 colorful marbles\u2014what a cheerful little collection!"
+    },
+    "seconds": 2.2,
+    "usage": {
+      "input_tokens": 63,
+      "input_tokens_details": {
+        "cache_write_tokens": 0,
+        "cached_tokens": 0
+      },
+      "output_tokens": 31,
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "total_tokens": 94
+    }
+  },
+  {
+    "model": "gpt-6-astra",
+    "status": "PASS",
+    "returned_model": "gpt-6-astra",
+    "output": {
+      "total": 12,
+      "sentence": "Marbles make a colorful collection!"
+    },
+    "seconds": 1.83,
+    "usage": {
+      "input_tokens": 63,
+      "input_tokens_details": {
+        "cache_write_tokens": 0,
+        "cached_tokens": 0
+      },
+      "output_tokens": 24,
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "total_tokens": 87
+    }
+  }
+]

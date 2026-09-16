@@ -18,15 +18,19 @@ VerificationRoute = Literal[
 DebuggerRoute = Literal["rtl_generator", "verification_repair", "diagnostic_probe", "failed"]
 
 
-def route_start(state: HardwareDesignState) -> StartRoute:
+def route_start(state: HardwareDesignState):
     """Resume from the most advanced explicitly supplied validated checkpoint."""
 
+    if state.get("architecture_status") == "READY" and state.get("contract_review_status") != "APPROVED":
+        return "contract_reviewer"
     history = state.get("history", [])
     if history and history[-1].get("status") == "ERROR" and history[-1].get("stage") in {"architect","rtl_generator","verifier","verifier_review","debugger","verification_tools"}:
         return history[-1]["stage"]
     if state.get("debugger_status") == "EVIDENCE_INSUFFICIENT" and state.get("max_diagnostic_iterations",0)>state.get("diagnostic_iteration",0):
         return "diagnostic_probe"
     if state.get("architecture_status") == "READY":
+        if state.get("rtl_status") != "RTL_GENERATED" and state.get("verifier_status") != "VERIFICATION_READY":
+            return "generation_start"
         if state.get("verifier_status") == "VERIFICATION_READY" and state.get("verification_plan"):
             if state.get("verifier_review_status") in {"APPROVED", "VERIFIER_REPAIR_REQUIRED"}:
                 return route_after_verifier_review(state)
@@ -35,10 +39,10 @@ def route_start(state: HardwareDesignState) -> StartRoute:
     return "architect"
 
 
-def route_after_architect(state: HardwareDesignState) -> ArchitectRoute:
+def route_after_architect(state: HardwareDesignState):
     status = state.get("architecture_status")
     if status == "READY":
-        return "verifier"
+        return "contract_reviewer"
     if status == "SPEC_CONFLICT":
         return "failed"
     if status == "SEMANTIC_VALIDATION_FAILED":
@@ -46,7 +50,7 @@ def route_after_architect(state: HardwareDesignState) -> ArchitectRoute:
     raise ValueError(f"Cannot route unknown architecture_status={status!r}")
 
 
-def route_after_rtl(state: HardwareDesignState) -> RTLRoute:
+def route_after_rtl(state: HardwareDesignState):
     """Keep the verifier frozen across RTL-only repair iterations."""
 
     status = state.get("rtl_status")
@@ -66,29 +70,29 @@ def route_after_rtl(state: HardwareDesignState) -> RTLRoute:
     raise ValueError(f"Cannot route unknown rtl_status={status!r}")
 
 
-def route_after_verifier(state: HardwareDesignState) -> VerifierRoute:
+def route_after_verifier(state: HardwareDesignState):
     status = state.get("verifier_status")
     if status == "VERIFICATION_READY":
         return "verifier_review"
     if status == "ARCHITECTURE_CONFLICT":
         return "architect" if _architecture_revision_available(state) else "failed"
     if status == "SEMANTIC_VALIDATION_FAILED":
-        return "verification_repair" if _verifier_repair_available(state) else "failed"
+        return "verification_repair" if _verifier_repair_available(state) else _preflight_exhaustion_route(state)
     raise ValueError(f"Cannot route unknown verifier_status={status!r}")
 
 
-def route_after_verifier_review(state: HardwareDesignState) -> VerifierReviewRoute:
+def route_after_verifier_review(state: HardwareDesignState):
     status = state.get("verifier_review_status")
     if status == "APPROVED":
         if state.get("rtl_task_type") == "CONTRACT_FIXED":
             return "rtl_generator"
         return "verification_tools" if state.get("rtl_status") == "RTL_GENERATED" else "rtl_generator"
     if status == "VERIFIER_REPAIR_REQUIRED":
-        return "verification_repair" if _verifier_repair_available(state) else "failed"
+        return "verification_repair" if _verifier_repair_available(state) else _preflight_exhaustion_route(state)
     raise ValueError(f"Cannot route unknown verifier_review_status={status!r}")
 
 
-def route_after_verification(state: HardwareDesignState) -> VerificationRoute:
+def route_after_verification(state: HardwareDesignState):
     """Only deterministic tool status determines functional pass/fail routing."""
 
     status = state.get("verification_status")
@@ -96,21 +100,20 @@ def route_after_verification(state: HardwareDesignState) -> VerificationRoute:
         return "final_report" if state.get("verification_only") else "synthesis"
     if status == "TOOL_UNAVAILABLE":
         return "tool_unavailable"
-    if status == "COVERAGE_FAILURE":
-        return "verification_repair" if _verifier_repair_available(state) else "failed"
     if status in {
+        "COVERAGE_FAILURE",
         "COMPILE_FAILURE",
         "SIMULATION_FAILURE",
         "SIMULATION_TIMEOUT",
     }:
-        return "debugger" if _repair_available(state) else "repair_exhausted"
+        return "debugger" if _repair_available(state) else _escalation_route(state)
     raise ValueError(f"Cannot route unknown verification_status={status!r}")
 
 
-def route_after_debugger(state: HardwareDesignState) -> DebuggerRoute:
+def route_after_debugger(state: HardwareDesignState):
     status = state.get("debugger_status")
     if status == "VERIFICATION_REPAIR_REQUIRED":
-        return "verification_repair" if _verifier_repair_available(state) else "failed"
+        return "verification_repair" if _verifier_repair_available(state) else _preflight_exhaustion_route(state)
     if status == "REPAIR_PLAN_READY":
         return "rtl_generator"
     if status == "EVIDENCE_INSUFFICIENT":
@@ -125,8 +128,8 @@ def _architecture_revision_available(state: HardwareDesignState) -> bool:
 
 
 def _repair_available(state: HardwareDesignState) -> bool:
-    current = int(state.get("repair_iteration", 0))
-    maximum = int(state.get("max_repair_iterations", 5))
+    current = int(state.get("repair_cycle_iteration", state.get("repair_iteration", 0)))
+    maximum = int(state.get("max_repair_iterations", 7))
     return current < maximum
 
 
@@ -136,11 +139,24 @@ def _verifier_repair_available(state):
     history=state.get('history',[])
     architectures=[
         i for i,event in enumerate(history)
-        if event.get('stage')=='architect'
+        if event.get('stage')=='architecture_escalation' or (event.get('stage')=='architect'
         and event.get('status')=='READY'
-        and event.get('architect_decision')!='CONTRACT_CONFIRMED'
+        and event.get('architect_decision')!='CONTRACT_CONFIRMED')
     ]
     used=state.get('verifier_revision',0)
     if architectures:
         used=sum(event.get('stage')=='verification_repair' for event in history[architectures[-1]+1:])
-    return used < state.get('max_verifier_revisions',2)
+    return used < state.get('max_verifier_revisions',7)
+
+
+def _escalation_route(state):
+    return ("architecture_escalation" if state.get("architecture_escalation",0)
+            < state.get("max_architecture_escalations",3) else "repair_exhausted")
+
+
+def _preflight_exhaustion_route(state):
+    # A rejected TB can still be diagnosed together with the generated RTL and
+    # contracts. Do not confuse static validation evidence with a simulator run.
+    if state.get("rtl_status") == "RTL_GENERATED":
+        return _escalation_route(state)
+    return "failed"

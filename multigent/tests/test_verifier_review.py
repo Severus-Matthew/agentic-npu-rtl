@@ -246,11 +246,11 @@ def test_review_routes_use_existing_budgets(outcome, route):
     assert route_after_verifier_review(state) == route
     if outcome != 'APPROVED':
         state.update(verifier_revision=2)
-        assert route_after_verifier_review(state) == 'failed'
+        assert route_after_verifier_review(state) == 'architecture_escalation'
 
 
 def test_saved_unreviewed_tb_resumes_at_review_not_generation_or_simulation():
-    state = {'architecture_status': 'READY', 'rtl_status': 'RTL_GENERATED',
+    state = {'architecture_status': 'READY', 'contract_review_status':'APPROVED', 'rtl_status': 'RTL_GENERATED',
              'verifier_status': 'VERIFICATION_READY', 'verification_plan': {'top_module': 'top'}}
     assert route_start(state) == 'verifier_review'
     state['verifier_review_status'] = 'APPROVED'
@@ -280,7 +280,7 @@ def test_approval_does_not_allow_findings_or_stale_definition_hashes(tmp_path, m
         VerifierReviewAgent.validate_result(result, generic_fir_context())
     monkeypatch.setattr(artifacts, 'WORKSPACE_ROOT', tmp_path)
     called = []
-    state = {'history': [], 'verifier_review_status': 'APPROVED',
+    state = {'history': [], 'contract_review_status':'APPROVED', 'contract_review_hashes':{}, 'verifier_review_status': 'APPROVED',
              'verifier_review_hashes': {'architecture': {}, 'tests': {}, 'reference': {}}}
     (tmp_path / 'tests').mkdir()
     (tmp_path / 'tests/test_modified.py').write_text('assert False\n')
@@ -290,7 +290,7 @@ def test_approval_does_not_allow_findings_or_stale_definition_hashes(tmp_path, m
 
 def test_changing_coverage_definition_invalidates_review_approval(tmp_path, monkeypatch):
     monkeypatch.setattr(artifacts, 'WORKSPACE_ROOT', tmp_path)
-    state = {'history': [], 'verifier_review_status': 'APPROVED', 'verifier_result': verification_ready_result()}
+    state = {'history': [], 'contract_review_status':'APPROVED', 'contract_review_hashes':{}, 'verifier_review_status': 'APPROVED', 'verifier_result': verification_ready_result()}
     state['verifier_review_hashes'] = artifacts.review_definition_hashes(state)
     state['verifier_result']['operation_coverage'][0]['coverpoints'][0]['bins'][0]['name'] = 'changed_after_review'
     called = []
@@ -358,6 +358,7 @@ def test_graph_reviews_repairs_and_reviews_again_with_existing_budget(tmp_path, 
     graph = graph_module.build_workflow_graph(verifier_agent=Verifier(), verifier_review_agent=Reviewer())
     result = graph.invoke({'user_request': 'fir', 'run_id': 'offline',
                            'architecture_dir': str(tmp_path / 'architecture'), 'architecture_status': 'READY',
+                           'contract_review_status':'APPROVED','contract_review_hashes':{},
                            'rtl_status': 'RTL_GENERATED', 'verification_only': True,
                            'max_verifier_revisions': 1, 'verifier_revision': 0,
                            'history': [], 'errors': []})
@@ -366,6 +367,6 @@ def test_graph_reviews_repairs_and_reviews_again_with_existing_budget(tmp_path, 
     assert any(event.get('status') == 'ASSERTION_DEFINITION_CORRECTION' for event in result['history'])
     if approve_second:
         assert calls == ['generate', 'review', 'generate', 'review', 'simulate']
-        assert result['status'] == 'VERIFIED_RTL'
+        assert result['status'] == 'SUCCESS'
     else:
         assert 'simulate' not in calls and result['status'] == 'FAILED'

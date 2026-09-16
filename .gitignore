@@ -25,3 +25,6 @@ obj_dir/
 
 # Generated run output (regenerate by re-running the pipeline)
 multigent/runs/
+
+# The integration worktree may reuse the local virtual environment via a symlink.
+.venv
