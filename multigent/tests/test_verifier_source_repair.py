@@ -57,16 +57,29 @@ def test_source_completion_is_one_counted_call_and_keeps_metadata(tmp_path):
     assert (tmp_path / 'tests/test_fir_contract.py').is_file()
 
 
-@pytest.mark.parametrize('reason', ['other_error', 'invalid_metadata', 'no_draft'])
-def test_source_completion_only_handles_incomplete_source_with_valid_metadata(reason):
+@pytest.mark.parametrize('reason', ['invalid_metadata', 'no_draft'])
+def test_source_completion_only_handles_valid_metadata_with_a_draft(reason):
     context, draft = review_context()
-    if reason == 'other_error':
-        context['semantic_validation_review']['validator_error'] = 'missing operation feature'
-    elif reason == 'invalid_metadata':
+    if reason == 'invalid_metadata':
         draft['operation_coverage'] = []
     else:
         del context['semantic_validation_review']['previous_verifier_output']
     assert VerifierAgent._source_repair_draft(context) is None
+
+
+def test_source_completion_handles_any_semantic_error_with_a_valid_draft():
+    # Not just the narrow "no executable async" family: any semantic-validation
+    # error should use this targeted, previous-content-aware correction rather
+    # than falling through to a from-scratch _build_task regeneration that has
+    # no memory of the previous attempt or what specifically broke it.
+    context, draft = review_context()
+    context['semantic_validation_review']['validator_error'] = (
+        'Invalid operation sampling bindings: Missing operation sampling bindings: '
+        "['operation.filter.tap_count']"
+    )
+    result = VerifierAgent._source_repair_draft(context)
+    assert result is not None
+    assert result['operation_coverage'] == draft['operation_coverage']
 
 
 @pytest.mark.parametrize('defect', ['missing', 'unknown', 'duplicate'])

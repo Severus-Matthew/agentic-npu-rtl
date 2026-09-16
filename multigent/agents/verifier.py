@@ -36,6 +36,7 @@ from multigent.verifier_tool.predefined_assertion.instrumentation import (
     AUDIT_END_MARKER,
     BEGIN_MARKER,
     END_MARKER,
+    extract_stimulus_coverage_intents,
     install_contract_generated_block,
     install_pipeline_generated_annotations,
     validate_contract_generated_block,
@@ -124,6 +125,22 @@ def _local_checker_run_calls(tree: ast.AST) -> set[ast.Call]:
     return permitted
 
 
+class ReviewPatchPartialFailure(AgentRuntimeError):
+    """A review-patch response was rejected but some of its edits were valid.
+
+    Carries the partially-patched candidate and the finding indices genuinely
+    resolved so far, so a retry only needs to cover what is still missing
+    instead of re-deriving every patch from the pre-round draft again.
+    """
+
+    def __init__(
+        self, message: str, *, partial_result: Mapping[str, Any], addressed_findings: set[int],
+    ) -> None:
+        super().__init__(message)
+        self.partial_result = dict(partial_result)
+        self.addressed_findings = set(addressed_findings)
+
+
 class VerifierAgent(APIAgent):
     """Generate independent verification artifacts without reading generated RTL."""
 
@@ -159,6 +176,7 @@ class VerifierAgent(APIAgent):
             directory.mkdir(parents=True, exist_ok=True)
 
         self.last_generated_result = None
+        self.last_addressed_findings = None
         review_draft = self._review_patch_draft(context)
         draft = self._source_repair_draft(context)
         if review_draft is not None:
@@ -179,7 +197,15 @@ class VerifierAgent(APIAgent):
             (verification_dir / f"verifier_revision_patch-{safe_run_id}.json").write_text(
                 json.dumps(revision, indent=2) + "\n", encoding="utf-8"
             )
-            result = self._apply_review_patch(context, review_draft, revision)
+            try:
+                result = self._apply_review_patch(context, review_draft, revision)
+            except ReviewPatchPartialFailure as exc:
+                # Keep whatever edits genuinely applied so the next retry only
+                # has to cover the findings still outstanding, not redo work
+                # a prior attempt in this same review round already got right.
+                self.last_generated_result = exc.partial_result
+                self.last_addressed_findings = exc.addressed_findings
+                raise
         elif draft is None:
             result = self.run_structured(
                 task=self._build_task(context),
@@ -231,9 +257,10 @@ class VerifierAgent(APIAgent):
         status = revision.get("status")
         patches = list(revision.get("patches", []))
         metadata_edits = list(revision.get("metadata_edits", []))
+        stimulus_intent_edits = list(revision.get("stimulus_intent_edits", []))
         conflict = revision.get("architecture_conflict")
         if status == "ARCHITECTURE_CONFLICT":
-            if patches or metadata_edits or not isinstance(conflict, Mapping):
+            if patches or metadata_edits or stimulus_intent_edits or not isinstance(conflict, Mapping):
                 raise AgentRuntimeError(
                     "Verifier patch ARCHITECTURE_CONFLICT needs structured evidence and no edits"
                 )
@@ -246,14 +273,24 @@ class VerifierAgent(APIAgent):
             result["reference_files"] = []
             result["test_files"] = []
             return result
-        if status != "PATCH_READY" or conflict is not None or not (patches or metadata_edits):
+        if (
+            status != "PATCH_READY"
+            or conflict is not None
+            or not (patches or metadata_edits or stimulus_intent_edits)
+        ):
             raise AgentRuntimeError(
                 "Verifier review correction requires PATCH_READY, local edits, and no architecture conflict"
             )
 
         review = context.get("assertion_definition_review", {})
         findings = list(review.get("findings", [])) if isinstance(review, Mapping) else []
-        expected_findings = set(range(len(findings)))
+        already_addressed: set[int] = (
+            set(review.get("already_addressed_findings", []))
+            if isinstance(review, Mapping) else set()
+        )
+        # A prior retry in this same review round may have already applied real
+        # edits for some findings; only the remainder must be covered now.
+        expected_findings = set(range(len(findings))) - already_addressed
         addressed_findings: set[int] = set()
 
         files: dict[str, dict[str, Any]] = {}
@@ -305,38 +342,148 @@ class VerifierAgent(APIAgent):
                 patch_errors.append(f"patch {index} may not edit pipeline-generated TB blocks")
                 continue
             finding_indices = set(patch.get("finding_indices", []))
-            unknown_findings = finding_indices - expected_findings
-            if not finding_indices or unknown_findings:
+            truly_unknown = finding_indices - set(range(len(findings)))
+            usable = finding_indices & expected_findings
+            if not finding_indices or truly_unknown:
+                # A patch naming only already-addressed findings is still a real,
+                # non-no-op edit and is applied below like any other; it just adds
+                # nothing new to addressed_findings. Rejecting it outright would
+                # block the model from genuinely refining a finding it already
+                # patched earlier in this same round. Only reject a genuinely
+                # empty or out-of-range finding_indices list.
                 patch_errors.append(
                     f"patch {index} has invalid finding_indices={sorted(finding_indices)}"
                 )
                 continue
-            addressed_findings.update(finding_indices)
+            addressed_findings.update(usable)
             files[path]["content"] = content.replace(old_text, new_text, 1)
+
+        # STIMULUS_COVERAGE_INTENTS is re-derived and re-rendered by the pipeline
+        # at persist time (see _with_contract_generated_blocks), so a raw source
+        # patch there is always rejected as an edit to a pipeline-generated block.
+        # This is the sanctioned structured path to add a new declared intent: it
+        # only appends here, and the persist step regenerates the audited block
+        # and its # STIMULUS comment once a matching _contract_record_checked_
+        # stimulus(..., label=...) call exists in the patched body above.
+        for index, edit in enumerate(stimulus_intent_edits):
+            if edit.get("op") != "add":
+                patch_errors.append(f"stimulus intent edit {index} must use op 'add'")
+                continue
+            label = str(edit.get("label", "")).strip()
+            targets = [str(t) for t in edit.get("targets", [])]
+            if not label or not targets:
+                patch_errors.append(
+                    f"stimulus intent edit {index} needs a non-empty label and targets"
+                )
+                continue
+            finding_indices = set(edit.get("finding_indices", []))
+            truly_unknown = finding_indices - set(range(len(findings)))
+            usable = finding_indices & expected_findings
+            if not finding_indices or truly_unknown or not usable:
+                stale = finding_indices & already_addressed
+                patch_errors.append(
+                    f"stimulus intent edit {index} has invalid finding_indices={sorted(finding_indices)}"
+                    + (f" (already addressed in a prior retry: {sorted(stale)})" if stale else "")
+                )
+                continue
+            target_path = next(
+                (
+                    path for path, item in files.items()
+                    if path.startswith("tests/")
+                    and "STIMULUS_COVERAGE_INTENTS" in str(item["content"])
+                ),
+                None,
+            )
+            if target_path is None:
+                patch_errors.append(
+                    f"stimulus intent edit {index} found no STIMULUS_COVERAGE_INTENTS declaration"
+                )
+                continue
+            content = str(files[target_path]["content"])
+            try:
+                current_intents = extract_stimulus_coverage_intents(content)
+            except ValueError as exc:
+                patch_errors.append(f"stimulus intent edit {index}: {exc}")
+                continue
+            if any(existing["label"] == label for existing in current_intents):
+                patch_errors.append(
+                    f"stimulus intent edit {index} label {label!r} is already declared"
+                )
+                continue
+            updated_intents = current_intents + [{"label": label, "targets": targets}]
+            tree = ast.parse(content)
+            declaration = next(
+                (
+                    node for node in tree.body
+                    if (
+                        isinstance(node, ast.Assign)
+                        and any(
+                            isinstance(target, ast.Name)
+                            and target.id == "STIMULUS_COVERAGE_INTENTS"
+                            for target in node.targets
+                        )
+                    )
+                    or (
+                        isinstance(node, ast.AnnAssign)
+                        and isinstance(node.target, ast.Name)
+                        and node.target.id == "STIMULUS_COVERAGE_INTENTS"
+                    )
+                ),
+                None,
+            )
+            if declaration is None:
+                patch_errors.append(
+                    f"stimulus intent edit {index} found no STIMULUS_COVERAGE_INTENTS assignment"
+                )
+                continue
+            lines = content.splitlines()
+            lines[declaration.lineno - 1 : declaration.end_lineno] = [
+                f"STIMULUS_COVERAGE_INTENTS = {updated_intents!r}"
+            ]
+            files[target_path]["content"] = "\n".join(lines) + "\n"
+            addressed_findings.update(usable)
         if patch_errors:
-            raise AgentRuntimeError(
-                "Verifier source patches rejected: " + "; ".join(patch_errors)
+            raise ReviewPatchPartialFailure(
+                "Verifier source patches rejected: " + "; ".join(patch_errors),
+                partial_result=result,
+                addressed_findings=already_addressed | addressed_findings,
             )
 
+        metadata_finding_indices: set[int] = set()
         for index, edit in enumerate(metadata_edits):
             finding_indices = set(edit.get("finding_indices", []))
-            unknown_findings = finding_indices - expected_findings
-            if not finding_indices or unknown_findings:
-                raise AgentRuntimeError(
-                    f"Verifier metadata edit {index} has invalid finding_indices={sorted(finding_indices)}"
+            truly_unknown = finding_indices - set(range(len(findings)))
+            usable = finding_indices & expected_findings
+            if not finding_indices or truly_unknown:
+                # As with patches: an edit naming only already-addressed findings
+                # is a legitimate refinement, not an error; only reject a genuinely
+                # empty or out-of-range finding_indices list.
+                raise ReviewPatchPartialFailure(
+                    f"Verifier metadata edit {index} has invalid finding_indices={sorted(finding_indices)}",
+                    partial_result=result,
+                    addressed_findings=already_addressed | addressed_findings,
                 )
-            addressed_findings.update(finding_indices)
+            metadata_finding_indices.update(usable)
         try:
             apply_operation_coverage_metadata_edits(
                 result["operation_coverage"], metadata_edits,
             )
         except VerifierMetadataPatchError as exc:
-            raise AgentRuntimeError(f"Invalid Verifier metadata edit: {exc}") from exc
+            # Edits before the failing one may already be applied in-place above;
+            # do not credit any metadata finding as addressed for this attempt.
+            raise ReviewPatchPartialFailure(
+                f"Invalid Verifier metadata edit: {exc}",
+                partial_result=result,
+                addressed_findings=already_addressed | addressed_findings,
+            ) from exc
+        addressed_findings.update(metadata_finding_indices)
 
         if addressed_findings != expected_findings:
-            raise AgentRuntimeError(
+            raise ReviewPatchPartialFailure(
                 "Verifier source patches must address every review finding; "
-                f"missing={sorted(expected_findings - addressed_findings)}"
+                f"missing={sorted(expected_findings - addressed_findings)}",
+                partial_result=result,
+                addressed_findings=already_addressed | addressed_findings,
             )
         result["status"] = "VERIFICATION_READY"
         result["summary"] = str(revision.get("summary", ""))
@@ -400,7 +547,16 @@ one appended coverpoint, or one appended bin. Named selectors are stable:
 Do not replace operation, point, bin, or entire source-file sections wholesale.
 
 Do not edit either PIPELINE-GENERATED VERIFIER ANNOTATIONS or CONTRACT-GENERATED
-PROTOCOL MONITOR blocks; code owns them. Do not weaken existing assertions or
+PROTOCOL MONITOR blocks with a source patch; code owns them, and the runtime
+rebuilds both after your edits apply. To add a brand new stimulus label (a
+MISSING_STIMULUS finding that needs one), do not touch the STIMULUS_COVERAGE_INTENTS
+declaration directly: use stimulus_intent_edits with op "add", the new label, and
+its targets, and separately add the actual stimulus construction plus a
+_contract_record_checked_stimulus(..., label="<same label>") call to the test body
+via a normal source patch. The runtime appends your declared label and re-derives
+its # STIMULUS comment from that call once both land together. stimulus_intent_edits
+can only append a brand new label; it can never edit or remove an existing one.
+Do not weaken existing assertions or
 coverage. Change stimulus only when a MISSING_STIMULUS or
 INVALID_STIMULUS_MAPPING finding requires it. A response/output limit, patch-format
 problem, Python problem, or coverage implementation choice is a Verifier defect,
@@ -445,14 +601,13 @@ FROZEN INPUT, FINDINGS, AND EXISTING SOURCES
 
     @staticmethod
     def _source_repair_draft(context: Mapping[str, Any]) -> dict[str, Any] | None:
+        # Any semantic-validation failure with a valid, still-VERIFICATION_READY
+        # previous draft goes through this targeted correction (previous content
+        # shown, told the exact validator_error, told to change only what is
+        # implicated) instead of the full from-scratch _build_task prompt, which
+        # has no memory of the previous attempt or what specifically broke it.
         review = context.get("semantic_validation_review")
         if not isinstance(review, Mapping):
-            return None
-        error = str(review.get("validator_error", ""))
-        if not any(marker in error for marker in (
-            "contains no executable async", "contains omitted/placeholder source",
-            "contains a top-level raise instead of executable tests",
-        )):
             return None
         draft = review.get("previous_verifier_output")
         if not isinstance(draft, Mapping) or draft.get("status") != "VERIFICATION_READY":
@@ -515,13 +670,48 @@ FROZEN INPUT, FINDINGS, AND EXISTING SOURCES
         envelope["interface_coverage_plan"] = build_interface_coverage_plan(
             context["frozen_architecture"]["interface_contract"]
         )
+        review = context.get("semantic_validation_review")
+        envelope["validator_error"] = (
+            review.get("validator_error") if isinstance(review, Mapping) else None
+        )
         envelope["planned_files"] = [
             {**{key: value for key, value in item.items() if key != "content"},
-             "path": f"{owner}/{cls._safe_python_filename(item['path'], owned_root=owner)}"}
+             "path": f"{owner}/{cls._safe_python_filename(item['path'], owned_root=owner)}",
+             "previous_content": item["content"]}
             for field, owner in (("reference_files", "reference"), ("test_files", "tests"))
             for item in draft[field]
         ]
         return """Complete the missing executable sources in one counted Verifier correction.
+
+validator_error names the exact defect that made previous_content invalid; every
+planned_files entry's previous_content is otherwise a working file. Reproduce each
+file's previous_content byte-for-byte and change only what validator_error requires
+you to fix. Do not rewrite, reformat, restructure, or regenerate code that
+validator_error does not implicate, even though the schema still requires you to
+return each file's complete content.
+
+If validator_error says a stimulus needs a "# STIMULUS [label]" comment, do not
+just insert that comment line: the runtime strips every such comment and
+regenerates it only next to a `_contract_record_checked_stimulus(..., label="...")`
+call whose label is a literal string constant at that exact call site. A shared
+helper that receives label as a parameter and forwards it with `label=label` can
+never get its comment restored, no matter how many times you add it. Fix this by
+passing the literal label string directly at each `_contract_record_checked_stimulus`
+call site (inline the call at each case, or add a small per-case wrapper that
+passes the literal), not by editing comments.
+
+If validator_error says the Verifier must not duplicate a pipeline-owned catalog
+assertion, the fix is to delete that redundant `assert` statement entirely (and
+its now-orphaned comment above it), not to relabel, strip, or reword the comment.
+Catalog operation assertions (the required_properties/feature_checks already
+defined for this operation's family, e.g. accumulation or post_processing) are
+generated and checked by the pipeline itself; the Verifier must never author its
+own assert for a concept the catalog already owns. Only taxonomy-missing features
+(behavior with no catalog entry) may carry a Verifier-authored
+`# LLM-GENERATED OPERATION ASSERTION [feature]` assert. Removing just the comment
+while leaving the assert in place, or renaming its label, does not resolve this
+error and produces the opposite "assert needs a feature comment" error instead —
+the assert itself must go.
 
 Return only status, files (path and complete content), architecture_conflict, and
 known_verification_gaps. Metadata is reused by the runtime; do not regenerate or
@@ -1569,7 +1759,10 @@ FIRST-CANDIDATE COMPLETENESS CHECK
 - Every binding's "point" must be the exact same literal coverpoint id string
   you declared for that point in operation_coverage; never invent, abbreviate,
   reformat, or re-derive a spelling in OPERATION_SAMPLING_BINDINGS. Copy it
-  character-for-character from where you declared the coverpoint.
+  character-for-character from where you declared the coverpoint. This applies
+  to every template, including channel_stall: declare the coverpoint in
+  operation_coverage first, then bind it; a binding with no matching declared
+  coverpoint is rejected even though the sampled data itself is code-owned.
 - Each checked stimulus call must show label="<case_id>" as a literal directly
   in _contract_record_checked_stimulus(...). Do not hide its label behind a helper
   parameter or `label=label`: that prevents code from installing and auditing the

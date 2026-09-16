@@ -94,12 +94,25 @@ Review these boundaries:
   error coverpoints observe events; event hits alone do NOT enforce lifecycle or
   pulse semantics. Those contract-specific checks still need executable checkers.
 
+Report only findings that are required, not merely desirable. A finding must name
+either a required contract concept/obligation that is missing, wrong, or
+unreachable, or an executable checker required by verification_policy that does
+not exist or does not enforce the stated behavior. If the candidate would still
+correctly enforce every required contract obligation without your suggested
+change, it is an enhancement, not a finding: omit it, or note it in the summary
+only. Do not report additional partitions, sharper boundaries, extra defensive
+checks, or alternate ways of expressing a check that is already correct and
+already covers its required obligation. When genuinely unsure whether something
+is required or merely an improvement, treat it as merely an improvement and
+leave it out.
+
 APPROVED means no concrete coverage/assertion definition defect was found. It is
 NOT verification PASS, exhaustive proof, or a statement that any bin was exercised.
 Return no findings with APPROVED.
 
 VERIFIER_REPAIR_REQUIRED needs at least one concise, actionable finding with exact
-contract requirement and code/plan evidence. Preserve valid coverage/checks and
+contract requirement and code/plan evidence, each naming a required obligation
+that is unmet. Preserve valid coverage/checks and
 the frozen semantics. Do not rewrite source in the review response. Verifier will
 repair its own TB/coverage and submit a new candidate for review.
 

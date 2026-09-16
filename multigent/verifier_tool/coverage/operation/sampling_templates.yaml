@@ -50,6 +50,10 @@ templates:
     metadata: [channel]
     bin_rule: released_stall_length
     description: Reuse the code-owned protocol assertion's completed stall length; sample on transfer and cancel pending state on reset.
+      This template reads code-owned protocol data but is still an ordinary
+      operation coverpoint, and a binding alone is not enough. Declare a
+      matching coverpoint in operation_coverage with the exact same id before
+      binding it here, or the binding is rejected as undeclared.
     bins:
       - {name: none, intent: An actual transfer with no preceding stall., predicate: {op: eq, args: [0]}}
       - {name: one_cycle, intent: An actual transfer after exactly one stalled observation., predicate: {op: eq, args: [1]}}

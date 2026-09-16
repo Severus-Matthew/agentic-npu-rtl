@@ -84,6 +84,9 @@ def make_verifier_node(
             draft = getattr(runtime, "last_generated_result", None)
             if isinstance(draft, Mapping):
                 failure["verifier_draft"] = dict(draft)
+            addressed = getattr(runtime, "last_addressed_findings", None)
+            if addressed:
+                failure["verifier_addressed_findings"] = sorted(addressed)
             return failure
 
         # A correction can reveal a genuine frozen-contract contradiction.

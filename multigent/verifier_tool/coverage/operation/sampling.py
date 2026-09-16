@@ -304,7 +304,11 @@ def _compile(raw: Mapping[str, Any], architecture: Mapping[str, Any], interface:
     name = raw.get("template")
     catalog = load_operation_sampling_templates()["templates"]
     if name not in catalog:
-        raise OperationSamplingError(f"Unknown runtime sampling template {name!r}; use custom observer for new semantics")
+        raise OperationSamplingError(
+            f"Unknown runtime sampling template {name!r}; the only valid template "
+            f"names are {sorted(catalog)}. Use 'custom' (with an 'observer' function "
+            "name) for new semantics, never an invented template name."
+        )
     for key in catalog[name]["metadata"]:
         if key not in raw:
             raise OperationSamplingError(f"Template {name} needs {key}")
@@ -325,7 +329,15 @@ def _compile(raw: Mapping[str, Any], architecture: Mapping[str, Any], interface:
         code_bound_field = True
     required = catalog[name]["required_fields"]
     dynamic_fields = required in {"dimensions", "observations"} if isinstance(required, str) else False
-    if (not dynamic_fields and set(fields_raw) != set(required)) or (dynamic_fields and not fields_raw):
+    if dynamic_fields and not fields_raw:
+        raise OperationSamplingError(
+            f"Template {name}'s 'fields' mapping is empty. Add at least one entry "
+            "with any field name(s) you choose, each mapping to a declared signal "
+            "your observer function reads (e.g. {'busy': {'signal': 'busy'}}); "
+            "'required_fields' being the word 'observations' here is an internal "
+            "marker meaning free-form fields, not a literal field name to add."
+        )
+    if not dynamic_fields and set(fields_raw) != set(required):
         raise OperationSamplingError(f"Template {name} needs fields {required}")
     fields = {key: _field(value, interface) for key, value in fields_raw.items()}
     guards = []

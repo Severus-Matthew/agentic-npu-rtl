@@ -65,7 +65,12 @@ def apply_operation_coverage_metadata_edits(
             raise VerifierMetadataPatchError(f"Metadata edit {index} needs a point/bin leaf")
         if parts[-1] in _IDENTITY_FIELDS:
             raise VerifierMetadataPatchError(
-                f"Metadata edit {index} may not replace a frozen identity field"
+                f"Metadata edit {index} may not replace frozen identity field "
+                f"'{parts[-1]}' at {path!r}. A coverpoint or bin's name/id can never "
+                "change, even to correct its meaning. To fix what a bin means, "
+                "leave this same path's 'name' unchanged and instead submit a "
+                "metadata edit targeting its sibling 'predicate' and/or 'intent' "
+                "field so the existing identity now matches the corrected behavior."
             )
         try:
             new_value = json.loads(str(edit.get("value_json", "")))

@@ -1,6 +1,6 @@
 # Verifier tool
 
-This directory contains the deterministic, code-owned part of `my_v` verification.
+This directory contains the deterministic, code-owned verification components.
 It is a library used by the Architect, Verifier, reviewer, and cocotb runtime; it is
 not another LLM agent.
 
@@ -15,12 +15,12 @@ verifier_tool/
 │   └── stimulus.py            cumulative stimulus evidence
 └── predefined_assertion/
     ├── protocol/              ready/valid protocol assertion generation
-    ├── operation/             catalog-operation result assertion generation
+    ├── operation/             catalog-operation assertions and property guidance
     ├── instrumentation.py     assembles and inserts the generated TB block
     └── review.py              read-only assertion view for TB review
 ```
 
-`role_pool` describes what a signal means. `coverage` records whether required
-behavior was observed. `predefined_assertion` checks whether observed behavior is
-legal. Known protocol and operation features use these code-owned definitions;
-only features absent from the catalogs remain Verifier-authored extensions.
+`role_pool` describes signal meaning. `coverage` records observed bin hits.
+`predefined_assertion` generates code-owned checks. The Verifier still writes
+stimulus, the reference model, and operation-specific connections or observers
+where the contract cannot be bound deterministically.

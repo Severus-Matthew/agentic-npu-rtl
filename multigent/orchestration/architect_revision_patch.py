@@ -95,7 +95,14 @@ def _check_scope(parts: list[str], op: str, prior: Any, new_value: Any,
     if tuple(parts) in PROTECTED_SUFFIXES:
         raise RevisionPatchError("Design identity/top module cannot change in a local revision")
     if parts[1] in IDENTITY_FIELDS and len(parts) == 3:
-        raise RevisionPatchError("Named contract collections cannot be replaced wholesale")
+        raise RevisionPatchError(
+            f"A local revision cannot {op} a whole item in the named collection "
+            f"'{parts[1]}' (only leaf fields inside an existing named item may be "
+            "added/replaced). Adding, removing, or wholesale-replacing a module, "
+            "operation, channel, signal, data type, or parameter object is a "
+            "structural change; return SPEC_CONFLICT instead of another patch "
+            "attempt if the frozen contract genuinely needs one."
+        )
     for index, segment in enumerate(parts[:-1]):
         if segment in IDENTITY_FIELDS and index + 2 < len(parts):
             if parts[index + 2] in IDENTITY_FIELDS[segment]:

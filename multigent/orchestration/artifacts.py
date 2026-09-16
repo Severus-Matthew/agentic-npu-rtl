@@ -137,7 +137,14 @@ def verification_repair_node(state):
                 'Do not edit code-owned interface IDs, taxonomy or runtime. Do not '
                 'downgrade required concepts. The Reviewer never contacts Architect; '
                 'if a unique executable expectation still cannot be derived, the '
-                'Verifier alone may submit a precise question to Architect.'
+                'Verifier alone may submit a precise question to Architect. '
+                'A metadata_edit can never change a coverpoint or bin identity field '
+                '(operation_name, family, id, concept, source, name) even to correct '
+                'its meaning; that request is always rejected. When a finding says a '
+                "bin's meaning is wrong (e.g. a bin is unreachable or mislabeled for "
+                'the contract), keep its name and id exactly as declared and correct '
+                'only its predicate/intent/fields, or the sampling binding, so the '
+                'existing identity now matches the corrected behavior.'
             ),
         }
         return {'verification_context': context,
@@ -162,6 +169,15 @@ def verification_repair_node(state):
             # A malformed or incomplete local patch remains owned by Verifier. Keep
             # the same concrete review findings and retry against the most recent
             # reconstructed draft instead of falling back to a full-file rewrite.
+            # That draft may already carry genuinely-applied edits from a prior
+            # attempt in this same round (see ReviewPatchPartialFailure); only
+            # the findings still outstanding need to be resubmitted.
+            already_addressed = sorted(
+                set(state.get('verifier_addressed_findings', []))
+                | set(previous_assertion_review.get('already_addressed_findings', []))
+            )
+            total_findings = len(previous_assertion_review.get('findings', []))
+            remaining = sorted(set(range(total_findings)) - set(already_addressed))
             context['assertion_definition_review'] = {
                 **previous_assertion_review,
                 'previous_verifier_output': (
@@ -170,7 +186,16 @@ def verification_repair_node(state):
                     else previous_assertion_review.get('previous_verifier_output')
                 ),
                 'patch_validation_error': validator_error,
+                'already_addressed_findings': already_addressed,
                 'instruction': (
+                    'Correct the local source patch using this exact validation error. '
+                    'Do not regenerate complete files and do not escalate a patch, '
+                    'Python, coverage, or output-size problem to Architect. '
+                    f'Findings at indices {already_addressed} are already correctly '
+                    'applied in previous_verifier_output by a prior retry in this same '
+                    f'review round; do not resubmit edits for them. Only findings at '
+                    f'indices {remaining} still need a patch or metadata edit now.'
+                    if already_addressed else
                     'Correct the local source patch using this exact validation error. '
                     'Do not regenerate complete files and do not escalate a patch, '
                     'Python, coverage, or output-size problem to Architect.'
@@ -186,6 +211,7 @@ def verification_repair_node(state):
                     'stage': 'verification_repair',
                     'status': 'SOURCE_PATCH_CORRECTION',
                     'validator_error': validator_error,
+                    'already_addressed_findings': already_addressed,
                 }],
             }
         context['semantic_validation_review'] = {

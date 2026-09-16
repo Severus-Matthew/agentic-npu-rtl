@@ -7,7 +7,9 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from multigent.agents.base import AgentRuntimeError, SCHEMA_ROOT
-from multigent.agents.verifier import VERIFIER_REVISION_PATCH_SCHEMA, VerifierAgent
+from multigent.agents.verifier import (
+    VERIFIER_REVISION_PATCH_SCHEMA, ReviewPatchPartialFailure, VerifierAgent,
+)
 from multigent.orchestration import artifacts
 from multigent.tests.test_verifier import generic_fir_context, verification_ready_result
 
@@ -48,6 +50,126 @@ def test_verifier_revision_patch_schema_is_valid() -> None:
     schema = json.loads(VERIFIER_REVISION_PATCH_SCHEMA.read_text())
     assert VERIFIER_REVISION_PATCH_SCHEMA == SCHEMA_ROOT / "verifier_revision_patch.schema.json"
     Draft202012Validator.check_schema(schema)
+
+
+def test_review_patch_partial_failure_preserves_valid_edits_for_retry() -> None:
+    context, draft = _context(findings=[
+        {"category": "MISSING_ASSERTION", "requirement": "req0", "evidence": "ev0",
+         "recommended_change": "rc0"},
+        {"category": "MISSING_ASSERTION", "requirement": "req1", "evidence": "ev1",
+         "recommended_change": "rc1"},
+    ])
+    good_old = "    # LLM-GENERATED OPERATION ASSERTION [filter.interface_clock]\n"
+    good_new = good_old + "    # review-fixed-0\n"
+    noop_old = "    # LLM-GENERATED OPERATION ASSERTION [filter.interface_reset]\n"
+    revision = {
+        "status": "PATCH_READY", "summary": "s",
+        "patches": [
+            {"path": "tests/test_fir_contract.py", "old_text": good_old, "new_text": good_new,
+             "finding_indices": [0], "reason": "r0"},
+            {"path": "tests/test_fir_contract.py", "old_text": noop_old, "new_text": noop_old,
+             "finding_indices": [1], "reason": "r1 (accidentally a no-op)"},
+        ],
+        "metadata_edits": [], "architecture_conflict": None, "known_verification_gaps": [],
+    }
+    with pytest.raises(ReviewPatchPartialFailure) as excinfo:
+        VerifierAgent._apply_review_patch(context, draft, revision)
+    exc = excinfo.value
+    assert exc.addressed_findings == {0}
+    assert "review-fixed-0" in exc.partial_result["test_files"][0]["content"]
+
+    # A retry seeded with the partial result and already_addressed_findings
+    # only needs to resolve what is still outstanding; finding 0's edit
+    # from the failed attempt must still be present in the final result.
+    context["assertion_definition_review"]["already_addressed_findings"] = sorted(exc.addressed_findings)
+    context["assertion_definition_review"]["previous_verifier_output"] = exc.partial_result
+    followup_new = noop_old + "    # review-fixed-1\n"
+    followup = {
+        "status": "PATCH_READY", "summary": "s",
+        "patches": [
+            {"path": "tests/test_fir_contract.py", "old_text": noop_old, "new_text": followup_new,
+             "finding_indices": [1], "reason": "r1-fixed"},
+        ],
+        "metadata_edits": [], "architecture_conflict": None, "known_verification_gaps": [],
+    }
+    result = VerifierAgent._apply_review_patch(context, exc.partial_result, followup)
+    content = result["test_files"][0]["content"]
+    assert "review-fixed-0" in content
+    assert "review-fixed-1" in content
+
+
+def test_patch_targeting_only_already_addressed_findings_still_applies() -> None:
+    # A model may legitimately want to refine its own earlier fix for a finding
+    # before the whole batch is submitted; this must not be treated as an error
+    # merely because that finding is already marked done in this same round.
+    context, draft = _context(findings=[
+        {"category": "MISSING_ASSERTION", "requirement": "req0", "evidence": "ev0",
+         "recommended_change": "rc0"},
+    ])
+    already_fixed_marker = "    # review-fixed-0\n"
+    context["assertion_definition_review"]["already_addressed_findings"] = [0]
+    draft_with_prior_fix = copy.deepcopy(draft)
+    draft_with_prior_fix["test_files"][0]["content"] += already_fixed_marker
+    context["assertion_definition_review"]["previous_verifier_output"] = draft_with_prior_fix
+
+    refine_old = already_fixed_marker
+    refine_new = "    # review-refined-0\n"
+    revision = {
+        "status": "PATCH_READY", "summary": "s",
+        "patches": [
+            {"path": "tests/test_fir_contract.py", "old_text": refine_old, "new_text": refine_new,
+             "finding_indices": [0], "reason": "refine the earlier fix for finding 0"},
+        ],
+        "metadata_edits": [], "architecture_conflict": None, "known_verification_gaps": [],
+    }
+    result = VerifierAgent._apply_review_patch(context, draft_with_prior_fix, revision)
+    content = result["test_files"][0]["content"]
+    assert "review-refined-0" in content
+    assert "review-fixed-0" not in content
+
+
+def test_stimulus_intent_edit_appends_a_new_declared_label() -> None:
+    context, draft = _context()
+    original = copy.deepcopy(draft)
+    revision = {
+        "status": "PATCH_READY", "summary": "s",
+        "patches": [],
+        "metadata_edits": [],
+        "stimulus_intent_edits": [{
+            "op": "add", "label": "reset_midjob",
+            "targets": ["signal.rst.reset_behavior"],
+            "finding_indices": [0], "reason": "add missing reset stimulus intent",
+        }],
+        "architecture_conflict": None, "known_verification_gaps": [],
+    }
+    result = VerifierAgent._apply_review_patch(context, draft, revision)
+    content = result["test_files"][0]["content"]
+    from multigent.verifier_tool.predefined_assertion.instrumentation import (
+        extract_stimulus_coverage_intents,
+    )
+    intents = extract_stimulus_coverage_intents(content)
+    labels = {item["label"] for item in intents}
+    assert "mixed" in labels  # existing intent preserved
+    assert "reset_midjob" in labels  # new intent appended
+    new_entry = next(item for item in intents if item["label"] == "reset_midjob")
+    assert new_entry["targets"] == ["signal.rst.reset_behavior"]
+    # Nothing else in the file changed.
+    assert result["reference_files"] == original["reference_files"]
+
+
+def test_stimulus_intent_edit_rejects_duplicate_label() -> None:
+    context, draft = _context()
+    revision = {
+        "status": "PATCH_READY", "summary": "s",
+        "patches": [], "metadata_edits": [],
+        "stimulus_intent_edits": [{
+            "op": "add", "label": "mixed", "targets": ["operation.filter.tap_count"],
+            "finding_indices": [0], "reason": "duplicate label",
+        }],
+        "architecture_conflict": None, "known_verification_gaps": [],
+    }
+    with pytest.raises(AgentRuntimeError, match="already declared"):
+        VerifierAgent._apply_review_patch(context, draft, revision)
 
 
 def test_review_patch_changes_only_exact_source_and_preserves_metadata() -> None:

@@ -37,6 +37,7 @@ class HardwareDesignState(TypedDict, total=False):
     verifier_status: str
     verifier_result: dict[str, Any]
     verifier_draft: dict[str, Any]
+    verifier_addressed_findings: list[int]
     verifier_review_status: str
     verifier_review_result: dict[str, Any] | None
     verifier_review_hashes: dict[str, Any]

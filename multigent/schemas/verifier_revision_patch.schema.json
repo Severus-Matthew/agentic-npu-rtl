@@ -8,6 +8,7 @@
     "summary",
     "patches",
     "metadata_edits",
+    "stimulus_intent_edits",
     "architecture_conflict",
     "known_verification_gaps"
   ],
@@ -48,6 +49,30 @@
           "op": {"type": "string", "enum": ["add", "replace"]},
           "path": {"type": "string", "minLength": 1},
           "value_json": {"type": "string"},
+          "finding_indices": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "integer", "minimum": 0}
+          },
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "stimulus_intent_edits": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["op", "label", "targets", "finding_indices", "reason"],
+        "properties": {
+          "op": {"type": "string", "enum": ["add"]},
+          "label": {"type": "string", "minLength": 1},
+          "targets": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          },
           "finding_indices": {
             "type": "array",
             "minItems": 1,
