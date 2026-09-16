@@ -387,7 +387,14 @@ Required design work:
    requested operation semantics. For a known family, inspect its optional-concept
    pool and copy every concept whose ``applies_when`` condition is present in this
    design into ``feature_extensions``. Do not select a mode the contract does not
-   implement merely because it exists in the pool. Also put important contract
+   implement merely because it exists in the pool. A common self-contradiction:
+   selecting ``runtime_shape`` (or any concept whose ``applies_when`` requires a
+   dimension/mode to be programmable per job) while also declaring that same
+   dimension/mode fixed and non-configurable elsewhere in this same contract.
+   Before finalizing ``feature_extensions``, re-check each selected concept's
+   ``applies_when`` against your own declared parameters/dimensions for this
+   design; drop the concept if your own contract contradicts its condition. Also
+   put important contract
    features absent from both the baseline and optional pools in
    ``feature_extensions``; the catalog is deliberately extensible rather than a
    closed vocabulary. For a novel family, use explicit reusable feature names.

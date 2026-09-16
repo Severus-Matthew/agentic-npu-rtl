@@ -262,48 +262,61 @@ class VerifierAgent(APIAgent):
                 filename = cls._safe_python_filename(str(item["path"]), owned_root=owner)
                 files[f"{owner}/{filename}"] = item
 
+        # Collect every rejected patch instead of stopping at the first one: a
+        # single-turn multi-patch response commonly has more than one defect
+        # (e.g. several no-op patches), and reporting only the first forces one
+        # wasted retry per defect instead of fixing them all in the next turn.
+        patch_errors: list[str] = []
         for index, patch in enumerate(patches):
             raw_path = str(patch.get("path", ""))
             parts = Path(raw_path).parts
             if len(parts) != 2 or parts[0] not in {"reference", "tests"}:
-                raise AgentRuntimeError(
-                    f"Verifier source patch {index} path must be reference/<file>.py or tests/<file>.py"
+                patch_errors.append(
+                    f"patch {index} path must be reference/<file>.py or tests/<file>.py"
                 )
+                continue
             owner = parts[0]
             filename = cls._safe_python_filename(raw_path, owned_root=owner)
             path = f"{owner}/{filename}"
             if path not in files:
-                raise AgentRuntimeError(
-                    f"Verifier source patch {index} references unknown file {path!r}"
-                )
+                patch_errors.append(f"patch {index} references unknown file {path!r}")
+                continue
             old_text = str(patch.get("old_text", ""))
             new_text = str(patch.get("new_text", ""))
             if not old_text or old_text == new_text:
-                raise AgentRuntimeError(
-                    f"Verifier source patch {index} must make a non-empty exact substitution"
+                patch_errors.append(
+                    f"patch {index} (finding_indices={sorted(patch.get('finding_indices', []))}) "
+                    "must make a non-empty exact substitution, not a no-op"
                 )
+                continue
             content = str(files[path]["content"])
             if old_text.strip() == content.strip():
-                raise AgentRuntimeError(
-                    f"Verifier source patch {index} attempts to replace the entire file; use local edits"
+                patch_errors.append(
+                    f"patch {index} attempts to replace the entire file; use local edits"
                 )
+                continue
             if content.count(old_text) != 1:
-                raise AgentRuntimeError(
-                    f"Verifier source patch {index} old_text must occur exactly once in {path}; "
+                patch_errors.append(
+                    f"patch {index} old_text must occur exactly once in {path}; "
                     f"found {content.count(old_text)}"
                 )
+                continue
             if owner == "tests" and cls._patch_touches_generated_block(content, old_text):
-                raise AgentRuntimeError(
-                    f"Verifier source patch {index} may not edit pipeline-generated TB blocks"
-                )
+                patch_errors.append(f"patch {index} may not edit pipeline-generated TB blocks")
+                continue
             finding_indices = set(patch.get("finding_indices", []))
             unknown_findings = finding_indices - expected_findings
             if not finding_indices or unknown_findings:
-                raise AgentRuntimeError(
-                    f"Verifier source patch {index} has invalid finding_indices={sorted(finding_indices)}"
+                patch_errors.append(
+                    f"patch {index} has invalid finding_indices={sorted(finding_indices)}"
                 )
+                continue
             addressed_findings.update(finding_indices)
             files[path]["content"] = content.replace(old_text, new_text, 1)
+        if patch_errors:
+            raise AgentRuntimeError(
+                "Verifier source patches rejected: " + "; ".join(patch_errors)
+            )
 
         for index, edit in enumerate(metadata_edits):
             finding_indices = set(edit.get("finding_indices", []))
@@ -856,7 +869,11 @@ FROZEN INPUT AND REUSED GENERATION PLAN
                 )
             unknown = sorted(set(conflict["affected_modules"]) - module_names)
             if unknown:
-                raise AgentRuntimeError(f"Verifier conflict references undeclared modules: {unknown}")
+                raise AgentRuntimeError(
+                    f"Verifier conflict references undeclared modules: {unknown}; "
+                    f"affected_modules must use exact names from module_manifest.modules[].name, "
+                    f"never a test/reference file name. Declared modules are: {sorted(module_names)}"
+                )
             return
 
         if status != "VERIFICATION_READY":
@@ -1506,6 +1523,12 @@ FROZEN INPUT AND REUSED GENERATION PLAN
                 interface_signals, {"error"}
             )
         required_status_text = ", ".join(sorted(required_status_signals)) or "none"
+        declared_module_names = ", ".join(
+            sorted(
+                str(item["name"])
+                for item in context["frozen_architecture"]["module_manifest"]["modules"]
+            )
+        ) or "none"
         return f"""Create an independent executable verification environment for the frozen hardware contract.
 
 FIRST-CANDIDATE COMPLETENESS CHECK
@@ -1543,6 +1566,10 @@ FIRST-CANDIDATE COMPLETENESS CHECK
   list with a for-comprehension, function call, mutation, or runtime loop, even
   when the iterable happens to be a fixed tuple; the safe source extractor does
   not execute Python to discover bindings.
+- Every binding's "point" must be the exact same literal coverpoint id string
+  you declared for that point in operation_coverage; never invent, abbreviate,
+  reformat, or re-derive a spelling in OPERATION_SAMPLING_BINDINGS. Copy it
+  character-for-character from where you declared the coverpoint.
 - Each checked stimulus call must show label="<case_id>" as a literal directly
   in _contract_record_checked_stimulus(...). Do not hide its label behind a helper
   parameter or `label=label`: that prevents code from installing and auditing the
@@ -1607,6 +1634,10 @@ DECISION OWNERSHIP
   illegal command and lead to an error instead of creating a pending legal job.
   Read explicit transition rules together; a pending-legal-job rule does not cancel
   an explicitly defined accepted-illegal-command rule.
+- If you return ARCHITECTURE_CONFLICT, architecture_conflict.affected_modules must
+  contain only exact names from module_manifest.modules[].name. The declared
+  modules for this contract are: {declared_module_names}. Never put a test or
+  reference file name/path there.
 - Return ARCHITECTURE_CONFLICT only for an external behavior that genuinely needs
   an Architect choice to define expected results. Cite the exact conflicting or
   missing contract statements and the two incompatible observable outcomes. Do

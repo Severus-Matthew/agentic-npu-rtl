@@ -21,7 +21,10 @@ templates:
     required_fields: [value]
     metadata: [dimension]
     bin_rule: contract_dimension_boundaries
-    description: Sample one accepted dimension using the contract's minimum and maximum.
+    description: Sample one accepted dimension using the contract's minimum and
+      maximum. The bound field's declared bit width must be able to represent the
+      contract's maximum value unsigned (maximum < 2**width); a narrow field (e.g.
+      a 1-bit status signal) cannot directly encode a larger dimension bound.
   integer_operand:
     required_fields: [value]
     metadata: [data_type]
