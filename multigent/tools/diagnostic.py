@@ -37,6 +37,13 @@ def diagnostic(func):
             for time_ns, values in ring:
                 print("SIGNAL_TRACE", time_ns, values, flush=True)
     return wrapped
+
+def diagnostic_operation_check(expected, observed):
+    assert observed == expected, (
+        "diagnostic operation mismatch; expected=" + repr(expected)
+        + "; observed=" + repr(observed)
+    )
+    return None
 '''
 
 
@@ -45,17 +52,60 @@ def collect_diagnostics(workspace: Path, plan: dict, output: Path) -> dict:
     tests.mkdir(parents=True,exist_ok=False)
     for src in (workspace/'tests').glob('*.py'):
         tree=ast.parse(src.read_text())
+
+        class RemoveCoverageSampling(ast.NodeTransformer):
+            def visit_Call(self, node):
+                node = self.generic_visit(node)
+                if (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id in {'sample_operation', 'record_stimulus'}
+                ):
+                    # Diagnostic probes have no trusted coverage environment and may
+                    # not count coverage. Keep the functional test running after its
+                    # oracle succeeds instead of failing on this reporting hook.
+                    return ast.copy_location(ast.Constant(value=None), node)
+                if (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id == '_contract_record_checked_stimulus'
+                    and len(node.args) >= 4
+                ):
+                    return ast.copy_location(
+                        ast.Call(
+                            func=ast.Name(
+                                id='diagnostic_operation_check', ctx=ast.Load()
+                            ),
+                            args=[node.args[2], node.args[3]],
+                            keywords=[],
+                        ),
+                        node,
+                    )
+                return node
+
+        tree = RemoveCoverageSampling().visit(tree)
         for node in ast.walk(tree):
             if isinstance(node,ast.AsyncFunctionDef) and any(
                 isinstance(d,ast.Call) and isinstance(d.func,ast.Attribute) and d.func.attr=='test'
                 for d in node.decorator_list):
+                # Diagnostic runs are not acceptance runs and do not receive the
+                # trusted coverage environment. Remove only that wrapper from the
+                # copied test so signal tracing can reach the DUT.
+                node.decorator_list = [
+                    d for d in node.decorator_list
+                    if not (
+                        isinstance(d, ast.Call)
+                        and isinstance(d.func, ast.Name)
+                        and d.func.id == "contract_coverage"
+                    )
+                ]
                 node.decorator_list.append(ast.Name(id='diagnostic',ctx=ast.Load()))
         # Insert after future imports/docstring, so valid Python stays valid.
         index=0
         while index<len(tree.body) and (isinstance(tree.body[index],ast.Expr) or
                 isinstance(tree.body[index],ast.ImportFrom) and tree.body[index].module=='__future__'):
             index+=1
-        tree.body.insert(index,ast.ImportFrom(module='_npu_monitor',names=[ast.alias(name='diagnostic')],level=0))
+        tree.body.insert(index,ast.ImportFrom(module='_npu_monitor',names=[
+            ast.alias(name='diagnostic'), ast.alias(name='diagnostic_operation_check')
+        ],level=0))
         (tests/src.name).write_text(ast.unparse(ast.fix_missing_locations(tree))+'\n')
     (tests/'_npu_monitor.py').write_text(MONITOR)
     result=run_cocotb_regression(rtl_dir=workspace/'rtl',top_module=plan['top_module'],

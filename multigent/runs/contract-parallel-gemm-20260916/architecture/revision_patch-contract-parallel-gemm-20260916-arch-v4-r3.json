@@ -1,0 +1,12 @@
+{
+  "status": "PATCH_READY",
+  "edits": [
+    {
+      "op": "replace",
+      "path": "/acceptance_criteria/verification/3",
+      "value_json": "\"Illegal behavior tests: cmd_payload=0 when cmd handshake, command valid while busy, and wrong input channel ready&&valid transfer in non-owning phase each produce one-cycle error and recover to continue legal operation. Valid asserted alone while ready=0 in a non-owning phase is legal backpressure observation and must not error.\"",
+      "reason": "Aligns acceptance criterion with existing transfer-triggered error semantics and phase-gated ready signals; resolves ambiguity identified in feedback."
+    }
+  ],
+  "issue": "Clarified illegal wrong-channel condition as attempted transfer (ready&&valid) only; valid-only during backpressure is non-error per existing control/interface rules."
+}

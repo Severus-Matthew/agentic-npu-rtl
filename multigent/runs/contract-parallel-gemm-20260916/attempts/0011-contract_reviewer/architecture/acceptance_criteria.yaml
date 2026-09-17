@@ -1,0 +1,47 @@
+functional:
+- Given one legal command and exact required operand counts, output equals software
+  oracle C=ReLU(AxB+bias) with int32 wraparound on accumulation and bias add.
+- A stream acceptance order must be exactly 256 row-major A beats, then 256 row-major
+  B beats, then 8 bias beats; early/late wrong-channel valid causes error pulse and
+  no phase advance.
+- Output stream emits exactly 64 beats row-major; out_last asserted only on beat 64.
+- 'K recurrence correctness: accumulator initialized to 0, updated exactly for k=0..31
+  once each; K=32 fixed case no double count.'
+- Completion pulses exactly once after final output handshake of a legal job; no completion
+  for reset-aborted job.
+- 'Mandatory stall-free latency check: for a legal job with no channel stalls (all
+  required valids and readies asserted whenever applicable), total cycles from accepted
+  cmd transfer cycle to completion pulse cycle inclusive shall equal 4874 at defaults
+  (1 cmd + 256 A + 256 B + 8 bias + 4288 compute + 64 output + 1 completion), and
+  compute phase cycles from first cycle after accepted final bias beat to compute_done
+  pulse inclusive shall equal 4288.'
+verification:
+- Minimum 100 randomized legal jobs with random int8 A/B and int32 bias, randomized
+  out_ready and randomized input valid stalls.
+- 'Reset tests: reset in IDLE, during each load phase, during compute, and during
+  output; verify abort semantics and no ghost outputs.'
+- 'Backpressure tests on all ready/valid channels: payload/last stability while stalled
+  and correct resume edge.'
+- 'Illegal behavior tests: cmd_payload=0 when cmd handshake, command valid while busy,
+  and wrong input channel ready&&valid transfer in non-owning phase each produce one-cycle
+  error and recover to continue legal operation. Valid asserted alone while ready=0
+  in a non-owning phase is legal backpressure observation and must not error.'
+- 'Ordering test for pending next command while busy: cmd_ready low; source may hold
+  cmd_valid high; acceptance occurs on first cycle returning to IDLE with cmd_ready
+  high and valid high.'
+rtl:
+- RTL must be synthesizable SystemVerilog only; no real/shortreal/delay/class/force-release
+  constructs.
+- Single clock synchronous design with active-low synchronous reset behavior matching
+  contract.
+- No combinational loops on ready/valid paths; registered control state and counters.
+- All declared top-level and inter-module ports implemented with matching widths/sign
+  semantics and 1-cycle memory read latency assumptions honored.
+fpga_handoff:
+- Provide Vivado synthesis/implementation reports only from deterministic tool runs
+  after verification passes.
+- Do not estimate or fabricate Fmax/area/power/utilization; report only tool-produced
+  metrics.
+- Deliver report artifacts conforming to multigent/schemas/synthesis_result.schema.json.
+- Handoff must include exact RTL commit hash and constraint files used for deterministic
+  reproduction.

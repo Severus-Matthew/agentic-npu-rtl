@@ -1,0 +1,118 @@
+protocol: dual ready/valid streaming channels (input and output)
+clock: clk
+reset: rst_n
+channels:
+- name: in_chan
+  direction: input
+  protocol_profile: ready_valid
+  purpose: ingress of two unsigned 8-bit operands per transaction
+  data_objects:
+  - in_pair
+  metadata: []
+  framing: one transfer = one operand pair transaction
+  ordering: acceptance order defines job order; no reordering
+  backpressure: DUT deasserts in_ready only when output register is occupied and not
+    being consumed in the current cycle, or when reset asserted; if occupied and out_ready=1,
+    in_ready remains asserted to permit same-edge replace
+- name: out_chan
+  direction: output
+  protocol_profile: ready_valid
+  purpose: egress of unsigned 9-bit sum per transaction
+  data_objects:
+  - sum_out
+  metadata: []
+  framing: one transfer = one sum transaction
+  ordering: same order as accepted inputs
+  backpressure: sink controls via out_ready; DUT holds out_valid and payload stable
+    while stalled
+signals:
+- name: clk
+  role: clock
+  semantic_class: null
+  channel: null
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Rising-edge clock for all state updates.
+  reset_value: '0'
+- name: rst_n
+  role: reset
+  semantic_class: null
+  channel: null
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Synchronous active-low reset; when 0 at rising edge, clears output-valid
+    state, forces out_sum to 0, discards pending work, drives in_ready low for that
+    cycle, and suppresses transfer acceptance on both channels for that edge.
+  reset_value: '0'
+- name: in_valid
+  role: valid
+  semantic_class: null
+  channel: in_chan
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Input producer indicates op_a/op_b are valid.
+  reset_value: '0'
+- name: in_ready
+  role: ready
+  semantic_class: null
+  channel: in_chan
+  direction: output
+  width: '1'
+  signed: false
+  semantic: DUT can accept input pair when 1.
+  reset_value: '0'
+- name: in_op_a
+  role: payload
+  semantic_class: data
+  channel: in_chan
+  direction: input
+  width: '8'
+  signed: false
+  semantic: First unsigned add operand A.
+  reset_value: '0'
+- name: in_op_b
+  role: payload
+  semantic_class: data
+  channel: in_chan
+  direction: input
+  width: '8'
+  signed: false
+  semantic: Second unsigned add operand B.
+  reset_value: '0'
+- name: out_valid
+  role: valid
+  semantic_class: null
+  channel: out_chan
+  direction: output
+  width: '1'
+  signed: false
+  semantic: DUT asserts when out_sum holds an unconsumed sum.
+  reset_value: '0'
+- name: out_ready
+  role: ready
+  semantic_class: null
+  channel: out_chan
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Output consumer ready to accept sum.
+  reset_value: '0'
+- name: out_sum
+  role: payload
+  semantic_class: data
+  channel: out_chan
+  direction: output
+  width: '9'
+  signed: false
+  semantic: Unsigned exact sum of one previously accepted input pair.
+  reset_value: '0'
+global_handshake_rules:
+  transfer_condition: A channel transfer occurs on rising clock edge iff channel_valid
+    && channel_ready && rst_n==1. If rst_n==0 on edge, transfer is suppressed/aborted
+    for both channels.
+  stall_behavior: For any ready/valid channel, producer must hold valid and payload
+    stable while valid=1 and ready=0. On reset edge (rst_n=0), DUT may withdraw out_valid
+    and clear pending output immediately by next cycle per reset rule.

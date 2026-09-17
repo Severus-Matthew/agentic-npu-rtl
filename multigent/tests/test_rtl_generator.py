@@ -138,6 +138,32 @@ def test_initial_generation_writes_exact_manifest(tmp_path: Path) -> None:
     assert "module filter_top" in (tmp_path / "rtl" / "filter_top.sv").read_text()
 
 
+def test_contract_fixed_may_keep_existing_rtl_unchanged() -> None:
+    result = generated_result()
+    result.update({
+        "task_type": "CONTRACT_FIXED",
+        "summary": "Existing RTL already satisfies the clarified contract.",
+        "files": [], "changed_modules": [],
+        "contract_checks": [{"requirement": "clarified completion timing",
+                             "satisfied": True, "evidence": "existing logic matches"}],
+        "regression_required": "FULL",
+    })
+    feedback = {
+        "source": "architect_contract_patch",
+        "previous_contract_version": 1,
+        "current_contract_version": 2,
+        "contract_patch": {"status": "PATCH_READY", "edits": [
+            {"op": "replace", "path": "/architecture_contract/latency_model"}
+        ]},
+    }
+    RTLGeneratorAgent._validate_result(
+        result=result, context=generic_fir_context(), task_type="CONTRACT_FIXED",
+        existing_rtl={"filter_top.sv": "module filter_top; endmodule",
+                      "filter_core.sv": "module filter_core; endmodule"},
+        authorized_feedback=feedback,
+    )
+
+
 def test_initial_generation_rejects_missing_manifest_module() -> None:
     result = generated_result()
     result["files"] = result["files"][:1]

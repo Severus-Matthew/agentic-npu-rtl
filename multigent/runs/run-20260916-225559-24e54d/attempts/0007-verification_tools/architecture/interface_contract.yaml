@@ -1,0 +1,126 @@
+protocol: Two independent ready_valid channels sharing clk and synchronous active-low
+  rst_n.
+clock: clk
+reset: rst_n
+channels:
+- name: input_pair
+  direction: input
+  protocol_profile: ready_valid
+  purpose: Atomically accept both operands.
+  data_objects:
+  - operand_a
+  - operand_b
+  metadata: []
+  framing: Exactly one transfer per transaction carries operand_a on in_a[7:0] and
+    operand_b on in_b[7:0], both unsigned with bit 0 least significant. The aggregate
+    payload is 16 bits. No sections, markers, partial beats, or replay.
+  ordering: Transactions are ordered by input acceptance edges.
+  backpressure: A source may present the next pair while the slot is blocked. It must
+    hold in_valid, in_a, and in_b until acceptance, except that reset permits withdrawal.
+- name: output_sum
+  direction: output
+  protocol_profile: ready_valid
+  purpose: Deliver the exact registered sum.
+  data_objects:
+  - sum
+  metadata: []
+  framing: Exactly one 9-bit out_sum[8:0] transfer per non-aborted input transaction,
+    bit 0 least significant. No markers or partial transfers.
+  ordering: Same order as accepted input pairs.
+  backpressure: out_valid and out_sum remain stable while stalled, except that a sampled
+    reset aborts the pending beat.
+signals:
+- name: clk
+  role: clock
+  semantic_class: null
+  channel: null
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Rising-edge clock for all state and transfer sampling.
+  reset_value: Externally driven.
+- name: rst_n
+  role: reset
+  semantic_class: null
+  channel: null
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Active-low synchronous reset with priority over transfers and state updates;
+    must be sampled low on a rising edge to initialize state.
+  reset_value: Externally driven low during reset.
+- name: in_valid
+  role: valid
+  semantic_class: null
+  channel: input_pair
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Both operands are available as one atomic transaction.
+  reset_value: Unconstrained; ignored while rst_n=0.
+- name: in_ready
+  role: ready
+  semantic_class: null
+  channel: input_pair
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Combinational rst_n AND (NOT out_valid OR out_ready). Returns high after
+    reset release when the initialized slot is empty.
+  reset_value: 0 while rst_n=0.
+- name: in_a
+  role: payload
+  semantic_class: data
+  channel: input_pair
+  direction: input
+  width: '8'
+  signed: false
+  semantic: Unsigned operand_a, accepted together with in_b.
+  reset_value: Unconstrained; ignored during reset.
+- name: in_b
+  role: payload
+  semantic_class: data
+  channel: input_pair
+  direction: input
+  width: '8'
+  signed: false
+  semantic: Unsigned operand_b, accepted together with in_a.
+  reset_value: Unconstrained; ignored during reset.
+- name: out_valid
+  role: valid
+  semantic_class: null
+  channel: output_sum
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Registered occupancy bit. Indicates out_sum is pending. Reset assertion
+    alone does not asynchronously clear this bit; the reset edge does.
+  reset_value: 0 after a rising edge sampling rst_n=0.
+- name: out_ready
+  role: ready
+  semantic_class: null
+  channel: output_sum
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Consumer permission to consume the pending result on a non-reset rising
+    edge.
+  reset_value: Unconstrained; ignored during reset.
+- name: out_sum
+  role: payload
+  semantic_class: data
+  channel: output_sum
+  direction: output
+  width: '9'
+  signed: false
+  semantic: Continuous view of the registered exact sum. Changes only after accepted
+    input or sampled reset; retains its previous value when invalid.
+  reset_value: 0 after a rising edge sampling rst_n=0.
+global_handshake_rules:
+  transfer_condition: At each rising clk edge with rst_n=1, input transfer is in_valid
+    && in_ready and output transfer is out_valid && out_ready. No transfer occurs
+    on any edge sampling rst_n=0, regardless of other signals.
+  stall_behavior: A producer holds valid and every payload field while valid && !ready,
+    until transfer. Reset aborts pending transactions and suspends that obligation.
+    DUT output state changes for reset only on a rising edge. A simultaneous consume-and-replace
+    edge transfers the old output and captures the new input.

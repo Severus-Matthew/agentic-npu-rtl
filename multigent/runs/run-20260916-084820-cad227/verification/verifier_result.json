@@ -1,0 +1,259 @@
+{
+  "status": "VERIFICATION_READY",
+  "summary": "Verifier source completion; deterministic validation and simulation remain authoritative.",
+  "reference_files": [
+    {
+      "path": "reference/adder_model.py",
+      "purpose": "Independent unsigned-adder oracle and analytical sanity checks.",
+      "content": "def add_unsigned(a, b):\n    if not (0 <= a <= 255 and 0 <= b <= 255):\n        raise ValueError(\"operands must be uint8\")\n    return a + b\n\n\ndef sanity_check():\n    known = ((0, 0, 0), (255, 0, 255), (255, 1, 256), (255, 255, 510))\n    for a, b, expected in known:\n        actual = add_unsigned(a, b)\n        if actual != expected:\n            raise AssertionError(f\"oracle sanity failed: {a}+{b}, expected={expected}, actual={actual}\")\n"
+    }
+  ],
+  "test_files": [
+    {
+      "path": "tests/test_u8_registered_adder.py",
+      "purpose": "Protocol-aware directed and randomized cocotb verification.",
+      "categories": [
+        "oracle_sanity",
+        "boundary",
+        "latency",
+        "backpressure",
+        "reset",
+        "ordering",
+        "randomized"
+      ],
+      "regression_groups": [
+        "smoke",
+        "targeted",
+        "full"
+      ],
+      "coverage_obligations": [
+        "channel.input_operands.handshake_states",
+        "channel.input_operands.stall_stability",
+        "channel.output_sum.handshake_states",
+        "channel.output_sum.stall_stability",
+        "signal.rst_n.reset_behavior",
+        "operation.add_unsigned.accepted_sum",
+        "operation.add_unsigned.transferred_sum",
+        "operation.add_unsigned.registered_latency",
+        "operation.add_unsigned.output_buffer_stall"
+      ],
+      "content": "import random\nimport cocotb\nfrom cocotb.clock import Clock\nfrom cocotb.triggers import FallingEdge, RisingEdge, Timer\nfrom multigent.verifier_tool.coverage.runtime import contract_coverage, sample_operation\nfrom reference.adder_model import add_unsigned, sanity_check\n\nCOVERAGE_OBLIGATIONS = {\n    \"channel.input_operands.handshake_states\",\n    \"channel.input_operands.stall_stability\",\n    \"channel.output_sum.handshake_states\",\n    \"channel.output_sum.stall_stability\",\n    \"signal.rst_n.reset_behavior\",\n    \"operation.add_unsigned.accepted_sum\",\n    \"operation.add_unsigned.transferred_sum\",\n    \"operation.add_unsigned.registered_latency\",\n    \"operation.add_unsigned.output_buffer_stall\",\n}\n\n\n\ndef observe_accepted_sum(values, state):\n    if not int(values[\"rst_n\"]):\n        return None\n    if int(values[\"in_valid\"]) and int(values[\"in_ready\"]):\n        p = int(values[\"in_payload\"])\n        return (p & 255) + ((p >> 8) & 255)\n    return None\n\n\ndef observe_transferred_sum(values, state):\n    if int(values[\"rst_n\"]) and int(values[\"out_valid\"]) and int(values[\"out_ready\"]):\n        return int(values[\"out_payload\"])\n    return None\n\n\ndef observe_registered_latency(values, state):\n    if not int(values[\"rst_n\"]):\n        state.clear()\n        return None\n    result = None\n    pending = bool(state.get(\"pending\", False))\n    age = int(state.get(\"age\", 0))\n    if pending:\n        age += 1\n        if int(values[\"out_valid\"]) and int(values[\"out_ready\"]):\n            result = age\n            pending = False\n    if int(values[\"in_valid\"]) and int(values[\"in_ready\"]):\n        pending = True\n        age = 0\n    state[\"pending\"] = pending\n    state[\"age\"] = age\n    return result\n\n\nOPERATION_SAMPLING_BINDINGS = [{'operation': 'add_unsigned', 'point': 'operation.add_unsigned.accepted_sum', 'template': 'custom', 'observer': 'observe_accepted_sum', 'event': 'clock', 'fields': {'rst_n': {'signal': 'rst_n'}, 'in_valid': {'signal': 'in_valid'}, 'in_ready': {'signal': 'in_ready'}, 'in_payload': {'signal': 'in_payload'}}}, {'operation': 'add_unsigned', 'point': 'operation.add_unsigned.transferred_sum', 'template': 'custom', 'observer': 'observe_transferred_sum', 'event': 'clock', 'fields': {'rst_n': {'signal': 'rst_n'}, 'out_valid': {'signal': 'out_valid'}, 'out_ready': {'signal': 'out_ready'}, 'out_payload': {'signal': 'out_payload'}}}, {'operation': 'add_unsigned', 'point': 'operation.add_unsigned.registered_latency', 'template': 'custom', 'observer': 'observe_registered_latency', 'event': 'clock', 'fields': {'rst_n': {'signal': 'rst_n'}, 'in_valid': {'signal': 'in_valid'}, 'in_ready': {'signal': 'in_ready'}, 'out_valid': {'signal': 'out_valid'}, 'out_ready': {'signal': 'out_ready'}}}, {'operation': 'add_unsigned', 'point': 'operation.add_unsigned.output_buffer_stall', 'template': 'channel_stall', 'event': 'transfer', 'channel': 'output_sum', 'fields': {}}]\n\n# === LLM-GENERATED OPERATION ASSERTIONS ===\n\n\ndef check(condition, message):\n    # LLM-GENERATED OPERATION ASSERTION [external_contract_checker]\n    assert condition, message\n\n\nclass Bench:\n    def __init__(self, dut):\n        self.dut = dut\n        self.queue = []\n        self.cycle_index = 0\n        self.previous_output_stall = None\n\n    async def cycle(self, **drives):\n        await FallingEdge(self.dut.clk)\n        for name, value in drives.items():\n            getattr(self.dut, name).value = value\n        await Timer(1, unit=\"ns\")\n        pre = {name: int(getattr(self.dut, name).value) for name in\n               (\"rst_n\", \"in_valid\", \"in_ready\", \"in_payload\", \"out_valid\", \"out_ready\", \"out_payload\")}\n        expected_ready = int(bool(pre[\"rst_n\"] and (not pre[\"out_valid\"] or pre[\"out_ready\"])))\n        check(pre[\"in_ready\"] == expected_ready,\n              f\"cycle={self.cycle_index} in_ready expected={expected_ready} observed={pre['in_ready']} signals={pre}\")\n        if self.previous_output_stall is not None and pre[\"rst_n\"]:\n            held_valid, held_payload = self.previous_output_stall\n            check(pre[\"out_valid\"] == held_valid and pre[\"out_payload\"] == held_payload,\n                  f\"cycle={self.cycle_index} stalled output changed; held_valid={held_valid} held_payload={held_payload} observed={pre}\")\n        self.previous_output_stall = (pre[\"out_valid\"], pre[\"out_payload\"]) if pre[\"rst_n\"] and pre[\"out_valid\"] and not pre[\"out_ready\"] else None\n        await RisingEdge(self.dut.clk)\n        await Timer(1, unit=\"ns\")\n        event = {\"input\": None, \"output\": None, \"reset\": not bool(pre[\"rst_n\"]), \"cycle\": self.cycle_index}\n        if not pre[\"rst_n\"]:\n            self.queue.clear()\n            self.previous_output_stall = None\n            check(int(self.dut.out_valid.value) == 0 and int(self.dut.out_payload.value) == 0,\n                  f\"reset edge failed to clear out_valid/out_payload: valid={int(self.dut.out_valid.value)} payload={int(self.dut.out_payload.value)}\")\n        else:\n            if pre[\"out_valid\"] and pre[\"out_ready\"]:\n                check(bool(self.queue), f\"cycle={self.cycle_index} unsolicited output transfer payload={pre['out_payload']}\")\n                expected = self.queue.pop(0)\n                check(pre[\"out_payload\"] == expected[\"sum\"],\n                      f\"cycle={self.cycle_index} output mismatch expected={expected} observed_payload={pre['out_payload']}\")\n                event[\"output\"] = {\"sum\": pre[\"out_payload\"], \"accepted_cycle\": expected[\"cycle\"]}\n            if pre[\"in_valid\"] and pre[\"in_ready\"]:\n                a = pre[\"in_payload\"] & 255\n                b = (pre[\"in_payload\"] >> 8) & 255\n                self.queue.append({\"sum\": add_unsigned(a, b), \"cycle\": self.cycle_index})\n                event[\"input\"] = {\"operand_a\": a, \"operand_b\": b}\n        self.cycle_index += 1\n        return event\n\n    async def single(self, a, b, source_delay=0, ready_pattern=None, require_latency_one=False):\n        accepted = []\n        outputs = []\n        for _ in range(source_delay):\n            event = await self.cycle(in_valid=0)\n            check(event[\"input\"] is None, f\"source-idle cycle unexpectedly accepted input: {event}\")\n        payload = (b << 8) | a\n        while not accepted:\n            event = await self.cycle(in_valid=1, in_payload=payload)\n            if event[\"input\"] is not None:\n                accepted.append(event[\"input\"])\n        index = 0\n        while not outputs:\n            ready = 1 if ready_pattern is None else ready_pattern[min(index, len(ready_pattern) - 1)]\n            event = await self.cycle(in_valid=0, out_ready=ready)\n            if event[\"output\"] is not None:\n                outputs.append(event[\"output\"])\n            index += 1\n        check(accepted == [{\"operand_a\": a, \"operand_b\": b}], f\"input accounting expected={[a,b]} observed={accepted}\")\n        check([x[\"sum\"] for x in outputs] == [add_unsigned(a, b)], f\"output accounting expected={add_unsigned(a,b)} observed={outputs}\")\n        if require_latency_one:\n            check(outputs[0][\"accepted_cycle\"] + 1 == event[\"cycle\"], f\"one-cycle latency failed input_cycle={outputs[0]['accepted_cycle']} output_cycle={event['cycle']}\")\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None, f\"extra output after completed job: {guard}\")\n        return {\"accepted_inputs\": accepted, \"outputs\": [x[\"sum\"] for x in outputs], \"aborted\": False, \"reset_edges\": 0}\n\n    async def stall_pair(self, first, second, stall_cycles):\n        a1, b1 = first\n        a2, b2 = second\n        accepted = []\n        outputs = []\n        event = await self.cycle(in_valid=1, in_payload=(b1 << 8) | a1, out_ready=1)\n        if event[\"input\"] is not None:\n            accepted.append(event[\"input\"])\n        for _ in range(stall_cycles):\n            event = await self.cycle(in_valid=1, in_payload=(b2 << 8) | a2, out_ready=0)\n            check(event[\"input\"] is None, f\"input transferred while output stalled: event={event}\")\n        event = await self.cycle(in_valid=1, in_payload=(b2 << 8) | a2, out_ready=1)\n        if event[\"output\"] is not None:\n            outputs.append(event[\"output\"])\n        if event[\"input\"] is not None:\n            accepted.append(event[\"input\"])\n        check(event[\"output\"] is not None and event[\"input\"] is not None,\n              f\"same-edge consume-and-replace missing: event={event} stall_cycles={stall_cycles}\")\n        event = await self.cycle(in_valid=0, out_ready=1)\n        if event[\"output\"] is not None:\n            outputs.append(event[\"output\"])\n        expected_inputs = [{\"operand_a\": a1, \"operand_b\": b1}, {\"operand_a\": a2, \"operand_b\": b2}]\n        expected_outputs = [add_unsigned(a1, b1), add_unsigned(a2, b2)]\n        check(accepted == expected_inputs, f\"pair input accounting expected={expected_inputs} observed={accepted}\")\n        check([x[\"sum\"] for x in outputs] == expected_outputs, f\"pair output order expected={expected_outputs} observed={outputs}\")\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None, f\"extra pair output: {guard}\")\n        return {\"accepted_inputs\": accepted, \"outputs\": [x[\"sum\"] for x in outputs], \"aborted\": False, \"reset_edges\": 0}\n\n    async def reset_abort(self, a, b, stalled):\n        event = await self.cycle(in_valid=1, in_payload=(b << 8) | a, out_ready=0 if stalled else 1)\n        check(event[\"input\"] == {\"operand_a\": a, \"operand_b\": b}, f\"abort job was not accepted: {event}\")\n        if stalled:\n            event = await self.cycle(in_valid=0, out_ready=0)\n            check(event[\"output\"] is None, f\"stalled abort job transferred unexpectedly: {event}\")\n        event = await self.cycle(rst_n=0, in_valid=1, out_ready=1)\n        check(event[\"input\"] is None and event[\"output\"] is None, f\"transfer occurred on reset edge: {event}\")\n        await self.cycle(rst_n=1, in_valid=0, out_ready=1)\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None and not self.queue, f\"ghost result after reset: event={guard} queue={self.queue}\")\n        return {\"accepted_inputs\": [{\"operand_a\": a, \"operand_b\": b}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n\n\n@cocotb.test(timeout_time=500, timeout_unit=\"us\")\n@contract_coverage()\nasync def verify_u8_registered_adder(dut):\n    sanity_check()\n    check(len(dut.in_payload) == 16 and len(dut.out_payload) == 9, f\"port widths in={len(dut.in_payload)} out={len(dut.out_payload)}\")\n    dut.rst_n.value = 1\n    dut.in_valid.value = 0\n    dut.in_payload.value = 0\n    dut.out_ready.value = 0\n    clock_task = cocotb.start_soon(Clock(dut.clk, 10, unit=\"ns\").start())\n    bench = Bench(dut)\n\n    await bench.cycle(rst_n=0, in_valid=0, out_ready=0)\n    await bench.cycle(rst_n=1, in_valid=0, out_ready=0)\n\n    observed = await bench.single(0, 0, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 0, \"operand_b\": 0}], \"outputs\": [0], \"aborted\": False, \"reset_edges\": 0}\n    # STIMULUS [boundary_zero] targets=('channel.input_operands.handshake_states', 'channel.output_sum.handshake_states', 'operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum', 'operation.add_unsigned.registered_latency')\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 0, \"operand_b\": 0}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_zero\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 0, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 0}], \"outputs\": [255], \"aborted\": False, \"reset_edges\": 0}\n    # STIMULUS [boundary_255_0] targets=('operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum')\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 0}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_255_0\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 1, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 1}], \"outputs\": [256], \"aborted\": False, \"reset_edges\": 0}\n    # STIMULUS [boundary_255_1] targets=('operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum')\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 1}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_255_1\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 255, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 255}], \"outputs\": [510], \"aborted\": False, \"reset_edges\": 0}\n    # STIMULUS [boundary_max] targets=('operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum')\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 255}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_max\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    for label, first, second, stalls in ((\"stall_one\", (1, 2), (3, 4), 1), (\"stall_short\", (5, 6), (7, 8), 3), (\"stall_long\", (9, 10), (11, 12), 5)):\n        observed = await bench.stall_pair(first, second, stalls)\n        submitted = {\"transactions\": [{\"operand_a\": first[0], \"operand_b\": first[1]}, {\"operand_a\": second[0], \"operand_b\": second[1]}], \"stall_cycles\": stalls}\n        expected = {\"accepted_inputs\": submitted[\"transactions\"], \"outputs\": [add_unsigned(*first), add_unsigned(*second)], \"aborted\": False, \"reset_edges\": 0}\n        if label == \"stall_one\":\n            # STIMULUS [stall_one] targets=('channel.input_operands.stall_stability', 'channel.output_sum.stall_stability', 'operation.add_unsigned.output_buffer_stall')\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_one\")\n        elif label == \"stall_short\":\n            # STIMULUS [stall_short] targets=('channel.input_operands.stall_stability', 'channel.output_sum.stall_stability', 'operation.add_unsigned.output_buffer_stall')\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_short\")\n        else:\n            # STIMULUS [stall_long] targets=('channel.input_operands.stall_stability', 'channel.output_sum.stall_stability', 'operation.add_unsigned.output_buffer_stall')\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_long\")\n        sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.reset_abort(21, 22, False)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 21, \"operand_b\": 22}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n    # STIMULUS [reset_pending] targets=('signal.rst_n.reset_behavior',)\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 21, \"operand_b\": 22, \"reset_before_output\": True}, expected, observed, operations=(\"add_unsigned\",), label=\"reset_pending\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.reset_abort(23, 24, True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 23, \"operand_b\": 24}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n    # STIMULUS [reset_stalled] targets=('signal.rst_n.reset_behavior', 'channel.input_operands.handshake_states', 'channel.output_sum.handshake_states')\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 23, \"operand_b\": 24, \"reset_while_stalled\": True}, expected, observed, operations=(\"add_unsigned\",), label=\"reset_stalled\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    rng = random.Random(180417)\n    for transaction in range(100):\n        a = rng.randrange(256)\n        b = rng.randrange(256)\n        source_delay = rng.randrange(5)\n        stall_count = rng.randrange(7)\n        ready_pattern = [0] * stall_count + [1]\n        observed = await bench.single(a, b, source_delay=source_delay, ready_pattern=ready_pattern)\n        expected = {\"accepted_inputs\": [{\"operand_a\": a, \"operand_b\": b}], \"outputs\": [add_unsigned(a, b)], \"aborted\": False, \"reset_edges\": 0}\n        submitted = {\"operand_a\": a, \"operand_b\": b, \"source_idle_cycles\": source_delay, \"sink_stall_cycles\": stall_count, \"transaction\": transaction}\n        # STIMULUS [randomized_job] targets=('channel.input_operands.handshake_states', 'channel.output_sum.handshake_states', 'operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum', 'operation.add_unsigned.registered_latency')\n        stimulus_id = _contract_record_checked_stimulus(\"randomized\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"randomized_job\")\n        sample_operation(\"add_unsigned\", {}, \"randomized\", stimulus_id)\n\n    for _ in range(3):\n        event = await bench.cycle(in_valid=0, out_ready=1)\n        check(event[\"output\"] is None, f\"late unsolicited output at end of regression: {event}\")\n    clock_task.cancel()\n\n# === BEGIN PIPELINE-GENERATED VERIFIER ANNOTATIONS ===\n# This literal and the following comments are emitted by my_v.\n# The Verifier chooses semantic label-to-target mappings; code owns syntax.\n# === STIMULUS AND COVERAGE INTENT ===\nSTIMULUS_COVERAGE_INTENTS = [{'label': 'boundary_zero', 'targets': ['channel.input_operands.handshake_states', 'channel.output_sum.handshake_states', 'operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum', 'operation.add_unsigned.registered_latency']}, {'label': 'boundary_255_0', 'targets': ['operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum']}, {'label': 'boundary_255_1', 'targets': ['operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum']}, {'label': 'boundary_max', 'targets': ['operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum']}, {'label': 'stall_one', 'targets': ['channel.input_operands.stall_stability', 'channel.output_sum.stall_stability', 'operation.add_unsigned.output_buffer_stall']}, {'label': 'stall_short', 'targets': ['channel.input_operands.stall_stability', 'channel.output_sum.stall_stability', 'operation.add_unsigned.output_buffer_stall']}, {'label': 'stall_long', 'targets': ['channel.input_operands.stall_stability', 'channel.output_sum.stall_stability', 'operation.add_unsigned.output_buffer_stall']}, {'label': 'reset_pending', 'targets': ['signal.rst_n.reset_behavior']}, {'label': 'reset_stalled', 'targets': ['signal.rst_n.reset_behavior', 'channel.input_operands.handshake_states', 'channel.output_sum.handshake_states']}, {'label': 'randomized_job', 'targets': ['channel.input_operands.handshake_states', 'channel.output_sum.handshake_states', 'operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum', 'operation.add_unsigned.registered_latency']}]\n# === END PIPELINE-GENERATED VERIFIER ANNOTATIONS ===\n\n# === BEGIN CONTRACT-GENERATED PROTOCOL MONITOR ===\n# This block is emitted by my_v from the frozen interface contract.\n# It is not authored or repaired by the LLM.\nfrom multigent.verifier_tool.coverage.runtime import (\n    capture_contract_snapshot,\n    observe_contract_reset_snapshot,\n    sample_contract_snapshot,\n    normalize_verification_value as _contract_normalize_verification_value,\n    record_stimulus as _contract_runtime_record_stimulus,\n)\nfrom cocotb.triggers import Edge, ReadOnly\n\nCONTRACT_SIGNAL_NAMES = ('clk', 'rst_n', 'in_valid', 'in_ready', 'in_payload', 'out_valid', 'out_ready', 'out_payload')\nCONTRACT_PROTOCOL_ASSERTION_FEATURES = ('channel.input_operands.stall_stability', 'channel.output_sum.stall_stability')\nCONTRACT_OPERATION_ASSERTION_FEATURES = {}\n_CONTRACT_PROTOCOL_STATE = {}\n\ndef _contract_record_checked_stimulus(stimulus_kind, stimulus, expected, observed, *, operations, label):\n    \"\"\"Apply taxonomy-owned assertions for catalog operation features.\"\"\"\n    expected_value = _contract_normalize_verification_value(expected, 'expected')\n    observed_value = _contract_normalize_verification_value(observed, 'observed')\n    return _contract_runtime_record_stimulus(\n        stimulus_kind, stimulus, expected_value, label=label\n    )\n\ndef _check_contract_protocol_assertions(snapshot):\n    \"\"\"Run protocol assertions and return completed temporal observations.\"\"\"\n    completed_stalls = {}\n    if int(bool(snapshot['rst_n'])) == 0:\n        _CONTRACT_PROTOCOL_STATE.clear()\n        return completed_stalls\n\n    # PROTOCOL ASSERTION [channel.input_operands.stall_stability]\n    _p0_valid = int(bool(snapshot['in_valid']))\n    _p0_ready = int(bool(snapshot['in_ready']))\n    _p0_content = tuple(snapshot[name] for name in ('in_payload',))\n    _p0_previous = _CONTRACT_PROTOCOL_STATE.get('channel.input_operands.stall_stability')\n    if _p0_previous is not None:\n        assert _p0_valid == 1, (\n            \"protocol valid was withdrawn before stalled transfer completed; feature=channel.input_operands.stall_stability; related_signals=('in_valid', 'in_ready', 'in_payload'); observed=\"\n            + repr({name: snapshot[name] for name in ('in_valid', 'in_ready', 'in_payload')})\n        )\n        assert _p0_content == _p0_previous['content'], (\n            \"producer-owned content changed during stall or release; feature=channel.input_operands.stall_stability; related_signals=('in_valid', 'in_ready', 'in_payload'); previous=\"\n            + repr(_p0_previous['content']) + '; observed='\n            + repr(_p0_content)\n        )\n    if _p0_valid and not _p0_ready:\n        if _p0_previous is None:\n            _CONTRACT_PROTOCOL_STATE['channel.input_operands.stall_stability'] = {\n                'content': _p0_content, 'length': 1\n            }\n        else:\n            _p0_previous['length'] += 1\n    else:\n        if _p0_previous is not None:\n            completed_stalls['channel.input_operands.stall_stability'] = _p0_previous['length']\n        _CONTRACT_PROTOCOL_STATE.pop('channel.input_operands.stall_stability', None)\n\n    # PROTOCOL ASSERTION [channel.output_sum.stall_stability]\n    _p1_valid = int(bool(snapshot['out_valid']))\n    _p1_ready = int(bool(snapshot['out_ready']))\n    _p1_content = tuple(snapshot[name] for name in ('out_payload',))\n    _p1_previous = _CONTRACT_PROTOCOL_STATE.get('channel.output_sum.stall_stability')\n    if _p1_previous is not None:\n        assert _p1_valid == 1, (\n            \"protocol valid was withdrawn before stalled transfer completed; feature=channel.output_sum.stall_stability; related_signals=('out_valid', 'out_ready', 'out_payload'); observed=\"\n            + repr({name: snapshot[name] for name in ('out_valid', 'out_ready', 'out_payload')})\n        )\n        assert _p1_content == _p1_previous['content'], (\n            \"producer-owned content changed during stall or release; feature=channel.output_sum.stall_stability; related_signals=('out_valid', 'out_ready', 'out_payload'); previous=\"\n            + repr(_p1_previous['content']) + '; observed='\n            + repr(_p1_content)\n        )\n    if _p1_valid and not _p1_ready:\n        if _p1_previous is None:\n            _CONTRACT_PROTOCOL_STATE['channel.output_sum.stall_stability'] = {\n                'content': _p1_content, 'length': 1\n            }\n        else:\n            _p1_previous['length'] += 1\n    else:\n        if _p1_previous is not None:\n            completed_stalls['channel.output_sum.stall_stability'] = _p1_previous['length']\n        _CONTRACT_PROTOCOL_STATE.pop('channel.output_sum.stall_stability', None)\n    return completed_stalls\n\nasync def _contract_generated_monitor(dut):\n    \"\"\"Observe the interface once and share it with assertions and coverage.\"\"\"\n    clock = getattr(dut, 'clk')\n    while True:\n        await Edge(clock)\n        await ReadOnly()\n        if int(clock.value) != 0:\n            reset_snapshot = capture_contract_snapshot(dut, ('rst_n',))\n            if reset_snapshot:\n                observe_contract_reset_snapshot(\n                    reset_snapshot, _check_contract_protocol_assertions\n                )\n            continue\n        snapshot = capture_contract_snapshot(dut, CONTRACT_SIGNAL_NAMES)\n        sample_contract_snapshot(snapshot, _check_contract_protocol_assertions)\n\n# === END CONTRACT-GENERATED PROTOCOL MONITOR ===\n"
+    }
+  ],
+  "operation_coverage": [
+    {
+      "operation_name": "add_unsigned",
+      "family": "unsigned_binary_add",
+      "coverpoints": [
+        {
+          "id": "operation.add_unsigned.accepted_sum",
+          "concept": "two_operand_unsigned_addition",
+          "field": "accepted_operand_sum",
+          "source": "baseline",
+          "description": "Observe the mathematical sum class of each accepted packed operand pair.",
+          "bins": [
+            {
+              "name": "zero",
+              "intent": "Both accepted operands are zero.",
+              "predicate": {
+                "op": "eq",
+                "args": [
+                  0
+                ]
+              }
+            },
+            {
+              "name": "low_or_no_carry",
+              "intent": "Accepted sum is between 1 and 255.",
+              "predicate": {
+                "op": "between",
+                "args": [
+                  1,
+                  255
+                ]
+              }
+            },
+            {
+              "name": "widened_result",
+              "intent": "Accepted sum requires the ninth result bit.",
+              "predicate": {
+                "op": "between",
+                "args": [
+                  256,
+                  509
+                ]
+              }
+            },
+            {
+              "name": "maximum",
+              "intent": "Both operands are at their maximum.",
+              "predicate": {
+                "op": "eq",
+                "args": [
+                  510
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "operation.add_unsigned.transferred_sum",
+          "concept": "widened_exact_result",
+          "field": "transferred_sum",
+          "source": "baseline",
+          "description": "Observe exact transferred 9-bit result values.",
+          "bins": [
+            {
+              "name": "zero",
+              "intent": "Transferred result is zero.",
+              "predicate": {
+                "op": "eq",
+                "args": [
+                  0
+                ]
+              }
+            },
+            {
+              "name": "uint8_range",
+              "intent": "Transferred result fits in eight bits.",
+              "predicate": {
+                "op": "between",
+                "args": [
+                  1,
+                  255
+                ]
+              }
+            },
+            {
+              "name": "ninth_bit_set",
+              "intent": "Transferred result exercises widened representation.",
+              "predicate": {
+                "op": "between",
+                "args": [
+                  256,
+                  509
+                ]
+              }
+            },
+            {
+              "name": "maximum",
+              "intent": "Transferred result is 510.",
+              "predicate": {
+                "op": "eq",
+                "args": [
+                  510
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "operation.add_unsigned.registered_latency",
+          "concept": "registered_result",
+          "field": "acceptance_to_transfer_cycles",
+          "source": "architect_extension",
+          "description": "Observe input-acceptance to associated output-transfer distance.",
+          "bins": [
+            {
+              "name": "one_cycle",
+              "intent": "Unstalled result transfers exactly one cycle after acceptance.",
+              "predicate": {
+                "op": "eq",
+                "args": [
+                  1
+                ]
+              }
+            },
+            {
+              "name": "backpressured_delay",
+              "intent": "Output backpressure extends transfer latency.",
+              "predicate": {
+                "op": "gte",
+                "args": [
+                  2
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "operation.add_unsigned.output_buffer_stall",
+          "concept": "single_entry_backpressure_buffer",
+          "field": "released_output_stall_cycles",
+          "source": "architect_extension",
+          "description": "Observe released stalls in the single-entry output register.",
+          "bins": [
+            {
+              "name": "one_cycle",
+              "intent": "Release after exactly one stalled cycle.",
+              "predicate": {
+                "op": "eq",
+                "args": [
+                  1
+                ]
+              }
+            },
+            {
+              "name": "short",
+              "intent": "Release after two through four stalled cycles.",
+              "predicate": {
+                "op": "between",
+                "args": [
+                  2,
+                  4
+                ]
+              }
+            },
+            {
+              "name": "long",
+              "intent": "Release after at least five stalled cycles.",
+              "predicate": {
+                "op": "gte",
+                "args": [
+                  5
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "verification_plan": {
+    "top_module": "u8_registered_adder",
+    "test_modules": [
+      "test_u8_registered_adder"
+    ],
+    "test_categories": [
+      "oracle_sanity",
+      "boundary",
+      "latency",
+      "backpressure",
+      "reset",
+      "ordering",
+      "randomized"
+    ],
+    "randomized_test_count": 100,
+    "seed": 180417,
+    "timeout_seconds": 120,
+    "regression_groups": {
+      "smoke": [
+        "test_u8_registered_adder"
+      ],
+      "targeted": [
+        "test_u8_registered_adder"
+      ],
+      "full": [
+        "test_u8_registered_adder"
+      ]
+    },
+    "pass_criteria": "All exact arithmetic, accounting, ordering, reset, latency, stability, coverage, and watchdog checks pass with no unsolicited transfer.",
+    "protocol_assumptions": [
+      "Transfers are sampled from stable pre-rising-edge ready/valid state.",
+      "Reset has synchronous priority and aborts pending work.",
+      "No exact ready schedule is assumed beyond the frozen combinational readiness rule."
+    ]
+  },
+  "architecture_conflict": null,
+  "known_verification_gaps": []
+}

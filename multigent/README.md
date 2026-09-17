@@ -1,5 +1,8 @@
 # Generalized LangGraph hardware generation
 
+See [the integration notes](INTEGRATION.md) for the current branch, exact changes,
+398-test validation, successful live smoke run, and deferred Vivado work.
+
 ## Live browser interface and model selection
 
 Launch on Delta (no Tk/X11/display server or additional UI dependencies needed):
@@ -25,7 +28,7 @@ viewable and a lost process monitor is explicitly identified.
 Choose GPT-5.3 Codex, GPT-5.6 Sol, or GPT-6 Astra at the top, enter any hardware
 request, and click **Start pipeline**. Each run gets a unique directory under
 `multigent/runs/`. The model is fixed for that run and recorded in state. Model
-switching is available before the next run; all five roles use the chosen model.
+switching is available before the next run; all agent roles use the chosen model.
 The selector and request are disabled while the server has an active run.
 
 The left panel groups generated files by role and opens them as read-only text.
@@ -37,7 +40,8 @@ are shown, and missing Vivado or failed checks never become fabricated success.
 Older runs without events use recorded history and may have no recorded model ID.
 On narrow screens the panels stack vertically; use a desktop-width browser for the
 side-by-side view. This UI launches new runs; saved-state resume remains a CLI action.
-Vivado target configuration also remains in the CLI for now.
+The UI defaults to stopping after functional verification while Vivado is deferred.
+Vivado target configuration remains in the CLI for now.
 
 CLI model selection:
 
@@ -69,27 +73,52 @@ forward to it. Runtime logic has no GEMM-specific dimensions, names or arithmeti
 
 ## Flow and ownership
 
-Natural-language request → Architect → validated frozen contracts → RTL Generator
-→ independent Verifier → deterministic Verilator lint and full cocotb regression.
-Failures go to Debugger, then constrained RTL repair, independent verification
-infrastructure review, architecture revision, or an explicit terminal failure.
-A functional PASS proceeds to the deterministic external Vivado adapter, then PPA
-Optimizer and, when justified, RTL optimization → full regression → Vivado again.
-LangGraph owns every transition and retry budget. Agents only return structured
-artifacts; they do not invoke each other.
+Natural-language request → Architect ↔ **Contract Reviewer** → **parallel RTL Generator
+and Independent Testbench Generator** → deterministic testbench source checks → Verilator
+lint and full cocotb regression, including the retained coverage, protocol and handoff
+checks. The Contract Reviewer is a separate model call. Testbench checks are code-only validation. Review
+approval never substitutes for tool execution.
 
-Architect owns architecture; RTL Generator owns RTL; Verifier owns reference and
-tests; Debugger owns diagnosis and repair plans; PPA Optimizer owns optimization
-plans. Generation calls receive role skills from
-`Skills/npu_multiagent_skills/skills/`. Prompt/skill hashes and API usage are logged.
-Generated artifacts pass schema and semantic validation before writing.
+The `verifier_v2` role pools, operation families, protocol profiles, coverage monitors,
+observed sampling and local revision-patch machinery are retained. Contract Reviewer
+checks consistency and executable meaning; Architect owns every contract edit. Local
+patch safeguards remain: a structural redesign outside their scope ends in an explicit
+SPEC_CONFLICT rather than silently rewriting the design.
 
-Verifier generation never receives RTL, RTL Generator responses, Debugger prose,
-or compiler/simulator source excerpts. On a confirmed TESTBENCH_ERROR, the graph
-sends a fixed infrastructure-review request plus the Verifier's own previous files
-and frozen contracts. Original artifacts and failures remain in attempt snapshots.
-RTL repair and optimization reuse the frozen Verifier. Architecture revision
-invalidates downstream artifacts and requires independent regeneration.
+RTL and TB generation are separate LangGraph fan-out nodes, with disjoint input
+allowlists, owned output directories, branch-local state and attempt snapshots. A join
+collects both results and writes a durable checkpoint before review/simulation. Agents
+are API calls without filesystem tools; the runtime writes their validated artifacts.
+RTL-only repair and PPA optimization reuse the reviewed tests. A contract revision
+invalidates approval and runs both generators against the new reviewed version.
+
+Runtime failures, including missing observed coverage, go through Debugger. It selects
+RTL repair or independent TB repair; the TB receives its own artifacts and sanitized
+contract/tool evidence, never generated RTL or arbitrary Debugger prose. Testbench
+schema/semantic and review failures still use the contributor's bounded local correction
+path before simulation. Exhausting preflight corrections with RTL available also
+escalates to architecture diagnosis; rejected drafts and static errors are explicitly
+distinguished from simulation evidence. Previous attempts and failure reports remain available.
+
+By default, seven unsuccessful dispatched repairs exhaust one implementation cycle.
+The initial failed simulation precedes those seven repairs. LangGraph then asks RTL and
+TB agents to independently critique **only the contracts**, and asks Debugger to examine
+those critiques with full failure evidence. Debugger can request an Architect patch or
+confirm the contract and re-localize the implementation defect. Up to three such
+architecture escalation rounds follow the initial cycle. Global repair IDs stay
+monotonic; only the per-cycle budget resets. Contract-review correction attempts have
+a separate bounded budget (three per review episode, reset on approval), as do preflight TB corrections (seven).
+
+A functional PASS proceeds to the existing deterministic Vivado adapter and constrained
+PPA Optimizer → RTL optimization → full regression → Vivado. Vivado installation and
+FPGA target validation are deferred. `--verification-only` stops successfully at a
+real functional PASS. No missing synthesis result is represented as measured PPA.
+
+Role skills are under `Skills/npu_multiagent_skills/skills/`; the new skill is
+`contract-reviewer/SKILL.md`. The UI shows the two generators side by side, contract review, deterministic testbench checks, separate lint/simulation/protocol/coverage
+stages and escalated architecture diagnosis. Contract review reports are browsable
+under `contract_reviews/`. CLI budgets are recorded in run state and cannot be increased
+by resuming a run.
 
 ## Run
 
@@ -101,8 +130,9 @@ Choose a separate workspace **before Python starts**:
 export NPU_WORKSPACE_ROOT="$PWD/multigent/runs/my-run"
 python -m multigent.orchestration.graph \
   --request "Design an 8 x 8 x 32 GEMM accelerator with signed int8 inputs, int32 accumulation, bias and ReLU" \
-  --run-id my-run --max-repair-iterations 5 --max-verifier-revisions 2 \
-  --max-architecture-revisions 2 --max-ppa-iterations 3
+  --run-id my-run --max-repair-iterations 7 --max-verifier-revisions 7 \
+  --max-architecture-revisions 12 --max-architecture-escalations 3 \
+  --max-contract-review-revisions 3 --verification-only
 ```
 
 `NPU_WORKSPACE_ROOT` defaults to `multigent/workspace` for compatibility. Use an
@@ -247,7 +277,8 @@ The same original full regression is required after any resulting RTL repair.
 
 Architecture outputs now require complete internal module port lists, and the
 provider-neutral acceptance field is `fpga_handoff`. Historical contracts remain
-loadable; missing architectural decisions may be escalated to Architect. RTL
+loadable; only Verifier or RTL Generator may ask Architect for a missing design
+decision before an executable candidate is accepted. RTL
 semantic validation rejects placeholders, empty modules, hidden extra modules and
 module-to-file remapping during constrained changes. One bounded self-correction
 attempt occurs before an invalid RTL response becomes a terminal report.
@@ -291,3 +322,22 @@ semantic retries. Empty implementations, invalid syntax/schema, ownership violat
 forbidden capabilities, and regression-plan mismatches remain hard errors. Actual
 simulation failures and missing tool results still cannot become PASS. The static
 review neither proves coverage nor proves that coverage is missing.
+
+### Testbench integrity and visible results
+
+There is no separate Testbench Reviewer model call in the default graph. The historical
+`verifier_review` checkpoint/node keys remain for compatibility; their default action
+revalidates the saved testbench against frozen contracts and binds approval to hashes.
+The legacy reviewer implementation remains available only for explicit injection.
+Both generators receive validator errors with their own source for bounded corrections.
+Python repair preserves filenames and function signatures; RTL repair preserves module/file
+mappings and function/task names. Empty executable bodies and obvious always-true Python
+assertions are rejected. Empty `__init__.py` package files are allowed. New helpers are allowed.
+These static checks cannot establish that an arbitrary reference model is correct.
+
+The UI separates Verilator lint, cocotb regression, protocol evidence and coverage evidence.
+The latter two are evaluated from the same simulation, not separate simulator runs.
+`verification/testbench-checks.json` lists generated TB/reference files, discovered tests,
+assertion counts and source-validation status. Assertion counts are inventory, not quality
+scores. Per-attempt simulator/coverage reports remain authoritative for functional results.
+A cocotb test pass does not override missing required coverage. Missing evidence is never PASS.

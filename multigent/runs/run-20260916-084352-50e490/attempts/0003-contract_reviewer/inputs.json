@@ -1,0 +1,13 @@
+{
+  "architecture": {
+    "acceptance_criteria.yaml": "d424bfcdccace0f0d1761d476dfae2c7665064af5a45e39d603cec1447f63815",
+    "architect_result.json": "b180400d06a874e0ac6d4a0fe0b646edf26f31ddc55097af625e54a8cdd24516",
+    "architecture_contract.yaml": "f2d1b8764b8e4fe3c971c3ce76f808415b638456dc30fe8c9b696ca51212e8d5",
+    "interface_contract.yaml": "27ac3a41786f640ce3104e3e3fa2921f38135416b4a96189f8ac7f8bc11dd8ca",
+    "module_manifest.json": "b578a990bd647824407df43ee3c0e6431b024b0afae11a1b6270ca6885e36f21",
+    "revision_patch-run-20260916-084352-50e490-arch-v2-r1.json": "60783b7ab1304f2d04c8816831ccf696c4036a6eaa87034d4f5bad1b637be31b"
+  },
+  "rtl": {},
+  "tests": {},
+  "reference": {}
+}

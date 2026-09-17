@@ -1,0 +1,22 @@
+{
+  "stage": "verilator_lint",
+  "status": "PASS",
+  "failure_class": null,
+  "return_code": 0,
+  "command": [
+    "/u/mjha1/.local/verilator-env/bin/verilator",
+    "--lint-only",
+    "--sv",
+    "-Wno-fatal",
+    "--top-module",
+    "u8_registered_adder",
+    "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/rtl/u8_registered_adder.sv"
+  ],
+  "sources": [
+    "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/rtl/u8_registered_adder.sv"
+  ],
+  "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.034 MB sources in 2 modules, into 0.021 MB in 3 C++ files needing 0.000 MB\n- Verilator: Walltime 0.007 s (elab=0.000, cvt=0.001, bld=0.000); cpu 0.004 s on 1 threads; allocated 25.562 MB\n",
+  "stderr": "",
+  "error_diagnostics": [],
+  "top_module": "u8_registered_adder"
+}

@@ -1,0 +1,19 @@
+{
+  "status": "FAILED",
+  "vivado_status": null,
+  "final_report": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-225559-24e54d/reports/final.json",
+  "errors": [],
+  "architecture_status": "READY",
+  "architecture_version": 1,
+  "architecture_revision": 0,
+  "rtl_status": "RTL_GENERATED",
+  "rtl_files": [
+    "unsigned_adder.sv"
+  ],
+  "verifier_status": "VERIFICATION_READY",
+  "verification_status": "SIMULATION_TIMEOUT",
+  "debugger_status": "EVIDENCE_INSUFFICIENT",
+  "repair_iteration": 0,
+  "failure_class": "SIMULATION_TIMEOUT",
+  "architecture_conflict": null
+}

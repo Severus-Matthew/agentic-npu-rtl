@@ -1,0 +1,265 @@
+protocol: ready_valid
+clock: clk
+reset: rst_n
+channels:
+- name: cmd_ch
+  direction: input
+  protocol_profile: ready_valid
+  purpose: start one fixed-shape GEMM job
+  data_objects: []
+  metadata: []
+  framing: single-beat command
+  ordering: accepted only in IDLE
+  backpressure: cmd_ready is forced low whenever rst_n=0. On the first rising clk
+    edge with rst_n=1, if FSM state is IDLE then cmd_ready shall be high in that same
+    cycle and a held cmd_valid/cmd_payload may transfer on that edge (ready&&valid).
+- name: a_ch
+  direction: input
+  protocol_profile: ready_valid
+  purpose: stream A matrix elements
+  data_objects:
+  - A_stream
+  metadata: []
+  framing: exactly 256 beats per job
+  ordering: row-major A[i,k] with i outer, k inner
+  backpressure: a_ready is forced low whenever rst_n=0; when rst_n=1, a_ready is high
+    only in LOAD_A.
+- name: b_ch
+  direction: input
+  protocol_profile: ready_valid
+  purpose: stream B matrix elements
+  data_objects:
+  - B_stream
+  metadata: []
+  framing: exactly 256 beats per job
+  ordering: 'row-major over KxN: B[k,j] with k outer, j inner'
+  backpressure: b_ready is forced low whenever rst_n=0; when rst_n=1, b_ready is high
+    only in LOAD_B.
+- name: bias_ch
+  direction: input
+  protocol_profile: ready_valid
+  purpose: stream per-column bias
+  data_objects:
+  - bias_stream
+  metadata: []
+  framing: exactly 8 beats per job
+  ordering: bias[0]..bias[7]
+  backpressure: bias_ready is forced low whenever rst_n=0; when rst_n=1, bias_ready
+    is high only in LOAD_BIAS.
+- name: out_ch
+  direction: output
+  protocol_profile: ready_valid
+  purpose: stream output C matrix
+  data_objects:
+  - C_stream
+  metadata:
+  - out_last marks final beat
+  framing: 64 beats per job with out_last=1 only on final beat
+  ordering: row-major C[i,j] with i outer, j inner
+  backpressure: producer holds valid/payload/last stable until out_ready
+signals:
+- name: clk
+  role: clock
+  semantic_class: null
+  channel: null
+  direction: input
+  width: '1'
+  signed: false
+  semantic: rising-edge clock
+  reset_value: '0'
+- name: rst_n
+  role: reset
+  semantic_class: null
+  channel: null
+  direction: input
+  width: '1'
+  signed: false
+  semantic: active-low synchronous reset; when low, no channel transfer is accepted
+    or emitted
+  reset_value: '0'
+- name: cmd_valid
+  role: valid
+  semantic_class: null
+  channel: cmd_ch
+  direction: input
+  width: '1'
+  signed: false
+  semantic: command beat valid
+  reset_value: '0'
+- name: cmd_ready
+  role: ready
+  semantic_class: null
+  channel: cmd_ch
+  direction: output
+  width: '1'
+  signed: false
+  semantic: high only in IDLE when rst_n=1 and ready for new command
+  reset_value: '0'
+- name: cmd_payload
+  role: payload
+  semantic_class: command
+  channel: cmd_ch
+  direction: input
+  width: '1'
+  signed: false
+  semantic: must be 1 for legal start command
+  reset_value: '0'
+- name: a_valid
+  role: valid
+  semantic_class: null
+  channel: a_ch
+  direction: input
+  width: '1'
+  signed: false
+  semantic: A element valid
+  reset_value: '0'
+- name: a_ready
+  role: ready
+  semantic_class: null
+  channel: a_ch
+  direction: output
+  width: '1'
+  signed: false
+  semantic: high only in LOAD_A
+  reset_value: '0'
+- name: a_payload
+  role: payload
+  semantic_class: data
+  channel: a_ch
+  direction: input
+  width: '8'
+  signed: true
+  semantic: signed int8 A element
+  reset_value: '0'
+- name: b_valid
+  role: valid
+  semantic_class: null
+  channel: b_ch
+  direction: input
+  width: '1'
+  signed: false
+  semantic: B element valid
+  reset_value: '0'
+- name: b_ready
+  role: ready
+  semantic_class: null
+  channel: b_ch
+  direction: output
+  width: '1'
+  signed: false
+  semantic: high only in LOAD_B
+  reset_value: '0'
+- name: b_payload
+  role: payload
+  semantic_class: data
+  channel: b_ch
+  direction: input
+  width: '8'
+  signed: true
+  semantic: signed int8 B element
+  reset_value: '0'
+- name: bias_valid
+  role: valid
+  semantic_class: null
+  channel: bias_ch
+  direction: input
+  width: '1'
+  signed: false
+  semantic: bias element valid
+  reset_value: '0'
+- name: bias_ready
+  role: ready
+  semantic_class: null
+  channel: bias_ch
+  direction: output
+  width: '1'
+  signed: false
+  semantic: high only in LOAD_BIAS
+  reset_value: '0'
+- name: bias_payload
+  role: payload
+  semantic_class: data
+  channel: bias_ch
+  direction: input
+  width: '32'
+  signed: true
+  semantic: signed int32 bias element
+  reset_value: '0'
+- name: out_valid
+  role: valid
+  semantic_class: null
+  channel: out_ch
+  direction: output
+  width: '1'
+  signed: false
+  semantic: output element valid
+  reset_value: '0'
+- name: out_ready
+  role: ready
+  semantic_class: null
+  channel: out_ch
+  direction: input
+  width: '1'
+  signed: false
+  semantic: consumer ready
+  reset_value: '0'
+- name: out_payload
+  role: payload
+  semantic_class: data
+  channel: out_ch
+  direction: output
+  width: '32'
+  signed: true
+  semantic: signed int32 ReLU output element
+  reset_value: '0'
+- name: out_last
+  role: last
+  semantic_class: framing
+  channel: out_ch
+  direction: output
+  width: '1'
+  signed: false
+  semantic: 1 only on 64th accepted output transfer
+  reset_value: '0'
+- name: busy
+  role: busy
+  semantic_class: null
+  channel: null
+  direction: output
+  width: '1'
+  signed: false
+  semantic: busy=1 from the cycle of accepted legal command transfer through and including
+    the cycle of the final accepted output transfer (final out_hs, out_last=1). busy
+    deasserts in the immediately following cycle. completion pulses high for exactly
+    that same following cycle (one-cycle pulse), then returns low.
+  reset_value: '0'
+- name: completion
+  role: completion
+  semantic_class: null
+  channel: null
+  direction: output
+  width: '1'
+  signed: false
+  semantic: one-cycle pulse in DONE state immediately after the cycle of final output
+    transfer handshake
+  reset_value: '0'
+- name: error
+  role: error
+  semantic_class: null
+  channel: null
+  direction: output
+  width: '1'
+  signed: false
+  semantic: one-cycle pulse on illegal command encoding or illegal phase transfer
+    attempt
+  reset_value: '0'
+global_handshake_rules:
+  transfer_condition: A channel transfer occurs iff ready && valid sampled high on
+    rising clk and rst_n=1.
+  stall_behavior: For every ready/valid channel, in every cycle with valid=1 and ready=0
+    and rst_n=1, the producer shall hold payload/metadata/last stable. Producer may
+    keep valid asserted across arbitrary stall duration and may deassert valid before
+    transfer; if it remains asserted, associated payload/metadata/last must remain
+    unchanged until a transfer occurs or valid is deasserted. When rst_n=0, DUT outputs
+    may synchronously drop to reset values and any pending non-transferred beat is
+    aborted.

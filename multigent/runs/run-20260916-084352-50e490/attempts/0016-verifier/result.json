@@ -1,0 +1,367 @@
+{
+  "verifier_status": "SEMANTIC_VALIDATION_FAILED",
+  "verifier_review_status": "PENDING",
+  "verifier_review_result": null,
+  "verifier_review_hashes": {},
+  "errors": [
+    "Verifier conflict references undeclared modules: ['tests/test_rv_uadd8.py']; affected_modules must use exact names from module_manifest.modules[].name, never a test/reference file name. Declared modules are: ['rv_uadd8_top']"
+  ],
+  "history": [
+    {
+      "stage": "verifier_generation",
+      "status": "SEMANTIC_VALIDATION_FAILED",
+      "validator_error": "Verifier conflict references undeclared modules: ['tests/test_rv_uadd8.py']; affected_modules must use exact names from module_manifest.modules[].name, never a test/reference file name. Declared modules are: ['rv_uadd8_top']"
+    }
+  ],
+  "verifier_draft": {
+    "status": "ARCHITECTURE_CONFLICT",
+    "summary": "Verifier source completion; deterministic validation and simulation remain authoritative.",
+    "reference_files": [],
+    "test_files": [],
+    "operation_coverage": [
+      {
+        "operation_name": "uadd_pair",
+        "family": "vector_alu",
+        "coverpoints": [
+          {
+            "id": "operation.uadd_pair.opcode",
+            "concept": "opcode",
+            "field": "accepted_op",
+            "source": "baseline",
+            "description": "Only add operation is supported.",
+            "bins": [
+              {
+                "name": "add_only",
+                "intent": "fixed add opcode behavior",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    1
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.uadd_pair.vector_length",
+            "concept": "vector_length",
+            "field": "tx_elems",
+            "source": "baseline",
+            "description": "Single element per accepted transaction.",
+            "bins": [
+              {
+                "name": "minimum",
+                "intent": "single scalar element",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    1
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.uadd_pair.operand_classes",
+            "concept": "operand_classes",
+            "field": "operand_value",
+            "source": "baseline",
+            "description": "Unsigned operand value classes.",
+            "bins": [
+              {
+                "name": "zero",
+                "intent": "operand is zero",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    0
+                  ]
+                }
+              },
+              {
+                "name": "extrema",
+                "intent": "operand at max u8",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    255
+                  ]
+                }
+              },
+              {
+                "name": "signed_mix_proxy",
+                "intent": "interior unsigned values",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    1,
+                    254
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.uadd_pair.numeric_behavior",
+            "concept": "numeric_behavior",
+            "field": "add_input_class",
+            "source": "baseline",
+            "description": "Normal and carry-boundary input classes.",
+            "bins": [
+              {
+                "name": "normal",
+                "intent": "sum <= 255",
+                "predicate": {
+                  "op": "lte",
+                  "args": [
+                    255
+                  ]
+                }
+              },
+              {
+                "name": "carry_or_borrow",
+                "intent": "sum >= 256",
+                "predicate": {
+                  "op": "gte",
+                  "args": [
+                    256
+                  ]
+                }
+              },
+              {
+                "name": "overflow_boundary",
+                "intent": "max sum 510 reachable",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    510
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.uadd_pair.predication",
+            "concept": "predication",
+            "field": "predication_mode",
+            "source": "baseline",
+            "description": "No predication control; always active.",
+            "bins": [
+              {
+                "name": "all_active",
+                "intent": "always active lane",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    1
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.uadd_pair.fixed_opcode_add_only",
+            "concept": "fixed_opcode_add_only",
+            "field": "accepted_op",
+            "source": "architect_extension",
+            "description": "Architect extension: fixed add only.",
+            "bins": [
+              {
+                "name": "add",
+                "intent": "only add op accepted",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    1
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.uadd_pair.scalar_single_element_per_transaction",
+            "concept": "scalar_single_element_per_transaction",
+            "field": "tx_elems",
+            "source": "architect_extension",
+            "description": "Architect extension: one element per transaction.",
+            "bins": [
+              {
+                "name": "scalar_one",
+                "intent": "exactly one element",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    1
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.uadd_pair.no_predication_supported",
+            "concept": "no_predication_supported",
+            "field": "predication_mode",
+            "source": "architect_extension",
+            "description": "Architect extension: no predication modes.",
+            "bins": [
+              {
+                "name": "always_enabled",
+                "intent": "single always-enabled mode",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    1
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.uadd_pair.in_chan_stall",
+            "concept": "input_channel_stall_duration",
+            "field": "stall_len",
+            "source": "llm_extension",
+            "description": "Input channel stall durations via released stall length.",
+            "bins": [
+              {
+                "name": "one_cycle_stall",
+                "intent": "exactly one stalled cycle",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    1
+                  ]
+                }
+              },
+              {
+                "name": "short_stall",
+                "intent": "2..4 stalled cycles",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    2,
+                    4
+                  ]
+                }
+              },
+              {
+                "name": "long_stall",
+                "intent": ">=5 stalled cycles",
+                "predicate": {
+                  "op": "gte",
+                  "args": [
+                    5
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.uadd_pair.out_chan_stall",
+            "concept": "output_channel_stall_duration",
+            "field": "stall_len",
+            "source": "llm_extension",
+            "description": "Output channel stall durations via released stall length.",
+            "bins": [
+              {
+                "name": "one_cycle_stall",
+                "intent": "exactly one stalled cycle",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    1
+                  ]
+                }
+              },
+              {
+                "name": "short_stall",
+                "intent": "2..4 stalled cycles",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    2,
+                    4
+                  ]
+                }
+              },
+              {
+                "name": "long_stall",
+                "intent": ">=5 stalled cycles",
+                "predicate": {
+                  "op": "gte",
+                  "args": [
+                    5
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "verification_plan": {
+      "top_module": "rv_uadd8_top",
+      "test_modules": [
+        "tests.test_rv_uadd8"
+      ],
+      "test_categories": [
+        "directed",
+        "randomized",
+        "reset",
+        "backpressure",
+        "latency"
+      ],
+      "randomized_test_count": 100,
+      "seed": 424242,
+      "timeout_seconds": 120,
+      "regression_groups": {
+        "smoke": [
+          "tests.test_rv_uadd8"
+        ],
+        "targeted": [
+          "tests.test_rv_uadd8"
+        ],
+        "full": [
+          "tests.test_rv_uadd8"
+        ]
+      },
+      "pass_criteria": "All cocotb tests pass, all declared interface/operation obligations are hit, exact oracle match for every accepted transaction, no protocol/accounting assertion failures.",
+      "protocol_assumptions": [
+        "Ready/valid transfers occur only on rising edge with valid&&ready&&rst_n==1.",
+        "Source holds in_valid and payload stable while stalled.",
+        "Sink backpressure may toggle out_ready arbitrarily.",
+        "Reset is synchronous active-low and suppresses transfer acceptance on asserted edge."
+      ]
+    },
+    "architecture_conflict": {
+      "category": "operation_sampling_binding_conflict",
+      "affected_modules": [
+        "tests/test_rv_uadd8.py"
+      ],
+      "issue": "Validator rejects OPERATION_SAMPLING_BINDINGS entries using template 'dimension' with dimension 'tx_elems' as unknown/ambiguous, but task also requires preserving supplied operation_sampling_bindings literally in test source.",
+      "evidence": "validator_error: \"Invalid operation sampling bindings: Unknown or ambiguous dimension 'tx_elems'\"; task instruction: \"Preserve the supplied operation_sampling_bindings as literal module-level OPERATION_SAMPLING_BINDINGS in the complete test sources.\"",
+      "requested_architect_decision": "Confirm canonical dimension identifier/schema accepted by validator for scalar single-element transactions (or waive literal preservation requirement for the two dimension template bindings) so verifier can produce a valid executable file."
+    },
+    "known_verification_gaps": [
+      "Cannot complete corrected executable test source until sampling-binding dimension naming conflict is resolved."
+    ]
+  },
+  "frozen_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "d424bfcdccace0f0d1761d476dfae2c7665064af5a45e39d603cec1447f63815",
+      "architect_result.json": "3431492cc806f40231aa52ca0b624d65ca3f59dd541118f68eb4195658dbf0ee",
+      "architecture_contract.yaml": "224f2900910ed6e554fa879d7db4f4e22864db89974d328ccdadef9f6ee7ade4",
+      "interface_contract.yaml": "bb07902d17cce1fbd943e686b565336369d7032ad941f50e88a59a2d4b5b3ca2",
+      "module_manifest.json": "20bb63f2011897d7b474742faa2eddf774723bac5a88be355be73ac52365c893",
+      "rejected_contract_v3_r2.json": "4844181aaf1075f7ba74a160a79872ab1e1f9725cbe19c603d7817c0314faa85",
+      "revision_patch-run-20260916-084352-50e490-arch-v2-r1.json": "60783b7ab1304f2d04c8816831ccf696c4036a6eaa87034d4f5bad1b637be31b",
+      "revision_patch-run-20260916-084352-50e490-arch-v3-r2.json": "d952d7d7a3d9cf852e120dc9dbb77900e25f74647d4a438325ca0e0b8d178fd8",
+      "revision_patch-run-20260916-084352-50e490-arch-v3-r3.json": "7088a1af4a037859778b5b2dac9c47558a3ea790eb0daeed432102fdc0e1973c"
+    },
+    "rtl": {
+      "rv_uadd8_top.sv": "b623bb111eca9f7fcc3efec6a5c798e1ddffea6c7ef9e276cc08ccfa61011b45"
+    },
+    "tests": {},
+    "reference": {}
+  }
+}

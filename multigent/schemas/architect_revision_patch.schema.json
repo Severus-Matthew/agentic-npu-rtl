@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "edits", "issue"],
+  "properties": {
+    "status": {"type": "string", "enum": ["PATCH_READY", "CONTRACT_CONFIRMED", "SPEC_CONFLICT"]},
+    "edits": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["op", "path", "value_json", "reason"],
+        "properties": {
+          "op": {"type": "string", "enum": ["add", "replace", "remove"]},
+          "path": {"type": "string", "minLength": 2},
+          "value_json": {"type": "string"},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "issue": {"type": "string"}
+  }
+}

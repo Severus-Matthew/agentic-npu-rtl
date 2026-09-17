@@ -1,0 +1,244 @@
+taxonomy:
+  name: accelerator_operation_coverage_families
+  version: "0.1"
+  scope: minimum functional-coverage concepts for common accelerator operations
+  rules:
+    - A recognized operation kind must implement every baseline concept for its family.
+    - Baseline concepts may not be removed or renamed by the Verifier.
+    - Optional concepts are selected only when their behavior exists in the frozen contract; absent modes are never invented merely to fill the pool.
+    - Family verification properties are assertion guidance for the independent golden checker, not synthetic coverage hits.
+    - When no family applies, Architect may declare a new family and explicit feature list in the frozen contract.
+    - The Verifier may add design-specific coverpoints with source llm_extension.
+    - Operation samples represent transactions actually submitted to and checked against the DUT.
+
+families:
+  matrix_multiply:
+    aliases: [gemm, matmul, matrix_multiply, matrix_multiplication, tensor_gemm]
+    baseline_concepts: [dimensions, operand_values, accumulation, post_processing]
+    starter_bins:
+      dimensions: [minimum, interior, maximum]
+      operand_values: [zero, positive, negative, extrema]
+      accumulation: [normal, overflow_boundary]
+      post_processing: [disabled_or_identity, enabled]
+    optional_concepts:
+      tiling:
+        applies_when: The implementation partitions logical matrix dimensions across physical tiles or lanes larger than one element, or exposes a selectable tile mode.
+        starter_bins: [full_tile, partial_tile]
+      runtime_shape:
+        applies_when: M, N, or K is programmable per job rather than fixed at elaboration.
+        starter_bins: [minimum_shape, rectangular_shape, maximum_shape, mixed_boundaries]
+      transpose_modes:
+        applies_when: A or B may be interpreted as transposed.
+        starter_bins: [nn, nt, tn, tt]
+      batching:
+        applies_when: one job contains multiple matrix products.
+        starter_bins: [single_batch, multiple_batches, maximum_batch]
+      operand_layout:
+        applies_when: row major, column major, blocked, or another layout is selectable.
+        starter_bins: [each_legal_layout, asymmetric_operand_layouts]
+      leading_dimension_stride:
+        applies_when: memory backed operands expose leading dimensions or strides.
+        starter_bins: [packed, padded, maximum_legal_stride]
+      numeric_format:
+        applies_when: the operation supports more than one integer or floating point format.
+        starter_bins: [each_legal_format, narrowest_format, widest_format]
+      mixed_precision:
+        applies_when: operand, product, accumulator, or result precisions differ or are selectable.
+        starter_bins: [homogeneous_precision, mixed_operand_precision, widened_accumulator, narrowed_result]
+      signedness_modes:
+        applies_when: signed and unsigned interpretations are selectable or operands differ in signedness.
+        starter_bins: [signed_signed, unsigned_unsigned, mixed_signedness]
+      floating_point_special_values:
+        applies_when: a floating point format and special value behavior are in the contract.
+        starter_bins: [positive_zero, negative_zero, infinity, nan, subnormal]
+      accumulator_initialization:
+        applies_when: GEMM accumulates into an initial C matrix or accepted partial sums.
+        starter_bins: [zero_initial, nonzero_initial, signed_initial, boundary_initial]
+      alpha_beta_scaling:
+        applies_when: the result includes alpha times A B plus beta times C.
+        starter_bins: [identity, zero_alpha, zero_beta, nontrivial_scaling, signed_scaling]
+      bias:
+        applies_when: scalar, row, column, channel, or element bias is fused.
+        starter_bins: [zero_bias, positive_bias, negative_bias, broadcast_bias, element_bias]
+      activation:
+        applies_when: ReLU, clamp, GELU, or another activation is fused.
+        starter_bins: [negative_region, zero_boundary, positive_region, saturation_boundary]
+      fused_post_op_order:
+        applies_when: two or more scaling, bias, quantization, or activation stages are fused.
+        starter_bins: [order_sensitive_values, each_enabled_combination, all_enabled]
+      quantization:
+        applies_when: scale, zero point, requantization, or dequantization is present.
+        starter_bins: [identity_quantization, nonzero_zero_point, scale_boundary, per_tensor, per_axis]
+      rounding_mode:
+        applies_when: a precision reduction uses a defined rounding rule.
+        starter_bins: [exact, below_half, tie, above_half, negative_tie]
+      overflow_policy:
+        applies_when: wrap, saturation, flagging, or rejection behavior is externally observable.
+        starter_bins: [no_overflow, positive_boundary, negative_boundary, positive_overflow, negative_overflow]
+      sparsity:
+        applies_when: sparse encodings, pruning masks, or structured sparsity are supported.
+        starter_bins: [dense, all_zero, unstructured_sparse, structured_sparse, boundary_metadata]
+      masking_predication:
+        applies_when: output elements, rows, columns, or lanes may be masked.
+        starter_bins: [none_active, some_active, all_active, edge_mask]
+      broadcasting:
+        applies_when: an operand or auxiliary tensor is broadcast across a declared axis.
+        starter_bins: [scalar, row, column, batch, no_broadcast]
+      complex_arithmetic:
+        applies_when: operands or results contain real and imaginary components.
+        starter_bins: [real_only, imaginary_only, mixed, conjugated]
+      tail_padding_policy:
+        applies_when: logical shapes do not fill physical tiles or lanes.
+        starter_bins: [no_tail, m_tail, n_tail, k_tail, multiple_tails]
+      split_k_reduction:
+        applies_when: K is partitioned into multiple partial reductions.
+        starter_bins: [single_partition, multiple_partitions, uneven_partition]
+      result_layout_order:
+        applies_when: output layout, tile order, or stream order is configurable or nontrivial.
+        starter_bins: [row_major, column_major, tiled, boundary_transition]
+      configuration_snapshot:
+        applies_when: job configuration may change while a job is active.
+        starter_bins: [stable_config, update_while_busy, next_job_uses_update]
+      illegal_configuration:
+        applies_when: encodable illegal dimensions modes or combinations have defined behavior.
+        starter_bins: [each_illegal_class, recovery, legal_after_error]
+      multi_job_ordering:
+        applies_when: jobs may be queued, overlapped, tagged, or accepted back to back.
+        starter_bins: [back_to_back, queued, maximum_outstanding, tag_wrap]
+      memory_aliasing:
+        applies_when: GEMM reads or writes memory ranges whose overlap behavior is defined.
+        starter_bins: [disjoint, input_overlap, output_overlap, boundary_touch]
+  convolution:
+    aliases: [conv, conv1d, conv2d, conv3d, convolution, depthwise_convolution]
+    baseline_concepts: [tensor_shapes, kernel, stride_dilation, padding, channel_grouping, numeric_values]
+    starter_bins:
+      tensor_shapes: [minimum, interior, maximum]
+      kernel: [unit, common, large]
+      stride_dilation: [unit, non_unit]
+      padding: [none, boundary_padding]
+      channel_grouping: [dense, grouped, depthwise]
+      numeric_values: [zero, signed_mix, extrema]
+  fft:
+    aliases: [fft, ifft, dft, idft, fourier_transform]
+    baseline_concepts: [transform_length, direction, radix_alignment, scaling, ordering, numeric_values]
+    starter_bins:
+      transform_length: [minimum, typical, maximum]
+      direction: [forward, inverse]
+      radix_alignment: [radix_aligned, mixed_or_tail]
+      scaling: [unscaled, scaled]
+      ordering: [natural, bit_reversed]
+      numeric_values: [zero, impulse, tone, extrema]
+  aes:
+    aliases: [aes, aes_encrypt, aes_decrypt, block_cipher]
+    baseline_concepts: [key_length, direction, cipher_mode, known_answer_class, block_boundaries]
+    starter_bins:
+      key_length: [bits_128, bits_192, bits_256]
+      direction: [encrypt, decrypt]
+      cipher_mode: [each_contract_mode]
+      known_answer_class: [zero_vector, standard_kat, nonzero_vector]
+      block_boundaries: [single_block, multi_block, partial_or_rejected]
+  dma:
+    aliases: [dma, memcpy, memory_copy, data_mover, scatter_gather]
+    baseline_concepts: [transfer_length, address_alignment, burst, page_boundary, overlap, direction]
+    starter_bins:
+      transfer_length: [minimum, typical, maximum]
+      address_alignment: [aligned, misaligned_or_rejected]
+      burst: [single_beat, short, maximum]
+      page_boundary: [before_4k, at_4k, crossing_or_rejected]
+      overlap: [non_overlapping, overlapping_or_rejected]
+      direction: [read, write, copy]
+  fir:
+    aliases: [fir, fir_filter]
+    baseline_concepts: [tap_count, stream_length, coefficient_values, sample_values, numeric_behavior]
+    starter_bins:
+      tap_count: [minimum, typical, maximum]
+      stream_length: [short, interior, long]
+      coefficient_values: [zero, impulse, signed_mix, extrema]
+      sample_values: [zero, constant, signed_mix, extrema]
+      numeric_behavior: [normal, rounding_boundary, overflow_boundary]
+  reduction:
+    aliases: [reduction, reduce, reduce_sum, reduce_max, reduce_min]
+    baseline_concepts: [operation, reduction_length, axis, identity_case, numeric_values]
+    starter_bins:
+      operation: [each_contract_opcode]
+      reduction_length: [one, interior, maximum]
+      axis: [each_contract_axis]
+      identity_case: [identity, non_identity]
+      numeric_values: [zero, signed_mix, extrema]
+  pooling:
+    aliases: [pool, pooling, max_pool, average_pool]
+    baseline_concepts: [window, stride, padding, mode, tensor_edges]
+    starter_bins:
+      window: [minimum, common, maximum]
+      stride: [unit, non_unit]
+      padding: [none, boundary_padding]
+      mode: [each_contract_mode]
+      tensor_edges: [interior_window, partial_edge]
+  activation:
+    aliases: [activation, relu, gelu, sigmoid, tanh, clamp]
+    baseline_concepts: [function, input_regions, numeric_extremes, quantization]
+    starter_bins:
+      function: [each_contract_function]
+      input_regions: [negative, zero, positive]
+      numeric_extremes: [minimum, near_zero, maximum]
+      quantization: [exact, rounding_boundary, saturation_or_wrap]
+  normalization:
+    aliases: [normalization, batch_norm, layer_norm, rms_norm]
+    baseline_concepts: [tensor_shape, epsilon, scale_bias, numeric_extremes]
+    starter_bins:
+      tensor_shape: [minimum, interior, maximum]
+      epsilon: [minimum, typical, maximum]
+      scale_bias: [identity, non_identity]
+      numeric_extremes: [constant, low_variance, wide_range]
+  softmax:
+    aliases: [softmax, log_softmax]
+    baseline_concepts: [vector_length, input_distribution, numeric_stability, quantization]
+    starter_bins:
+      vector_length: [minimum, interior, maximum]
+      input_distribution: [uniform, one_dominant, wide_dynamic_range]
+      numeric_stability: [large_positive, large_negative, mixed_extremes]
+      quantization: [exact, rounding_boundary, saturation_or_wrap]
+  attention:
+    aliases: [attention, self_attention, multi_head_attention]
+    baseline_concepts: [sequence_length, head_count, mask, scaling, numeric_extremes]
+    starter_bins:
+      sequence_length: [minimum, interior, maximum]
+      head_count: [one, interior, maximum]
+      mask: [none, causal, arbitrary]
+      scaling: [identity, configured]
+      numeric_extremes: [zero, mixed_sign, wide_dynamic_range]
+  compression:
+    aliases: [compression, decompression, compressor, decompressor, codec]
+    baseline_concepts: [block_size, direction, compressibility, boundaries, malformed_input]
+    starter_bins:
+      block_size: [minimum, interior, maximum]
+      direction: [compress, decompress]
+      compressibility: [high, medium, incompressible]
+      boundaries: [empty_or_rejected, exact_block, partial_block]
+      malformed_input: [legal, malformed_or_rejected]
+  checksum:
+    aliases: [crc, checksum, hash_accelerator]
+    baseline_concepts: [message_length, algorithm_configuration, seed, data_patterns, boundaries]
+    starter_bins:
+      message_length: [empty_or_rejected, short, multi_block]
+      algorithm_configuration: [each_contract_configuration]
+      seed: [zero, default, nonzero]
+      data_patterns: [all_zero, all_one, alternating, random]
+      boundaries: [exact_word, partial_word]
+  sort_search:
+    aliases: [sort, sorter, search, lookup]
+    baseline_concepts: [item_count, ordering, duplicates, key_boundaries]
+    starter_bins:
+      item_count: [empty_or_rejected, one, interior, maximum]
+      ordering: [sorted, reverse, random]
+      duplicates: [none, some, all_equal]
+      key_boundaries: [minimum, interior, maximum, absent]
+  vector_alu:
+    aliases: [vector_alu, simd, vector_processor, elementwise]
+    baseline_concepts: [opcode, vector_length, operand_classes, numeric_behavior, predication]
+    starter_bins:
+      opcode: [each_contract_opcode]
+      vector_length: [minimum, partial_vector, full_vector, multi_vector]
+      operand_classes: [zero, signed_mix, extrema]
+      numeric_behavior: [normal, carry_or_borrow, overflow_boundary]
+      predication: [none_active, some_active, all_active]

@@ -1,0 +1,26 @@
+{
+  "review": {
+    "status": "REVISION_REQUIRED",
+    "summary": "Contract is close, but has one semantic conflict and one missing executable rule that can cause inconsistent implementations around same-cycle dequeue/enqueue behavior.",
+    "findings": [
+      {
+        "contract_path": "architecture/architecture_contract.yaml :: control.state_progression",
+        "issue": "States simultaneous dequeue/enqueue in FULL is architecturally forbidden and in_ready=0 for whole cycle when FULL at cycle start, even if out_ready=1. This conflicts with the user requirement of one-cycle latency without stalls (in steady no-backpressure operation, this rule injects bubbles and reduces throughput).",
+        "requested_change": "Revise control and latency semantics to allow same-edge dequeue/enqueue when FULL and out_ready=1 (or explicitly justify and update user-level requirement if throughput is intentionally limited). Ensure rule is consistent across control, pipeline stall_behavior, interface backpressure text, and latency model."
+      },
+      {
+        "contract_path": "architecture/architecture_contract.yaml :: reset.required_state / interface_contract.signals[rst_n].semantic",
+        "issue": "Reset behavior says output register content is don't-care while also requiring deterministic behavior; no explicit post-reset value rule for out_sum when out_valid=0. This can create ambiguity for verification and RTL style checks.",
+        "requested_change": "Add an explicit executable rule: either (a) out_sum is unconstrained when out_valid=0, or (b) out_sum is driven to a defined reset value (e.g., 0). Keep this consistent in reset section, signal semantics, and acceptance checks."
+      }
+    ]
+  },
+  "architecture_hashes": {
+    "acceptance_criteria.yaml": "d424bfcdccace0f0d1761d476dfae2c7665064af5a45e39d603cec1447f63815",
+    "architect_result.json": "b180400d06a874e0ac6d4a0fe0b646edf26f31ddc55097af625e54a8cdd24516",
+    "architecture_contract.yaml": "f2d1b8764b8e4fe3c971c3ce76f808415b638456dc30fe8c9b696ca51212e8d5",
+    "interface_contract.yaml": "27ac3a41786f640ce3104e3e3fa2921f38135416b4a96189f8ac7f8bc11dd8ca",
+    "module_manifest.json": "b578a990bd647824407df43ee3c0e6431b024b0afae11a1b6270ca6885e36f21",
+    "revision_patch-run-20260916-084352-50e490-arch-v2-r1.json": "60783b7ab1304f2d04c8816831ccf696c4036a6eaa87034d4f5bad1b637be31b"
+  }
+}

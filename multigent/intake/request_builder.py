@@ -142,10 +142,21 @@ def build_verification_context(
     if not request:
         raise ValueError("User request must not be empty.")
     project = load_project_constraints()
+    frozen = load_frozen_architecture(architecture_dir)
     return {
         "user_request": request,
         "verification_policy": project["verification_policy"],
-        "frozen_architecture": load_frozen_architecture(architecture_dir),
+        "frozen_architecture": frozen,
+        # The deterministic runner currently supplies no parameter overrides.
+        # This is execution setup, not an added hardware/architectural decision.
+        "execution_configuration": {
+            "elaboration": "declared_defaults",
+            "parameter_overrides": {},
+            "declared_parameter_defaults": {
+                str(parameter["name"]): parameter["default_value"]
+                for parameter in frozen["architecture_contract"].get("parameters", [])
+            },
+        },
         "provenance": {
             "includes_generated_rtl": False,
             "includes_rtl_generator_output": False,

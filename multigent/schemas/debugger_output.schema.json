@@ -7,15 +7,13 @@
     "status",
     "summary",
     "diagnosis",
-    "repair_plan",
-    "architecture_conflict"
+    "repair_plan"
   ],
   "properties": {
     "status": {
       "type": "string",
       "enum": [
         "REPAIR_PLAN_READY",
-        "ARCHITECTURE_ESCALATION",
         "EVIDENCE_INSUFFICIENT",
         "VERIFICATION_REPAIR_REQUIRED"
       ]
@@ -29,12 +27,13 @@
       "required": [
         "failure_class",
         "root_cause",
+        "root_cause_domain",
+        "cause_ranking",
         "confidence",
         "first_divergence",
         "evidence",
         "affected_modules",
         "alternative_hypotheses",
-        "architecture_change_required",
         "additional_evidence_requested"
       ],
       "properties": {
@@ -43,6 +42,44 @@
         },
         "root_cause": {
           "type": "string"
+        },
+        "root_cause_domain": {
+          "type": "string",
+          "enum": [
+            "RTL_DESIGN",
+            "GOLDEN_MODEL",
+            "LLM_OPERATION_ASSERTION",
+            "TESTBENCH_INFRASTRUCTURE",
+            "CONTRACT_GENERATED_PROTOCOL_ASSERTION"
+          ]
+        },
+        "cause_ranking": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["domain", "priority", "assessment", "evidence"],
+            "properties": {
+              "domain": {
+                "type": "string",
+                "enum": [
+                  "RTL_DESIGN",
+                  "GOLDEN_MODEL",
+                  "LLM_OPERATION_ASSERTION",
+                  "TESTBENCH_INFRASTRUCTURE",
+                  "CONTRACT_GENERATED_PROTOCOL_ASSERTION"
+                ]
+              },
+              "priority": {"type": "integer", "minimum": 1, "maximum": 5},
+              "assessment": {
+                "type": "string",
+                "enum": ["SUPPORTED", "ELIMINATED", "UNRESOLVED"]
+              },
+              "evidence": {"type": "string", "minLength": 1}
+            }
+          }
         },
         "confidence": {
           "type": "number",
@@ -111,9 +148,6 @@
           "items": {
             "type": "string"
           }
-        },
-        "architecture_change_required": {
-          "type": "boolean"
         },
         "additional_evidence_requested": {
           "type": "array",
@@ -184,40 +218,6 @@
           "enum": [
             "FULL"
           ]
-        }
-      }
-    },
-    "architecture_conflict": {
-      "type": [
-        "object",
-        "null"
-      ],
-      "additionalProperties": false,
-      "required": [
-        "category",
-        "affected_modules",
-        "issue",
-        "evidence",
-        "requested_architect_decision"
-      ],
-      "properties": {
-        "category": {
-          "type": "string"
-        },
-        "affected_modules": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "issue": {
-          "type": "string"
-        },
-        "evidence": {
-          "type": "string"
-        },
-        "requested_architect_decision": {
-          "type": "string"
         }
       }
     }

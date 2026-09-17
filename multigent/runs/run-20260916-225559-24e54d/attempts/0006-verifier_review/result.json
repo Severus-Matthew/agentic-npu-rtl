@@ -1,0 +1,49 @@
+{
+  "verifier_review_status": "APPROVED",
+  "verifier_review_result": {
+    "status": "APPROVED",
+    "summary": "Deterministic source and contract checks passed",
+    "findings": []
+  },
+  "verifier_review_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "cf7ef43b86a9c12440ec7acc8dcee74c0be5f746abf18dcdfc4e5ff9a592ce0a",
+      "architect_result.json": "23a742139d95094aadcfc4a54575073ee8eaf68855a50ccc5e9947743da011e8",
+      "architecture_contract.yaml": "bb5fd6e067db34186da4108671c91940e222bac08df51f56f872de50908793ee",
+      "interface_contract.yaml": "5f20585b8d26b5c4c4595abf375e5b882bd1a15cff3983c2e8da310e33140740",
+      "module_manifest.json": "9d5532794ab4dfbecadf9e91763782658f0862770eef5eb4079b647f27132008"
+    },
+    "tests": {
+      "test_unsigned_adder.py": "ea7eefdc2ea1e5fde9990b44fb1b688861eae2b63c3dcc4c175a6de56d1617e6"
+    },
+    "reference": {
+      "adder_model.py": "f395cc0d8ed11e162281039b25e8aed078341dcf3275cc27e7eb4d33fb911afe"
+    },
+    "operation_coverage": "7245e33c8a2dd050ca4fdf82ac7ff0059667c0c3dd9736ec9c4773d7c320edac",
+    "taxonomy_and_monitor": {
+      "verifier_tool/coverage/operation/families.yaml": "9d6e4acc50e16b09362248e76da9d2381cc5ff548ec11003af49e35af34eec3b",
+      "verifier_tool/coverage/operation/sampling_templates.yaml": "99ee06f294892df8c0eb21e9b269c44956e0f2da41b34770071d2dfc64676dd0",
+      "verifier_tool/coverage/protocol/templates.yaml": "04c6aded32ae73cd60b17dc6ba0ffd996831c4fbb8b05336ee778e3f2e0c7445",
+      "verifier_tool/predefined_assertion/operation/assertions.yaml": "fc5a3f563fa23b38b5202a1e491256dc3f6ff8b0eac4a086ab2807d0442ef8e7",
+      "verifier_tool/role_pool/interface_protocol_profiles.yaml": "a4ecb99223e5803c6c6f4403c4104a4f3a3c1fd3145db1c02c67f23c982a9903",
+      "verifier_tool/role_pool/interface_semantic_classes.yaml": "7f9a94fa2f22559863de224197442fa11033f5fc4b2cf344a68bc65cf3aecc0a",
+      "verifier_tool/role_pool/interface_signal_roles.yaml": "759b2f89b76135a6fa69d56d2ededc333f0b78bab893f51284d834d5f3823e81",
+      "verifier_tool/coverage/runtime.py": "ba544563eb2615c738c443ce41f44268477110b47b2b175d2adb9c0599d03e92",
+      "verifier_tool/coverage/cocotb_model.py": "abe7cabcf91ec7d165be17102acd443f9cd677b12478f5d444a8171f2280227f",
+      "verifier_tool/coverage/operation/plan.py": "357af0d8bd41f6875635c39bc465cb19b3c5ada24ff1e86463b2a22ac3d178ae",
+      "verifier_tool/coverage/operation/sampling.py": "95561453bcdd93597d998e5682d200b88a5286b69dc54e3c94ed423164345f48",
+      "verifier_tool/predefined_assertion/protocol/generator.py": "70fc33cef6b21b00c9d3e7845ce41a7518f8ae2a6f5b6df6e611938053ce345a",
+      "verifier_tool/predefined_assertion/operation/generator.py": "0fab64b98122a2f9452fd5a1896b59d6070e429243badb7780dd85fd9fb5064c",
+      "verifier_tool/predefined_assertion/instrumentation.py": "6794c4d52cc79c6e7a8aef7d787558e1f30aedaf8d7e1e3564f38f5671d87774"
+    }
+  },
+  "verification_status": "PENDING",
+  "history": [
+    {
+      "stage": "testbench_checks",
+      "status": "APPROVED",
+      "findings": [],
+      "stimulus_reviewed": false
+    }
+  ]
+}

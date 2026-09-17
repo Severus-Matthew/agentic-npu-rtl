@@ -1,0 +1,13 @@
+{
+  "architecture": {
+    "acceptance_criteria.yaml": "2c17556902386432dca878959fc2a92cde50e2321b87faa2666f01b10367aec7",
+    "architect_result.json": "f38e76a2c5ae45600610bb94747033df83a5c2ae548922b95a04b02ec3a36343",
+    "architecture_contract.yaml": "37adee78dbc5c4225fea043b3a8be297b4facd1987f990868ebc549ab9b06877",
+    "interface_contract.yaml": "392e59fd89be6af053f7e3f118457b14768034e13c8d090410810b890a573797",
+    "module_manifest.json": "2d477588857f0f80a65088a51a5dba5cb508b00623bf5353d1b31479f0a33473",
+    "revision_patch-contract-parallel-gemm-20260916-arch-v2-r1.json": "90f76700bbde43ccb04efd7a6d2770c7515681006623e09d62bd85942b1a2396"
+  },
+  "rtl": {},
+  "tests": {},
+  "reference": {}
+}

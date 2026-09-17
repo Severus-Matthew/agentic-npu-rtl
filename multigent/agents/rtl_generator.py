@@ -24,6 +24,7 @@ from .base import APIAgent, AgentConfig, AgentRuntimeError, SCHEMA_ROOT
 RTL_GENERATOR_OUTPUT_SCHEMA = SCHEMA_ROOT / "rtl_generator_output.schema.json"
 TASK_TYPES = {
     "INITIAL_GENERATION",
+    "CONTRACT_FIXED",
     "FUNCTIONAL_REPAIR",
     "SYNTHESIS_REPAIR",
     "PPA_OPTIMIZATION",
@@ -85,6 +86,7 @@ class RTLGeneratorAgent(APIAgent):
                 if attempt:
                     raise
                 task += ("\nSEMANTIC VALIDATION REPAIR: " + str(exc) +
+                         "\nPrevious rejected candidate: " + json.dumps(result) +
                          "\nRegenerate the complete structured result. No placeholders or omitted ports/logic. "
                          "If no files change, regression_required must be NONE. Missing frozen architectural "
                          "interface decisions require ARCHITECTURE_CONFLICT, not an unsupported patch. "
@@ -124,10 +126,13 @@ class RTLGeneratorAgent(APIAgent):
             feedback=feedback,
             run_id=str(state.get("run_id", "langgraph")),
         )
+        emitted_files = [item["path"] for item in result["files"]]
+        if result["status"] == "RTL_GENERATED" and task_type == "CONTRACT_FIXED" and not emitted_files:
+            emitted_files = sorted(self._load_existing_rtl(WORKSPACE_ROOT / "rtl"))
         return {
             "rtl_status": result["status"],
             "rtl_result": result,
-            "rtl_files": [item["path"] for item in result["files"]],
+            "rtl_files": emitted_files,
             "architecture_conflict": result["architecture_conflict"],
             "needs_regression": result["regression_required"] != "NONE",
             "verification_status": "PENDING",
@@ -193,6 +198,7 @@ class RTLGeneratorAgent(APIAgent):
             )
 
         manifest_modules = cls._manifest_modules(context)
+        manifest = context["frozen_architecture"]["module_manifest"]
         status = result["status"]
         files = list(result["files"])
         changed_modules = [str(name) for name in result["changed_modules"]]
@@ -208,7 +214,7 @@ class RTLGeneratorAgent(APIAgent):
             )
 
         if status == "RTL_GENERATED":
-            if not files:
+            if not files and task_type != "CONTRACT_FIXED":
                 raise AgentRuntimeError("RTL_GENERATED requires at least one RTL file")
             if result["architecture_conflict"] is not None:
                 raise AgentRuntimeError("RTL_GENERATED cannot also contain architecture_conflict")
@@ -242,6 +248,13 @@ class RTLGeneratorAgent(APIAgent):
                 if not content.strip() or "```" in content:
                     raise AgentRuntimeError(f"RTL file {normalized} has invalid/empty content")
                 cls._validate_module_file(normalized, module, content, task_type, existing_rtl)
+                from .source_checks import sv_port_names
+                declared = next(m for m in manifest["modules"] if m["name"] == module)
+                if declared.get("ports"):
+                    expected_ports = {p["name"] for p in declared["ports"]}
+                    actual_ports = sv_port_names(content, module)
+                    if actual_ports != expected_ports:
+                        raise AgentRuntimeError(f"Module {module} ports differ from frozen contract: missing={sorted(expected_ports-actual_ports)}, extra={sorted(actual_ports-expected_ports)}")
                 declaration = re.compile(rf"\bmodule\s+(?:automatic\s+)?{re.escape(module)}\b")
                 if declaration.search(content) is None or re.search(r"\bendmodule\b", content) is None:
                     raise AgentRuntimeError(f"RTL file {normalized} does not contain complete expected module {module!r}")
@@ -266,6 +279,8 @@ class RTLGeneratorAgent(APIAgent):
                 )
                 if task_type in {"FUNCTIONAL_REPAIR", "PPA_OPTIMIZATION"} and result["regression_required"] != "FULL":
                     raise AgentRuntimeError(f"{task_type} RTL changes require FULL regression")
+                if task_type == "CONTRACT_FIXED" and result["regression_required"] != "FULL":
+                    raise AgentRuntimeError("CONTRACT_FIXED requires full verification even when RTL is unchanged")
 
         elif status == "ARCHITECTURE_CONFLICT":
             if files or changed_modules:
@@ -308,6 +323,12 @@ class RTLGeneratorAgent(APIAgent):
         if task_type != "INITIAL_GENERATION":
             if path not in existing_rtl or declarations(existing_rtl[path]) != [module]:
                 raise AgentRuntimeError("Repair/optimization must retain the existing module-to-file mapping")
+            from .source_checks import sv_function_names, sv_port_names
+            if task_type != "CONTRACT_FIXED" and path in existing_rtl and sv_port_names(existing_rtl[path], module) != sv_port_names(content, module):
+                raise AgentRuntimeError("Repair/optimization must preserve existing RTL port names")
+            removed = sv_function_names(existing_rtl.get(path,'')) - sv_function_names(content)
+            if removed:
+                raise AgentRuntimeError(f"Repair/optimization must retain existing RTL function/task names: {sorted(removed)}")
 
     @staticmethod
     def _validate_authorized_change_scope(
@@ -339,6 +360,16 @@ class RTLGeneratorAgent(APIAgent):
                 )
             if feedback.get("frozen_verifier") is not True:
                 raise AgentRuntimeError("FUNCTIONAL_REPAIR must preserve the frozen verifier")
+        elif task_type == "CONTRACT_FIXED":
+            patch = feedback.get("contract_patch")
+            if feedback.get("source") != "architect_contract_patch" or not isinstance(patch, Mapping):
+                raise AgentRuntimeError("CONTRACT_FIXED requires the exact Architect contract patch")
+            if patch.get("status") != "PATCH_READY" or not patch.get("edits"):
+                raise AgentRuntimeError("CONTRACT_FIXED requires a non-empty PATCH_READY edit list")
+            previous_version = feedback.get("previous_contract_version")
+            current_version = feedback.get("current_contract_version")
+            if not isinstance(previous_version, int) or current_version != previous_version + 1:
+                raise AgentRuntimeError("CONTRACT_FIXED requires consecutive contract versions")
 
     @staticmethod
     def _build_task(
@@ -373,6 +404,11 @@ GENERIC RULES
 4. Generate synthesizable SystemVerilog and never claim deterministic tool PASS.
 5. For repair modes, use existing RTL and authorized feedback. Emit only modules that
    actually need modification; untouched files remain in the workspace.
+   CONTRACT_FIXED means Architect locally amended the contract. Read the exact patch,
+   latest frozen contract and existing RTL. Modify only RTL behavior needed to conform
+   to the amended contract. If existing RTL already conforms, return RTL_GENERATED
+   with empty files/changed_modules, explicit satisfied contract_checks and FULL
+   regression. This is not initial generation and never rewrite RTL merely for style.
 6. FUNCTIONAL_REPAIR may change only modules listed in
    feedback.repair_plan.affected_modules, must not change protected_modules or any
    frozen interface/test/reference behavior, and requires FULL regression.

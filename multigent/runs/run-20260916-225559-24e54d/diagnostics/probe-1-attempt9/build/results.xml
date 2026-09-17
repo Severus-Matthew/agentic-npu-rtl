@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="cocotb tests"><testsuite name="test_unsigned_adder" errors="0" failures="1" skipped="0" tests="1" time="2.342" timestamp="2026-09-16T23:15:29.651662+00:00" hostname="gh-login01.delta.ncsa.illinois.edu"><testcase classname="test_unsigned_adder" name="exhaustive_and_protocol" time="2.342"><failure message="" type="SimTimeoutError">Traceback (most recent call last):
+  File "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-225559-24e54d/diagnostics/probe-1-attempt9/tests/_npu_monitor.py", line 27, in wrapped
+    return await with_timeout(func(dut, *args, **kwargs), 100000, "ns")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/mjha1/agentic-npu-rtl-integration/.venv/lib/python3.12/site-packages/cocotb/_extended_awaitables.py", line 360, in with_timeout
+    raise SimTimeoutError
+cocotb.triggers.SimTimeoutError
+</failure><properties><property name="cocotb" value="True" /><property name="random_seed" value="21843" /><property name="file" value="/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-225559-24e54d/diagnostics/probe-1-attempt9/tests/_npu_monitor.py" /><property name="line" value="8" /><property name="sim_time_unit" value="ns" /><property name="sim_time_start" value="0.0" /><property name="sim_time_stop" value="100000.0" /><property name="sim_time_duration" value="100000.0" /><property name="sim_time_ratio" value="42694.62770862526" /></properties><system-err>Test failed with COCOTB_RANDOM_SEED=21843
+</system-err></testcase></testsuite></testsuites>

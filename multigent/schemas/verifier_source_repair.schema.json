@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Counted Verifier Source Completion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "files", "architecture_conflict", "known_verification_gaps"],
+  "properties": {
+    "status": {"type": "string", "enum": ["VERIFICATION_READY", "ARCHITECTURE_CONFLICT"]},
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "content"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "content": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "architecture_conflict": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["category", "affected_modules", "issue", "evidence", "requested_architect_decision"],
+      "properties": {
+        "category": {"type": "string"},
+        "affected_modules": {"type": "array", "items": {"type": "string"}},
+        "issue": {"type": "string"},
+        "evidence": {"type": "string"},
+        "requested_architect_decision": {"type": "string"}
+      }
+    },
+    "known_verification_gaps": {"type": "array", "items": {"type": "string"}}
+  }
+}

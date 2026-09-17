@@ -23,6 +23,7 @@ class HardwareDesignState(TypedDict, total=False):
     architecture_artifacts: dict[str, Any]
     architecture_conflict: dict[str, Any] | None
     architecture_revision: int
+    architecture_revision_patch: dict[str, Any] | None
     max_architecture_revisions: int
 
     rtl_context: dict[str, Any]
@@ -31,13 +32,20 @@ class HardwareDesignState(TypedDict, total=False):
     rtl_status: str
     rtl_result: dict[str, Any]
     rtl_files: list[str]
+    rtl_contract_version: int
 
     verification_context: dict[str, Any]
     verifier_status: str
     verifier_result: dict[str, Any]
+    verifier_draft: dict[str, Any]
+    verifier_addressed_findings: list[int]
+    verifier_review_status: str
+    verifier_review_result: dict[str, Any] | None
+    verifier_review_hashes: dict[str, Any]
     verification_plan: dict[str, Any]
     verification_status: str
     verification_evidence: dict[str, Any] | None
+    verification_only: bool
 
     debugger_status: str
     diagnosis: dict[str, Any] | None
@@ -73,3 +81,17 @@ class HardwareDesignState(TypedDict, total=False):
     diagnostic_iteration: int
     max_diagnostic_iterations: int
     workspace_root: str
+
+    contract_review_status: str
+    contract_review_result: dict[str, Any]
+    contract_review_hashes: dict[str, str]
+    contract_review_revision: int
+    max_contract_review_revisions: int
+    architecture_escalation: int
+    max_architecture_escalations: int
+    repair_cycle_iteration: int
+    rtl_branch_update: dict[str, Any]
+    tb_branch_update: dict[str, Any]
+    rtl_contract_critique: dict[str, Any]
+    tb_contract_critique: dict[str, Any]
+    escalation_result: dict[str, Any]

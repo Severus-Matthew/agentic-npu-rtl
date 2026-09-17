@@ -16,49 +16,35 @@ def _success_update() -> dict:
     }
 
 
-def test_semantic_validation_failure_gets_one_feedback_retry() -> None:
+def test_semantic_validation_failure_becomes_explicit_graph_state() -> None:
     class StubVerifier:
         def __init__(self) -> None:
             self.calls = 0
 
         def run_from_state(self, state: dict) -> dict:
             self.calls += 1
-            if self.calls == 1:
-                raise AgentRuntimeError(
-                    "Generated ready/valid source driver deasserts valid inside a handshake wait loop"
-                )
-
-            assert state["run_id"] == "unit-semantic-retry1"
-            feedback = state["verification_context"]["semantic_retry_feedback"]
-            assert "ready/valid" in feedback["validator_error"]
-            assert feedback["attempt"] == 1
-            assert "Do not weaken" in feedback["required_action"]
-            return _success_update()
+            self.last_generated_result = {
+                "status": "VERIFICATION_READY",
+                "test_files": [{"path": "tests/test_gemm.py", "content": "old"}],
+            }
+            raise AgentRuntimeError(
+                "Invalid operation coverage: missing=['fixed_cmd_word_mapping']"
+            )
 
     runtime = StubVerifier()
-    node = make_verifier_node(runtime)  # type: ignore[arg-type]
-    update = node(  # type: ignore[arg-type]
+    update = make_verifier_node(runtime)(  # type: ignore[arg-type]
         {
             "run_id": "unit",
             "user_request": "design a streaming block",
-            "architecture_version": 1,
-            "repair_iteration": 0,
-            "verification_context": {
-                "user_request": "design a streaming block",
-                "verification_policy": {},
-                "frozen_architecture": {},
-                "provenance": {
-                    "includes_generated_rtl": False,
-                    "includes_rtl_generator_output": False,
-                },
-            },
+            "verification_context": {"user_request": "design a streaming block"},
         }
     )
 
-    assert runtime.calls == 2
-    assert update["verifier_status"] == "VERIFICATION_READY"
-    assert update["history"][0]["semantic_retry"] is True
-    assert "ready/valid" in update["history"][0]["semantic_retry_error"]
+    assert runtime.calls == 1
+    assert update["verifier_status"] == "SEMANTIC_VALIDATION_FAILED"
+    assert "fixed_cmd_word_mapping" in update["errors"][0]
+    assert update["history"][0]["validator_error"] == update["errors"][0]
+    assert update["verifier_draft"]["test_files"][0]["content"] == "old"
 
 
 def test_api_runtime_failure_is_not_semantically_retried() -> None:
@@ -80,33 +66,56 @@ def test_api_runtime_failure_is_not_semantically_retried() -> None:
     assert runtime.calls == 1
 
 
-def test_second_semantic_failure_surfaces_without_third_call() -> None:
+def test_successful_graph_retry_is_marked_in_history() -> None:
+    class StubVerifier:
+        def run_from_state(self, state: dict) -> dict:
+            review = state["verification_context"]["semantic_validation_review"]
+            assert review["missing_concepts"] == ["required_feature"]
+            return _success_update()
+
+    update = make_verifier_node(StubVerifier())(  # type: ignore[arg-type]
+        {
+            "run_id": "unit",
+            "verification_context": {
+                "semantic_validation_review": {
+                    "validator_error": "missing required_feature",
+                    "missing_concepts": ["required_feature"],
+                }
+            },
+        }
+    )
+
+    assert update["verifier_status"] == "VERIFICATION_READY"
+    assert update["history"][0]["semantic_retry"] is True
+    assert "required_feature" in update["history"][0]["semantic_retry_error"]
+
+
+def test_semantic_correction_can_report_a_genuine_architecture_conflict() -> None:
     class StubVerifier:
         def __init__(self) -> None:
             self.calls = 0
 
         def run_from_state(self, state: dict) -> dict:
             self.calls += 1
-            raise AgentRuntimeError(
-                "Verifier claims readiness without referencing required contract-visible completion/error signals: status_done"
-            )
+            return {
+                "verifier_status": "ARCHITECTURE_CONFLICT",
+                "architecture_conflict": {"issue": "contradictory output framing"},
+            }
 
     runtime = StubVerifier()
-    node = make_verifier_node(runtime)  # type: ignore[arg-type]
+    update = make_verifier_node(runtime)(  # type: ignore[arg-type]
+        {
+            "run_id": "unit",
+            "verification_context": {
+                "semantic_validation_review": {
+                    "validator_error": "missing=['required_feature']",
+                    "previous_verifier_output": {"status": "VERIFICATION_READY"},
+                }
+            },
+        }
+    )
 
-    update = node({"run_id": "unit", "user_request": "design a streaming block",
-                   "verification_context": {"user_request": "design a streaming block"}})
-    assert update["verifier_status"] == "SEMANTIC_VALIDATION_FAILED"
-    assert "status_done" in update["errors"][0]
-    assert runtime.calls == 2
-
-
-def test_semantic_retry_rebuilds_empty_context_after_architecture_revision(monkeypatch):
-    import multigent.orchestration.verifier_node as module
-    monkeypatch.setattr(module,'build_verification_context',lambda **kwargs:{
-        'user_request':'new contract','frozen_architecture':{'version':2},
-        'verification_policy':{},'provenance':{}})
-    retry=module._build_semantic_retry_state({'user_request':'new contract','verification_context':{}},
-                                            error=AgentRuntimeError('semantic defect'))
-    assert retry['verification_context']['frozen_architecture']=={'version':2}
-    assert retry['verification_context']['semantic_retry_feedback']['validator_error']=='semantic defect'
+    assert update["verifier_status"] == "ARCHITECTURE_CONFLICT"
+    assert update["architecture_conflict"]["issue"] == "contradictory output framing"
+    assert update["history"][0]["semantic_retry"] is True
+    assert runtime.calls == 1

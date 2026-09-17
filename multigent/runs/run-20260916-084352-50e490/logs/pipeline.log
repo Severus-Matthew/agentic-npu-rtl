@@ -1,0 +1,27 @@
+{
+  "status": "FAILED",
+  "vivado_status": null,
+  "final_report": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084352-50e490/reports/final.json",
+  "errors": [
+    "Generated test file test_rv_uadd8.py contains no executable async @cocotb.test() functions; imports, coverage declarations and comments are not test bodies. Return complete executable source now, not a description of future runtime delivery.",
+    "Invalid operation sampling bindings: Unknown or ambiguous dimension 'scalar_len'",
+    "Invalid operation sampling bindings: Unknown or ambiguous dimension 'tx_elems'",
+    "Verifier conflict references undeclared modules: ['tests/test_rv_uadd8.py']; affected_modules must use exact names from module_manifest.modules[].name, never a test/reference file name. Declared modules are: ['rv_uadd8_top']",
+    "Verifier TB review structure is invalid: Stimulus 'boundary_00' needs a # STIMULUS [boundary_00] comment",
+    "Verifier TB review structure is invalid: Stimulus 'one_cycle_stall' needs a # STIMULUS [one_cycle_stall] comment",
+    "Verifier TB review structure is invalid: Every Verifier-authored assert needs a feature comment immediately above it; line 84"
+  ],
+  "architecture_status": "READY",
+  "architecture_version": 3,
+  "architecture_revision": 3,
+  "rtl_status": "RTL_GENERATED",
+  "rtl_files": [
+    "rv_uadd8_top.sv"
+  ],
+  "verifier_status": "SEMANTIC_VALIDATION_FAILED",
+  "verification_status": "PENDING",
+  "debugger_status": null,
+  "repair_iteration": 0,
+  "failure_class": null,
+  "architecture_conflict": null
+}

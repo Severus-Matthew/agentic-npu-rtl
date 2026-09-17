@@ -1,0 +1,56 @@
+{
+  "contract_review_status": "REVISION_REQUIRED",
+  "contract_review_result": {
+    "status": "REVISION_REQUIRED",
+    "summary": "Contract is close, but has one externally visible behavioral ambiguity and one criteria inconsistency that can yield non-deterministic implementations/tests.",
+    "findings": [
+      {
+        "contract_path": "frozen_architecture.architecture_contract.control.error_behavior",
+        "issue": "Rule says illegal transfer is ignored for state/count progression and FSM remains in current legal state, but does not explicitly state whether illegally transferred payload is written into operand buffers or other data-path state.",
+        "requested_change": "Add an explicit no-side-effect rule: any illegal transfer pulse must not write/update A/B/bias/C buffers, counters, accumulators, output registers, or phase state (only one-cycle error pulse may occur)."
+      },
+      {
+        "contract_path": "frozen_architecture.acceptance_criteria.functional[5] vs frozen_architecture.interface_contract.channels[0].backpressure",
+        "issue": "Latency criterion fixes cmd acceptance as +1 cycle term (total 4874), while interface allows command transfer on first rst_n=1 IDLE edge; this can create off-by-one interpretation around reset release and first command cycle in stall-free checks.",
+        "requested_change": "Define a precise latency measurement anchor independent of reset timing ambiguity (e.g., 'from the cycle where cmd_hs=1 to the cycle where completion=1, inclusive') and ensure the numeric total is tied to that anchor only."
+      }
+    ]
+  },
+  "contract_review_hashes": {},
+  "history": [
+    {
+      "stage": "contract_reviewer",
+      "status": "REVISION_REQUIRED",
+      "findings": [
+        {
+          "contract_path": "frozen_architecture.architecture_contract.control.error_behavior",
+          "issue": "Rule says illegal transfer is ignored for state/count progression and FSM remains in current legal state, but does not explicitly state whether illegally transferred payload is written into operand buffers or other data-path state.",
+          "requested_change": "Add an explicit no-side-effect rule: any illegal transfer pulse must not write/update A/B/bias/C buffers, counters, accumulators, output registers, or phase state (only one-cycle error pulse may occur)."
+        },
+        {
+          "contract_path": "frozen_architecture.acceptance_criteria.functional[5] vs frozen_architecture.interface_contract.channels[0].backpressure",
+          "issue": "Latency criterion fixes cmd acceptance as +1 cycle term (total 4874), while interface allows command transfer on first rst_n=1 IDLE edge; this can create off-by-one interpretation around reset release and first command cycle in stall-free checks.",
+          "requested_change": "Define a precise latency measurement anchor independent of reset timing ambiguity (e.g., 'from the cycle where cmd_hs=1 to the cycle where completion=1, inclusive') and ensure the numeric total is tied to that anchor only."
+        }
+      ]
+    }
+  ],
+  "contract_review_revision": 4,
+  "architecture_conflict": {
+    "source": "contract_reviewer",
+    "status": "REVISION_REQUIRED",
+    "summary": "Contract is close, but has one externally visible behavioral ambiguity and one criteria inconsistency that can yield non-deterministic implementations/tests.",
+    "findings": [
+      {
+        "contract_path": "frozen_architecture.architecture_contract.control.error_behavior",
+        "issue": "Rule says illegal transfer is ignored for state/count progression and FSM remains in current legal state, but does not explicitly state whether illegally transferred payload is written into operand buffers or other data-path state.",
+        "requested_change": "Add an explicit no-side-effect rule: any illegal transfer pulse must not write/update A/B/bias/C buffers, counters, accumulators, output registers, or phase state (only one-cycle error pulse may occur)."
+      },
+      {
+        "contract_path": "frozen_architecture.acceptance_criteria.functional[5] vs frozen_architecture.interface_contract.channels[0].backpressure",
+        "issue": "Latency criterion fixes cmd acceptance as +1 cycle term (total 4874), while interface allows command transfer on first rst_n=1 IDLE edge; this can create off-by-one interpretation around reset release and first command cycle in stall-free checks.",
+        "requested_change": "Define a precise latency measurement anchor independent of reset timing ambiguity (e.g., 'from the cycle where cmd_hs=1 to the cycle where completion=1, inclusive') and ensure the numeric total is tied to that anchor only."
+      }
+    ]
+  }
+}

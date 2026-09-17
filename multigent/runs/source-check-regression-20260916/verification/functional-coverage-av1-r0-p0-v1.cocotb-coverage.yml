@@ -1,0 +1,228 @@
+contract_runtime_0:
+  cover_percentage: 100.0
+  coverage: 39
+  size: 39
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel:
+  cover_percentage: 100.0
+  coverage: 22
+  size: 22
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.input_operands:
+  cover_percentage: 100.0
+  coverage: 11
+  size: 11
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.input_operands.handshake_states:
+  cover_percentage: 100.0
+  coverage: 8
+  size: 8
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.input_operands.handshake_states.ready:
+  at_least: 1
+  bins:_hits:
+    high: 530
+    low: 278
+  cover_percentage: 100.0
+  coverage: 2
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.input_operands.handshake_states.valid:
+  at_least: 1
+  bins:_hits:
+    high: 121
+    low: 687
+  cover_percentage: 100.0
+  coverage: 2
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.input_operands.handshake_states.valid_x_ready:
+  at_least: 1
+  bins:_hits:
+    ('high', 'high'): 112
+    ('high', 'low'): 9
+    ('low', 'high'): 418
+    ('low', 'low'): 269
+  cover_percentage: 100.0
+  coverage: 4
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverCross'>
+  weight: 1
+contract_runtime_0.channel.input_operands.stall_stability:
+  cover_percentage: 100.0
+  coverage: 3
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.input_operands.stall_stability.coverpoint:
+  at_least: 1
+  bins:_hits:
+    long_stall: 1
+    one_cycle_stall: 1
+    short_stall: 1
+  cover_percentage: 100.0
+  coverage: 3
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.output_sum:
+  cover_percentage: 100.0
+  coverage: 11
+  size: 11
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.output_sum.handshake_states:
+  cover_percentage: 100.0
+  coverage: 8
+  size: 8
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.output_sum.handshake_states.ready:
+  at_least: 1
+  bins:_hits:
+    high: 527
+    low: 281
+  cover_percentage: 100.0
+  coverage: 2
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.output_sum.handshake_states.valid:
+  at_least: 1
+  bins:_hits:
+    high: 388
+    low: 420
+  cover_percentage: 100.0
+  coverage: 2
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.output_sum.handshake_states.valid_x_ready:
+  at_least: 1
+  bins:_hits:
+    ('high', 'high'): 110
+    ('high', 'low'): 278
+    ('low', 'high'): 417
+    ('low', 'low'): 3
+  cover_percentage: 100.0
+  coverage: 4
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverCross'>
+  weight: 1
+contract_runtime_0.channel.output_sum.stall_stability:
+  cover_percentage: 100.0
+  coverage: 3
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.output_sum.stall_stability.coverpoint:
+  at_least: 1
+  bins:_hits:
+    long_stall: 23
+    one_cycle_stall: 18
+    short_stall: 48
+  cover_percentage: 100.0
+  coverage: 3
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.operation:
+  cover_percentage: 100.0
+  coverage: 14
+  size: 14
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.add_unsigned:
+  cover_percentage: 100.0
+  coverage: 14
+  size: 14
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.add_unsigned.accepted_sum:
+  cover_percentage: 100.0
+  coverage: 4
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.add_unsigned.accepted_sum.coverpoint:
+  at_least: 1
+  bins:_hits:
+    low_or_no_carry: 61
+    maximum: 1
+    widened_result: 48
+    zero: 2
+  cover_percentage: 100.0
+  coverage: 4
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.operation.add_unsigned.output_buffer_stall:
+  cover_percentage: 100.0
+  coverage: 4
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.add_unsigned.output_buffer_stall.coverpoint:
+  at_least: 1
+  bins:_hits:
+    long: 23
+    none: 21
+    one_cycle: 18
+    short: 48
+  cover_percentage: 100.0
+  coverage: 4
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.operation.add_unsigned.registered_latency:
+  cover_percentage: 100.0
+  coverage: 2
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.add_unsigned.registered_latency.coverpoint:
+  at_least: 1
+  bins:_hits:
+    backpressured_delay: 89
+    one_cycle: 21
+  cover_percentage: 100.0
+  coverage: 2
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.operation.add_unsigned.transferred_sum:
+  cover_percentage: 100.0
+  coverage: 4
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.add_unsigned.transferred_sum.coverpoint:
+  at_least: 1
+  bins:_hits:
+    maximum: 1
+    ninth_bit_set: 48
+    uint8_range: 59
+    zero: 2
+  cover_percentage: 100.0
+  coverage: 4
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.signal:
+  cover_percentage: 100.0
+  coverage: 3
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.signal.rst_n:
+  cover_percentage: 100.0
+  coverage: 3
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.signal.rst_n.reset_behavior:
+  cover_percentage: 100.0
+  coverage: 3
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.signal.rst_n.reset_behavior.coverpoint:
+  at_least: 1
+  bins:_hits:
+    asserted: 6
+    deasserted: 808
+    release: 3
+  cover_percentage: 100.0
+  coverage: 3
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1

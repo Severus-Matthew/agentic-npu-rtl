@@ -1,0 +1,42 @@
+{
+  "review": {
+    "status": "APPROVED",
+    "summary": "Deterministic source and contract checks passed",
+    "findings": []
+  },
+  "definition_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "c4193e2bdb8e221ce2b6c211ce855b80a17bdf55d64017efd5dc67eb99fe9c00",
+      "architect_result.json": "72897b2a2574302dac2288c2f3ca431b6ea18178e55bff728bfbbcfa5c157dba",
+      "architecture_contract.yaml": "07e2df46e290e9251a6392267deb102c2617196eba03c459aa2fe28b58e9c3fd",
+      "interface_contract.yaml": "bec7df126c1e01057be849b03fc565255dce72c35a26039ae2bed3d637e8d497",
+      "module_manifest.json": "255985ad453acf5a783a6f426ddaba0d023f9190059179c9ff3b13bafdb6b241"
+    },
+    "tests": {
+      "test_u8_registered_adder.py": "96a3a36fcd98d2ca5f05d132f4202e6032d9d03866fb73918d4016799948b055"
+    },
+    "reference": {
+      "adder_model.py": "905fa9ed1e7d9cd124ccc8f6d7d857a81c22ffafad9e97ad2fdf53cf6c57f6f7"
+    },
+    "operation_coverage": "d947ad9d6c6bca28562f114b6a78394b90f30d81b863a71e5bc9a81b764caeaf",
+    "taxonomy_and_monitor": {
+      "verifier_tool/coverage/operation/families.yaml": "9d6e4acc50e16b09362248e76da9d2381cc5ff548ec11003af49e35af34eec3b",
+      "verifier_tool/coverage/operation/sampling_templates.yaml": "99ee06f294892df8c0eb21e9b269c44956e0f2da41b34770071d2dfc64676dd0",
+      "verifier_tool/coverage/protocol/templates.yaml": "04c6aded32ae73cd60b17dc6ba0ffd996831c4fbb8b05336ee778e3f2e0c7445",
+      "verifier_tool/predefined_assertion/operation/assertions.yaml": "fc5a3f563fa23b38b5202a1e491256dc3f6ff8b0eac4a086ab2807d0442ef8e7",
+      "verifier_tool/role_pool/interface_protocol_profiles.yaml": "a4ecb99223e5803c6c6f4403c4104a4f3a3c1fd3145db1c02c67f23c982a9903",
+      "verifier_tool/role_pool/interface_semantic_classes.yaml": "7f9a94fa2f22559863de224197442fa11033f5fc4b2cf344a68bc65cf3aecc0a",
+      "verifier_tool/role_pool/interface_signal_roles.yaml": "759b2f89b76135a6fa69d56d2ededc333f0b78bab893f51284d834d5f3823e81",
+      "verifier_tool/coverage/runtime.py": "ba544563eb2615c738c443ce41f44268477110b47b2b175d2adb9c0599d03e92",
+      "verifier_tool/coverage/cocotb_model.py": "abe7cabcf91ec7d165be17102acd443f9cd677b12478f5d444a8171f2280227f",
+      "verifier_tool/coverage/operation/plan.py": "357af0d8bd41f6875635c39bc465cb19b3c5ada24ff1e86463b2a22ac3d178ae",
+      "verifier_tool/coverage/operation/sampling.py": "95561453bcdd93597d998e5682d200b88a5286b69dc54e3c94ed423164345f48",
+      "verifier_tool/predefined_assertion/protocol/generator.py": "70fc33cef6b21b00c9d3e7845ce41a7518f8ae2a6f5b6df6e611938053ce345a",
+      "verifier_tool/predefined_assertion/operation/generator.py": "0fab64b98122a2f9452fd5a1896b59d6070e429243badb7780dd85fd9fb5064c",
+      "verifier_tool/predefined_assertion/instrumentation.py": "6794c4d52cc79c6e7a8aef7d787558e1f30aedaf8d7e1e3564f38f5671d87774"
+    }
+  },
+  "scope": "STATIC_SOURCE_AND_CONTRACT_CHECKS",
+  "simulation_pass": false,
+  "stimulus_reviewed": false
+}

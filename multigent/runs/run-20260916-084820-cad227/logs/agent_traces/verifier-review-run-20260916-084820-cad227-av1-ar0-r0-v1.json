@@ -1,0 +1,34 @@
+{
+  "agent": "verifier_review",
+  "prompt_sha256": "3b84f8387c2a9fff380ad738ce650f5e885982dc1943b7a6258abc46eab2f525",
+  "skill_sha256": "5514e0bc214e96ae7b70831828c503e6ad9d4cb95466ec288659addbb0f9d027",
+  "api_mode": "responses",
+  "model_requested": "gpt-5.6-sol",
+  "schema": "/u/mjha1/agentic-npu-rtl-integration/multigent/schemas/verifier_review.schema.json",
+  "verbosity": "low",
+  "attempts": [
+    {
+      "attempt": 1,
+      "response_id": "resp_054fce199d559f63016aaa58fb430c87d1bd7a9f89c45707cf",
+      "model_returned": "gpt-5.6-sol",
+      "status": "completed",
+      "incomplete_details": null,
+      "usage": {
+        "input_tokens": 24773,
+        "input_tokens_details": {
+          "cache_write_tokens": 24770,
+          "cached_tokens": 0
+        },
+        "output_tokens": 2880,
+        "output_tokens_details": {
+          "reasoning_tokens": 2834
+        },
+        "total_tokens": 27653
+      },
+      "output_chars": 173,
+      "output_text": "{\"status\":\"APPROVED\",\"summary\":\"Coverage, observers, executable checkers, and declared stimulus mappings are semantically sufficient for the frozen contract.\",\"findings\":[]}",
+      "validated": true
+    }
+  ],
+  "successful_attempt": 1
+}

@@ -1,0 +1,157 @@
+taxonomy:
+  name: accelerator_interface_signal_roles
+  version: "0.1"
+  scope: top-level accelerator signals at the DUT boundary
+  direction_convention: input and output are stated relative to the accelerator DUT
+  rules:
+    - Each top-level signal has exactly one role from this closed vocabulary.
+    - Signal names are identifiers only; names never determine roles.
+    - Channel-bound roles name one channel declared in interface_contract.channels.
+    - Payload contents and operation-specific meaning remain in the contract semantic fields.
+
+roles:
+  clock:
+    category: infrastructure
+    description: Clock that advances synchronous DUT state.
+    channel_binding: forbidden
+    direction_relation: fixed
+    allowed_directions: [input]
+    interface_reference: clock
+    coverage_tags: [clocking]
+
+  reset:
+    category: infrastructure
+    description: Reset or initialization control whose semantic declares exactly one of active-high or active-low.
+    channel_binding: forbidden
+    direction_relation: fixed
+    allowed_directions: [input]
+    interface_reference: reset
+    coverage_tags: [reset]
+
+  clock_enable:
+    category: infrastructure
+    description: Qualifier that enables or gates synchronous DUT progress.
+    channel_binding: forbidden
+    direction_relation: fixed
+    allowed_directions: [input]
+    coverage_tags: [clocking, control]
+
+  valid:
+    category: channel_handshake
+    description: Producer assertion that the channel transfer content is available.
+    channel_binding: required
+    direction_relation: same_as_channel
+    allowed_directions: [input, output]
+    coverage_tags: [handshake, stall_stability]
+
+  ready:
+    category: channel_handshake
+    description: Consumer assertion that it can accept a channel transfer.
+    channel_binding: required
+    direction_relation: opposite_to_channel
+    allowed_directions: [input, output]
+    coverage_tags: [handshake, backpressure]
+
+  payload:
+    category: channel_content
+    description: Primary data carried by a channel transfer.
+    channel_binding: required
+    direction_relation: same_as_channel
+    allowed_directions: [input, output]
+    coverage_tags: [payload_values, stall_stability]
+
+  metadata:
+    category: channel_content
+    description: Side information interpreted together with a channel payload.
+    channel_binding: required
+    direction_relation: same_as_channel
+    allowed_directions: [input, output]
+    coverage_tags: [metadata_values, stall_stability]
+
+  last:
+    category: channel_framing
+    description: Marker identifying the final transfer of a frame or transaction.
+    channel_binding: required
+    direction_relation: same_as_channel
+    allowed_directions: [input, output]
+    coverage_tags: [framing, stall_stability]
+
+  keep:
+    category: channel_framing
+    description: Per-lane or per-byte validity mask for a transfer.
+    channel_binding: required
+    direction_relation: same_as_channel
+    allowed_directions: [input, output]
+    coverage_tags: [partial_transfer, stall_stability]
+
+  transaction_id:
+    category: channel_correlation
+    description: Identifier used to correlate transfers or responses.
+    channel_binding: required
+    direction_relation: same_as_channel
+    allowed_directions: [input, output]
+    coverage_tags: [ordering, correlation, stall_stability]
+
+  start:
+    category: lifecycle_control
+    description: Standalone request to begin an operation or job.
+    channel_binding: forbidden
+    direction_relation: fixed
+    allowed_directions: [input]
+    coverage_tags: [lifecycle, back_to_back]
+
+  enable:
+    category: lifecycle_control
+    description: Level-sensitive permission for an accelerator function to operate.
+    channel_binding: forbidden
+    direction_relation: fixed
+    allowed_directions: [input]
+    coverage_tags: [control]
+
+  flush:
+    category: lifecycle_control
+    description: Request to discard or drain in-flight work according to the contract.
+    channel_binding: forbidden
+    direction_relation: fixed
+    allowed_directions: [input]
+    coverage_tags: [flush, recovery]
+
+  cancel:
+    category: lifecycle_control
+    description: Request to cancel an identified or current operation.
+    channel_binding: forbidden
+    direction_relation: fixed
+    allowed_directions: [input]
+    coverage_tags: [cancel, recovery]
+
+  busy:
+    category: lifecycle_status
+    description: Level indication that the accelerator has work in progress.
+    channel_binding: forbidden
+    direction_relation: fixed
+    allowed_directions: [output]
+    coverage_tags: [lifecycle]
+
+  completion:
+    category: lifecycle_status
+    description: Event or level indicating contract-defined operation completion.
+    channel_binding: forbidden
+    direction_relation: fixed
+    allowed_directions: [output]
+    coverage_tags: [completion, back_to_back]
+
+  error:
+    category: lifecycle_status
+    description: Contract-visible indication of an error or protocol violation.
+    channel_binding: forbidden
+    direction_relation: fixed
+    allowed_directions: [output]
+    coverage_tags: [error, recovery]
+
+  interrupt:
+    category: lifecycle_status
+    description: Notification output intended for an external controller or CPU.
+    channel_binding: forbidden
+    direction_relation: fixed
+    allowed_directions: [output]
+    coverage_tags: [interrupt]

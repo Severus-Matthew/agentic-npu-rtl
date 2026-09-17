@@ -1,0 +1,12 @@
+{
+  "architecture": {
+    "acceptance_criteria.yaml": "2c17556902386432dca878959fc2a92cde50e2321b87faa2666f01b10367aec7",
+    "architect_result.json": "ded3a8fa41eaac0025de015bb47779d5a800f364ee3edefcf0dbdbb4bfb5dc42",
+    "architecture_contract.yaml": "010050e1f5168f30332a75ed7dddfbc8876422d1f3afb9ef903704d5bd2d8401",
+    "interface_contract.yaml": "dc356fc94ff2aa76f5029fd91e91077204854964c7cd1ecc61658dee4b62b18e",
+    "module_manifest.json": "2d477588857f0f80a65088a51a5dba5cb508b00623bf5353d1b31479f0a33473"
+  },
+  "rtl": {},
+  "tests": {},
+  "reference": {}
+}

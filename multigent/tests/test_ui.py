@@ -51,6 +51,8 @@ def test_ui_launch_freezes_model_and_preserves_general_request(tmp_path,model):
         assert captured['env']['NPU_AGENT_MODEL']==model
         assert captured['env']['NPU_WORKSPACE_ROOT']==str(tmp_path/result['run_id'])
         assert captured['command'][-1]==model
+        assert '--verification-only' in captured['command']
+        assert captured['command'][3]=='multigent.orchestration.graph'
         assert 'Design a saturating signed vector reducer' in captured['command']
         with pytest.raises(ValueError,match='already working'):
             manager.start({'request':'another design','model':model})

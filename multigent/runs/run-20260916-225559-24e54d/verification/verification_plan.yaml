@@ -1,0 +1,34 @@
+top_module: unsigned_adder
+test_modules:
+- test_unsigned_adder
+test_categories:
+- exhaustive
+- arithmetic
+- latency
+- throughput
+- backpressure
+- reset
+- randomized
+randomized_test_count: 100
+seed: 21843
+timeout_seconds: 900
+regression_groups:
+  smoke:
+  - test_unsigned_adder
+  targeted:
+  - test_unsigned_adder
+  full:
+  - test_unsigned_adder
+pass_criteria: Full regression checks all 65,536 operand pairs and 100 completed randomized
+  pairs; all oracle, edge-state, accounting, reset, protocol and required coverage
+  checks succeed.
+protocol_assumptions:
+- Default elaboration; fixed uint8 inputs and uint9 result, without parameter overrides.
+- 10 ns rising-edge clock; drive at falling edge, snapshot after 1 ns, inspect registered
+  state 1 ns after rising edge.
+- Reset-qualified pre-edge handshakes determine acceptance and consumption; reset
+  permits source withdrawal.
+- Every cycle checks the single-entry state, including invalid payload retention,
+  reset suppression, idle and next-job boundaries.
+- All operand encodings are legal; no completion, error, configuration or framing
+  signals exist.

@@ -1,0 +1,34 @@
+{
+  "agent": "contract_reviewer",
+  "prompt_sha256": "838ec72d0a8e198f90fd028a56cb2efa154ebdc8db47fee23a6fb8608b7775b1",
+  "skill_sha256": "051f7d396f023d6e26be34ae32f5275c923bf9790a370bcc3d13797630b5e6d9",
+  "api_mode": "responses",
+  "model_requested": "gpt-5.3-codex",
+  "schema": "/u/mjha1/agentic-npu-rtl-integration/multigent/schemas/contract_review.schema.json",
+  "verbosity": "low",
+  "attempts": [
+    {
+      "attempt": 1,
+      "response_id": "resp_069b66e1e005e191016aaa567c4ff087d1b97927460965581c",
+      "model_returned": "gpt-5.3-codex",
+      "status": "completed",
+      "incomplete_details": null,
+      "usage": {
+        "input_tokens": 9951,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 361,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 10312
+      },
+      "output_chars": 1817,
+      "output_text": "{\"status\":\"REVISION_REQUIRED\",\"summary\":\"Contract is close, but has two executable-rule inconsistencies around reset behavior and compute cycle accounting that can cause divergent implementations/verification expectations.\",\"findings\":[{\"contract_path\":\"frozen_architecture.architecture_contract.reset.required_state vs frozen_architecture.interface_contract.signals[rst_n].semantic\",\"issue\":\"Reset behavior conflicts: reset.required_state says cmd_ready=1 in IDLE during reset, while rst_n semantic says when low no channel transfer is accepted or emitted. This is ambiguous for whether cmd_ready must be high or low under reset.\",\"requested_change\":\"Define reset handshake outputs unambiguously in both artifacts (e.g., while rst_n=0 force all ready/valid low including cmd_ready, or explicitly allow cmd_ready=1 but state no transfer can occur because reset gates acceptance). Ensure both sections match exactly.\"},{\"contract_path\":\"frozen_architecture.architecture_contract.latency_model vs frozen_architecture.module_manifest.modules[operand_buffer_bank].ports[*].semantics and mac_sequencer responsibilities\",\"issue\":\"Stall-free compute latency is specified as 2112 cycles (=64*32 MAC +64 finalize), but operand_buffer_bank declares 1-cycle synchronous read latency for A/B/bias, which typically requires explicit prefetch/pipeline bubbles or overlapped scheduling. Current contract does not provide cycle-accurate rule reconciling these, so independent implementations may disagree on timing/compute_done assertion.\",\"requested_change\":\"Add explicit compute micro-schedule consistent with 1-cycle sync reads (address issue timing, when MAC update occurs, when bias is read/applied, and exact condition for compute_done). Either adjust the 2112-cycle figure or specify overlap rules that make it achievable.\"}]}",
+      "validated": true
+    }
+  ],
+  "successful_attempt": 1
+}

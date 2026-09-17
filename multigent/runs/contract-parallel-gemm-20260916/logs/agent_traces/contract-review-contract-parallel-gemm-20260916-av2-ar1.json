@@ -1,0 +1,34 @@
+{
+  "agent": "contract_reviewer",
+  "prompt_sha256": "b6bf067920e449994f2b543a817a83997105c347a923efd4814e3fb0649daec2",
+  "skill_sha256": "051f7d396f023d6e26be34ae32f5275c923bf9790a370bcc3d13797630b5e6d9",
+  "api_mode": "responses",
+  "model_requested": "gpt-5.3-codex",
+  "schema": "/u/mjha1/agentic-npu-rtl-integration/multigent/schemas/contract_review.schema.json",
+  "verbosity": "low",
+  "attempts": [
+    {
+      "attempt": 1,
+      "response_id": "resp_081574113fa40510016aaa5685ac5c87d1a9a3ed36ff4b33ce",
+      "model_returned": "gpt-5.3-codex",
+      "status": "completed",
+      "incomplete_details": null,
+      "usage": {
+        "input_tokens": 10064,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 583,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 10647
+      },
+      "output_chars": 3093,
+      "output_text": "{\"status\":\"REVISION_REQUIRED\",\"summary\":\"Contract is strong overall, but a few externally observable behaviors remain ambiguous or internally inconsistent and could lead to divergent implementations.\",\"findings\":[{\"contract_path\":\"frozen_architecture.architecture_contract.control.error_behavior\",\"issue\":\"\\\"protocol violation if input valid arrives on wrong stream phase\\\" conflicts with ready/valid semantics elsewhere: with ready low, valid alone is normally non-accepted and legal. As written, implementations may pulse error on any asserted valid while not in phase, even without transfer intent.\",\"requested_change\":\"Define illegal wrong-phase condition explicitly in signal terms (e.g., whether error is triggered by valid-only observation, by attempted transfer, or by a specific phase/ready qualification) and make it consistent with global handshake rules.\"},{\"contract_path\":\"frozen_architecture.interface_contract.global_handshake_rules.stall_behavior\",\"issue\":\"Rule allows payload/metadata/last stability requirement to end when valid drops before transfer (\\\"until transfer or valid drops\\\"), which can conflict with stricter ready/valid verification expectations and produce non-deterministic producer behavior under prolonged stall.\",\"requested_change\":\"Tighten rule to require payload/metadata/last stability for every cycle valid=1 and ready=0, and clarify whether producer is permitted to deassert valid before eventual transfer on each channel.\"},{\"contract_path\":\"frozen_architecture.architecture_contract.reset.required_state\",\"issue\":\"Reset requires all ready outputs low, while interface channel backpressure text defines readiness by phase only and does not restate reset precedence per channel. This can cause mismatched assertions at boundaries.\",\"requested_change\":\"Add explicit per-channel statement (or global precedence rule) that reset forces cmd_ready/a_ready/b_ready/bias_ready low regardless of phase logic, and that no input transfer is accepted when rst_n=0.\"},{\"contract_path\":\"frozen_architecture.interface_contract.signals[busy].semantic\",\"issue\":\"\\\"busy ... deasserts before completion pulse cycle\\\" is timing-specific but not tied to a precise cycle relation with DONE state entry and completion pulse generation; different implementations may differ by one cycle while still appearing compliant elsewhere.\",\"requested_change\":\"Specify exact cycle relationship between final out_hs, busy deassertion, and completion pulse (e.g., busy drops in cycle T+1 and completion pulses in same/next defined cycle).\"},{\"contract_path\":\"frozen_architecture.architecture_contract.latency_model\",\"issue\":\"Compute-cycle formula is precise, but acceptance criteria do not bind it as a normative latency requirement; implementers may alter internal micro-sequencing and still pass functional checks, creating contract drift.\",\"requested_change\":\"State whether the provided compute cycle model (2*K+3 per output, 4288 total at defaults) is mandatory or informative. If mandatory, add an acceptance criterion that checks exact cycle count under stall-free conditions.\"}]}",
+      "validated": true
+    }
+  ],
+  "successful_attempt": 1
+}

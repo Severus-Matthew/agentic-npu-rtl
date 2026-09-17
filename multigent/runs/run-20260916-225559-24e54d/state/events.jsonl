@@ -1,0 +1,41 @@
+{"stage": "architect", "phase": "started", "time": "2026-09-16T22:56:02.248443+00:00"}
+{"stage": "architect", "phase": "finished", "time": "2026-09-16T22:57:37.602913+00:00", "status": null, "history": [{"stage": "architect", "status": "READY", "architecture_version": 1, "revision": false, "architect_decision": "INITIAL_CONTRACT", "rtl_preserved": false}]}
+{"stage": "contract_reviewer", "phase": "started", "time": "2026-09-16T22:57:37.606532+00:00"}
+{"stage": "contract_reviewer", "phase": "finished", "time": "2026-09-16T22:57:43.037269+00:00", "status": null, "history": [{"stage": "contract_reviewer", "status": "APPROVED", "findings": []}]}
+{"stage": "generation_start", "phase": "started", "time": "2026-09-16T22:57:43.040322+00:00"}
+{"stage": "generation_start", "phase": "finished", "time": "2026-09-16T22:57:43.086212+00:00", "status": null, "history": [{"stage": "generation_start", "status": "PARALLEL_GENERATION"}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-16T22:57:43.090275+00:00"}
+{"stage": "verifier", "phase": "started", "time": "2026-09-16T22:57:43.090615+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-16T22:57:56.244601+00:00", "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 0, "ppa_iteration": 0, "files": ["unsigned_adder.sv"]}]}
+{"stage": "verifier", "phase": "finished", "time": "2026-09-16T22:59:54.224460+00:00", "history": [{"stage": "verifier_generation", "status": "VERIFICATION_READY", "architecture_version": 1, "repair_iteration": 0, "semantic_retry": false}]}
+{"stage": "generation_join", "phase": "started", "time": "2026-09-16T22:59:54.227940+00:00"}
+{"stage": "generation_join", "phase": "finished", "time": "2026-09-16T22:59:54.309281+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 0, "ppa_iteration": 0, "files": ["unsigned_adder.sv"]}, {"stage": "verifier_generation", "status": "VERIFICATION_READY", "architecture_version": 1, "repair_iteration": 0, "semantic_retry": false}, {"stage": "generation_join", "status": "JOINED"}]}
+{"stage": "verifier_review", "phase": "started", "time": "2026-09-16T22:59:54.312153+00:00"}
+{"stage": "verifier_review", "phase": "finished", "time": "2026-09-16T22:59:54.509395+00:00", "status": null, "history": [{"stage": "testbench_checks", "status": "APPROVED", "findings": [], "stimulus_reviewed": false}]}
+{"stage": "verification_tools", "phase": "started", "time": "2026-09-16T22:59:54.512642+00:00"}
+{"stage": "cocotb_regression", "phase": "pending", "time": "2026-09-16T22:59:54.579489+00:00", "status": "NOT_RUN"}
+{"stage": "protocol_checks", "phase": "pending", "time": "2026-09-16T22:59:54.581411+00:00", "status": "NOT_RUN"}
+{"stage": "coverage_checks", "phase": "pending", "time": "2026-09-16T22:59:54.583109+00:00", "status": "NOT_RUN"}
+{"stage": "verilator_lint", "phase": "started", "time": "2026-09-16T22:59:54.584900+00:00"}
+{"stage": "verilator_lint", "phase": "finished", "time": "2026-09-16T22:59:54.833701+00:00", "status": "PASS"}
+{"stage": "cocotb_regression", "phase": "started", "time": "2026-09-16T22:59:54.847858+00:00"}
+{"stage": "cocotb_regression", "phase": "finished", "time": "2026-09-16T23:14:54.981601+00:00", "status": "TIMEOUT", "tests": 0, "failures": 0}
+{"stage": "protocol_checks", "phase": "started", "time": "2026-09-16T23:14:54.983975+00:00"}
+{"stage": "protocol_checks", "phase": "finished", "time": "2026-09-16T23:14:54.986397+00:00", "status": "INCOMPLETE", "failures": [], "scope": "Contract monitor observations from this simulation"}
+{"stage": "coverage_checks", "phase": "started", "time": "2026-09-16T23:14:54.988006+00:00"}
+{"stage": "coverage_checks", "phase": "finished", "time": "2026-09-16T23:14:54.990056+00:00", "status": "NOT_RUN", "hit_bins": 0, "required_bins": 0, "missing_bins": []}
+{"stage": "verification_tools", "phase": "finished", "time": "2026-09-16T23:14:55.222499+00:00", "status": "REPAIR_REQUIRED", "history": [{"stage": "deterministic_verification", "status": "SIMULATION_TIMEOUT", "failure_class": "SIMULATION_TIMEOUT"}]}
+{"stage": "debugger", "phase": "started", "time": "2026-09-16T23:14:55.225770+00:00"}
+{"stage": "debugger", "phase": "finished", "time": "2026-09-16T23:15:21.484205+00:00", "status": null, "history": [{"stage": "debugger", "status": "EVIDENCE_INSUFFICIENT", "failure_class": "SIMULATION_TIMEOUT", "repair_iteration_before": 0, "repair_iteration_after": 0, "affected_modules": []}]}
+{"stage": "diagnostic_probe", "phase": "started", "time": "2026-09-16T23:15:21.487709+00:00"}
+{"stage": "diagnostic_probe", "phase": "finished", "time": "2026-09-16T23:15:29.826179+00:00", "status": null, "history": [{"stage": "diagnostic_probe", "status": "EVIDENCE_COLLECTED"}]}
+{"stage": "debugger", "phase": "started", "time": "2026-09-16T23:15:29.829255+00:00"}
+{"stage": "debugger", "phase": "finished", "time": "2026-09-16T23:15:51.627096+00:00", "status": null, "history": [{"stage": "debugger", "status": "EVIDENCE_INSUFFICIENT", "failure_class": "SIMULATION_TIMEOUT", "repair_iteration_before": 0, "repair_iteration_after": 0, "affected_modules": []}]}
+{"stage": "diagnostic_probe", "phase": "started", "time": "2026-09-16T23:15:51.630035+00:00"}
+{"stage": "diagnostic_probe", "phase": "finished", "time": "2026-09-16T23:15:59.885585+00:00", "status": null, "history": [{"stage": "diagnostic_probe", "status": "EVIDENCE_COLLECTED"}]}
+{"stage": "debugger", "phase": "started", "time": "2026-09-16T23:15:59.888688+00:00"}
+{"stage": "debugger", "phase": "finished", "time": "2026-09-16T23:16:21.293327+00:00", "status": null, "history": [{"stage": "debugger", "status": "EVIDENCE_INSUFFICIENT", "failure_class": "SIMULATION_TIMEOUT", "repair_iteration_before": 0, "repair_iteration_after": 0, "affected_modules": []}]}
+{"stage": "failed", "phase": "started", "time": "2026-09-16T23:16:21.296560+00:00"}
+{"stage": "failed", "phase": "finished", "time": "2026-09-16T23:16:21.682673+00:00", "status": "FAILED", "history": [{"stage": "orchestrator", "status": "FAILED", "reason": "EVIDENCE_INSUFFICIENT"}]}
+{"stage": "final_report", "phase": "started", "time": "2026-09-16T23:16:21.685543+00:00"}
+{"stage": "final_report", "phase": "finished", "time": "2026-09-16T23:16:21.701262+00:00", "status": "FAILED"}

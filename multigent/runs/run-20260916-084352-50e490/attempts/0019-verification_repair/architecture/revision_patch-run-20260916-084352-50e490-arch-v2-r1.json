@@ -1,0 +1,18 @@
+{
+  "status": "PATCH_READY",
+  "edits": [
+    {
+      "op": "replace",
+      "path": "/architecture_contract/reset/required_state",
+      "value_json": "\"on cycle with rst_n=0: out_valid=0, in_ready=0, output register content don't-care but held deterministic by flops, pending/pre-reset work discarded\"",
+      "reason": "Align reset-time in_ready with interface/module semantics and suppress transfers during reset edge per reviewer finding."
+    },
+    {
+      "op": "replace",
+      "path": "/architecture_contract/control/state_progression",
+      "value_json": "\"EMPTY -> FULL on input transfer; FULL -> EMPTY on output transfer. Simultaneous dequeue/enqueue in FULL is architecturally forbidden; if FULL at cycle start, in_ready=0 for that cycle regardless of out_ready/in_valid, so next input can be accepted no earlier than the first cycle after FULL->EMPTY.\"",
+      "reason": "Remove ambiguity and make explicit that simultaneous replacement in FULL is not legal in this contract."
+    }
+  ],
+  "issue": ""
+}

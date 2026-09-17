@@ -13,11 +13,11 @@ Compilation, simulation, regression, synthesis, timing, and resource reports are
 
 ## Global Workflow
 1. Read and freeze the NPU specification.
-2. Architect Agent creates an architecture contract and acceptance criteria.
-3. RTL Generator and Verifier independently create implementation and verification artifacts.
+2. Architect creates contracts; a separate Contract Reviewer reviews them and routes precise corrections back through LangGraph until approved or the review limit is reached.
+3. RTL Generator and Independent Testbench Generator run in parallel from reviewed contracts. They never receive each other's output. A separate Testbench Reviewer checks coverage, assertions and stimulus intent before simulation.
 4. Deterministic compile/simulation executes.
 5. On failure, Debugger diagnoses and issues a constrained repair plan.
-6. RTL Generator applies the repair; verification reruns.
+6. The selected RTL or testbench owner applies the mediated repair; full verification reruns. After seven unsuccessful repairs, Debugger requests independent contract critiques and diagnoses architecture. Up to three escalation rounds are allowed; only Architect patches contracts and every patch requires renewed Contract Reviewer approval.
 7. On functional pass, synthesis runs.
 8. PPA Judge evaluates timing/resources and may request constrained optimization.
 9. Every optimization invalidates previous functional-pass status and forces regression.

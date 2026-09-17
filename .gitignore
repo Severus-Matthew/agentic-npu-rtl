@@ -18,7 +18,21 @@ venv/
 
 # Rebuildable simulator output
 # multigent/workspace/verification/build/
-# multigent/runs/**/build/
-# multigent/runs/**/sim_build/
-# *.vcd
-# *.fst
+# sim_build/
+# obj_dir/
+*.vcd
+*.fst
+
+# Generated run output (regenerate by re-running the pipeline)
+# multigent/runs/
+
+# The integration worktree may reuse the local virtual environment via a symlink.
+.venv
+
+# Migration: keep machine environments and credentials local.
+env/
+envs/
+.conda/
+.ssh/
+*.pem
+*.key

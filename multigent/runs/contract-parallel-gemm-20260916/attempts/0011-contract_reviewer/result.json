@@ -1,0 +1,56 @@
+{
+  "contract_review_status": "REVISION_REQUIRED",
+  "contract_review_result": {
+    "status": "REVISION_REQUIRED",
+    "summary": "Contract is strong overall, but has a critical ordering ambiguity for command handling during reset release and a minor inconsistency in phase naming around completion timing that can cause divergent implementations.",
+    "findings": [
+      {
+        "contract_path": "architecture/interface_contract/channels/cmd_ch/backpressure",
+        "issue": "Spec says cmd_ready is high only in IDLE when rst_n=1, while reset.required_state says all ready outputs low and does not explicitly define first-cycle behavior on reset deassertion. This can cause disagreement on whether a held cmd_valid/cmd_payload may handshake on the first cycle rst_n rises if FSM is already IDLE.",
+        "requested_change": "Add an explicit executable rule for reset-release handshake timing (e.g., whether cmd_ready may assert immediately on first rst_n=1 cycle in IDLE, and whether command can be accepted that same cycle)."
+      },
+      {
+        "contract_path": "architecture/architecture_contract/control/strategy + architecture/interface_contract/signals(busy,completion) + architecture/architecture_contract/latency_model",
+        "issue": "FSM sequence includes DONE->IDLE, while busy/completion semantics define completion pulse in the cycle after final output handshake and busy deassert in that same following cycle. The contract does not explicitly state whether DONE is exactly one cycle and whether any ready signal may assert during DONE. This can create implementation variance in command acceptance timing around completion.",
+        "requested_change": "Specify DONE state duration and readiness behavior explicitly (e.g., DONE is exactly one cycle, all input ready signals low in DONE, cmd_ready reasserts only upon entry to IDLE on next cycle)."
+      }
+    ]
+  },
+  "contract_review_hashes": {},
+  "history": [
+    {
+      "stage": "contract_reviewer",
+      "status": "REVISION_REQUIRED",
+      "findings": [
+        {
+          "contract_path": "architecture/interface_contract/channels/cmd_ch/backpressure",
+          "issue": "Spec says cmd_ready is high only in IDLE when rst_n=1, while reset.required_state says all ready outputs low and does not explicitly define first-cycle behavior on reset deassertion. This can cause disagreement on whether a held cmd_valid/cmd_payload may handshake on the first cycle rst_n rises if FSM is already IDLE.",
+          "requested_change": "Add an explicit executable rule for reset-release handshake timing (e.g., whether cmd_ready may assert immediately on first rst_n=1 cycle in IDLE, and whether command can be accepted that same cycle)."
+        },
+        {
+          "contract_path": "architecture/architecture_contract/control/strategy + architecture/interface_contract/signals(busy,completion) + architecture/architecture_contract/latency_model",
+          "issue": "FSM sequence includes DONE->IDLE, while busy/completion semantics define completion pulse in the cycle after final output handshake and busy deassert in that same following cycle. The contract does not explicitly state whether DONE is exactly one cycle and whether any ready signal may assert during DONE. This can create implementation variance in command acceptance timing around completion.",
+          "requested_change": "Specify DONE state duration and readiness behavior explicitly (e.g., DONE is exactly one cycle, all input ready signals low in DONE, cmd_ready reasserts only upon entry to IDLE on next cycle)."
+        }
+      ]
+    }
+  ],
+  "contract_review_revision": 3,
+  "architecture_conflict": {
+    "source": "contract_reviewer",
+    "status": "REVISION_REQUIRED",
+    "summary": "Contract is strong overall, but has a critical ordering ambiguity for command handling during reset release and a minor inconsistency in phase naming around completion timing that can cause divergent implementations.",
+    "findings": [
+      {
+        "contract_path": "architecture/interface_contract/channels/cmd_ch/backpressure",
+        "issue": "Spec says cmd_ready is high only in IDLE when rst_n=1, while reset.required_state says all ready outputs low and does not explicitly define first-cycle behavior on reset deassertion. This can cause disagreement on whether a held cmd_valid/cmd_payload may handshake on the first cycle rst_n rises if FSM is already IDLE.",
+        "requested_change": "Add an explicit executable rule for reset-release handshake timing (e.g., whether cmd_ready may assert immediately on first rst_n=1 cycle in IDLE, and whether command can be accepted that same cycle)."
+      },
+      {
+        "contract_path": "architecture/architecture_contract/control/strategy + architecture/interface_contract/signals(busy,completion) + architecture/architecture_contract/latency_model",
+        "issue": "FSM sequence includes DONE->IDLE, while busy/completion semantics define completion pulse in the cycle after final output handshake and busy deassert in that same following cycle. The contract does not explicitly state whether DONE is exactly one cycle and whether any ready signal may assert during DONE. This can create implementation variance in command acceptance timing around completion.",
+        "requested_change": "Specify DONE state duration and readiness behavior explicitly (e.g., DONE is exactly one cycle, all input ready signals low in DONE, cmd_ready reasserts only upon entry to IDLE on next cycle)."
+      }
+    ]
+  }
+}

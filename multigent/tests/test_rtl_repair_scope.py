@@ -55,6 +55,35 @@ def test_functional_repair_requires_frozen_verifier() -> None:
         )
 
 
+def test_contract_fixed_accepts_exact_architect_patch_without_module_scope_check() -> None:
+    RTLGeneratorAgent._validate_authorized_change_scope(
+        changed_modules={"top", "core"},
+        task_type="CONTRACT_FIXED",
+        feedback={
+            "source": "architect_contract_patch",
+            "previous_contract_version": 1,
+            "current_contract_version": 2,
+            "contract_patch": {
+                "status": "PATCH_READY",
+                "edits": [{"op": "replace", "path": "/architecture_contract/latency_model"}],
+            },
+        },
+    )
+
+
+def test_contract_fixed_requires_exact_patch_and_consecutive_versions() -> None:
+    with pytest.raises(AgentRuntimeError, match="consecutive"):
+        RTLGeneratorAgent._validate_authorized_change_scope(
+            changed_modules=set(), task_type="CONTRACT_FIXED",
+            feedback={
+                "source": "architect_contract_patch",
+                "previous_contract_version": 1,
+                "current_contract_version": 3,
+                "contract_patch": {"status": "PATCH_READY", "edits": [{}]},
+            },
+        )
+
+
 def test_optimization_cannot_overwrite_protected_file_with_allowed_module():
     with pytest.raises(AgentRuntimeError,match='module-to-file'):
         RTLGeneratorAgent._validate_module_file('top.sv','core','module core(output y); assign y=0; endmodule',

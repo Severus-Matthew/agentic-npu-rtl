@@ -1,0 +1,79 @@
+{
+  "rtl_status": "RTL_GENERATED",
+  "rtl_result": {
+    "status": "RTL_GENERATED",
+    "task_type": "INITIAL_GENERATION",
+    "summary": "Implemented frozen single-module ready/valid unsigned 8b+8b adder with single-entry output register, synchronous active-low reset, one-cycle no-stall latency, and backpressure-stable output.",
+    "files": [
+      {
+        "path": "rv_uadd8_top.sv",
+        "module": "rv_uadd8_top",
+        "purpose": "Top-level and only manifest module implementing datapath, handshake control, output register, and reset behavior.",
+        "content": "module rv_uadd8_top (\n    input  logic       clk,\n    input  logic       rst_n,\n    input  logic       in_valid,\n    output logic       in_ready,\n    input  logic [7:0] in_op_a,\n    input  logic [7:0] in_op_b,\n    output logic       out_valid,\n    input  logic       out_ready,\n    output logic [8:0] out_sum\n);\n\n    logic       out_valid_r;\n    logic [8:0] out_sum_r;\n\n    logic       pop;\n    logic       push;\n    logic [8:0] sum_candidate;\n\n    always_comb begin\n        in_ready      = rst_n && (!out_valid_r || out_ready);\n        out_valid     = out_valid_r;\n        out_sum       = out_sum_r;\n\n        pop           = out_valid_r && out_ready;\n        push          = in_valid && in_ready;\n        sum_candidate = {1'b0, in_op_a} + {1'b0, in_op_b};\n    end\n\n    always_ff @(posedge clk) begin\n        if (!rst_n) begin\n            out_valid_r <= 1'b0;\n            out_sum_r   <= 9'd0;\n        end else begin\n            case ({push, pop})\n                2'b10: begin\n                    out_valid_r <= 1'b1;\n                    out_sum_r   <= sum_candidate;\n                end\n                2'b01: begin\n                    out_valid_r <= 1'b0;\n                    out_sum_r   <= out_sum_r;\n                end\n                2'b11: begin\n                    out_valid_r <= 1'b1;\n                    out_sum_r   <= sum_candidate;\n                end\n                default: begin\n                    out_valid_r <= out_valid_r;\n                    out_sum_r   <= out_sum_r;\n                end\n            endcase\n        end\n    end\n\nendmodule\n"
+      }
+    ],
+    "contract_checks": [
+      {
+        "requirement": "Single manifest module rv_uadd8_top with exact interface signals and widths",
+        "satisfied": true,
+        "evidence": "Generated exactly one file/module rv_uadd8_top.sv with clk,rst_n,in_valid,in_ready,in_op_a[7:0],in_op_b[7:0],out_valid,out_ready,out_sum[8:0]."
+      },
+      {
+        "requirement": "Unsigned exact 8-bit + 8-bit to 9-bit arithmetic",
+        "satisfied": true,
+        "evidence": "sum_candidate computed as {1'b0,in_op_a}+{1'b0,in_op_b}, preserving carry-out in 9 bits."
+      },
+      {
+        "requirement": "Ready/valid transfer semantics with reset suppression",
+        "satisfied": true,
+        "evidence": "in_ready forced low when rst_n=0; push depends on in_ready so no input transfer on reset edge; state update reset branch clears valid regardless of handshakes."
+      },
+      {
+        "requirement": "Single-entry output register with stable payload during stall",
+        "satisfied": true,
+        "evidence": "out_sum/out_valid driven from registered out_sum_r/out_valid_r; when FULL and out_ready=0 then pop=0, push=0, registers hold."
+      },
+      {
+        "requirement": "Same-edge dequeue/enqueue behavior and one-cycle no-stall latency",
+        "satisfied": true,
+        "evidence": "in_ready high when out_valid_r&&out_ready allows simultaneous pop/push; on push at cycle t, out_valid_r asserted and out_sum_r loaded at edge, visible in cycle t+1."
+      },
+      {
+        "requirement": "Synchronous active-low reset required state",
+        "satisfied": true,
+        "evidence": "always_ff uses if(!rst_n): out_valid_r<=0 and out_sum_r<=0; pending output discarded."
+      }
+    ],
+    "changed_modules": [
+      "rv_uadd8_top"
+    ],
+    "architecture_conflict": null,
+    "blocked_reason": "",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [],
+    "regression_required": "FULL"
+  },
+  "rtl_files": [
+    "rv_uadd8_top.sv"
+  ],
+  "architecture_conflict": null,
+  "needs_regression": true,
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "rtl_contract_version": 3,
+  "history": [
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 3,
+      "repair_iteration": 0,
+      "ppa_iteration": 0,
+      "files": [
+        "rv_uadd8_top.sv"
+      ]
+    }
+  ]
+}

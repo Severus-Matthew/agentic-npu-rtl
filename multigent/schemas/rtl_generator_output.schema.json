@@ -25,7 +25,7 @@
     },
     "task_type": {
       "type": "string",
-      "enum": ["INITIAL_GENERATION", "FUNCTIONAL_REPAIR", "SYNTHESIS_REPAIR", "PPA_OPTIMIZATION"]
+      "enum": ["INITIAL_GENERATION", "CONTRACT_FIXED", "FUNCTIONAL_REPAIR", "SYNTHESIS_REPAIR", "PPA_OPTIMIZATION"]
     },
     "summary": {"type": "string"},
     "files": {

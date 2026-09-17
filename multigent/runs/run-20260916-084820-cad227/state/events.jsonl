@@ -1,0 +1,22 @@
+{"stage": "architect", "phase": "started", "time": "2026-09-16T08:48:22.658386+00:00"}
+{"stage": "architect", "phase": "finished", "time": "2026-09-16T08:49:27.905857+00:00", "status": null, "history": [{"stage": "architect", "status": "READY", "architecture_version": 1, "revision": false, "architect_decision": "INITIAL_CONTRACT", "rtl_preserved": false}]}
+{"stage": "contract_reviewer", "phase": "started", "time": "2026-09-16T08:49:27.908670+00:00"}
+{"stage": "contract_reviewer", "phase": "finished", "time": "2026-09-16T08:49:39.177026+00:00", "status": null, "history": [{"stage": "contract_reviewer", "status": "APPROVED", "findings": []}]}
+{"stage": "generation_start", "phase": "started", "time": "2026-09-16T08:49:39.179786+00:00"}
+{"stage": "generation_start", "phase": "finished", "time": "2026-09-16T08:49:39.217954+00:00", "status": null, "history": [{"stage": "generation_start", "status": "PARALLEL_GENERATION"}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-16T08:49:39.221390+00:00"}
+{"stage": "verifier", "phase": "started", "time": "2026-09-16T08:49:39.221628+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-16T08:49:53.134528+00:00", "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 0, "ppa_iteration": 0, "files": ["u8_registered_adder.sv"]}]}
+{"stage": "verifier", "phase": "finished", "time": "2026-09-16T08:52:21.475020+00:00", "history": [{"stage": "verifier_generation", "status": "SEMANTIC_VALIDATION_FAILED", "validator_error": "Verifier TB review structure is invalid: Every Verifier-authored assert needs a feature comment immediately above it; line 64"}]}
+{"stage": "generation_join", "phase": "started", "time": "2026-09-16T08:52:21.477834+00:00"}
+{"stage": "generation_join", "phase": "finished", "time": "2026-09-16T08:52:21.556994+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 0, "ppa_iteration": 0, "files": ["u8_registered_adder.sv"]}, {"stage": "verifier_generation", "status": "SEMANTIC_VALIDATION_FAILED", "validator_error": "Verifier TB review structure is invalid: Every Verifier-authored assert needs a feature comment immediately above it; line 64"}, {"stage": "generation_join", "status": "JOINED"}]}
+{"stage": "verification_repair", "phase": "started", "time": "2026-09-16T08:52:21.559734+00:00"}
+{"stage": "verification_repair", "phase": "finished", "time": "2026-09-16T08:52:21.645366+00:00", "status": null, "history": [{"stage": "verification_repair", "status": "SEMANTIC_CORRECTION", "missing_concepts": []}]}
+{"stage": "verifier", "phase": "started", "time": "2026-09-16T08:52:21.647707+00:00"}
+{"stage": "verifier", "phase": "finished", "time": "2026-09-16T08:53:14.897971+00:00", "status": null, "history": [{"stage": "verifier_generation", "status": "VERIFICATION_READY", "architecture_version": 1, "repair_iteration": 0, "semantic_retry": true, "semantic_retry_error": "Verifier TB review structure is invalid: Every Verifier-authored assert needs a feature comment immediately above it; line 64"}]}
+{"stage": "verifier_review", "phase": "started", "time": "2026-09-16T08:53:14.900667+00:00"}
+{"stage": "verifier_review", "phase": "finished", "time": "2026-09-16T08:54:22.063866+00:00", "status": null, "history": [{"stage": "verifier_review", "status": "APPROVED", "findings": [], "stimulus_reviewed": true}]}
+{"stage": "verification_tools", "phase": "started", "time": "2026-09-16T08:54:22.066620+00:00"}
+{"stage": "verification_tools", "phase": "finished", "time": "2026-09-16T08:54:28.752348+00:00", "status": "SUCCESS", "history": [{"stage": "deterministic_verification", "status": "PASS", "failure_class": null}]}
+{"stage": "final_report", "phase": "started", "time": "2026-09-16T08:54:28.755197+00:00"}
+{"stage": "final_report", "phase": "finished", "time": "2026-09-16T08:54:28.771764+00:00", "status": "SUCCESS"}

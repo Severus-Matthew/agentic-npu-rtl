@@ -1,0 +1,681 @@
+{
+  "top": "gemm8x8x32_top",
+  "modules": [
+    {
+      "name": "gemm8x8x32_top",
+      "responsibility": "external interface binding and integration of control, buffers, compute, and output stream",
+      "dependencies": [
+        "gemm_ctrl_fsm",
+        "operand_buffer_bank",
+        "mac_sequencer",
+        "output_streamer"
+      ],
+      "parameters": [
+        "M_FIXED",
+        "N_FIXED",
+        "K_FIXED"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "active-low synchronous reset"
+        },
+        {
+          "name": "cmd_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "cmd valid"
+        },
+        {
+          "name": "cmd_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "cmd ready"
+        },
+        {
+          "name": "cmd_payload",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "start token"
+        },
+        {
+          "name": "a_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "A valid"
+        },
+        {
+          "name": "a_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "A ready"
+        },
+        {
+          "name": "a_payload",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "A data"
+        },
+        {
+          "name": "b_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "B valid"
+        },
+        {
+          "name": "b_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "B ready"
+        },
+        {
+          "name": "b_payload",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "B data"
+        },
+        {
+          "name": "bias_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "bias valid"
+        },
+        {
+          "name": "bias_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "bias ready"
+        },
+        {
+          "name": "bias_payload",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "bias data"
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "output valid"
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "output ready"
+        },
+        {
+          "name": "out_payload",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "output data"
+        },
+        {
+          "name": "out_last",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "output last"
+        },
+        {
+          "name": "busy",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "busy flag"
+        },
+        {
+          "name": "completion",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "completion pulse"
+        },
+        {
+          "name": "error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "error pulse"
+        }
+      ]
+    },
+    {
+      "name": "gemm_ctrl_fsm",
+      "responsibility": "phase FSM, counters, handshake qualification, busy/completion/error generation",
+      "dependencies": [],
+      "parameters": [
+        "M_FIXED",
+        "N_FIXED",
+        "K_FIXED"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "cmd_hs",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "cmd transfer pulse"
+        },
+        {
+          "name": "cmd_payload",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "command bit legality check"
+        },
+        {
+          "name": "a_hs",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "accepted A beat"
+        },
+        {
+          "name": "b_hs",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "accepted B beat"
+        },
+        {
+          "name": "bias_hs",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "accepted bias beat"
+        },
+        {
+          "name": "compute_done",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "compute phase done pulse"
+        },
+        {
+          "name": "out_hs",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "accepted output beat"
+        },
+        {
+          "name": "state_load_a",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "enable A load phase"
+        },
+        {
+          "name": "state_load_b",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "enable B load phase"
+        },
+        {
+          "name": "state_load_bias",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "enable bias load phase"
+        },
+        {
+          "name": "state_compute",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "enable compute phase"
+        },
+        {
+          "name": "state_output",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "enable output phase"
+        },
+        {
+          "name": "cmd_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "cmd ready"
+        },
+        {
+          "name": "a_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "A ready"
+        },
+        {
+          "name": "b_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "B ready"
+        },
+        {
+          "name": "bias_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "bias ready"
+        },
+        {
+          "name": "busy",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "busy level"
+        },
+        {
+          "name": "completion",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "one-cycle done pulse"
+        },
+        {
+          "name": "error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "one-cycle error pulse"
+        }
+      ]
+    },
+    {
+      "name": "operand_buffer_bank",
+      "responsibility": "store A/B/bias/C arrays; provide compute read ports and output read port",
+      "dependencies": [],
+      "parameters": [
+        "M_FIXED",
+        "N_FIXED",
+        "K_FIXED"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "we_a",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "write enable A"
+        },
+        {
+          "name": "waddr_a",
+          "direction": "input",
+          "width": "8",
+          "signed": false,
+          "semantics": "A write addr 0..255"
+        },
+        {
+          "name": "wdata_a",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "A write data"
+        },
+        {
+          "name": "we_b",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "write enable B"
+        },
+        {
+          "name": "waddr_b",
+          "direction": "input",
+          "width": "8",
+          "signed": false,
+          "semantics": "B write addr 0..255"
+        },
+        {
+          "name": "wdata_b",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "B write data"
+        },
+        {
+          "name": "we_bias",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "write enable bias"
+        },
+        {
+          "name": "waddr_bias",
+          "direction": "input",
+          "width": "3",
+          "signed": false,
+          "semantics": "bias write addr 0..7"
+        },
+        {
+          "name": "wdata_bias",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "bias write data"
+        },
+        {
+          "name": "raddr_a",
+          "direction": "input",
+          "width": "8",
+          "signed": false,
+          "semantics": "compute/read addr A"
+        },
+        {
+          "name": "rdata_a",
+          "direction": "output",
+          "width": "8",
+          "signed": true,
+          "semantics": "A read data, 1-cycle sync read latency"
+        },
+        {
+          "name": "raddr_b",
+          "direction": "input",
+          "width": "8",
+          "signed": false,
+          "semantics": "compute/read addr B"
+        },
+        {
+          "name": "rdata_b",
+          "direction": "output",
+          "width": "8",
+          "signed": true,
+          "semantics": "B read data, 1-cycle sync read latency"
+        },
+        {
+          "name": "raddr_bias",
+          "direction": "input",
+          "width": "3",
+          "signed": false,
+          "semantics": "bias read addr"
+        },
+        {
+          "name": "rdata_bias",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "bias read data, 1-cycle sync read latency"
+        },
+        {
+          "name": "we_c",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "write enable C result"
+        },
+        {
+          "name": "waddr_c",
+          "direction": "input",
+          "width": "6",
+          "signed": false,
+          "semantics": "C write addr 0..63"
+        },
+        {
+          "name": "wdata_c",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "C write data"
+        },
+        {
+          "name": "raddr_c",
+          "direction": "input",
+          "width": "6",
+          "signed": false,
+          "semantics": "output read addr"
+        },
+        {
+          "name": "rdata_c",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "C read data, 1-cycle sync read latency"
+        }
+      ]
+    },
+    {
+      "name": "mac_sequencer",
+      "responsibility": "generate i/j/k traversal, perform signed MAC with wrap, bias add, ReLU, and write C",
+      "dependencies": [
+        "operand_buffer_bank"
+      ],
+      "parameters": [
+        "M_FIXED",
+        "N_FIXED",
+        "K_FIXED"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "enable_compute",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "active during compute phase"
+        },
+        {
+          "name": "raddr_a",
+          "direction": "output",
+          "width": "8",
+          "signed": false,
+          "semantics": "A read addr"
+        },
+        {
+          "name": "rdata_a",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "A read data"
+        },
+        {
+          "name": "raddr_b",
+          "direction": "output",
+          "width": "8",
+          "signed": false,
+          "semantics": "B read addr"
+        },
+        {
+          "name": "rdata_b",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "B read data"
+        },
+        {
+          "name": "raddr_bias",
+          "direction": "output",
+          "width": "3",
+          "signed": false,
+          "semantics": "bias read addr"
+        },
+        {
+          "name": "rdata_bias",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "bias read data"
+        },
+        {
+          "name": "we_c",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "C write enable pulse when one output finalized"
+        },
+        {
+          "name": "waddr_c",
+          "direction": "output",
+          "width": "6",
+          "signed": false,
+          "semantics": "C write addr row-major"
+        },
+        {
+          "name": "wdata_c",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "C write data after ReLU"
+        },
+        {
+          "name": "compute_done",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "one-cycle pulse after C[63] written"
+        }
+      ]
+    },
+    {
+      "name": "output_streamer",
+      "responsibility": "read C buffer and emit out_valid/out_payload/out_last under backpressure",
+      "dependencies": [
+        "operand_buffer_bank"
+      ],
+      "parameters": [
+        "M_FIXED",
+        "N_FIXED",
+        "K_FIXED"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "enable_output",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "active during output phase"
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "sink ready"
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "source valid"
+        },
+        {
+          "name": "out_payload",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "C data"
+        },
+        {
+          "name": "out_last",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "final beat marker"
+        },
+        {
+          "name": "out_hs",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "accepted output beat pulse"
+        },
+        {
+          "name": "raddr_c",
+          "direction": "output",
+          "width": "6",
+          "signed": false,
+          "semantics": "C read addr"
+        },
+        {
+          "name": "rdata_c",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "C read data"
+        }
+      ]
+    }
+  ]
+}

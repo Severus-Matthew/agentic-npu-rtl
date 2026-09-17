@@ -1,0 +1,77 @@
+{
+  "top": "rv_uadd8_top",
+  "modules": [
+    {
+      "name": "rv_uadd8_top",
+      "responsibility": "Implements full datapath, handshake control, single-entry output register, and synchronous active-low reset behavior.",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Clock."
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Synchronous active-low reset."
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Input valid for operand pair."
+        },
+        {
+          "name": "in_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Input ready; high when rst_n=1 and either output register is empty or will be consumed this cycle (out_valid&&out_ready), enabling same-edge dequeue/enqueue."
+        },
+        {
+          "name": "in_op_a",
+          "direction": "input",
+          "width": "8",
+          "signed": false,
+          "semantics": "Unsigned operand A."
+        },
+        {
+          "name": "in_op_b",
+          "direction": "input",
+          "width": "8",
+          "signed": false,
+          "semantics": "Unsigned operand B."
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Output valid for stored sum."
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Consumer ready."
+        },
+        {
+          "name": "out_sum",
+          "direction": "output",
+          "width": "9",
+          "signed": false,
+          "semantics": "Stored 9-bit unsigned sum; stable during stall."
+        }
+      ]
+    }
+  ]
+}

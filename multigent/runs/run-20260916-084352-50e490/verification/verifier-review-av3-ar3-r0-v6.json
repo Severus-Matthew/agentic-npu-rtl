@@ -1,0 +1,53 @@
+{
+  "review": {
+    "status": "VERIFIER_REPAIR_REQUIRED",
+    "summary": "One required functional checker is missing: explicit enforcement of exact one-cycle no-stall latency from accepted input to output valid. Existing value checks can pass without proving the required cycle-accurate latency behavior.",
+    "findings": [
+      {
+        "category": "MISSING_ASSERTION",
+        "requirement": "Acceptance criterion and latency_model require exact one-cycle no-stall latency: with rst_n=1 and out_ready=1 and no prior occupancy, an input transfer at cycle t must produce corresponding out_valid/data at cycle t+1 (not earlier/later).",
+        "evidence": "Current assertions check output value equality when recv_one returns and protocol stall stability/reset behavior, but there is no cycle-accurate assertion tying an accepted input edge to mandatory out_valid assertion exactly next cycle under no-stall conditions.",
+        "recommended_change": "Add a TB temporal assertion/checker that, for no-stall setup (out_ready high, empty state), records accepted input on a rising edge and asserts at the next rising edge that out_valid=1 with matching out_sum; also fail if output appears in same cycle or is delayed beyond t+1 for that transaction."
+      }
+    ]
+  },
+  "definition_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "d424bfcdccace0f0d1761d476dfae2c7665064af5a45e39d603cec1447f63815",
+      "architect_result.json": "3431492cc806f40231aa52ca0b624d65ca3f59dd541118f68eb4195658dbf0ee",
+      "architecture_contract.yaml": "224f2900910ed6e554fa879d7db4f4e22864db89974d328ccdadef9f6ee7ade4",
+      "interface_contract.yaml": "bb07902d17cce1fbd943e686b565336369d7032ad941f50e88a59a2d4b5b3ca2",
+      "module_manifest.json": "20bb63f2011897d7b474742faa2eddf774723bac5a88be355be73ac52365c893",
+      "rejected_contract_v3_r2.json": "4844181aaf1075f7ba74a160a79872ab1e1f9725cbe19c603d7817c0314faa85",
+      "revision_patch-run-20260916-084352-50e490-arch-v2-r1.json": "60783b7ab1304f2d04c8816831ccf696c4036a6eaa87034d4f5bad1b637be31b",
+      "revision_patch-run-20260916-084352-50e490-arch-v3-r2.json": "d952d7d7a3d9cf852e120dc9dbb77900e25f74647d4a438325ca0e0b8d178fd8",
+      "revision_patch-run-20260916-084352-50e490-arch-v3-r3.json": "7088a1af4a037859778b5b2dac9c47558a3ea790eb0daeed432102fdc0e1973c"
+    },
+    "tests": {
+      "test_rv_uadd8.py": "376a513b5a653d561714aae1e98481fccedd333fab8dd518a4587cfad2093281"
+    },
+    "reference": {
+      "uadd8_ref.py": "41cbcbb152be2375927fb5d0e4257dfeae108a8f7963cd28d4073bccc8b61f7a"
+    },
+    "operation_coverage": "1d4c56826f1b3ba6f4e7d9c57381d58270b868bc43cc18a199324aee3cf8c469",
+    "taxonomy_and_monitor": {
+      "verifier_tool/coverage/operation/families.yaml": "9d6e4acc50e16b09362248e76da9d2381cc5ff548ec11003af49e35af34eec3b",
+      "verifier_tool/coverage/operation/sampling_templates.yaml": "99ee06f294892df8c0eb21e9b269c44956e0f2da41b34770071d2dfc64676dd0",
+      "verifier_tool/coverage/protocol/templates.yaml": "04c6aded32ae73cd60b17dc6ba0ffd996831c4fbb8b05336ee778e3f2e0c7445",
+      "verifier_tool/predefined_assertion/operation/assertions.yaml": "fc5a3f563fa23b38b5202a1e491256dc3f6ff8b0eac4a086ab2807d0442ef8e7",
+      "verifier_tool/role_pool/interface_protocol_profiles.yaml": "a4ecb99223e5803c6c6f4403c4104a4f3a3c1fd3145db1c02c67f23c982a9903",
+      "verifier_tool/role_pool/interface_semantic_classes.yaml": "7f9a94fa2f22559863de224197442fa11033f5fc4b2cf344a68bc65cf3aecc0a",
+      "verifier_tool/role_pool/interface_signal_roles.yaml": "759b2f89b76135a6fa69d56d2ededc333f0b78bab893f51284d834d5f3823e81",
+      "verifier_tool/coverage/runtime.py": "ba544563eb2615c738c443ce41f44268477110b47b2b175d2adb9c0599d03e92",
+      "verifier_tool/coverage/cocotb_model.py": "abe7cabcf91ec7d165be17102acd443f9cd677b12478f5d444a8171f2280227f",
+      "verifier_tool/coverage/operation/plan.py": "357af0d8bd41f6875635c39bc465cb19b3c5ada24ff1e86463b2a22ac3d178ae",
+      "verifier_tool/coverage/operation/sampling.py": "95561453bcdd93597d998e5682d200b88a5286b69dc54e3c94ed423164345f48",
+      "verifier_tool/predefined_assertion/protocol/generator.py": "70fc33cef6b21b00c9d3e7845ce41a7518f8ae2a6f5b6df6e611938053ce345a",
+      "verifier_tool/predefined_assertion/operation/generator.py": "0fab64b98122a2f9452fd5a1896b59d6070e429243badb7780dd85fd9fb5064c",
+      "verifier_tool/predefined_assertion/instrumentation.py": "6794c4d52cc79c6e7a8aef7d787558e1f30aedaf8d7e1e3564f38f5671d87774"
+    }
+  },
+  "scope": "COVERAGE_ASSERTIONS_AND_STIMULUS_INTENT",
+  "simulation_pass": false,
+  "stimulus_reviewed": true
+}

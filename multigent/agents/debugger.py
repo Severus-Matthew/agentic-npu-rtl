@@ -26,6 +26,14 @@ DEBUGGER_OUTPUT_SCHEMA = SCHEMA_ROOT / "debugger_output.schema.json"
 DIAGNOSIS_SCHEMA = SCHEMA_ROOT / "diagnosis.schema.json"
 REPAIR_PLAN_SCHEMA = SCHEMA_ROOT / "repair_plan.schema.json"
 
+CAUSE_PRIORITY = (
+    "RTL_DESIGN",
+    "GOLDEN_MODEL",
+    "LLM_OPERATION_ASSERTION",
+    "TESTBENCH_INFRASTRUCTURE",
+    "CONTRACT_GENERATED_PROTOCOL_ASSERTION",
+)
+
 
 def bounded_evidence(value, limit=6000):
     """Keep prompts bounded while full deterministic evidence remains on disk."""
@@ -102,7 +110,6 @@ class DebuggerAgent(APIAgent):
             "debugger_status": result["status"],
             "diagnosis": result["diagnosis"],
             "repair_plan": result["repair_plan"],
-            "architecture_conflict": result["architecture_conflict"],
         }
 
         if result["status"] == "REPAIR_PLAN_READY":
@@ -131,6 +138,66 @@ class DebuggerAgent(APIAgent):
         if not isinstance(value, dict):
             raise AgentRuntimeError(f"Expected mapping artifact at {path}")
         return value
+
+    @classmethod
+    def _load_verification_artifact(
+        cls, path_value: object, *, verification_dir: Path
+    ) -> dict[str, Any] | None:
+        if not isinstance(path_value, str) or not path_value.strip():
+            return None
+        path = Path(path_value).resolve()
+        try:
+            path.relative_to(verification_dir.resolve())
+        except ValueError:
+            return None
+        if not path.is_file() or path.suffix.lower() not in {".json", ".yaml", ".yml"}:
+            return None
+        return cls._load_mapping(path)
+
+    @classmethod
+    def _verification_artifact_evidence(
+        cls, evidence: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Load only artifacts from the failed run that aid root-cause ranking."""
+
+        verification_dir = WORKSPACE_ROOT / "verification"
+        cocotb = evidence.get("cocotb")
+        cocotb = cocotb if isinstance(cocotb, Mapping) else {}
+        functional = cocotb.get("functional_coverage")
+        functional = functional if isinstance(functional, Mapping) else {}
+        ledger_summary = cocotb.get("stimulus_ledger")
+        ledger_summary = ledger_summary if isinstance(ledger_summary, Mapping) else {}
+        coverage = cls._load_verification_artifact(
+            functional.get("report_path"), verification_dir=verification_dir
+        )
+        ledger = cls._load_verification_artifact(
+            ledger_summary.get("path"), verification_dir=verification_dir
+        )
+        plan_path = verification_dir / "combined_coverage_plan.yaml"
+        plan = cls._load_mapping(plan_path) if plan_path.is_file() else None
+        return {
+            "coverage_plan": plan,
+            "coverage_report": (
+                {
+                    "path": functional.get("report_path"),
+                    "assertion_failures": coverage.get("assertion_failures", []),
+                    "failure_records": coverage.get("failure_records", []),
+                    "last_observed_snapshot": coverage.get("last_observed_snapshot", {}),
+                    "operation_sampling": coverage.get("operation_sampling", []),
+                }
+                if coverage is not None
+                else None
+            ),
+            "stimulus_ledger": (
+                {
+                    "path": ledger_summary.get("path"),
+                    "status": ledger.get("status"),
+                    "most_recent_checked_stimuli": list(ledger.get("records", []))[-8:],
+                }
+                if ledger is not None
+                else None
+            ),
+        }
 
     @classmethod
     def build_context_from_state(cls, state: Mapping[str, Any]) -> dict[str, Any]:
@@ -187,6 +254,9 @@ class DebuggerAgent(APIAgent):
             "failure_class": failure_class,
             "verification_status": str(state.get("verification_status", "")),
             "verification_evidence": bounded_evidence(dict(evidence)),
+            "failed_run_artifacts": bounded_evidence(
+                cls._verification_artifact_evidence(evidence)
+            ),
             "frozen_architecture": frozen,
             "current_rtl": rtl,
             "frozen_reference": reference,
@@ -198,6 +268,11 @@ class DebuggerAgent(APIAgent):
                 "deterministic_evidence_authoritative": True,
                 "tests_frozen_during_functional_repair": True,
                 "debugger_may_edit_rtl": False,
+            },
+            "root_cause_policy": {
+                "priority_order": list(CAUSE_PRIORITY),
+                "lower_priority_requires_eliminating_every_higher_priority": True,
+                "contract_generated_protocol_assertions_are_code_owned": True,
             },
         }
 
@@ -217,11 +292,13 @@ class DebuggerAgent(APIAgent):
             "failure_class",
             "verification_status",
             "verification_evidence",
+            "failed_run_artifacts",
             "frozen_architecture",
             "current_rtl",
             "frozen_reference",
             "frozen_tests",
             "provenance",
+            "root_cause_policy",
         }
         missing = sorted(required - set(context))
         if missing:
@@ -248,7 +325,6 @@ class DebuggerAgent(APIAgent):
     ) -> None:
         diagnosis = result["diagnosis"]
         repair_plan = result["repair_plan"]
-        conflict = result["architecture_conflict"]
         status = result["status"]
 
         Draft202012Validator(
@@ -271,13 +347,38 @@ class DebuggerAgent(APIAgent):
         if not diagnosis["evidence"]:
             raise AgentRuntimeError("Debugger diagnosis requires concrete evidence")
 
+        ranking = list(diagnosis["cause_ranking"])
+        by_domain = {str(item["domain"]): item for item in ranking}
+        if set(by_domain) != set(CAUSE_PRIORITY) or len(by_domain) != len(ranking):
+            raise AgentRuntimeError(
+                "Debugger cause_ranking must contain every root-cause domain exactly once"
+            )
+        for priority, domain in enumerate(CAUSE_PRIORITY, start=1):
+            if int(by_domain[domain]["priority"]) != priority:
+                raise AgentRuntimeError(
+                    "Debugger cause_ranking does not preserve the required priority order"
+                )
+        root_domain = str(diagnosis["root_cause_domain"])
+        root_priority = CAUSE_PRIORITY.index(root_domain) + 1
+        if status != "EVIDENCE_INSUFFICIENT":
+            if by_domain[root_domain]["assessment"] != "SUPPORTED":
+                raise AgentRuntimeError("Selected Debugger root cause must be SUPPORTED")
+            unresolved_higher = [
+                domain
+                for domain in CAUSE_PRIORITY[: root_priority - 1]
+                if by_domain[domain]["assessment"] != "ELIMINATED"
+            ]
+            if unresolved_higher:
+                raise AgentRuntimeError(
+                    "A lower-priority root cause requires concrete elimination of "
+                    f"higher-priority domains: {unresolved_higher}"
+                )
+
         if status == "REPAIR_PLAN_READY":
+            if root_domain != "RTL_DESIGN":
+                raise AgentRuntimeError("RTL repair requires root_cause_domain=RTL_DESIGN")
             if not isinstance(repair_plan, Mapping):
                 raise AgentRuntimeError("REPAIR_PLAN_READY requires repair_plan")
-            if conflict is not None or diagnosis["architecture_change_required"]:
-                raise AgentRuntimeError(
-                    "RTL repair cannot simultaneously require an architecture change"
-                )
             affected = set(map(str, repair_plan["affected_modules"]))
             if not affected:
                 raise AgentRuntimeError("Repair plan requires at least one affected module")
@@ -301,37 +402,24 @@ class DebuggerAgent(APIAgent):
             if repair_plan["regression_required"] != "FULL":
                 raise AgentRuntimeError("Functional RTL repair requires FULL regression")
 
-        elif status == "ARCHITECTURE_ESCALATION":
-            if repair_plan is not None:
-                raise AgentRuntimeError(
-                    "ARCHITECTURE_ESCALATION must not authorize an RTL patch"
-                )
-            if not diagnosis["architecture_change_required"]:
-                raise AgentRuntimeError(
-                    "Architecture escalation requires architecture_change_required=true"
-                )
-            if not isinstance(conflict, Mapping):
-                raise AgentRuntimeError(
-                    "ARCHITECTURE_ESCALATION requires structured architecture_conflict"
-                )
-            unknown_conflict = sorted(
-                set(map(str, conflict["affected_modules"])) - manifest_modules
-            )
-            if unknown_conflict:
-                raise AgentRuntimeError(
-                    f"Architecture conflict names undeclared modules: {unknown_conflict}"
-                )
-
         elif status == "VERIFICATION_REPAIR_REQUIRED":
-            if repair_plan is not None or conflict is not None:
-                raise AgentRuntimeError("Verification repair must not authorize RTL or architecture edits")
-            if diagnosis["failure_class"] != "TESTBENCH_ERROR" or diagnosis["confidence"] < 0.8:
+            if repair_plan is not None:
+                raise AgentRuntimeError("Verification repair must not authorize RTL edits")
+            if diagnosis["failure_class"] not in {"TESTBENCH_ERROR", "COVERAGE_MISS"} or diagnosis["confidence"] < 0.8:
                 raise AgentRuntimeError("Verification repair requires high-confidence TESTBENCH_ERROR evidence")
+            if root_domain not in {
+                "GOLDEN_MODEL",
+                "LLM_OPERATION_ASSERTION",
+                "TESTBENCH_INFRASTRUCTURE",
+            }:
+                raise AgentRuntimeError(
+                    "Verification repair requires a verifier-owned root-cause domain"
+                )
 
         elif status == "EVIDENCE_INSUFFICIENT":
-            if repair_plan is not None or conflict is not None:
+            if repair_plan is not None:
                 raise AgentRuntimeError(
-                    "EVIDENCE_INSUFFICIENT must not authorize repair or architecture change"
+                    "EVIDENCE_INSUFFICIENT must not authorize a repair"
                 )
             if not diagnosis["additional_evidence_requested"]:
                 raise AgentRuntimeError(
@@ -347,21 +435,46 @@ class DebuggerAgent(APIAgent):
 
 RULES
 -----
+For COVERAGE_MISS, diagnose whether missing observations originate in stimulus,
+coverage definition, or RTL behavior. A high-confidence verifier-owned coverage
+defect may return VERIFICATION_REPAIR_REQUIRED while preserving COVERAGE_MISS.
+The normal repair loop cannot amend contracts; LangGraph has a separate bounded
+architecture-escalation node after the repair budget is exhausted.
 1. Treat deterministic verification evidence as authoritative. Establish the fatal
    failure before reading current RTL and separate fatal errors from warnings.
+   Use failed_run_artifacts for the actual assertion, recent all-interface snapshots,
+   related signal names, and most recent oracle-checked stimuli. Full artifacts stay
+   on disk; do not infer a missing value from a truncated log.
 2. Expected behavior comes from the frozen architecture/interface and frozen
    independent verifier artifacts. Never weaken or edit tests/reference behavior.
+   Assess root causes in this strict order: RTL_DESIGN, GOLDEN_MODEL,
+   LLM_OPERATION_ASSERTION, TESTBENCH_INFRASTRUCTURE,
+   CONTRACT_GENERATED_PROTOCOL_ASSERTION. Fill cause_ranking with all five domains.
+   A lower-ranked cause is allowed only after each higher-ranked
+   cause is ELIMINATED using concrete source/tool/snapshot evidence, not intuition.
+   Code-owned protocol assertions are presumed correct because they were generated
+   from the frozen taxonomy and their exact bound source is visible in frozen_tests.
+   Question one only when its expression or binding concretely contradicts the frozen
+   contract or independent signal evidence. Within verifier-owned TB logic, inspect
+   LLM-generated operation assertions before generic driver/test infrastructure.
 3. Return REPAIR_PLAN_READY only for a coherent RTL-only patch. The plan must name
    exactly the affected manifest modules, protect every other manifest module, list
    every frozen top-level interface signal in protected_interfaces, and require FULL
    regression.
-4. Return ARCHITECTURE_ESCALATION only if the frozen contract itself requires a new
-   Architect decision; implementation mistakes are not architecture conflicts.
+4. The approved frozen TB is the executable answer sheet for this regression.
+   Debugger has no Architect route and must never request a contract change. For a
+   functional mismatch, produce an RTL repair when RTL_DESIGN is supported. Route
+   back to Verifier only when concrete Python/oracle/checker evidence proves a
+   high-confidence verifier-owned defect; do not reinterpret expected behavior.
 5. Return EVIDENCE_INSUFFICIENT rather than proposing a broad speculative rewrite
    when the available deterministic evidence is inadequate.
 6. Do not emit RTL code. Describe the conceptual repair precisely enough for the RTL
    Generator to implement while preserving all unaffected behavior.
 7. Preserve the deterministic failure_class supplied in the context.
+8. REPAIR_PLAN_READY means RTL_DESIGN is the supported root cause.
+   VERIFICATION_REPAIR_REQUIRED is permitted only for a high-confidence
+   GOLDEN_MODEL, LLM_OPERATION_ASSERTION, or TESTBENCH_INFRASTRUCTURE defect after
+   RTL_DESIGN and every intervening higher-priority domain were concretely eliminated.
 
 DEBUGGER CONTEXT
 ----------------

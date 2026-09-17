@@ -1,0 +1,112 @@
+protocol: Two independent ready/valid channels sharing one clock and synchronous active-low
+  reset.
+clock: clk
+reset: rst_n
+channels:
+- name: input_operands
+  direction: input
+  protocol_profile: ready_valid
+  purpose: Carries one pair of unsigned operands per transfer.
+  data_objects:
+  - operand_a
+  - operand_b
+  metadata: []
+  framing: Each transfer is one complete transaction; no last marker. Exactly one
+    input transfer is required per result.
+  ordering: Acceptance order defines result order. Bits [7:0] carry operand_a and
+    bits [15:8] carry operand_b.
+  backpressure: The DUT deasserts in_ready while the output register is full and not
+    transferring. A waiting producer may hold valid and payload until acceptance.
+- name: output_sum
+  direction: output
+  protocol_profile: ready_valid
+  purpose: Carries one exact 9-bit sum per transfer.
+  data_objects:
+  - sum
+  metadata: []
+  framing: Each transfer is one complete result; no last marker. Exactly one output
+    transfer occurs per non-aborted accepted input.
+  ordering: Results appear in input acceptance order.
+  backpressure: The consumer may deassert out_ready indefinitely. While stalled, out_valid
+    and out_payload remain stable unless reset is asserted.
+signals:
+- name: clk
+  role: clock
+  semantic_class: null
+  channel: null
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Rising-edge clock advancing all synchronous state.
+  reset_value: N/A
+- name: rst_n
+  role: reset
+  semantic_class: null
+  channel: null
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Active-low synchronous reset sampled on clk rising edges; reset has priority
+    over transfers.
+  reset_value: N/A
+- name: in_valid
+  role: valid
+  semantic_class: null
+  channel: input_operands
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Indicates that in_payload contains a complete operand pair.
+  reset_value: Environment-controlled
+- name: in_ready
+  role: ready
+  semantic_class: null
+  channel: input_operands
+  direction: output
+  width: '1'
+  signed: false
+  semantic: High when the operand pair can transfer; equals rst_n && (!out_valid ||
+    out_ready).
+  reset_value: 0 while rst_n=0
+- name: in_payload
+  role: payload
+  semantic_class: data
+  channel: input_operands
+  direction: input
+  width: '16'
+  signed: false
+  semantic: Bits [7:0]=operand_a; bits [15:8]=operand_b.
+  reset_value: Environment-controlled
+- name: out_valid
+  role: valid
+  semantic_class: null
+  channel: output_sum
+  direction: output
+  width: '1'
+  signed: false
+  semantic: Indicates that out_payload contains a pending exact sum.
+  reset_value: '0'
+- name: out_ready
+  role: ready
+  semantic_class: null
+  channel: output_sum
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Consumer acceptance qualifier for the pending sum.
+  reset_value: Environment-controlled
+- name: out_payload
+  role: payload
+  semantic_class: data
+  channel: output_sum
+  direction: output
+  width: '9'
+  signed: false
+  semantic: Exact unsigned sum corresponding to the oldest non-aborted accepted input.
+  reset_value: 0 after a reset edge
+global_handshake_rules:
+  transfer_condition: A channel transfers on a rising clk edge only when rst_n=1 and
+    its valid and ready are both 1. No transfer occurs on an edge where rst_n=0.
+  stall_behavior: Valid and associated payload must remain stable while valid=1 and
+    ready=0. Synchronous reset aborts pending transfers and permits valid/payload
+    withdrawal after the reset edge.

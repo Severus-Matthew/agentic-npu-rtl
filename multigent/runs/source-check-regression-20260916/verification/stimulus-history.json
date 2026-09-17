@@ -1,0 +1,4980 @@
+{
+  "schema_version": 1,
+  "run_count": 1,
+  "stimulus_count": 109,
+  "unique_stimulus_count": 109,
+  "duplicate_execution_count": 0,
+  "runs": [
+    {
+      "run": 1,
+      "ledger_path": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "tag": "av1-r0-p0-v1",
+      "seed": 180417,
+      "top_module": "u8_registered_adder",
+      "test_modules": [
+        "test_u8_registered_adder"
+      ],
+      "status": "PASS",
+      "stimulus_count": 109
+    }
+  ],
+  "records": [
+    {
+      "id": "verify_u8_registered_adder:000001",
+      "digest": "521fc8ad59f3e927952900b200cf2b1aa7d0215fca15fc79df2383f8d8e2bb55",
+      "test": "verify_u8_registered_adder",
+      "kind": "directed",
+      "label": "boundary_zero",
+      "stimulus": {
+        "operand_a": 0,
+        "operand_b": 0
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 0,
+            "operand_b": 0
+          }
+        ],
+        "outputs": [
+          0
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [
+        "channel.input_operands.handshake_states.receiver_ready",
+        "channel.input_operands.handshake_states.transfer",
+        "channel.output_sum.handshake_states.idle",
+        "channel.output_sum.handshake_states.receiver_ready",
+        "channel.output_sum.handshake_states.transfer",
+        "operation.add_unsigned.accepted_sum.zero",
+        "operation.add_unsigned.output_buffer_stall.none",
+        "operation.add_unsigned.registered_latency.one_cycle",
+        "operation.add_unsigned.transferred_sum.zero",
+        "signal.rst_n.reset_behavior.asserted",
+        "signal.rst_n.reset_behavior.deasserted",
+        "signal.rst_n.reset_behavior.release"
+      ],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000001",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000002",
+      "digest": "826f65b0d79882594f5f277738d1239989cafd052a3f93decf235241b220c889",
+      "test": "verify_u8_registered_adder",
+      "kind": "directed",
+      "label": "boundary_255_0",
+      "stimulus": {
+        "operand_a": 255,
+        "operand_b": 0
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 255,
+            "operand_b": 0
+          }
+        ],
+        "outputs": [
+          255
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [
+        "operation.add_unsigned.accepted_sum.low_or_no_carry",
+        "operation.add_unsigned.transferred_sum.uint8_range"
+      ],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000002",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000003",
+      "digest": "780031834199d74be9bea68211666f1ff1571321cd15a29fb106534de18c3449",
+      "test": "verify_u8_registered_adder",
+      "kind": "directed",
+      "label": "boundary_255_1",
+      "stimulus": {
+        "operand_a": 255,
+        "operand_b": 1
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 255,
+            "operand_b": 1
+          }
+        ],
+        "outputs": [
+          256
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [
+        "operation.add_unsigned.accepted_sum.widened_result",
+        "operation.add_unsigned.transferred_sum.ninth_bit_set"
+      ],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000003",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000004",
+      "digest": "3de8e5990edf0934b852000569aedf5946343375e7db2a7b47aeee041b21bb78",
+      "test": "verify_u8_registered_adder",
+      "kind": "directed",
+      "label": "boundary_max",
+      "stimulus": {
+        "operand_a": 255,
+        "operand_b": 255
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 255,
+            "operand_b": 255
+          }
+        ],
+        "outputs": [
+          510
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [
+        "operation.add_unsigned.accepted_sum.maximum",
+        "operation.add_unsigned.transferred_sum.maximum"
+      ],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000004",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000005",
+      "digest": "f8972a2c55dfe35885cc7777a77ddd34bd6386692b697589b7ee5a4a0725c789",
+      "test": "verify_u8_registered_adder",
+      "kind": "directed",
+      "label": "stall_one",
+      "stimulus": {
+        "transactions": [
+          {
+            "operand_a": 1,
+            "operand_b": 2
+          },
+          {
+            "operand_a": 3,
+            "operand_b": 4
+          }
+        ],
+        "stall_cycles": 1
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 1,
+            "operand_b": 2
+          },
+          {
+            "operand_a": 3,
+            "operand_b": 4
+          }
+        ],
+        "outputs": [
+          3,
+          7
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [
+        "channel.input_operands.handshake_states.backpressured",
+        "channel.input_operands.stall_stability.one_cycle_stall",
+        "channel.output_sum.handshake_states.backpressured",
+        "channel.output_sum.stall_stability.one_cycle_stall",
+        "operation.add_unsigned.output_buffer_stall.one_cycle",
+        "operation.add_unsigned.registered_latency.backpressured_delay"
+      ],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000005",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000006",
+      "digest": "3b4dee9f349d978dc97f5dcb395a690c0b1f7906176cf25a697594bdcec290c6",
+      "test": "verify_u8_registered_adder",
+      "kind": "directed",
+      "label": "stall_short",
+      "stimulus": {
+        "transactions": [
+          {
+            "operand_a": 5,
+            "operand_b": 6
+          },
+          {
+            "operand_a": 7,
+            "operand_b": 8
+          }
+        ],
+        "stall_cycles": 3
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 5,
+            "operand_b": 6
+          },
+          {
+            "operand_a": 7,
+            "operand_b": 8
+          }
+        ],
+        "outputs": [
+          11,
+          15
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [
+        "channel.input_operands.stall_stability.short_stall",
+        "channel.output_sum.stall_stability.short_stall",
+        "operation.add_unsigned.output_buffer_stall.short"
+      ],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000006",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000007",
+      "digest": "6abd43f71b0c6f450c3505f7e0ebb1a6e1637bc2e05d29ba49e4ab7b83cc1950",
+      "test": "verify_u8_registered_adder",
+      "kind": "directed",
+      "label": "stall_long",
+      "stimulus": {
+        "transactions": [
+          {
+            "operand_a": 9,
+            "operand_b": 10
+          },
+          {
+            "operand_a": 11,
+            "operand_b": 12
+          }
+        ],
+        "stall_cycles": 5
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 9,
+            "operand_b": 10
+          },
+          {
+            "operand_a": 11,
+            "operand_b": 12
+          }
+        ],
+        "outputs": [
+          19,
+          23
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [
+        "channel.input_operands.stall_stability.long_stall",
+        "channel.output_sum.stall_stability.long_stall",
+        "operation.add_unsigned.output_buffer_stall.long"
+      ],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000007",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000008",
+      "digest": "78b1230b9e562824a463f8622880dbe96f578f0673efcfe14eb76317799c8ae0",
+      "test": "verify_u8_registered_adder",
+      "kind": "directed",
+      "label": "reset_pending",
+      "stimulus": {
+        "operand_a": 21,
+        "operand_b": 22,
+        "reset_before_output": true
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 21,
+            "operand_b": 22
+          }
+        ],
+        "outputs": [],
+        "aborted": true,
+        "reset_edges": 1
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000008",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000009",
+      "digest": "66044ba2e14c8be7f72a354a07edf5f7821fdb85c03dd9ee30c5b2a41c5d4d3f",
+      "test": "verify_u8_registered_adder",
+      "kind": "directed",
+      "label": "reset_stalled",
+      "stimulus": {
+        "operand_a": 23,
+        "operand_b": 24,
+        "reset_while_stalled": true
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 23,
+            "operand_b": 24
+          }
+        ],
+        "outputs": [],
+        "aborted": true,
+        "reset_edges": 1
+      },
+      "covered_bins": [
+        "channel.input_operands.handshake_states.idle"
+      ],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000009",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000010",
+      "digest": "2ae4daa0d462a21085a5eec22981ecfd7e0a028a9a77b5cd568445a20235a485",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 233,
+        "operand_b": 132,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 2,
+        "transaction": 0
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 233,
+            "operand_b": 132
+          }
+        ],
+        "outputs": [
+          365
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000010",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000011",
+      "digest": "a5b77d64e1dfbdee2aee98490e69b73f81324e63fe16ec04a98ab5d26c581a5c",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 212,
+        "operand_b": 118,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 2,
+        "transaction": 1
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 212,
+            "operand_b": 118
+          }
+        ],
+        "outputs": [
+          330
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000011",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000012",
+      "digest": "6e8ec5872e3e2156efd30664243129063ffb0917a604d31b69fb70f6b6ad6338",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 0,
+        "operand_b": 0,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 0,
+        "transaction": 2
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 0,
+            "operand_b": 0
+          }
+        ],
+        "outputs": [
+          0
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000012",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000013",
+      "digest": "8d68c6bc83d8a4334c95b108125f3d790efbc3e9151b687a59e5d0b0e43020b7",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 133,
+        "operand_b": 60,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 1,
+        "transaction": 3
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 133,
+            "operand_b": 60
+          }
+        ],
+        "outputs": [
+          193
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000013",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000014",
+      "digest": "d5e6ab6e72f126ff1ce3180bd065c9b4d65f33941672d7a3c96964f824a68f54",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 57,
+        "operand_b": 112,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 0,
+        "transaction": 4
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 57,
+            "operand_b": 112
+          }
+        ],
+        "outputs": [
+          169
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000014",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000015",
+      "digest": "d139f7bbbcbf85e9110818ba203d7ab90deabed71dfb9346727ea652f7afc5f4",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 97,
+        "operand_b": 102,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 3,
+        "transaction": 5
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 97,
+            "operand_b": 102
+          }
+        ],
+        "outputs": [
+          199
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000015",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000016",
+      "digest": "ab32ea71c0cb80ff3859bfb6904c2c0826bc51480ff1899f3bef9254f6afd73a",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 92,
+        "operand_b": 44,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 0,
+        "transaction": 6
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 92,
+            "operand_b": 44
+          }
+        ],
+        "outputs": [
+          136
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000016",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000017",
+      "digest": "12b7781551cc3a8ed1a66dd32c65befb0582ff016c4e78d52614ee2d9b241732",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 104,
+        "operand_b": 6,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 3,
+        "transaction": 7
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 104,
+            "operand_b": 6
+          }
+        ],
+        "outputs": [
+          110
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000017",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000018",
+      "digest": "1f573a749fddd2991aae6aa9d0529c608e534f80f804f9f1e9ca8db3cc7d8d7f",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 139,
+        "operand_b": 40,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 6,
+        "transaction": 8
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 139,
+            "operand_b": 40
+          }
+        ],
+        "outputs": [
+          179
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000018",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000019",
+      "digest": "3ae0631534c32b083e311067670a85b0e0c7307df341dec598e538cd459c1b9a",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 28,
+        "operand_b": 196,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 3,
+        "transaction": 9
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 28,
+            "operand_b": 196
+          }
+        ],
+        "outputs": [
+          224
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000019",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000020",
+      "digest": "5da3a82d9c63967940ed800f1f7527497be46e0f274df6e52fbdab8c6478f1ff",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 63,
+        "operand_b": 151,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 0,
+        "transaction": 10
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 63,
+            "operand_b": 151
+          }
+        ],
+        "outputs": [
+          214
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000020",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000021",
+      "digest": "ebd4fa4339c79c4eb32f7cbb8bbd6b1bf25538e00d450cbaaf464a4d2677a9cb",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 106,
+        "operand_b": 79,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 1,
+        "transaction": 11
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 106,
+            "operand_b": 79
+          }
+        ],
+        "outputs": [
+          185
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000021",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000022",
+      "digest": "2e9dcb66a30a81add263866dbfbe8f86da573dc9d3ea992f36f26dd431747d9f",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 82,
+        "operand_b": 121,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 1,
+        "transaction": 12
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 82,
+            "operand_b": 121
+          }
+        ],
+        "outputs": [
+          203
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000022",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000023",
+      "digest": "5fd8ecc4c98c9a66448240cd24a724a12169e2cd06579551173ed10c1b9c88e9",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 83,
+        "operand_b": 56,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 2,
+        "transaction": 13
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 83,
+            "operand_b": 56
+          }
+        ],
+        "outputs": [
+          139
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000023",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000024",
+      "digest": "72c2c8252cd3fdc13cf288d9381cb8abc852ce7ed767e9e276a31a37b694f087",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 149,
+        "operand_b": 72,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 2,
+        "transaction": 14
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 149,
+            "operand_b": 72
+          }
+        ],
+        "outputs": [
+          221
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000024",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000025",
+      "digest": "bf842bc1d08ca2fc2c7ce97c2ce122fa0650f734dece43e624a7be648400fda4",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 127,
+        "operand_b": 125,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 1,
+        "transaction": 15
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 127,
+            "operand_b": 125
+          }
+        ],
+        "outputs": [
+          252
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000025",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000026",
+      "digest": "51987ef414e6ca78a97a4744c16145025ff2fc16a4d2e6aeb6180d48a8fb4add",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 152,
+        "operand_b": 17,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 0,
+        "transaction": 16
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 152,
+            "operand_b": 17
+          }
+        ],
+        "outputs": [
+          169
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000026",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000027",
+      "digest": "cd16539ff3acc6eda70920bf677551ae5fc34cf3f04770d734ab4c93c9e4d100",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 212,
+        "operand_b": 69,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 3,
+        "transaction": 17
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 212,
+            "operand_b": 69
+          }
+        ],
+        "outputs": [
+          281
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000027",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000028",
+      "digest": "fff5603c4adf9b3f360e391875ada8cdac70e40642694c779741f5d232d3d0ba",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 154,
+        "operand_b": 65,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 5,
+        "transaction": 18
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 154,
+            "operand_b": 65
+          }
+        ],
+        "outputs": [
+          219
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000028",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000029",
+      "digest": "f8569ad71bf27df4797e7d82451d14067d067e0e8536fba067c7fe791ea78606",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 45,
+        "operand_b": 113,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 3,
+        "transaction": 19
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 45,
+            "operand_b": 113
+          }
+        ],
+        "outputs": [
+          158
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000029",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000030",
+      "digest": "3e4df64372f30b568dcb5d69208b36d59a6707d58d1e75811179ec7ccaf7a78e",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 225,
+        "operand_b": 207,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 3,
+        "transaction": 20
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 225,
+            "operand_b": 207
+          }
+        ],
+        "outputs": [
+          432
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000030",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000031",
+      "digest": "8831329f8a9b637213f4144e766d6c5f57c54765c50f7e09839f98a63b4e4f9b",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 242,
+        "operand_b": 92,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 6,
+        "transaction": 21
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 242,
+            "operand_b": 92
+          }
+        ],
+        "outputs": [
+          334
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000031",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000032",
+      "digest": "143a74358a49429619a54e2f973f02967f4a7f0601999cabaf1e0dd8f591130e",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 218,
+        "operand_b": 115,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 0,
+        "transaction": 22
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 218,
+            "operand_b": 115
+          }
+        ],
+        "outputs": [
+          333
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000032",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000033",
+      "digest": "9216fbaabb4a626f6d57bdf553a7eaa71d53fee55ae57ed0ede4f3fe784e1e55",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 102,
+        "operand_b": 157,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 3,
+        "transaction": 23
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 102,
+            "operand_b": 157
+          }
+        ],
+        "outputs": [
+          259
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000033",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000034",
+      "digest": "63f90c4b283dabc23d93ecddbae5a44d2fc1a337802df3b739ec0262be22314e",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 61,
+        "operand_b": 142,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 5,
+        "transaction": 24
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 61,
+            "operand_b": 142
+          }
+        ],
+        "outputs": [
+          203
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000034",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000035",
+      "digest": "3a1071811c23ae7c14d6a3a53a144da327b0c53ada39273c4d2442253dfed5c7",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 244,
+        "operand_b": 19,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 2,
+        "transaction": 25
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 244,
+            "operand_b": 19
+          }
+        ],
+        "outputs": [
+          263
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000035",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000036",
+      "digest": "505f2eedc8fc70af1cecfcb938cb984f818db26d619320d17f8a4946c4821656",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 218,
+        "operand_b": 64,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 1,
+        "transaction": 26
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 218,
+            "operand_b": 64
+          }
+        ],
+        "outputs": [
+          282
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000036",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000037",
+      "digest": "8f51bae3a87ffe8ae2a5cce0f6cb33b2f437d65a7b5684eaacf8dc8026ee775e",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 35,
+        "operand_b": 177,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 5,
+        "transaction": 27
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 35,
+            "operand_b": 177
+          }
+        ],
+        "outputs": [
+          212
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000037",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000038",
+      "digest": "8abe0267c7b9549593c331e13838a92cfb4aace1b12c9a01bab5a6239b88ec58",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 222,
+        "operand_b": 152,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 1,
+        "transaction": 28
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 222,
+            "operand_b": 152
+          }
+        ],
+        "outputs": [
+          374
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000038",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000039",
+      "digest": "702c9be3174f9d3f0816f43df8510d0078b5a28615fa090798568fd1d5eb1d59",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 246,
+        "operand_b": 35,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 1,
+        "transaction": 29
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 246,
+            "operand_b": 35
+          }
+        ],
+        "outputs": [
+          281
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000039",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000040",
+      "digest": "2a2c9e61707ead3abfc16abea69f8c078fc4d3d6b7085b60d2bf61af80fdd968",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 119,
+        "operand_b": 214,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 3,
+        "transaction": 30
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 119,
+            "operand_b": 214
+          }
+        ],
+        "outputs": [
+          333
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000040",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000041",
+      "digest": "2db4bb4735e8bfc44960e9954dfe73434958d9192548cd447d3037e0da5b35a9",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 80,
+        "operand_b": 77,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 2,
+        "transaction": 31
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 80,
+            "operand_b": 77
+          }
+        ],
+        "outputs": [
+          157
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000041",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000042",
+      "digest": "f8d62fb175b077d1bc8acbdb75129afdd3c275d6484401be3f063d5234458215",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 48,
+        "operand_b": 100,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 3,
+        "transaction": 32
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 48,
+            "operand_b": 100
+          }
+        ],
+        "outputs": [
+          148
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000042",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000043",
+      "digest": "e39b30769b05c177c794d10154dbe19fcad797b49dd446fdb2187bf5a39e3cbe",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 50,
+        "operand_b": 228,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 5,
+        "transaction": 33
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 50,
+            "operand_b": 228
+          }
+        ],
+        "outputs": [
+          278
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000043",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000044",
+      "digest": "ccd6d9232272214e6e954635848638f2f4b4711ef0ccc2797f87a1e1b4dc1169",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 137,
+        "operand_b": 215,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 3,
+        "transaction": 34
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 137,
+            "operand_b": 215
+          }
+        ],
+        "outputs": [
+          352
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000044",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000045",
+      "digest": "4d584b68726aa55e1f29bfa2c48af89938a8f072030af46703b6147a0ed31ad5",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 55,
+        "operand_b": 161,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 5,
+        "transaction": 35
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 55,
+            "operand_b": 161
+          }
+        ],
+        "outputs": [
+          216
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000045",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000046",
+      "digest": "2905d3ee52fc7fd9047deb8f40c362fa4aac32159dce775dc6b440c54fe47762",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 146,
+        "operand_b": 156,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 2,
+        "transaction": 36
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 146,
+            "operand_b": 156
+          }
+        ],
+        "outputs": [
+          302
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000046",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000047",
+      "digest": "17e0c00a5e916608a4ba10a2ec64e0f7eae3ac33218439928c5a9faab1070169",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 163,
+        "operand_b": 26,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 4,
+        "transaction": 37
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 163,
+            "operand_b": 26
+          }
+        ],
+        "outputs": [
+          189
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000047",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000048",
+      "digest": "5ff51c3d5f9f7578f7efa39834670be093ea8ca357a07ff92ee189a4b92809c8",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 184,
+        "operand_b": 220,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 3,
+        "transaction": 38
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 184,
+            "operand_b": 220
+          }
+        ],
+        "outputs": [
+          404
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000048",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000049",
+      "digest": "036ddb330327195e533092823e99c026bd510e7ae93e5b8e6e1a55098f1946ff",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 225,
+        "operand_b": 185,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 3,
+        "transaction": 39
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 225,
+            "operand_b": 185
+          }
+        ],
+        "outputs": [
+          410
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000049",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000050",
+      "digest": "e5837a4d6e627bb56b690d1fe22c276f3045d6c7833f566c6280291d63914de6",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 254,
+        "operand_b": 108,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 5,
+        "transaction": 40
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 254,
+            "operand_b": 108
+          }
+        ],
+        "outputs": [
+          362
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000050",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000051",
+      "digest": "e330c511189a21662847cc69b513707c52f5752cfe88e411ad59387f0c42a102",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 193,
+        "operand_b": 104,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 4,
+        "transaction": 41
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 193,
+            "operand_b": 104
+          }
+        ],
+        "outputs": [
+          297
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000051",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000052",
+      "digest": "f0faa759051ba654363f00cf972c3dfb23beeadda5ff41588d5d87a409b3a30e",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 125,
+        "operand_b": 86,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 0,
+        "transaction": 42
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 125,
+            "operand_b": 86
+          }
+        ],
+        "outputs": [
+          211
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000052",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000053",
+      "digest": "064b82f615b4c9dc8957b7a399fc344d2906ff55c1ca8a41bad4ed112d9e31e9",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 39,
+        "operand_b": 52,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 2,
+        "transaction": 43
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 39,
+            "operand_b": 52
+          }
+        ],
+        "outputs": [
+          91
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000053",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000054",
+      "digest": "fc381d32431cd556822b2f3a4be36c27f05b1cc46ab824d152e757c29a563778",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 141,
+        "operand_b": 212,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 6,
+        "transaction": 44
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 141,
+            "operand_b": 212
+          }
+        ],
+        "outputs": [
+          353
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000054",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000055",
+      "digest": "bf608829158a8e1caaaa08c6ba9138e5efc7a31c804e5491a313c5fed656806e",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 128,
+        "operand_b": 69,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 1,
+        "transaction": 45
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 128,
+            "operand_b": 69
+          }
+        ],
+        "outputs": [
+          197
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000055",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000056",
+      "digest": "e07f2a0e97caa09d682964ec29efa7096367f637af4a563b29d359af5930f9cc",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 181,
+        "operand_b": 155,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 2,
+        "transaction": 46
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 181,
+            "operand_b": 155
+          }
+        ],
+        "outputs": [
+          336
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000056",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000057",
+      "digest": "e84dcd48ee0c9bf9917464ee55d037eb241ed1fd5e492a7dda7d0c6515595f48",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 211,
+        "operand_b": 184,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 1,
+        "transaction": 47
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 211,
+            "operand_b": 184
+          }
+        ],
+        "outputs": [
+          395
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000057",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000058",
+      "digest": "e57614bb744fcb6d89bf2dec4ab2c67412b47fee5e133dfdc2e5203bb9aaa927",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 162,
+        "operand_b": 43,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 6,
+        "transaction": 48
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 162,
+            "operand_b": 43
+          }
+        ],
+        "outputs": [
+          205
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000058",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000059",
+      "digest": "559a6fe76df8a00930d6537a28032526c49c8c611ec12712a24fe3c2a256285d",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 97,
+        "operand_b": 14,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 0,
+        "transaction": 49
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 97,
+            "operand_b": 14
+          }
+        ],
+        "outputs": [
+          111
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000059",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000060",
+      "digest": "2cdcd86240bb89316305c18cd11b60a637c873efcd6f6d48fd11e00fc6e1fcc0",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 27,
+        "operand_b": 229,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 0,
+        "transaction": 50
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 27,
+            "operand_b": 229
+          }
+        ],
+        "outputs": [
+          256
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000060",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000061",
+      "digest": "cf8b51602b0bef4bc8783b471b7d83adc13ca12f87576d605bad11b70a033756",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 7,
+        "operand_b": 203,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 0,
+        "transaction": 51
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 7,
+            "operand_b": 203
+          }
+        ],
+        "outputs": [
+          210
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000061",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000062",
+      "digest": "660167033393b2f82ffadd6e0086cd00b7f5c3080e5e8f7ce013c6857f806e30",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 116,
+        "operand_b": 31,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 0,
+        "transaction": 52
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 116,
+            "operand_b": 31
+          }
+        ],
+        "outputs": [
+          147
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000062",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000063",
+      "digest": "c217c15402fefc54fa986b62833564c65f6e8ef1957e7f93d5f7cccc86966b9a",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 78,
+        "operand_b": 205,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 1,
+        "transaction": 53
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 78,
+            "operand_b": 205
+          }
+        ],
+        "outputs": [
+          283
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000063",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000064",
+      "digest": "1de66cbb41fba368d2bcf1d70181ba3fcf3f1adf399af4c3822cc4d68c848f2a",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 42,
+        "operand_b": 28,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 4,
+        "transaction": 54
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 42,
+            "operand_b": 28
+          }
+        ],
+        "outputs": [
+          70
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000064",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000065",
+      "digest": "6adc5ef6d0edf069d344589f7a678fc78298eda578a7ffb91c4c5afefccadb01",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 226,
+        "operand_b": 92,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 6,
+        "transaction": 55
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 226,
+            "operand_b": 92
+          }
+        ],
+        "outputs": [
+          318
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000065",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000066",
+      "digest": "66c6f656c2f7d4bb4c06c0c2275dae284ae1ec031ca92dedfda4c186667aa86f",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 107,
+        "operand_b": 103,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 1,
+        "transaction": 56
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 107,
+            "operand_b": 103
+          }
+        ],
+        "outputs": [
+          210
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000066",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000067",
+      "digest": "5401de6ade0cac29b74cb7a2b5d07161d2d26ab83597b42db4c28f2af899facf",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 231,
+        "operand_b": 109,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 1,
+        "transaction": 57
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 231,
+            "operand_b": 109
+          }
+        ],
+        "outputs": [
+          340
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000067",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000068",
+      "digest": "c2b8b27153bf6e475dd9a503aa6b89027c6424a9100560c4a147444cfd9ca536",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 187,
+        "operand_b": 161,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 2,
+        "transaction": 58
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 187,
+            "operand_b": 161
+          }
+        ],
+        "outputs": [
+          348
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000068",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000069",
+      "digest": "2a781995a822c9cbbf3e3a11f07884b170c1c1ac28d980a649d8bf60be4e7a49",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 173,
+        "operand_b": 203,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 2,
+        "transaction": 59
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 173,
+            "operand_b": 203
+          }
+        ],
+        "outputs": [
+          376
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000069",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000070",
+      "digest": "0355fe7a441df84f31d2c4f2fc4ecdfc2804a8b05cbfe6afefa982a0870ef8c6",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 111,
+        "operand_b": 84,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 5,
+        "transaction": 60
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 111,
+            "operand_b": 84
+          }
+        ],
+        "outputs": [
+          195
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000070",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000071",
+      "digest": "18c9fc8d748a82221deedeea5472510bb603e25a8e7f7c8c6b807bc939d72a53",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 137,
+        "operand_b": 168,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 5,
+        "transaction": 61
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 137,
+            "operand_b": 168
+          }
+        ],
+        "outputs": [
+          305
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000071",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000072",
+      "digest": "506bf0f4fe53eaf9e97b86cfb5a771d5b431b7f1eb655fb1123a5f6b4194b83d",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 63,
+        "operand_b": 7,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 0,
+        "transaction": 62
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 63,
+            "operand_b": 7
+          }
+        ],
+        "outputs": [
+          70
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000072",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000073",
+      "digest": "61cd9a3a5d21943ed57dc127a2e0fec382b91c2670b317f3e819d9a11ebf59f7",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 11,
+        "operand_b": 0,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 2,
+        "transaction": 63
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 11,
+            "operand_b": 0
+          }
+        ],
+        "outputs": [
+          11
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000073",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000074",
+      "digest": "569292c8ec79fa2580def9acfdfd5024fba7ad991a22581e48f979cac30ec834",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 18,
+        "operand_b": 212,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 4,
+        "transaction": 64
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 18,
+            "operand_b": 212
+          }
+        ],
+        "outputs": [
+          230
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000074",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000075",
+      "digest": "7d90a806b27300c58562c69aed38f610a1c8ad3d4736ca065205a318b7cb70e6",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 96,
+        "operand_b": 234,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 1,
+        "transaction": 65
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 96,
+            "operand_b": 234
+          }
+        ],
+        "outputs": [
+          330
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000075",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000076",
+      "digest": "945f1d6c7c83799fabeddc2b4fe41a34ee29df6849430b1c8d224ca2761d394e",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 87,
+        "operand_b": 8,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 5,
+        "transaction": 66
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 87,
+            "operand_b": 8
+          }
+        ],
+        "outputs": [
+          95
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000076",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000077",
+      "digest": "fc525bfd3e694c0d45b03974c8b19e68d4a7c5c117986ab1f9cf71ae0205bbe0",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 177,
+        "operand_b": 111,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 3,
+        "transaction": 67
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 177,
+            "operand_b": 111
+          }
+        ],
+        "outputs": [
+          288
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000077",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000078",
+      "digest": "ea72676d1cd18acfb4db313995442a5cbcb401ea707a2b83f0f000030261ad7d",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 30,
+        "operand_b": 47,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 1,
+        "transaction": 68
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 30,
+            "operand_b": 47
+          }
+        ],
+        "outputs": [
+          77
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000078",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000079",
+      "digest": "686f4ff150643031d3ab0b52c12a7d7381a4dd864b3be4c815d58103fc9a1c74",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 84,
+        "operand_b": 232,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 5,
+        "transaction": 69
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 84,
+            "operand_b": 232
+          }
+        ],
+        "outputs": [
+          316
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000079",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000080",
+      "digest": "8d3ae75fb31a8f750cb667eb96826b4cfae03482103987d5c03286d7ad8d6bfa",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 61,
+        "operand_b": 6,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 5,
+        "transaction": 70
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 61,
+            "operand_b": 6
+          }
+        ],
+        "outputs": [
+          67
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000080",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000081",
+      "digest": "84e33ad98ce48abba92fd6aa027106a634ea5b7a880a9f871183eb573cccba7c",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 61,
+        "operand_b": 141,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 3,
+        "transaction": 71
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 61,
+            "operand_b": 141
+          }
+        ],
+        "outputs": [
+          202
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000081",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000082",
+      "digest": "60f66cf4b6e935fb0253c7077b2867eb1ed5607f461686a10963f80c02a69b13",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 2,
+        "operand_b": 143,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 3,
+        "transaction": 72
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 2,
+            "operand_b": 143
+          }
+        ],
+        "outputs": [
+          145
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000082",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000083",
+      "digest": "9e43ee8e07ba248befd80b9ccf3a997b0bda8099f1af3df034506a26f99e6d71",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 104,
+        "operand_b": 59,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 3,
+        "transaction": 73
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 104,
+            "operand_b": 59
+          }
+        ],
+        "outputs": [
+          163
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000083",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000084",
+      "digest": "6a7543a6d473150bb6034aa761b685847c0723c05ded24f0cb2928b5bcafbad0",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 107,
+        "operand_b": 203,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 4,
+        "transaction": 74
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 107,
+            "operand_b": 203
+          }
+        ],
+        "outputs": [
+          310
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000084",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000085",
+      "digest": "a9e05a5e0840fe6efe0eeab62d9fa04da6cf358d02c3c017ca34a73e2fc67b3e",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 51,
+        "operand_b": 111,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 2,
+        "transaction": 75
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 51,
+            "operand_b": 111
+          }
+        ],
+        "outputs": [
+          162
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000085",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000086",
+      "digest": "6e7a305b0615d30e64fd2430bb17c7575b73dea091ee9fb4e9af3c1ef97549b7",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 235,
+        "operand_b": 160,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 6,
+        "transaction": 76
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 235,
+            "operand_b": 160
+          }
+        ],
+        "outputs": [
+          395
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000086",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000087",
+      "digest": "c06de74cd41db195957072d7fb6f1bc5cf7b3ee9f5bf0be20a150663002a957f",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 19,
+        "operand_b": 180,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 1,
+        "transaction": 77
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 19,
+            "operand_b": 180
+          }
+        ],
+        "outputs": [
+          199
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000087",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000088",
+      "digest": "ff59b19b28953c7984cad46fbceb8dbd50e24e2771309533981e6a011d188888",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 139,
+        "operand_b": 211,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 1,
+        "transaction": 78
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 139,
+            "operand_b": 211
+          }
+        ],
+        "outputs": [
+          350
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000088",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000089",
+      "digest": "ade015fd84a958f6a5c05f1edfd2081485b800b67db653b02296daa9cb7b4990",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 111,
+        "operand_b": 31,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 4,
+        "transaction": 79
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 111,
+            "operand_b": 31
+          }
+        ],
+        "outputs": [
+          142
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000089",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000090",
+      "digest": "73f57eb6b3289a69c5cd8102137be8d286da9db187ef67f627206792bd1f2e29",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 33,
+        "operand_b": 64,
+        "source_idle_cycles": 4,
+        "sink_stall_cycles": 5,
+        "transaction": 80
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 33,
+            "operand_b": 64
+          }
+        ],
+        "outputs": [
+          97
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000090",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000091",
+      "digest": "bf6ccc878c683c573b59be90324094f05ac21aa17bfdf8b78aabab8e7c90d8c0",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 85,
+        "operand_b": 200,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 2,
+        "transaction": 81
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 85,
+            "operand_b": 200
+          }
+        ],
+        "outputs": [
+          285
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000091",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000092",
+      "digest": "0d342f5a99202e189f054e6995e32e1c8adb52fbc8273916d06250edc60c4f97",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 202,
+        "operand_b": 205,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 0,
+        "transaction": 82
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 202,
+            "operand_b": 205
+          }
+        ],
+        "outputs": [
+          407
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000092",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000093",
+      "digest": "6d4f45d32a363c8e2d27d2cec1ddf3571f87bfd623e03c2c793de6405615178c",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 124,
+        "operand_b": 81,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 5,
+        "transaction": 83
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 124,
+            "operand_b": 81
+          }
+        ],
+        "outputs": [
+          205
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000093",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000094",
+      "digest": "e8056adb3cc5524f742f26f311675ca8da6472d22f68aa37a288d00822b63793",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 78,
+        "operand_b": 246,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 3,
+        "transaction": 84
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 78,
+            "operand_b": 246
+          }
+        ],
+        "outputs": [
+          324
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000094",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000095",
+      "digest": "776421fbc535add971e652a78908b115808930048b0012dd3b6027091d1070f4",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 235,
+        "operand_b": 106,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 4,
+        "transaction": 85
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 235,
+            "operand_b": 106
+          }
+        ],
+        "outputs": [
+          341
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000095",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000096",
+      "digest": "fd8964af255761c3fbbce6af69c24e006d04241b38cb5345e4b822ac71dfdd37",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 127,
+        "operand_b": 141,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 5,
+        "transaction": 86
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 127,
+            "operand_b": 141
+          }
+        ],
+        "outputs": [
+          268
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000096",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000097",
+      "digest": "a5ac2d43c3183c0118e463c411855f03c4f2d468a59214a61fa0f53409cc706f",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 226,
+        "operand_b": 130,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 0,
+        "transaction": 87
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 226,
+            "operand_b": 130
+          }
+        ],
+        "outputs": [
+          356
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000097",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000098",
+      "digest": "7110a0094acbfa72c33c4b7103df728650417f8fef168ec41205ab4571d247b0",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 82,
+        "operand_b": 102,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 4,
+        "transaction": 88
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 82,
+            "operand_b": 102
+          }
+        ],
+        "outputs": [
+          184
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000098",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000099",
+      "digest": "427f2996dfecf67ddd8c7a6165a1557663d2e535b1af2f563bdee8517ad0734f",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 237,
+        "operand_b": 189,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 4,
+        "transaction": 89
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 237,
+            "operand_b": 189
+          }
+        ],
+        "outputs": [
+          426
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000099",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000100",
+      "digest": "00104ed41b4973c819037061b0b2280b270234fff68feb061e88ad28e2c696d8",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 205,
+        "operand_b": 96,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 3,
+        "transaction": 90
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 205,
+            "operand_b": 96
+          }
+        ],
+        "outputs": [
+          301
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000100",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000101",
+      "digest": "7a0214002a60017aec47380ac5fbf3d7825b4693ee1545fae0e896c452c30618",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 0,
+        "operand_b": 85,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 2,
+        "transaction": 91
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 0,
+            "operand_b": 85
+          }
+        ],
+        "outputs": [
+          85
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000101",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000102",
+      "digest": "755ae23a5f9a758ba729de7e0dabd8696f9c6eae87215458005c3d5aaa3abcfd",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 240,
+        "operand_b": 196,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 6,
+        "transaction": 92
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 240,
+            "operand_b": 196
+          }
+        ],
+        "outputs": [
+          436
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000102",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000103",
+      "digest": "e7c944586731507f3b6472f777ddd46aeb2344391fbd6d32d416de5c1ee1077f",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 42,
+        "operand_b": 165,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 2,
+        "transaction": 93
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 42,
+            "operand_b": 165
+          }
+        ],
+        "outputs": [
+          207
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000103",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000104",
+      "digest": "9ee36d15e1d2b2a3bc5cf797f402be0439c56870808c9d4ba8406f744e95cb72",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 184,
+        "operand_b": 143,
+        "source_idle_cycles": 3,
+        "sink_stall_cycles": 5,
+        "transaction": 94
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 184,
+            "operand_b": 143
+          }
+        ],
+        "outputs": [
+          327
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000104",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000105",
+      "digest": "cae7d2ba2e88498c9f3629cb7c57584e228efa098b12e2bdb3b9546b83d228b0",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 163,
+        "operand_b": 228,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 4,
+        "transaction": 95
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 163,
+            "operand_b": 228
+          }
+        ],
+        "outputs": [
+          391
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000105",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000106",
+      "digest": "930c8d9c41ff0b593e030261ff37976365314e7cf2b77d2ea81e20cfb51596af",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 90,
+        "operand_b": 40,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 4,
+        "transaction": 96
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 90,
+            "operand_b": 40
+          }
+        ],
+        "outputs": [
+          130
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000106",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000107",
+      "digest": "c1910a99b6a6599a6236841ff33b148850e08e622646d0fa99c8523c15bc5adf",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 203,
+        "operand_b": 69,
+        "source_idle_cycles": 1,
+        "sink_stall_cycles": 2,
+        "transaction": 97
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 203,
+            "operand_b": 69
+          }
+        ],
+        "outputs": [
+          272
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000107",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000108",
+      "digest": "123e233e3aee0d03a4a93ee5919616816d3f0c96e6039a009ae1ca6650a54e78",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 82,
+        "operand_b": 63,
+        "source_idle_cycles": 2,
+        "sink_stall_cycles": 1,
+        "transaction": 98
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 82,
+            "operand_b": 63
+          }
+        ],
+        "outputs": [
+          145
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000108",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    },
+    {
+      "id": "verify_u8_registered_adder:000109",
+      "digest": "3f9fc9324516c38ed3c19eb9d27befac40cdf1e17a408803aa87756375e69a84",
+      "test": "verify_u8_registered_adder",
+      "kind": "randomized",
+      "label": "randomized_job",
+      "stimulus": {
+        "operand_a": 19,
+        "operand_b": 212,
+        "source_idle_cycles": 0,
+        "sink_stall_cycles": 2,
+        "transaction": 99
+      },
+      "expected": {
+        "accepted_inputs": [
+          {
+            "operand_a": 19,
+            "operand_b": 212
+          }
+        ],
+        "outputs": [
+          231
+        ],
+        "aborted": false,
+        "reset_edges": 0
+      },
+      "covered_bins": [],
+      "operation_samples": [
+        {
+          "operation_name": "add_unsigned",
+          "fields": {},
+          "ignored_runtime_fields": [],
+          "matched_bins": [],
+          "runtime_sampled_points": [
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.output_buffer_stall",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.transferred_sum"
+          ]
+        }
+      ],
+      "history_id": "run0001:000109",
+      "source_ledger": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+      "source_tag": "av1-r0-p0-v1"
+    }
+  ]
+}

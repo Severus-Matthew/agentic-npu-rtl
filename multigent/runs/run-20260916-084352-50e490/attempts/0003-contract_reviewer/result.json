@@ -1,0 +1,56 @@
+{
+  "contract_review_status": "REVISION_REQUIRED",
+  "contract_review_result": {
+    "status": "REVISION_REQUIRED",
+    "summary": "Contract is close, but has one semantic conflict and one missing executable rule that can cause inconsistent implementations around same-cycle dequeue/enqueue behavior.",
+    "findings": [
+      {
+        "contract_path": "architecture/architecture_contract.yaml :: control.state_progression",
+        "issue": "States simultaneous dequeue/enqueue in FULL is architecturally forbidden and in_ready=0 for whole cycle when FULL at cycle start, even if out_ready=1. This conflicts with the user requirement of one-cycle latency without stalls (in steady no-backpressure operation, this rule injects bubbles and reduces throughput).",
+        "requested_change": "Revise control and latency semantics to allow same-edge dequeue/enqueue when FULL and out_ready=1 (or explicitly justify and update user-level requirement if throughput is intentionally limited). Ensure rule is consistent across control, pipeline stall_behavior, interface backpressure text, and latency model."
+      },
+      {
+        "contract_path": "architecture/architecture_contract.yaml :: reset.required_state / interface_contract.signals[rst_n].semantic",
+        "issue": "Reset behavior says output register content is don't-care while also requiring deterministic behavior; no explicit post-reset value rule for out_sum when out_valid=0. This can create ambiguity for verification and RTL style checks.",
+        "requested_change": "Add an explicit executable rule: either (a) out_sum is unconstrained when out_valid=0, or (b) out_sum is driven to a defined reset value (e.g., 0). Keep this consistent in reset section, signal semantics, and acceptance checks."
+      }
+    ]
+  },
+  "contract_review_hashes": {},
+  "history": [
+    {
+      "stage": "contract_reviewer",
+      "status": "REVISION_REQUIRED",
+      "findings": [
+        {
+          "contract_path": "architecture/architecture_contract.yaml :: control.state_progression",
+          "issue": "States simultaneous dequeue/enqueue in FULL is architecturally forbidden and in_ready=0 for whole cycle when FULL at cycle start, even if out_ready=1. This conflicts with the user requirement of one-cycle latency without stalls (in steady no-backpressure operation, this rule injects bubbles and reduces throughput).",
+          "requested_change": "Revise control and latency semantics to allow same-edge dequeue/enqueue when FULL and out_ready=1 (or explicitly justify and update user-level requirement if throughput is intentionally limited). Ensure rule is consistent across control, pipeline stall_behavior, interface backpressure text, and latency model."
+        },
+        {
+          "contract_path": "architecture/architecture_contract.yaml :: reset.required_state / interface_contract.signals[rst_n].semantic",
+          "issue": "Reset behavior says output register content is don't-care while also requiring deterministic behavior; no explicit post-reset value rule for out_sum when out_valid=0. This can create ambiguity for verification and RTL style checks.",
+          "requested_change": "Add an explicit executable rule: either (a) out_sum is unconstrained when out_valid=0, or (b) out_sum is driven to a defined reset value (e.g., 0). Keep this consistent in reset section, signal semantics, and acceptance checks."
+        }
+      ]
+    }
+  ],
+  "contract_review_revision": 2,
+  "architecture_conflict": {
+    "source": "contract_reviewer",
+    "status": "REVISION_REQUIRED",
+    "summary": "Contract is close, but has one semantic conflict and one missing executable rule that can cause inconsistent implementations around same-cycle dequeue/enqueue behavior.",
+    "findings": [
+      {
+        "contract_path": "architecture/architecture_contract.yaml :: control.state_progression",
+        "issue": "States simultaneous dequeue/enqueue in FULL is architecturally forbidden and in_ready=0 for whole cycle when FULL at cycle start, even if out_ready=1. This conflicts with the user requirement of one-cycle latency without stalls (in steady no-backpressure operation, this rule injects bubbles and reduces throughput).",
+        "requested_change": "Revise control and latency semantics to allow same-edge dequeue/enqueue when FULL and out_ready=1 (or explicitly justify and update user-level requirement if throughput is intentionally limited). Ensure rule is consistent across control, pipeline stall_behavior, interface backpressure text, and latency model."
+      },
+      {
+        "contract_path": "architecture/architecture_contract.yaml :: reset.required_state / interface_contract.signals[rst_n].semantic",
+        "issue": "Reset behavior says output register content is don't-care while also requiring deterministic behavior; no explicit post-reset value rule for out_sum when out_valid=0. This can create ambiguity for verification and RTL style checks.",
+        "requested_change": "Add an explicit executable rule: either (a) out_sum is unconstrained when out_valid=0, or (b) out_sum is driven to a defined reset value (e.g., 0). Keep this consistent in reset section, signal semantics, and acceptance checks."
+      }
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "status": "PATCH_READY",
+  "edits": [
+    {
+      "op": "replace",
+      "path": "/interface_contract/channels/name=cmd_ch/backpressure",
+      "value_json": "\"cmd_ready is forced low whenever rst_n=0. On the first rising clk edge with rst_n=1, if FSM state is IDLE then cmd_ready shall be high in that same cycle and a held cmd_valid/cmd_payload may transfer on that edge (ready&&valid).\"",
+      "reason": "Resolves reset-release acceptance ambiguity by defining first-cycle post-reset ready and handshake legality."
+    },
+    {
+      "op": "replace",
+      "path": "/architecture_contract/control/strategy",
+      "value_json": "\"single FSM controlling phase progression IDLE->LOAD_A->LOAD_B->LOAD_BIAS->COMPUTE->OUTPUT->DONE->IDLE; DONE is exactly one cycle\"",
+      "reason": "Makes DONE duration explicit per reviewer request."
+    },
+    {
+      "op": "replace",
+      "path": "/architecture_contract/control/state_progression",
+      "value_json": "\"advance only when phase transfer/count complete; compute advances per cycle by counters i,j,k; DONE lasts exactly one cycle, with all input ready outputs low during DONE, and transition to IDLE occurs on the next cycle where cmd_ready may reassert\"",
+      "reason": "Defines readiness behavior during DONE and exact reassertion point for cmd_ready."
+    },
+    {
+      "op": "replace",
+      "path": "/interface_contract/signals/name=completion/semantic",
+      "value_json": "\"one-cycle pulse in DONE state immediately after the cycle of final output transfer handshake\"",
+      "reason": "Aligns completion timing wording with explicit one-cycle DONE semantics."
+    }
+  ],
+  "issue": ""
+}

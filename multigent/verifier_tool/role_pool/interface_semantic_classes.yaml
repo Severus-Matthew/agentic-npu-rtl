@@ -1,0 +1,108 @@
+taxonomy:
+  name: accelerator_interface_semantic_classes
+  version: "0.1"
+  scope: semantic meaning of top-level accelerator signal values
+  rules:
+    - Semantic classes refine signal roles; they do not replace roles.
+    - Operation-specific meaning such as GEMM operand A belongs to data_objects, not here.
+
+role_binding:
+  required: [payload, metadata]
+  optional: [last, keep, transaction_id]
+  forbidden: [clock, reset, clock_enable, valid, ready, start, enable, flush, cancel, busy, completion, error, interrupt]
+
+semantic_classes:
+  data:
+    description: Generic operand, result, stream element, or memory data value.
+    allowed_roles: [payload]
+    coverage_tags: [value_partition, extrema]
+
+  command:
+    description: Encoded operation request or command word.
+    allowed_roles: [payload, metadata]
+    coverage_tags: [legal_command, illegal_command]
+
+  configuration:
+    description: Programmable mode, dimension, bound, or control parameter value.
+    allowed_roles: [payload, metadata]
+    coverage_tags: [configuration, legal_boundary, illegal_value]
+
+  opcode:
+    description: Operation selector within a command or transfer.
+    allowed_roles: [payload, metadata]
+    coverage_tags: [opcode_partition, illegal_opcode]
+
+  address:
+    description: Byte, word, register, or memory location address.
+    allowed_roles: [payload, metadata]
+    coverage_tags: [alignment, address_boundary, address_range]
+
+  byte_enable:
+    description: Mask selecting active bytes or lanes of a data transfer.
+    allowed_roles: [metadata, keep]
+    coverage_tags: [partial_transfer, mask_patterns]
+
+  length:
+    description: Transfer, burst, packet, vector, or job length.
+    allowed_roles: [payload, metadata]
+    coverage_tags: [minimum_length, maximum_length, partial_transfer]
+
+  size:
+    description: Encoded transfer unit or element size.
+    allowed_roles: [payload, metadata]
+    coverage_tags: [size_partition, illegal_size]
+
+  burst_type:
+    description: Address progression rule for a multi-transfer burst.
+    allowed_roles: [metadata]
+    coverage_tags: [burst_type, address_boundary]
+
+  identifier:
+    description: Transaction, source, destination, context, or correlation identifier.
+    allowed_roles: [metadata, transaction_id]
+    coverage_tags: [identifier_partition, correlation, ordering]
+
+  response_code:
+    description: Success, retry, denied, corrupt, or error response encoding.
+    allowed_roles: [payload, metadata]
+    coverage_tags: [response_partition, error]
+
+  framing:
+    description: Packet, frame, section, or final-transfer qualifier.
+    allowed_roles: [metadata, last]
+    coverage_tags: [framing, empty_frame, partial_transfer]
+
+  priority:
+    description: Arbitration priority or quality-of-service value.
+    allowed_roles: [metadata]
+    coverage_tags: [priority_partition, arbitration]
+
+  protection:
+    description: Privilege, security, instruction/data, or access-protection attribute.
+    allowed_roles: [metadata]
+    coverage_tags: [protection_partition, denied_access]
+
+  coherence:
+    description: Cacheability, sharing, snoop, or coherence-state attribute.
+    allowed_roles: [payload, metadata]
+    coverage_tags: [coherence_state, ordering]
+
+  credit:
+    description: Flow-control credit count or credit-return value.
+    allowed_roles: [payload, metadata]
+    coverage_tags: [credit_empty, credit_full, flow_control]
+
+  performance_event:
+    description: Counter value or event indication used for performance observation.
+    allowed_roles: [payload, metadata]
+    coverage_tags: [performance_event]
+
+  debug_trace:
+    description: Debug state or execution trace information.
+    allowed_roles: [payload, metadata]
+    coverage_tags: [debug_visibility]
+
+  user_metadata:
+    description: Contract-defined sideband meaning not covered by a standard class.
+    allowed_roles: [metadata]
+    coverage_tags: [user_metadata]

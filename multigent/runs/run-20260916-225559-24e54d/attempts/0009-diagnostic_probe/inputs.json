@@ -1,0 +1,18 @@
+{
+  "architecture": {
+    "acceptance_criteria.yaml": "cf7ef43b86a9c12440ec7acc8dcee74c0be5f746abf18dcdfc4e5ff9a592ce0a",
+    "architect_result.json": "23a742139d95094aadcfc4a54575073ee8eaf68855a50ccc5e9947743da011e8",
+    "architecture_contract.yaml": "bb5fd6e067db34186da4108671c91940e222bac08df51f56f872de50908793ee",
+    "interface_contract.yaml": "5f20585b8d26b5c4c4595abf375e5b882bd1a15cff3983c2e8da310e33140740",
+    "module_manifest.json": "9d5532794ab4dfbecadf9e91763782658f0862770eef5eb4079b647f27132008"
+  },
+  "rtl": {
+    "unsigned_adder.sv": "736c7ed1a87c45f726a99a35eaf3bfc19ef5e577369be204600cf6501f19c76b"
+  },
+  "tests": {
+    "test_unsigned_adder.py": "ea7eefdc2ea1e5fde9990b44fb1b688861eae2b63c3dcc4c175a6de56d1617e6"
+  },
+  "reference": {
+    "adder_model.py": "f395cc0d8ed11e162281039b25e8aed078341dcf3275cc27e7eb4d33fb911afe"
+  }
+}

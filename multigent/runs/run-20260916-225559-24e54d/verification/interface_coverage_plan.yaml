@@ -1,0 +1,100 @@
+schema_version: 2
+source: frozen interface contract + interface_coverage_templates.yaml
+monitor:
+  clock: clk
+  reset: rst_n
+  signals:
+  - clk
+  - rst_n
+  - in_valid
+  - in_ready
+  - in_a
+  - in_b
+  - out_valid
+  - out_ready
+  - out_sum
+obligations:
+- id: channel.input_pair.handshake_states
+  template: handshake_states
+  scope: channel
+  scope_name: input_pair
+  description: Cover all producer-valid and consumer-ready states.
+  bindings:
+    valid: in_valid
+    ready: in_ready
+  bins:
+  - &id001
+    name: idle
+    intent: valid=0 and ready=0
+  - &id002
+    name: receiver_ready
+    intent: valid=0 and ready=1
+  - &id003
+    name: backpressured
+    intent: valid=1 and ready=0
+  - &id004
+    name: transfer
+    intent: valid=1 and ready=1
+- id: channel.input_pair.stall_stability
+  template: stall_stability
+  scope: channel
+  scope_name: input_pair
+  description: Exercise a stalled transfer and hold all producer-owned content stable.
+  bindings:
+    valid: in_valid
+    ready: in_ready
+    payload:
+    - in_a
+    - in_b
+  bins:
+  - &id005
+    name: one_cycle_stall
+    intent: Observe exactly one stalled cycle.
+  - &id006
+    name: short_stall
+    intent: Observe two through four consecutive stalled cycles.
+  - &id007
+    name: long_stall
+    intent: Observe five or more consecutive stalled cycles.
+- id: channel.output_sum.handshake_states
+  template: handshake_states
+  scope: channel
+  scope_name: output_sum
+  description: Cover all producer-valid and consumer-ready states.
+  bindings:
+    valid: out_valid
+    ready: out_ready
+  bins:
+  - *id001
+  - *id002
+  - *id003
+  - *id004
+- id: channel.output_sum.stall_stability
+  template: stall_stability
+  scope: channel
+  scope_name: output_sum
+  description: Exercise a stalled transfer and hold all producer-owned content stable.
+  bindings:
+    valid: out_valid
+    ready: out_ready
+    payload:
+    - out_sum
+  bins:
+  - *id005
+  - *id006
+  - *id007
+- id: signal.rst_n.reset_behavior
+  template: reset_behavior
+  scope: signal
+  scope_name: rst_n
+  description: Exercise reset assertion/deassertion and verify contract reset state.
+  bindings:
+    signal: rst_n
+    active_value: 0
+  bins:
+  - name: asserted
+    intent: Observe reset in its asserted state.
+  - name: deasserted
+    intent: Observe reset in its deasserted state.
+  - name: release
+    intent: Observe the transition from reset into operation.

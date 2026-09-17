@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from pathlib import Path
 from typing import Any
 
 from multigent.agents.base import AgentRuntimeError
 from multigent.agents.verifier import VerifierAgent
-from multigent.intake.request_builder import WORKSPACE_ROOT, build_verification_context
 
 from .state import HardwareDesignState
 
@@ -31,98 +29,87 @@ def _is_semantic_validation_error(exc: AgentRuntimeError) -> bool:
     Transport/schema parsing already has bounded retry inside ``APIAgent``. Context
     construction/configuration failures are deterministic infrastructure problems and
     should surface immediately rather than spending another model call. Everything
-    else raised after a schema-valid verifier output is eligible for one self-correction
-    attempt at this orchestration boundary.
+    else raised after a schema-valid verifier output is eligible for bounded correction
+    through the graph's verifier-revision loop.
     """
 
     message = str(exc)
     return not any(marker in message for marker in _NON_SEMANTIC_RUNTIME_MARKERS)
 
 
-def _build_semantic_retry_state(
-    state: HardwareDesignState,
-    *,
-    error: AgentRuntimeError,
-) -> dict[str, Any]:
-    context = state.get("verification_context")
-    if isinstance(context, Mapping) and context:
-        retry_context: dict[str, Any] = dict(context)
-    else:
-        user_request = state.get("user_request")
-        if not isinstance(user_request, str) or not user_request.strip():
-            raise AgentRuntimeError(
-                "Verifier semantic retry requires user_request or verification_context"
-            ) from error
-        architecture_dir = Path(
-            state.get("architecture_dir", WORKSPACE_ROOT / "architecture")
-        )
-        retry_context = build_verification_context(
-            user_request=user_request,
-            architecture_dir=architecture_dir,
-        )
-
-    retry_context["semantic_retry_feedback"] = {
-        "validator_error": str(error),
-        "required_action": (
-            "Regenerate the complete verifier output and correct this semantic defect. "
-            "Do not weaken the frozen contract, verification policy, oracle, coverage, "
-            "or independence rules. Preserve all unaffected requirements."
-        ),
-        "attempt": 1,
-    }
-
-    retry_state: dict[str, Any] = dict(state)
-    retry_state["verification_context"] = retry_context
-    retry_state["run_id"] = f"{state.get('run_id', 'langgraph')}-semantic-retry1"
-    return retry_state
-
-
 def make_verifier_node(
     agent: VerifierAgent | None = None,
 ) -> Callable[[HardwareDesignState], dict[str, Any]]:
-    """Return a Verifier node with one bounded semantic self-correction attempt.
+    """Return one Verifier attempt; graph routing owns bounded semantic repair.
 
-    The underlying API runtime already retries malformed/schema-invalid structured
-    output. This node adds exactly one retry for a *schema-valid but semantically
-    invalid* verifier artifact, using the deterministic validator error as feedback.
-    This keeps verifier rules strict without requiring a human to rerun the graph for
-    ordinary generation mistakes.
+    Schema-invalid output is already retried by ``APIAgent``. A schema-valid but
+    semantically invalid artifact becomes explicit graph state, so the exact validator
+    error can be fed back through the normal, counted verifier-revision budget.
     """
 
     runtime = agent or VerifierAgent()
 
     def verifier_node(state: HardwareDesignState) -> dict[str, Any]:
-        state = {key: state[key] for key in ("run_id", "user_request", "architecture_dir", "architecture_version", "repair_iteration", "verification_context") if key in state}
-        semantic_retry = False
-        semantic_error: str | None = None
+        state = {key: state[key] for key in (
+            "run_id", "user_request", "architecture_dir", "architecture_version",
+            "architecture_revision", "repair_iteration", "verifier_revision",
+            "verification_context",
+        ) if key in state}
+        context = state.get("verification_context")
+        semantic_review = (
+            context.get("semantic_validation_review")
+            if isinstance(context, Mapping)
+            else None
+        )
         try:
             update = runtime.run_from_state(state)
         except AgentRuntimeError as exc:
             if not _is_semantic_validation_error(exc):
                 raise
-            semantic_retry = True
-            semantic_error = str(exc)
-            retry_state = _build_semantic_retry_state(state, error=exc)
-            try:
-                update = runtime.run_from_state(retry_state)
-            except AgentRuntimeError as retry_exc:
-                if not _is_semantic_validation_error(retry_exc):
-                    raise
-                return {"verifier_status": "SEMANTIC_VALIDATION_FAILED", "errors": [str(retry_exc)],
-                        "history": [{"stage": "verifier_generation", "status": "SEMANTIC_VALIDATION_FAILED"}]}
+            message = str(exc)
+            failure: dict[str, Any] = {
+                "verifier_status": "SEMANTIC_VALIDATION_FAILED",
+                "verifier_review_status": "PENDING",
+                "verifier_review_result": None,
+                "verifier_review_hashes": {},
+                "errors": [message],
+                "history": [
+                    {
+                        "stage": "verifier_generation",
+                        "status": "SEMANTIC_VALIDATION_FAILED",
+                        "validator_error": message,
+                    }
+                ],
+            }
+            draft = getattr(runtime, "last_generated_result", None)
+            if isinstance(draft, Mapping):
+                failure["verifier_draft"] = dict(draft)
+            addressed = getattr(runtime, "last_addressed_findings", None)
+            if addressed:
+                failure["verifier_addressed_findings"] = sorted(addressed)
+            return failure
+
+        # A correction can reveal a genuine frozen-contract contradiction.
+        # Do not blanket-relabel every architecture conflict as a TB defect;
+        # normal architecture routing/budgets apply to its structured evidence.
 
         history_entry: dict[str, Any] = {
             "stage": "verifier_generation",
             "status": update["verifier_status"],
             "architecture_version": int(state.get("architecture_version", 0)),
             "repair_iteration": int(state.get("repair_iteration", 0)),
-            "semantic_retry": semantic_retry,
+            "semantic_retry": bool(semantic_review),
         }
-        if semantic_error is not None:
-            history_entry["semantic_retry_error"] = semantic_error
+        if semantic_review:
+            history_entry["semantic_retry_error"] = str(
+                semantic_review.get("validator_error", "")
+            )
 
         return {
             **update,
+            "verifier_review_status": "PENDING",
+            "verifier_review_result": None,
+            "verifier_review_hashes": {},
             "history": [history_entry],
         }
 

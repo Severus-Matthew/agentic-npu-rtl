@@ -1,0 +1,1 @@
+{"run_id": "source-check-regression-20260916", "request": "Deterministic recheck of existing generated streaming adder (no model generation)", "model": "gpt-5.6-sol", "status": "SUCCESS"}

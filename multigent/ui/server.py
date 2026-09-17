@@ -16,7 +16,7 @@ from multigent.models import MODELS, DEFAULT_MODEL, validate_model
 
 REPO = Path(__file__).resolve().parents[2]
 TEXT_SUFFIXES = {'.sv', '.py', '.json', '.yaml', '.yml', '.md', '.txt', '.log', '.tcl', '.xdc', '.rpt', '.tsv', '.jsonl'}
-OWNERS = {'architecture': 'Architect', 'rtl': 'RTL Generator', 'reference': 'Independent Testbench Generator',
+OWNERS = {'contract_reviews': 'Contract Reviewer', 'architecture': 'Architect', 'rtl': 'RTL Generator', 'reference': 'Independent Testbench Generator',
           'tests': 'Independent Testbench Generator', 'verification': 'Verification', 'diagnostics': 'Debugger',
           'synthesis': 'Vivado', 'optimization': 'PPA Optimizer', 'reports': 'Reports',
           'specs': 'Request', 'state': 'Run state', 'logs': 'Logs', 'attempts': 'Earlier attempts'}
@@ -83,6 +83,9 @@ class RunManager:
         if not isinstance(request, str) or not request.strip() or len(request)>30000:
             raise ValueError('Enter a request between 1 and 30,000 characters')
         model = validate_model(payload.get('model', DEFAULT_MODEL))
+        verification_only = payload.get('verification_only', True)
+        if not isinstance(verification_only, bool):
+            raise ValueError('verification_only must be true or false')
         with self.lock:
             if any(p.poll() is None for p in self.processes.values()):
                 raise ValueError('A run is already working. Wait for it to finish before starting another.')
@@ -91,12 +94,15 @@ class RunManager:
             root.mkdir()
             (root/'logs').mkdir()
             metadata = {'run_id': run_id, 'request': request.strip(), 'model': model,
-                        'created': datetime.now(timezone.utc).isoformat(), 'status': 'RUNNING'}
+                        'created': datetime.now(timezone.utc).isoformat(), 'status': 'RUNNING',
+                        'verification_only': verification_only}
             save_json(root/'ui_run.json', metadata)
             env = dict(os.environ, NPU_WORKSPACE_ROOT=str(root), NPU_AGENT_MODEL=model,
                        NPU_AGENT_API_MODE='responses')
             command = [sys.executable, '-u', '-m', 'multigent.orchestration.graph',
                        '--request', request.strip(), '--run-id', run_id, '--model', model]
+            if verification_only:
+                command.insert(4, '--verification-only')
             try:
                 with (root/'logs'/'pipeline.log').open('w') as log:
                     process = self.launcher(command, cwd=self.repo, env=env, stdout=log,
@@ -157,7 +163,29 @@ class RunManager:
                 'status': status, 'running': running, 'events': events[-500:],
                 'history': state.get('history',[])[-100:], 'errors': state.get('errors',[])[-5:],
                 'verification_status': state.get('verification_status'),
+                'simulator_cases': simulator_cases(root, state),
+                'testbench_checks': read_json(root/'verification'/'testbench-checks.json'),
+                'verification_checks': (state.get('verification_evidence') or {}).get('checks', {}),
                 'files': artifacts(root)}
+
+
+def simulator_cases(root, state):
+    """Read individual results from the latest recorded simulator attempt only."""
+    import xml.etree.ElementTree as ET
+    simulation = (state.get('verification_evidence') or {}).get('cocotb') or {}
+    filename = simulation.get('results_xml')
+    if not filename:
+        return []
+    path = Path(filename)
+    if not path.resolve().is_relative_to(root.resolve()):
+        return []
+    try:
+        cases = ET.parse(path).getroot().findall('.//testcase')
+        return [{'name': c.get('name'), 'module': c.get('classname'),
+                 'status': 'FAIL' if any(c.find(t) is not None for t in ('failure','error'))
+                 else 'SKIPPED' if c.find('skipped') is not None else 'PASS'} for c in cases]
+    except (OSError, ET.ParseError):
+        return []
 
 
 def handler(manager, token):

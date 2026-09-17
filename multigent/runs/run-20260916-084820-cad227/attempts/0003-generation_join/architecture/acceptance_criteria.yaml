@@ -1,0 +1,32 @@
+functional:
+- For every non-aborted input transfer, exactly one output transfers with the unsigned
+  9-bit value operand_a + operand_b.
+- Verify boundary cases 0+0=0, 255+0=255, 255+1=256, and 255+255=510.
+- Verify input acceptance and output transfer ordering, including consecutive same-edge
+  consume-and-replace operation.
+- No output transfer may occur without a corresponding accepted input.
+verification:
+- Use exact integer comparison for every transferred result.
+- Run at least 100 randomized transactions with randomized operands and independently
+  randomized input-valid and output-ready stalls.
+- Verify one-cycle acceptance-to-transfer latency when out_ready remains asserted.
+- Verify output valid and payload stability for arbitrary backpressure durations.
+- Verify reset while empty, while a result is pending, and while output is stalled;
+  no pre-reset result may transfer afterward.
+- Verify no transfer occurs on a reset edge and in_ready is low while rst_n=0.
+- Verify a producer may present and hold a next transaction while blocked and that
+  it transfers on the first eligible release edge.
+- Use a regression wall timeout of at least 120 seconds.
+rtl:
+- RTL shall be synthesizable SystemVerilog and contain no real, shortreal, delay statements,
+  force/release, or classes.
+- The implementation shall contain one top module and no required submodules.
+- No inferred latch, multiple driver, width truncation, or signed arithmetic ambiguity
+  is permitted.
+- Reset shall synchronously clear valid and payload state without relying on memory
+  initialization.
+fpga_handoff:
+- Vivado handoff is permitted only after verification passes.
+- Provide deterministic Vivado logs/reports and a result conforming to multigent/schemas/synthesis_result.schema.json.
+- Do not estimate timing, area, power, frequency, or utilization; only deterministic
+  tool reports are authoritative.

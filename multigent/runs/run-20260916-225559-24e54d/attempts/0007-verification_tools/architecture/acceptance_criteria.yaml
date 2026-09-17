@@ -1,0 +1,47 @@
+functional:
+- Every transferred output exactly equals the integer sum of its corresponding accepted
+  operand pair; no truncation, rounding, duplication, reordering, or unsolicited output.
+- Check all 65,536 operand combinations, including 0+0=0, 255+0=255, 255+1=256, and
+  255+255=510.
+- Check one-cycle unstalled latency from input acceptance at E0 to output transfer
+  at E1 and one-result-per-cycle sustained consume-and-replace operation.
+- Check that an empty slot accepts one pair even when out_ready=0, then blocks additional
+  acceptance until the result can be consumed.
+- Check sampled reset discards pending work, clears output data/valid, and prevents
+  pre-reset results from leaking into later transactions.
+verification:
+- Use an independent integer scoreboard driven by actual reset-qualified transfer
+  events, with capacity/accounting checks on every edge.
+- Run at least 100 randomized transactions with randomized operands, producer gaps,
+  and bounded output stalls; use reproducible seeds and a regression wall timeout
+  of at least 120 seconds.
+- Assert exact in_ready logic, output stall stability, input hold compliance, and
+  the occupancy/count invariant.
+- Exercise empty acceptance, output-only consumption, simultaneous replacement, prolonged
+  output stall, held next input, and back-to-back transactions.
+- Test reset while empty, while output is stalled, and on edges otherwise eligible
+  for input/output transfer. Confirm those reset edges transfer nothing and allow
+  stalled producer withdrawal.
+- Assert reset between clock edges to verify synchronous state clearing; separately
+  verify in_ready becomes low while reset is asserted.
+- No runtime configuration, illegal operand encodings, arithmetic overflow, completion
+  pulse, or error signal exists; do not require tests for nonexistent behaviors.
+rtl:
+- Provide synthesizable SystemVerilog with exactly one module named unsigned_adder
+  and the frozen ports; no optional modes or configuration.
+- Use explicit unsigned 9-bit operand extension before addition.
+- Implement one 9-bit result register and one valid bit; no operand queues, RAMs,
+  latches, or additional pipeline stages.
+- Do not use real, shortreal, delay statements, force/release, or classes in synthesizable
+  RTL.
+- Compile and elaborate without unresolved references or width/sign mismatches.
+fpga_handoff:
+- Run Vivado synthesis only after the frozen functional and protocol regression passes.
+- Provide reproducible scripts recording RTL revision, top, Vivado version, explicit
+  target part, clock/I/O constraints, and complete tool logs.
+- Select and record the handoff target part and clock constraint without treating
+  either as an achieved performance claim.
+- Produce results conforming to multigent/schemas/synthesis_result.schema.json; metrics
+  must cite deterministic Vivado reports and must not be estimated.
+- Report synthesis failures and timing violations without altering architecture or
+  verification requirements. No synthesis or PPA result is claimed by this contract.

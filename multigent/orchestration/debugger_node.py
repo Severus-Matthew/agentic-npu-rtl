@@ -20,6 +20,8 @@ def make_debugger_node(
     def debugger_node(state: HardwareDesignState) -> dict[str, Any]:
         current_repair = int(state.get("repair_iteration", 0))
         update = runtime.run_from_state(state)
+        if update.get("debugger_status") == "REPAIR_PLAN_READY":
+            update["repair_cycle_iteration"] = state.get("repair_cycle_iteration",state.get("repair_iteration",0)) + 1
         return {
             **update,
             "history": [

@@ -1,0 +1,78 @@
+{
+  "failure_class": "SIMULATION_TIMEOUT",
+  "root_cause": "Undetermined. Available evidence cannot distinguish slow regression execution from stalled simulation progress. The RTL implements the contracted arithmetic, handshake, retention, and synchronous reset behavior.",
+  "root_cause_domain": "TESTBENCH_INFRASTRUCTURE",
+  "cause_ranking": [
+    {
+      "domain": "RTL_DESIGN",
+      "priority": 1,
+      "assessment": "UNRESOLVED",
+      "evidence": "Source matches the single-entry state transitions and explicit 9-bit addition. No failing interface snapshots are supplied to establish or conclusively exclude an execution defect."
+    },
+    {
+      "domain": "GOLDEN_MODEL",
+      "priority": 2,
+      "assessment": "ELIMINATED",
+      "evidence": "adder_model.add performs bounded uint8 validation and exact Python integer addition, matching the frozen arithmetic contract without loops or waits."
+    },
+    {
+      "domain": "LLM_OPERATION_ASSERTION",
+      "priority": 3,
+      "assessment": "UNRESOLVED",
+      "evidence": "Visible state/accounting assertions follow the contract; none is reported failing. Execution position at timeout is unavailable."
+    },
+    {
+      "domain": "TESTBENCH_INFRASTRUCTURE",
+      "priority": 4,
+      "assessment": "UNRESOLVED",
+      "evidence": "The test records each checked transaction and requires 65,536 exhaustive pairs; only 6,358 stimulus records are reported. Runtime cost, wall-time limit, and final simulation time are unavailable, so infrastructure causality is unproven."
+    },
+    {
+      "domain": "CONTRACT_GENERATED_PROTOCOL_ASSERTION",
+      "priority": 5,
+      "assessment": "UNRESOLVED",
+      "evidence": "Visible stall checks implement payload/valid retention with reset cancellation. No protocol failure or snapshot demonstrates a contradictory expression or binding."
+    }
+  ],
+  "confidence": 0.3,
+  "first_divergence": {
+    "cycle": null,
+    "signal_or_output": "Regression completion",
+    "expected": "Complete exhaustive_and_protocol within the configured regression limits.",
+    "observed": "TIMEOUT; zero completed tests, zero reported assertion failures; timeout return code and final simulation time not supplied."
+  },
+  "evidence": [
+    {
+      "source": "verification_evidence.verilator",
+      "observation": "Lint passed with return_code=0 and no error diagnostics.",
+      "relevance": "Parsing/elaboration legality is not the observed failure."
+    },
+    {
+      "source": "verification_evidence.cocotb",
+      "observation": "Build/link completed and exhaustive_and_protocol started. The regression reports TIMEOUT.",
+      "relevance": "The first authoritative failure is regression timeout, not compilation or the Edge deprecation warning."
+    },
+    {
+      "source": "verification_evidence.stimulus_history",
+      "observation": "6,358 stimulus records, including 6,351 unique stimuli, are reported; individual records are absent.",
+      "relevance": "Some execution progressed, but its final transaction and rate cannot be reconstructed."
+    },
+    {
+      "source": "frozen_tests/test_unsigned_adder.py",
+      "observation": "Exhaustive testing uses 65,536 clocked steps and a 2 ms simulation-time timeout; transaction recording calls an external runtime implementation not supplied.",
+      "relevance": "Wall-time exhaustion and runtime overhead require additional evidence."
+    }
+  ],
+  "affected_modules": [],
+  "alternative_hypotheses": [
+    "Simulation continues making correct progress but exceeds the wall-time budget.",
+    "Coverage or stimulus-recording overhead dominates execution.",
+    "Clock/scheduler progress stops at an unobserved point."
+  ],
+  "additional_evidence_requested": [
+    "Provide the original timeout limit, elapsed wall time, termination reason/status, full simulation log, and last simulation timestamp.",
+    "Provide recent all-interface snapshots and the last oracle-checked stimulus records with cycle/time information.",
+    "Run a read-only bounded monitor, capped at 100 us, recording clock progress, all nine interface signals, and transaction counts; report wall-time progress separately.",
+    "Provide the coverage/stimulus-recording runtime source and a bounded execution profile or stack sample at timeout."
+  ]
+}
