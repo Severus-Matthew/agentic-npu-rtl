@@ -1,0 +1,8 @@
+{
+  "run_id": "run-20260911-204047-7bd8e1",
+  "request": "Design an NPU for accelerating matrix-vector multiplication in neural-network inference. Use 16 parallel INT8 multiply-accumulate units, INT32 accumulators, optional bias addition, and selectable ReLU activation. The accelerator should accept input data and return results through ready/valid streaming interfaces.",
+  "model": "gpt-6-astra",
+  "created": "2026-09-11T20:40:47.313079+00:00",
+  "status": "FAILED",
+  "exit_code": 2
+}

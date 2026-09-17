@@ -1,0 +1,427 @@
+user_request: Design a small clocked unsigned adder. Each accepted input transaction
+  carries two 8-bit operands and produces their exact 9-bit sum. Use one shared input
+  valid/ready handshake and one output valid/ready handshake, a single-entry output
+  register, active-low synchronous reset, and one-cycle latency without stalls. Hold
+  output stable under backpressure. Reset discards pending work and deasserts output
+  valid. Use one top module, no optional modes or runtime configuration.
+project_constraints:
+  rtl_constraints:
+    language: SystemVerilog
+    synthesizable_only: true
+    forbidden_constructs:
+    - real
+    - shortreal
+    - delay_statements
+    - force_release
+    - classes
+  verification_policy:
+    exact_integer_match_when_applicable: true
+    randomized_transactions_minimum: 100
+    require_reset_tests: true
+    require_backpressure_tests_when_applicable: true
+    regression_wall_timeout_seconds_minimum: 120
+    require_completion_behavior_tests_when_defined: true
+    require_error_behavior_tests_when_defined: true
+  synthesis_policy:
+    provider: vivado
+    requires_verified_rtl: true
+    result_schema: multigent/schemas/synthesis_result.schema.json
+    authoritative_metrics_source: deterministic_tool_report
+    prohibit_metric_estimation: true
+architect_must_decide_when_unspecified:
+- design_name
+- operation_semantics
+- data_type_semantics
+- logical_data_objects
+- legal_runtime_bounds
+- compile_time_parameters
+- compute_organization
+- parallelism
+- scheduling
+- dataflow
+- storage_and_reuse
+- buffering
+- pipeline_structure
+- interface_protocol
+- interface_payload_mapping
+- framing_and_ordering
+- backpressure_behavior
+- reset_style
+- reset_polarity
+- control_strategy
+- error_recovery
+- latency_model
+- module_decomposition
+provenance:
+  user_supplied_fields:
+  - user_request
+  runtime_injected_fields:
+  - project_constraints
+  - architect_must_decide_when_unspecified
+  - downstream_revision_feedback
+  - previous_contract
+downstream_revision_feedback:
+  source: contract_reviewer
+  status: REVISION_REQUIRED
+  summary: Contract is close, but has reset/in_ready and latency semantics conflicts
+    that can cause inconsistent implementations and verification expectations.
+  findings:
+  - contract_path: frozen_architecture.architecture_contract.reset.required_state
+    issue: Spec says on rst_n=0 edge, in_ready=1 (since empty). Elsewhere, interface/module
+      semantics state no transfer accepted on reset edge and in_ready high only when
+      not in reset cycle, creating contradiction.
+    requested_change: 'Make reset behavior consistent across artifacts: explicitly
+      define in_ready during rst_n=0 cycles (recommended 0 to match module/interface
+      text) and update reset.required_state accordingly.'
+  - contract_path: frozen_architecture.architecture_contract.module_manifest.modules[0].ports[in_ready].semantics
+      vs frozen_architecture.architecture_contract.reset.required_state
+    issue: Module manifest says in_ready high only when output register empty and
+      not in reset cycle, conflicting with reset.required_state claiming in_ready=1
+      on reset cycle.
+    requested_change: Align module manifest and reset sections to one rule for in_ready
+      during reset; ensure same rule appears in interface/backpressure text.
+  - contract_path: frozen_architecture.architecture_contract.control.state_progression
+    issue: Text says simultaneous dequeue/enqueue replacement in FULL is 'not used
+      here because one-cycle no-stall requires EMPTY at accept'. This is ambiguous
+      and can be read as architectural prohibition or merely guidance.
+    requested_change: 'State explicit legality: either forbid simultaneous dequeue/enqueue
+      in FULL, or permit it while preserving defined observable latency/ordering;
+      remove ambiguous rationale sentence.'
+previous_contract:
+  status: READY
+  conflicts: []
+  architecture_contract:
+    design:
+      name: rv_uadd8x2_to_u9
+      version: '1.0'
+      description: Clocked unsigned 8b+8b adder with ready/valid input and output,
+        single-entry output register, one-cycle no-stall latency, backpressure-stable
+        output, synchronous active-low reset.
+    operations:
+    - name: uadd_pair
+      kind: add
+      coverage_family: vector_alu
+      coverage_family_source: catalog
+      features:
+      - opcode
+      - vector_length
+      - operand_classes
+      - numeric_behavior
+      - predication
+      feature_extensions:
+      - fixed_opcode_add_only
+      - scalar_single_element_per_transaction
+      - no_predication_supported
+      semantics: On each accepted input transfer, compute exact unsigned sum S=A+B
+        where A and B are 8-bit unsigned operands and S is 9-bit unsigned with zero-extension
+        carry-out preserved; no truncation, no saturation, no wrap beyond 9 bits.
+      inputs:
+      - in_pair
+      outputs:
+      - sum_out
+    data_types:
+    - name: u8
+      role: input_operand_element
+      width_bits: 8
+      signed: false
+      representation: unsigned_binary
+      conversion_semantics: Consumed as-is; no sign extension.
+      overflow_semantics: Not applicable at type level.
+      rounding_semantics: Exact integer.
+    - name: u9
+      role: sum_element
+      width_bits: 9
+      signed: false
+      representation: unsigned_binary
+      conversion_semantics: Produced from zero-extended 8b operands addition.
+      overflow_semantics: Exact representable range 0..510; no overflow for 8b+8b.
+      rounding_semantics: Exact integer.
+    data_objects:
+    - name: in_pair
+      role: input_transaction_operands
+      data_type: u8
+      dimensions: []
+      producer: external
+      consumers:
+      - uadd_pair
+      external: true
+    - name: sum_out
+      role: output_sum_transaction
+      data_type: u9
+      dimensions: []
+      producer: uadd_pair
+      consumers:
+      - external
+      external: true
+    dimensions: []
+    parameters: []
+    compute:
+      organization: single scalar adder datapath with registered output
+      dataflow: 'transactional stream: accept input then publish sum next cycle'
+      parallelism: one transaction in flight in output register
+      scheduling: single-cycle compute from accepted input to output register write
+        when output slot empty
+    storage:
+    - name: out_reg
+      stored_objects:
+      - sum_out
+      capacity_expression: 1 transaction
+      capacity_at_default_parameters: 1
+      access_pattern: write on accepted input; hold until accepted output
+      port_requirements: 1 write source (adder result), 1 read sink (output channel),
+        valid bit
+      implementation_hint: flip-flop register plus valid flag
+      reuse_semantics: no reuse; each entry consumed once
+      lifetime: from input acceptance cycle+1 visibility until output handshake
+    pipeline:
+    - stage: s0_accept_compute
+      responsibility: input handshake qualification and combinational add
+      registered: false
+      valid_behavior: when in_valid&&in_ready, compute sum candidate
+      stall_behavior: if out_reg valid and out_ready=0, in_ready=0 so no acceptance
+    - stage: s1_output_register
+      responsibility: store/hold sum and drive output handshake
+      registered: true
+      valid_behavior: out_valid reflects valid flag; out_sum reflects stored sum
+      stall_behavior: while out_valid&& !out_ready, out_sum and out_valid remain stable
+    control:
+      strategy: single valid-bit occupancy control
+      state_progression: EMPTY -> FULL on input transfer; FULL -> EMPTY on output
+        transfer; if simultaneous dequeue/enqueue allowed only when FULL and out_ready
+        and in_valid then replace with new sum preserving one-cycle latency not used
+        here because one-cycle no-stall requires EMPTY at accept
+      counters: []
+      error_behavior: No command channel; protocol violation only if environment changes
+        payload while stalled, DUT behavior unspecified beyond handshake contract;
+        DUT raises no error output.
+      error_recovery: Recovery by external protocol compliance and reset; reset clears
+        valid state deterministically.
+    reset:
+      style: synchronous
+      polarity: active_low
+      required_state: 'on cycle with rst_n=0: out_valid=0, output register content
+        don''t-care but held deterministic by flops, in_ready=1 (since empty), pending/pre-reset
+        work discarded'
+    latency_model: 'Exact, no-stall case: if input transfer occurs at cycle t (ready&&valid
+      sampled high at rising edge, rst_n=1), corresponding output becomes valid at
+      cycle t+1 and must transfer at t+1 when out_ready=1. Backpressure may delay
+      output transfer arbitrarily; value remains stable until transfer. During stall
+      at output, in_ready=0 so no new input accepted.'
+    architectural_invariants:
+    - Each accepted input transaction produces exactly one output transaction with
+      value A+B in 9-bit unsigned arithmetic.
+    - No output transaction occurs without a prior accepted input transaction after
+      last reset.
+    - Output payload and valid remain stable during any cycle with out_valid=1 and
+      out_ready=0.
+    - Reset aborts all pending work and deasserts out_valid synchronously.
+    open_assumptions:
+    - Input channel payload packing uses two dedicated 8-bit signals (op_a, op_b)
+      rather than a packed 16-bit bus for simplicity.
+    - No internal queue beyond required single-entry output register; therefore input
+      backpressures whenever output register occupied.
+    - No error/status/completion sideband is exposed because user request did not
+      require it.
+  interface_contract:
+    protocol: dual ready/valid streaming channels (input and output)
+    clock: clk
+    reset: rst_n
+    channels:
+    - name: in_chan
+      direction: input
+      protocol_profile: ready_valid
+      purpose: ingress of two unsigned 8-bit operands per transaction
+      data_objects:
+      - in_pair
+      metadata: []
+      framing: one transfer = one operand pair transaction
+      ordering: acceptance order defines job order; no reordering
+      backpressure: DUT deasserts in_ready when output register occupied or reset
+        asserted
+    - name: out_chan
+      direction: output
+      protocol_profile: ready_valid
+      purpose: egress of unsigned 9-bit sum per transaction
+      data_objects:
+      - sum_out
+      metadata: []
+      framing: one transfer = one sum transaction
+      ordering: same order as accepted inputs
+      backpressure: sink controls via out_ready; DUT holds out_valid and payload stable
+        while stalled
+    signals:
+    - name: clk
+      role: clock
+      semantic_class: null
+      channel: null
+      direction: input
+      width: '1'
+      signed: false
+      semantic: Rising-edge clock for all state updates.
+      reset_value: '0'
+    - name: rst_n
+      role: reset
+      semantic_class: null
+      channel: null
+      direction: input
+      width: '1'
+      signed: false
+      semantic: Synchronous active-low reset; when 0 at rising edge, clears output-valid
+        state and discards pending work; no transfer is accepted on that edge.
+      reset_value: '0'
+    - name: in_valid
+      role: valid
+      semantic_class: null
+      channel: in_chan
+      direction: input
+      width: '1'
+      signed: false
+      semantic: Input producer indicates op_a/op_b are valid.
+      reset_value: '0'
+    - name: in_ready
+      role: ready
+      semantic_class: null
+      channel: in_chan
+      direction: output
+      width: '1'
+      signed: false
+      semantic: DUT can accept input pair when 1.
+      reset_value: '0'
+    - name: in_op_a
+      role: payload
+      semantic_class: data
+      channel: in_chan
+      direction: input
+      width: '8'
+      signed: false
+      semantic: First unsigned add operand A.
+      reset_value: '0'
+    - name: in_op_b
+      role: payload
+      semantic_class: data
+      channel: in_chan
+      direction: input
+      width: '8'
+      signed: false
+      semantic: Second unsigned add operand B.
+      reset_value: '0'
+    - name: out_valid
+      role: valid
+      semantic_class: null
+      channel: out_chan
+      direction: output
+      width: '1'
+      signed: false
+      semantic: DUT asserts when out_sum holds an unconsumed sum.
+      reset_value: '0'
+    - name: out_ready
+      role: ready
+      semantic_class: null
+      channel: out_chan
+      direction: input
+      width: '1'
+      signed: false
+      semantic: Output consumer ready to accept sum.
+      reset_value: '0'
+    - name: out_sum
+      role: payload
+      semantic_class: data
+      channel: out_chan
+      direction: output
+      width: '9'
+      signed: false
+      semantic: Unsigned exact sum of one previously accepted input pair.
+      reset_value: '0'
+    global_handshake_rules:
+      transfer_condition: A channel transfer occurs on rising clock edge iff channel_valid
+        && channel_ready && rst_n==1. If rst_n==0 on edge, transfer is suppressed/aborted
+        for both channels.
+      stall_behavior: For any ready/valid channel, producer must hold valid and payload
+        stable while valid=1 and ready=0. On reset edge (rst_n=0), DUT may withdraw
+        out_valid and clear pending output immediately by next cycle per reset rule.
+  module_manifest:
+    top: rv_uadd8_top
+    modules:
+    - name: rv_uadd8_top
+      responsibility: Implements full datapath, handshake control, single-entry output
+        register, and synchronous active-low reset behavior.
+      dependencies: []
+      parameters: []
+      stateful: true
+      ports:
+      - name: clk
+        direction: input
+        width: '1'
+        signed: false
+        semantics: Clock.
+      - name: rst_n
+        direction: input
+        width: '1'
+        signed: false
+        semantics: Synchronous active-low reset.
+      - name: in_valid
+        direction: input
+        width: '1'
+        signed: false
+        semantics: Input valid for operand pair.
+      - name: in_ready
+        direction: output
+        width: '1'
+        signed: false
+        semantics: Input ready; high only when output register empty and not in reset
+          cycle.
+      - name: in_op_a
+        direction: input
+        width: '8'
+        signed: false
+        semantics: Unsigned operand A.
+      - name: in_op_b
+        direction: input
+        width: '8'
+        signed: false
+        semantics: Unsigned operand B.
+      - name: out_valid
+        direction: output
+        width: '1'
+        signed: false
+        semantics: Output valid for stored sum.
+      - name: out_ready
+        direction: input
+        width: '1'
+        signed: false
+        semantics: Consumer ready.
+      - name: out_sum
+        direction: output
+        width: '9'
+        signed: false
+        semantics: Stored 9-bit unsigned sum; stable during stall.
+  acceptance_criteria:
+    functional:
+    - For every accepted input transfer (in_valid&&in_ready on clk edge with rst_n=1),
+      exactly one output transfer eventually occurs with out_sum == zero_extend(in_op_a)+zero_extend(in_op_b).
+    - No output transfer may occur without a corresponding prior accepted input after
+      most recent reset.
+    - Output ordering equals input acceptance ordering.
+    verification:
+    - Randomized simulation with >=100 accepted transactions spanning full 8-bit operand
+      range and random backpressure on out_ready.
+    - 'Reset tests required: assert rst_n low during idle, during pending output stall,
+      and coincident with potential handshake edges; verify pending work discarded
+      and out_valid deasserted.'
+    - 'Backpressure tests required: when out_valid=1 and out_ready=0 for multiple
+      cycles, out_sum and out_valid remain stable.'
+    - 'Handshake rule test: transfer only when ready&&valid&&rst_n==1; reset edge
+      suppresses transfer.'
+    - 'One-cycle no-stall latency test: with out_ready held high and no prior occupancy,
+      output valid appears exactly 1 cycle after accepted input.'
+    - 'Boundary arithmetic tests: (0,0)->0, (255,0)->255, (255,255)->510, random mid
+      values exact match integer model.'
+    rtl:
+    - RTL must be synthesizable SystemVerilog only; no forbidden constructs (real/shortreal/delay/force-release/classes).
+    - Single top module implementation with single-entry output register and no optional/runtime-config
+      modes.
+    - Deterministic synchronous active-low reset behavior implemented as specified.
+    fpga_handoff:
+    - Vivado synthesis handoff allowed only after verification criteria pass.
+    - Report metrics only from deterministic Vivado tool reports per required schema;
+      no estimated/fabricated PPA numbers.

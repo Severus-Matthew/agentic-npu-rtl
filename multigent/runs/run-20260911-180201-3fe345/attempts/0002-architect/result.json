@@ -1,0 +1,14 @@
+{
+  "orchestration_error": "architect: AgentRuntimeError: Architect returned a structurally valid but internally inconsistent READY contract: data object obj_tile_context crosses the external boundary but external=false; channel cmd_ch exposes internal data object obj_tile_context",
+  "status": "FAILED",
+  "errors": [
+    "AgentRuntimeError: Architect returned a structurally valid but internally inconsistent READY contract: data object obj_tile_context crosses the external boundary but external=false; channel cmd_ch exposes internal data object obj_tile_context"
+  ],
+  "history": [
+    {
+      "stage": "architect",
+      "status": "ERROR",
+      "error": "Architect returned a structurally valid but internally inconsistent READY contract: data object obj_tile_context crosses the external boundary but external=false; channel cmd_ch exposes internal data object obj_tile_context"
+    }
+  ]
+}

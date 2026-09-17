@@ -1,0 +1,164 @@
+protocol: Three independent synchronous ready/valid channels; no combinational dependence
+  of valid on ready. RW=max(1,$clog2(MAX_ROWS+1)); CW=max(1,$clog2(MAX_COLS+1)).
+clock: clk; all transfers and state updates occur on rising edges.
+reset: rst_n active-low synchronous state reset, held across at least one rising edge.
+  Handshake outputs are gated low while asserted.
+channels:
+- name: command
+  direction: input
+  purpose: Start one matrix-vector job
+  data_objects: []
+  metadata:
+  - cfg_rows
+  - cfg_cols
+  - cfg_bias_enable
+  - cfg_relu_enable
+  framing: 'Exactly one transfer per job: rows and cols are independent unsigned fields;
+    both enables are independent one-bit fields. No shared packed payload or reserved
+    fields.'
+  ordering: Accepted only in IDLE. No command queues or job identifiers.
+  backpressure: cfg_ready is high only in IDLE with rst_n=1. Hold cfg_valid and all
+    command fields stable until accepted.
+- name: input_data
+  direction: input
+  purpose: Load vector and tile biases, and directly feed matrix lanes
+  data_objects:
+  - vector
+  - bias
+  - matrix
+  metadata: []
+  framing: 'One 128-bit in_data payload per transfer. After a legal command: (1) COLS
+    VECTOR beats, k=0..COLS-1, carrying vector[k] in bits [7:0], with [127:8] ignored.
+    (2) For t=0..ceil(ROWS/16)-1, let base=16*t and L=min(16,ROWS-base): if bias_enable=1,
+    send L BIAS beats in j=0..L-1 order, carrying bias[base+j] in [31:0], with [127:32]
+    ignored; then send COLS MATRIX beats in k=0..COLS-1 order, carrying matrix[base+j,k]
+    in bits [8*j+7:8*j] for j=0..L-1. Bytes for j>=L are ignored. Every padding bit
+    may have either value. There are no tags or last signals. Total beats = COLS +
+    bias_enable*ROWS + ceil(ROWS/16)*COLS.'
+  ordering: Vector is transmitted once. Each tile's optional biases precede all its
+    matrix beats. The next tile's data cannot transfer until the current tile's L
+    outputs have transferred. No replay is required.
+  backpressure: in_ready is high only in VECTOR, BIAS, or MAC with rst_n=1. The source
+    may assert the next beat early but must hold valid and all 128 payload bits stable
+    while stalled. Invalid commands accept no data.
+- name: output
+  direction: output
+  purpose: Return results or a command-error response
+  data_objects:
+  - result
+  metadata:
+  - out_last
+  - out_error
+  framing: 'Legal job: exactly ROWS beats, one result[r] as raw INT32 bits in out_data[31:0];
+    out_error=0 throughout, and out_last=1 only for r=ROWS-1. Invalid command: exactly
+    one beat with out_data=0, out_error=1, out_last=1; this is not a result element.'
+  ordering: Results are ascending global row order. Responses for different commands
+    never overlap.
+  backpressure: out_valid is high throughout EMIT or ERROR with rst_n=1. Hold out_valid,
+    out_data, out_last, and out_error stable while out_ready=0. Completion is the
+    handshake with out_last=1, including error responses.
+signals:
+- name: clk
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Rising-edge clock
+  reset_value: Not applicable
+- name: rst_n
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Active-low synchronous state reset and handshake suppression
+  reset_value: 0 asserted
+- name: cfg_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Command fields are valid
+  reset_value: Source-owned; ignored during reset
+- name: cfg_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: rst_n && state==IDLE
+  reset_value: '0'
+- name: cfg_rows
+  direction: input
+  width: max(1,$clog2(MAX_ROWS+1))
+  signed: false
+  semantic: Runtime ROWS; legal range 1..MAX_ROWS
+  reset_value: Source-owned; ignored during reset
+- name: cfg_cols
+  direction: input
+  width: max(1,$clog2(MAX_COLS+1))
+  signed: false
+  semantic: Runtime COLS; legal range 1..MAX_COLS
+  reset_value: Source-owned; ignored during reset
+- name: cfg_bias_enable
+  direction: input
+  width: '1'
+  signed: false
+  semantic: 1 requires bias sections and enables bias addition; 0 omits both
+  reset_value: Source-owned; ignored during reset
+- name: cfg_relu_enable
+  direction: input
+  width: '1'
+  signed: false
+  semantic: 1 applies ReLU after bias processing; 0 preserves the signed value
+  reset_value: Source-owned; ignored during reset
+- name: in_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Current implicit input-data beat is valid
+  reset_value: Source-owned; ignored during reset
+- name: in_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: rst_n && state inside {VECTOR,BIAS,MAC}
+  reset_value: '0'
+- name: in_data
+  direction: input
+  width: '128'
+  signed: false
+  semantic: Raw packed payload decoded according to input_data framing; each matrix/vector
+    byte and bias word is individually signed
+  reset_value: Source-owned; ignored during reset
+- name: out_valid
+  direction: output
+  width: '1'
+  signed: false
+  semantic: rst_n && state inside {EMIT,ERROR}
+  reset_value: '0'
+- name: out_ready
+  direction: input
+  width: '1'
+  signed: false
+  semantic: Sink accepts the current output when out_valid=1
+  reset_value: Sink-owned; ignored during reset
+- name: out_data
+  direction: output
+  width: '32'
+  signed: true
+  semantic: Selected finalized result in EMIT; zero in ERROR or whenever out_valid=0
+  reset_value: '0'
+- name: out_last
+  direction: output
+  width: '1'
+  signed: false
+  semantic: 'With valid: final row of a legal job, or error response; zero when invalid'
+  reset_value: '0'
+- name: out_error
+  direction: output
+  width: '1'
+  signed: false
+  semantic: 'With valid: 1 only for invalid-command response; zero otherwise'
+  reset_value: '0'
+global_handshake_rules:
+  transfer_condition: A transfer occurs on a rising clk edge exactly when rst_n &&
+    valid && ready for that channel.
+  stall_behavior: A source asserting valid while ready=0 must retain valid and its
+    entire payload/metadata until a transfer or reset. Input fields are ignored when
+    valid=0. Reset may cancel pending transfers. Channels without current permission
+    remain not-ready; no data beat is accepted simultaneously with its command.

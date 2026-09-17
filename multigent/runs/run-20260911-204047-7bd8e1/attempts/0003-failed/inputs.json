@@ -1,0 +1,16 @@
+{
+  "architecture": {
+    "acceptance_criteria.yaml": "7255eb9f3e1f15f6eb812e08a53890c8bc7a33b51e99064bc9fbd8c384352607",
+    "architect_result.json": "5bfb7786e788743a55620e5a9435ea1394be6485de3b9a591e42f183d5e475f0",
+    "architecture_contract.yaml": "057d7bbff1bd67c7d808a019e3e5c3cc462e0391350dd8c711e94b3344d469d4",
+    "interface_contract.yaml": "4cca97fd9747805fda3b05a5e8254b2ecc930206a0efb4c8be9bf07dfba1c7f3",
+    "module_manifest.json": "90efa0a1256d82c8d4c870f52d77a7503dcf067126c9213e9c27aa8c177fa9b0"
+  },
+  "rtl": {
+    "int32_bias_relu.sv": "0107694f72f30680ee5f6069b42a20e40dd8becff444242ea4607d4bdd3c15a2",
+    "int8_mac16_bank.sv": "6c246b0b171ac64824b8ea16b4267dfdb8855ca7e4b88e352262cfb8226dcaf4",
+    "stream_matvec_int8_16.sv": "c54c023b1c2ec1fb3f39edff5e95d50999dab92cdece5f293cc07d8127a4f848"
+  },
+  "tests": {},
+  "reference": {}
+}

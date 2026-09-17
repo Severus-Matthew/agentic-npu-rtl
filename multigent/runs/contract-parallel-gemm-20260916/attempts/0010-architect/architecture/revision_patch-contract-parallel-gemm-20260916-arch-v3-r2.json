@@ -1,0 +1,54 @@
+{
+  "status": "PATCH_READY",
+  "edits": [
+    {
+      "op": "replace",
+      "path": "/architecture_contract/control/error_behavior",
+      "value_json": "\"Protocol violation is evaluated only on attempted transfer events (ready&&valid), not on valid-only observation while ready=0. Error pulses for one cycle when: (a) cmd transfer occurs with cmd_payload!=1, or (b) any input transfer occurs on a channel whose phase is inactive, or (c) a command transfer occurs while not IDLE. In all cases the illegal transfer is ignored for state/count progression and FSM remains in current legal state.\"",
+      "reason": "Resolves ambiguity about wrong-phase detection and aligns with ready/valid transfer semantics."
+    },
+    {
+      "op": "replace",
+      "path": "/interface_contract/global_handshake_rules/stall_behavior",
+      "value_json": "\"For every ready/valid channel, in every cycle with valid=1 and ready=0 and rst_n=1, the producer shall hold payload/metadata/last stable. Producer may keep valid asserted across arbitrary stall duration and may deassert valid before transfer; if it remains asserted, associated payload/metadata/last must remain unchanged until a transfer occurs or valid is deasserted. When rst_n=0, DUT outputs may synchronously drop to reset values and any pending non-transferred beat is aborted.\"",
+      "reason": "Tightens stall stability rule and explicitly defines allowed valid withdrawal behavior."
+    },
+    {
+      "op": "replace",
+      "path": "/interface_contract/channels/name=cmd_ch/backpressure",
+      "value_json": "\"cmd_ready is forced low whenever rst_n=0; when rst_n=1, cmd_ready is high only in IDLE.\"",
+      "reason": "Makes reset precedence explicit per channel as requested."
+    },
+    {
+      "op": "replace",
+      "path": "/interface_contract/channels/name=a_ch/backpressure",
+      "value_json": "\"a_ready is forced low whenever rst_n=0; when rst_n=1, a_ready is high only in LOAD_A.\"",
+      "reason": "Makes reset precedence explicit per channel as requested."
+    },
+    {
+      "op": "replace",
+      "path": "/interface_contract/channels/name=b_ch/backpressure",
+      "value_json": "\"b_ready is forced low whenever rst_n=0; when rst_n=1, b_ready is high only in LOAD_B.\"",
+      "reason": "Makes reset precedence explicit per channel as requested."
+    },
+    {
+      "op": "replace",
+      "path": "/interface_contract/channels/name=bias_ch/backpressure",
+      "value_json": "\"bias_ready is forced low whenever rst_n=0; when rst_n=1, bias_ready is high only in LOAD_BIAS.\"",
+      "reason": "Makes reset precedence explicit per channel as requested."
+    },
+    {
+      "op": "replace",
+      "path": "/interface_contract/signals/name=busy/semantic",
+      "value_json": "\"busy=1 from the cycle of accepted legal command transfer through and including the cycle of the final accepted output transfer (final out_hs, out_last=1). busy deasserts in the immediately following cycle. completion pulses high for exactly that same following cycle (one-cycle pulse), then returns low.\"",
+      "reason": "Defines exact observable ordering between final out_hs, busy deassertion, and completion pulse."
+    },
+    {
+      "op": "add",
+      "path": "/acceptance_criteria/functional/-",
+      "value_json": "\"Mandatory stall-free latency check: for a legal job with no channel stalls (all required valids and readies asserted whenever applicable), total cycles from accepted cmd transfer cycle to completion pulse cycle inclusive shall equal 4874 at defaults (1 cmd + 256 A + 256 B + 8 bias + 4288 compute + 64 output + 1 completion), and compute phase cycles from first cycle after accepted final bias beat to compute_done pulse inclusive shall equal 4288.\"",
+      "reason": "Binds previously stated latency model as normative to prevent implementation drift."
+    }
+  ],
+  "issue": ""
+}

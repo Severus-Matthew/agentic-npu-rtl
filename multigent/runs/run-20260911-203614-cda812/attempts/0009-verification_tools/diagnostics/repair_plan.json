@@ -1,0 +1,46 @@
+{
+  "action": "PATCH",
+  "affected_modules": [
+    "mv_npu_top"
+  ],
+  "protected_modules": [
+    "mv_ctrl_fsm",
+    "mv_vec_buffer",
+    "mv_mac16_core",
+    "mv_postproc",
+    "mv_stream_if"
+  ],
+  "protected_interfaces": [
+    "clk",
+    "rst_n",
+    "cmd_valid",
+    "cmd_ready",
+    "cmd_data",
+    "vec_valid",
+    "vec_ready",
+    "vec_data",
+    "mat_valid",
+    "mat_ready",
+    "mat_data",
+    "bias_valid",
+    "bias_ready",
+    "bias_data",
+    "out_valid",
+    "out_ready",
+    "out_data",
+    "status_busy",
+    "status_error"
+  ],
+  "recommended_change": "Decouple matrix input readiness from postproc output readiness. Redefine top-level channel-ready logic so mat_ready is driven by control-phase legality (busy/no-error/vector-loaded/compute phase) and not by pp_in_ready. Keep pp_in_ready only as acceptance control for postproc input pulse generation (pp_in_valid timing) and bias path where applicable. Ensure transfer pulses remain strict ready&&valid and counter/state progression remains unchanged except for removal of circular stall dependency.",
+  "do_not_change": [
+    "Do not modify frozen tests or reference model.",
+    "Do not alter any module port lists, parameter contracts, or top-level signal semantics.",
+    "Do not change arithmetic behavior (INT8 signed multiply, INT32 wrap, optional bias/ReLU).",
+    "Do not rewrite protected modules."
+  ],
+  "expected_side_effects": [
+    "Matrix ingestion will proceed instead of stalling on output-side backpressure.",
+    "After unblocking handshake, subsequent functional mismatches (if any) may surface in accumulation/postproc sequencing and must be checked by regression."
+  ],
+  "regression_required": "FULL"
+}

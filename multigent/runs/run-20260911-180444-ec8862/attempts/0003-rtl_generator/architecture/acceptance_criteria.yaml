@@ -1,0 +1,30 @@
+functional:
+- For every legal M,N,K, output exactly matches the defined wrapped INT8xINT8-to-INT32
+  GEMM, wrapped bias addition, and signed ReLU.
+- Partial M/N tiles suppress invalid lanes; K is processed exactly once in ascending
+  order.
+- Outputs contain exactly ceil(M*N/2) transfers in global row-major order.
+verification:
+- Test minimum dimensions, default maximum dimensions, odd element counts, all tile-edge
+  combinations, negative values, zero, and INT32 overflow.
+- 'Check exact packing and counts: ceil(M*K/8), ceil(K*N/8), ceil(N/2), and ceil(M*N/2).'
+- Run at least 100 randomized legal transactions with exact integer comparison.
+- Test invalid zero and above-bound dimensions and verify status code 1 with no operand/result
+  acceptance.
+- Test reset in every phase and randomized backpressure on every applicable channel.
+- Use a regression wall timeout of at least 120 seconds and test successful completion/status
+  behavior.
+rtl:
+- SystemVerilog RTL is synthesizable and uses no real, shortreal, delays, force/release,
+  or classes.
+- All parameter-derived widths use max(1,...) or otherwise remain nonzero for every
+  legal parameterization.
+- Controller and datapath ports exactly match the frozen flattened declarations; no
+  implicit bundles are permitted.
+- No memory write, counter advance, or output duplication occurs without the corresponding
+  enable or handshake.
+fpga_handoff:
+- Run Vivado only after RTL verification passes.
+- Provide deterministic Vivado logs/reports and a synthesis result conforming to multigent/schemas/synthesis_result.schema.json.
+- Timing, utilization, power, area, and frequency claims must come only from deterministic
+  tool reports; estimates are prohibited.

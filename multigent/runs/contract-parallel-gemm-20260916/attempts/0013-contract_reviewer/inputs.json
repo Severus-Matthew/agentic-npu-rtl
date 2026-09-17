@@ -1,0 +1,22 @@
+{
+  "architecture": {
+    "acceptance_criteria.yaml": "ac22bb0ceb957b7d2e64f9701a2d8bbadd61599ea6211e1919731ae303151639",
+    "architect_result.json": "debb9cfd4d230f47ea10c5a1edc269569467bcee393d21cd3bd835a42fd74cc6",
+    "architecture_contract.yaml": "1b66f4ed769184ac0169d174aa9981d16582f32383226dea05c9837661a3fd93",
+    "interface_contract.yaml": "caeaeb18bd03db4bb02a951351d50afcc218cec705c6f71299dd223192f09330",
+    "module_manifest.json": "2d477588857f0f80a65088a51a5dba5cb508b00623bf5353d1b31479f0a33473",
+    "revision_patch-contract-parallel-gemm-20260916-arch-v2-r1.json": "90f76700bbde43ccb04efd7a6d2770c7515681006623e09d62bd85942b1a2396",
+    "revision_patch-contract-parallel-gemm-20260916-arch-v3-r2.json": "126eb483ccee57d03f6b67c180d5c03561f418f55de2ab0c5900a3c4bfc32a7b",
+    "revision_patch-contract-parallel-gemm-20260916-arch-v4-r3.json": "4c879a8f52a80fbe763d1e70a79ac02250a008c9e1540b907236694b7952b5c4",
+    "revision_patch-contract-parallel-gemm-20260916-arch-v5-r4.json": "d93cafcc6ca35b945dac4fdd6cb1148e6535457b0a50b49c02fd731aec3b1a4f"
+  },
+  "rtl": {
+    "gemm8x8x32_top.sv": "662a2a65ec2993499404ffdd89d63d0efa6554ed70984e47ffd5b4e941ddfdeb",
+    "gemm_ctrl_fsm.sv": "1c87d897999556d8a58db3c0c910b8631d59efcf1778088c458c20046d5154b6",
+    "mac_sequencer.sv": "09a6c7bdce74fe2e4d0291fa3cc9a27ee9780107bdff8f44b0e2595f4e228f86",
+    "operand_buffer_bank.sv": "49d51a154710e276d60de312a2366e1fecb67d25fe062b9d220e2b5972ca6d7a",
+    "output_streamer.sv": "bfce578c3887292684da039778e5fc796cdb4ee7108a1fc4475c08edffe0b3c4"
+  },
+  "tests": {},
+  "reference": {}
+}

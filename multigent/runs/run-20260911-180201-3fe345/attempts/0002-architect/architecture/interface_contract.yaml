@@ -1,0 +1,179 @@
+protocol: ready/valid streaming with separate channels
+clock: single rising-edge clock
+reset: synchronous active-high rst
+channels:
+- name: cfg_ch
+  direction: input
+  purpose: job configuration
+  data_objects:
+  - obj_cfg_packet
+  metadata: []
+  framing: single beat per job
+  ordering: must arrive before any data streams for that job
+  backpressure: supported via cfg_ready
+- name: act_ch
+  direction: input
+  purpose: activation matrix stream
+  data_objects:
+  - obj_activation_stream
+  metadata:
+  - section_id implicit by control phase
+  framing: scalar INT8 beat
+  ordering: for each (m0,n0), for k_idx=0..K-1, provide up to 8 A elements for rows
+    m0..m0+7 masked by M bound
+  backpressure: supported via act_ready
+- name: wgt_ch
+  direction: input
+  purpose: weight matrix stream
+  data_objects:
+  - obj_weight_stream
+  metadata:
+  - section_id implicit by control phase
+  framing: scalar INT8 beat
+  ordering: for each (m0,n0), for k_idx=0..K-1, provide up to 8 W elements for cols
+    n0..n0+7 masked by N bound
+  backpressure: supported via wgt_ready
+- name: bias_ch
+  direction: input
+  purpose: bias vector stream
+  data_objects:
+  - obj_bias_stream
+  metadata: []
+  framing: scalar INT32 beat
+  ordering: for each n-tile, 8 bias values for cols n0..n0+7 with boundary masking
+  backpressure: supported via bias_ready
+- name: out_ch
+  direction: output
+  purpose: result matrix stream
+  data_objects:
+  - obj_output_stream
+  metadata: []
+  framing: scalar INT32 beat
+  ordering: tile-major deterministic as declared in invariants
+  backpressure: supported via out_ready
+signals:
+- name: clk
+  direction: input
+  width: '1'
+  signed: false
+  semantic: clock
+  reset_value: '0'
+- name: rst
+  direction: input
+  width: '1'
+  signed: false
+  semantic: synchronous reset, active high
+  reset_value: '0'
+- name: cfg_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: cfg beat valid
+  reset_value: '0'
+- name: cfg_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: cfg beat ready
+  reset_value: '0'
+- name: cfg_data
+  direction: input
+  width: '128'
+  signed: false
+  semantic: '{reserved[31:0],N[31:0],K[31:0],M[31:0]}'
+  reset_value: '0'
+- name: act_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: activation valid
+  reset_value: '0'
+- name: act_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: activation ready
+  reset_value: '0'
+- name: act_data
+  direction: input
+  width: '8'
+  signed: true
+  semantic: one INT8 activation element
+  reset_value: '0'
+- name: wgt_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: weight valid
+  reset_value: '0'
+- name: wgt_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: weight ready
+  reset_value: '0'
+- name: wgt_data
+  direction: input
+  width: '8'
+  signed: true
+  semantic: one INT8 weight element
+  reset_value: '0'
+- name: bias_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: bias valid
+  reset_value: '0'
+- name: bias_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: bias ready
+  reset_value: '0'
+- name: bias_data
+  direction: input
+  width: '32'
+  signed: true
+  semantic: one INT32 bias element
+  reset_value: '0'
+- name: out_valid
+  direction: output
+  width: '1'
+  signed: false
+  semantic: output valid
+  reset_value: '0'
+- name: out_ready
+  direction: input
+  width: '1'
+  signed: false
+  semantic: output ready
+  reset_value: '0'
+- name: out_data
+  direction: output
+  width: '32'
+  signed: true
+  semantic: one INT32 output element post-ReLU
+  reset_value: '0'
+- name: busy
+  direction: output
+  width: '1'
+  signed: false
+  semantic: engine processing current job
+  reset_value: '0'
+- name: done
+  direction: output
+  width: '1'
+  signed: false
+  semantic: 1-cycle pulse when job completes
+  reset_value: '0'
+- name: error
+  direction: output
+  width: '1'
+  signed: false
+  semantic: latched error state indicator
+  reset_value: '0'
+global_handshake_rules:
+  transfer_condition: A channel transfer occurs iff ready && valid on that channel
+    in the same cycle.
+  stall_behavior: While valid=1 and ready=0, payload must remain stable; internal
+    state and counters that depend on that transfer must not advance.

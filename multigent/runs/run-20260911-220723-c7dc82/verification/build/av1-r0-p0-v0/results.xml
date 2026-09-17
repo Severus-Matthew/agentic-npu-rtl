@@ -1,0 +1,40 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="cocotb tests"><testsuite name="test_mv_npu" errors="0" failures="5" skipped="0" tests="5" time="4.836" timestamp="2026-09-11T22:08:55.657781+00:00" hostname="gh-login02.delta.ncsa.illinois.edu"><testcase classname="test_mv_npu" name="test_smoke_directed" time="0.002"><failure message="row 0 mismatch exp=0 got=4&#10;assert 4 == 0" type="AssertionError">Traceback (most recent call last):
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py", line 111, in test_smoke_directed
+    await run_job(dut, cfg, x, a, b, out_ready_fn=lambda: 1, src_idle_rng=rng)
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py", line 98, in run_job
+    assert d == exp[i], f"row {i} mismatch exp={exp[i]} got={d}"
+AssertionError: row 0 mismatch exp=0 got=4
+assert 4 == 0
+</failure><properties><property name="cocotb" value="True" /><property name="random_seed" value="20260911" /><property name="file" value="/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py" /><property name="line" value="102" /><property name="sim_time_unit" value="ns" /><property name="sim_time_start" value="0.0" /><property name="sim_time_stop" value="60.0" /><property name="sim_time_duration" value="60.0" /><property name="sim_time_ratio" value="25720.98053226591" /></properties><system-err>Test failed with COCOTB_RANDOM_SEED=20260911
+</system-err></testcase><testcase classname="test_mv_npu" name="test_reset_idle_and_active" time="1.562"><failure message="job timeout" type="SimTimeoutError">Traceback (most recent call last):
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py", line 123, in test_reset_idle_and_active
+    await run_job(dut, cfg, x, a, b, out_ready_fn=lambda: 1, src_idle_rng=rng)
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py", line 94, in run_job
+    raise SimTimeoutError("job timeout")
+cocotb.triggers.SimTimeoutError: job timeout
+</failure><properties><property name="cocotb" value="True" /><property name="random_seed" value="20260911" /><property name="file" value="/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py" /><property name="line" value="114" /><property name="sim_time_unit" value="ns" /><property name="sim_time_start" value="60.001" /><property name="sim_time_stop" value="150075.001" /><property name="sim_time_duration" value="150015.0" /><property name="sim_time_ratio" value="96054.79013619128" /></properties><system-err>Test failed with COCOTB_RANDOM_SEED=20260911
+</system-err></testcase><testcase classname="test_mv_npu" name="test_backpressure_in_out" time="0.008"><failure message="output count mismatch exp=8 got=10&#10;assert 10 == 8&#10; +  where 10 = len([(0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), ...])" type="AssertionError">Traceback (most recent call last):
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py", line 136, in test_backpressure_in_out
+    await run_job(dut, cfg, x, a, b, out_ready_fn=lambda: 1 if out_rng.randint(0, 2) else 0, src_idle_rng=rng)
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py", line 96, in run_job
+    assert len(out) == cfg["M"], f"output count mismatch exp={cfg['M']} got={len(out)}"
+AssertionError: output count mismatch exp=8 got=10
+assert 10 == 8
+ +  where 10 = len([(0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), ...])
+</failure><properties><property name="cocotb" value="True" /><property name="random_seed" value="20260911" /><property name="file" value="/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py" /><property name="line" value="127" /><property name="sim_time_unit" value="ns" /><property name="sim_time_start" value="150075.002" /><property name="sim_time_stop" value="150765.002" /><property name="sim_time_duration" value="690.0" /><property name="sim_time_ratio" value="82663.18250895747" /></properties><system-err>Test failed with COCOTB_RANDOM_SEED=20260911
+</system-err></testcase><testcase classname="test_mv_npu" name="test_illegal_cfg_error_recovery" time="1.606"><failure message="job timeout" type="SimTimeoutError">Traceback (most recent call last):
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py", line 153, in test_illegal_cfg_error_recovery
+    await run_job(dut, cfg, x, a, [], out_ready_fn=lambda: 1, src_idle_rng=random.Random(SEED + 4))
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py", line 94, in run_job
+    raise SimTimeoutError("job timeout")
+cocotb.triggers.SimTimeoutError: job timeout
+</failure><properties><property name="cocotb" value="True" /><property name="random_seed" value="20260911" /><property name="file" value="/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py" /><property name="line" value="139" /><property name="sim_time_unit" value="ns" /><property name="sim_time_start" value="150765.003" /><property name="sim_time_stop" value="300816.003" /><property name="sim_time_duration" value="150051.00000000003" /><property name="sim_time_ratio" value="93438.4171618587" /></properties><system-err>Test failed with COCOTB_RANDOM_SEED=20260911
+</system-err></testcase><testcase classname="test_mv_npu" name="test_randomized_100" time="1.657"><failure message="job timeout" type="SimTimeoutError">Traceback (most recent call last):
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py", line 174, in test_randomized_100
+    await run_job(dut, cfg, x, a, b, out_ready_fn=lambda: 1 if out_rng.randint(0, 3) else 0, src_idle_rng=rng)
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py", line 94, in run_job
+    raise SimTimeoutError("job timeout")
+cocotb.triggers.SimTimeoutError: job timeout
+</failure><properties><property name="cocotb" value="True" /><property name="random_seed" value="20260911" /><property name="file" value="/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/tests/test_mv_npu.py" /><property name="line" value="157" /><property name="sim_time_unit" value="ns" /><property name="sim_time_start" value="300816.004" /><property name="sim_time_stop" value="450831.004" /><property name="sim_time_duration" value="150015.0" /><property name="sim_time_ratio" value="90523.22869710029" /></properties><system-err>Test failed with COCOTB_RANDOM_SEED=20260911
+</system-err></testcase></testsuite></testsuites>

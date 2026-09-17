@@ -1,0 +1,34 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="cocotb tests"><testsuite name="test_gemm8x8x32_cocotb" errors="0" failures="4" skipped="0" tests="4" time="43.329" timestamp="2026-09-11T02:20:34.592632+00:00" hostname="gh-login01.delta.ncsa.illinois.edu"><testcase classname="test_gemm8x8x32_cocotb" name="test_directed_basic" time="10.827"><failure message="" type="SimTimeoutError">Traceback (most recent call last):
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/diagnostics/probe-1-attempt32/tests/_npu_monitor.py", line 27, in wrapped
+    return await with_timeout(func(dut, *args, **kwargs), 100000, "ns")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/_extended_awaitables.py", line 360, in with_timeout
+    raise SimTimeoutError
+cocotb.triggers.SimTimeoutError
+</failure><properties><property name="cocotb" value="True" /><property name="random_seed" value="12345" /><property name="file" value="/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/diagnostics/probe-1-attempt32/tests/_npu_monitor.py" /><property name="line" value="8" /><property name="sim_time_unit" value="ns" /><property name="sim_time_start" value="0.0" /><property name="sim_time_stop" value="100000.0" /><property name="sim_time_duration" value="100000.0" /><property name="sim_time_ratio" value="9236.588953096241" /></properties><system-err>Test failed with COCOTB_RANDOM_SEED=12345
+</system-err></testcase><testcase classname="test_gemm8x8x32_cocotb" name="test_randomized_100_jobs_with_backpressure" time="10.802"><failure message="" type="SimTimeoutError">Traceback (most recent call last):
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/diagnostics/probe-1-attempt32/tests/_npu_monitor.py", line 27, in wrapped
+    return await with_timeout(func(dut, *args, **kwargs), 100000, "ns")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/_extended_awaitables.py", line 360, in with_timeout
+    raise SimTimeoutError
+cocotb.triggers.SimTimeoutError
+</failure><properties><property name="cocotb" value="True" /><property name="random_seed" value="12345" /><property name="file" value="/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/diagnostics/probe-1-attempt32/tests/_npu_monitor.py" /><property name="line" value="8" /><property name="sim_time_unit" value="ns" /><property name="sim_time_start" value="100000.001" /><property name="sim_time_stop" value="200000.001" /><property name="sim_time_duration" value="99999.99999999999" /><property name="sim_time_ratio" value="9257.827838777917" /></properties><system-err>Test failed with COCOTB_RANDOM_SEED=12345
+</system-err></testcase><testcase classname="test_gemm8x8x32_cocotb" name="test_reset_idle_and_midjob" time="10.885"><failure message="" type="SimTimeoutError">Traceback (most recent call last):
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/diagnostics/probe-1-attempt32/tests/_npu_monitor.py", line 27, in wrapped
+    return await with_timeout(func(dut, *args, **kwargs), 100000, "ns")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/_extended_awaitables.py", line 360, in with_timeout
+    raise SimTimeoutError
+cocotb.triggers.SimTimeoutError
+</failure><properties><property name="cocotb" value="True" /><property name="random_seed" value="12345" /><property name="file" value="/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/diagnostics/probe-1-attempt32/tests/_npu_monitor.py" /><property name="line" value="8" /><property name="sim_time_unit" value="ns" /><property name="sim_time_start" value="200000.002" /><property name="sim_time_stop" value="300000.002" /><property name="sim_time_duration" value="99999.99999999997" /><property name="sim_time_ratio" value="9186.752477630502" /></properties><system-err>Test failed with COCOTB_RANDOM_SEED=12345
+</system-err></testcase><testcase classname="test_gemm8x8x32_cocotb" name="test_protocol_error_sticky_and_recovery" time="10.815"><failure message="" type="SimTimeoutError">Traceback (most recent call last):
+  File "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/diagnostics/probe-1-attempt32/tests/_npu_monitor.py", line 27, in wrapped
+    return await with_timeout(func(dut, *args, **kwargs), 100000, "ns")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/_extended_awaitables.py", line 360, in with_timeout
+    raise SimTimeoutError
+cocotb.triggers.SimTimeoutError
+</failure><properties><property name="cocotb" value="True" /><property name="random_seed" value="12345" /><property name="file" value="/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/diagnostics/probe-1-attempt32/tests/_npu_monitor.py" /><property name="line" value="8" /><property name="sim_time_unit" value="ns" /><property name="sim_time_start" value="300000.003" /><property name="sim_time_stop" value="400000.003" /><property name="sim_time_duration" value="100000.0" /><property name="sim_time_ratio" value="9246.31944443158" /></properties><system-err>Test failed with COCOTB_RANDOM_SEED=12345
+</system-err></testcase></testsuite></testsuites>

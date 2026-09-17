@@ -1,0 +1,81 @@
+{
+  "rtl_status": "RTL_GENERATED",
+  "rtl_result": {
+    "status": "RTL_GENERATED",
+    "task_type": "INITIAL_GENERATION",
+    "summary": "Implemented the fixed-width unsigned adder with a single elastic output register and synchronous reset.",
+    "files": [
+      {
+        "path": "unsigned_adder.sv",
+        "module": "unsigned_adder",
+        "purpose": "Exact unsigned addition with registered ready/valid output.",
+        "content": "module unsigned_adder (\n    input  logic       clk,\n    input  logic       rst_n,\n    input  logic       in_valid,\n    output logic       in_ready,\n    input  logic [7:0] in_a,\n    input  logic [7:0] in_b,\n    output logic       out_valid,\n    input  logic       out_ready,\n    output logic [8:0] out_sum\n);\n\n    logic [8:0] operand_a_ext;\n    logic [8:0] operand_b_ext;\n    logic [8:0] sum_next;\n\n    assign operand_a_ext = {1'b0, in_a};\n    assign operand_b_ext = {1'b0, in_b};\n    assign sum_next = operand_a_ext + operand_b_ext;\n    assign in_ready = rst_n && (!out_valid || out_ready);\n\n    always_ff @(posedge clk) begin\n        if (!rst_n) begin\n            out_valid <= 1'b0;\n            out_sum   <= 9'd0;\n        end else if (in_valid && in_ready) begin\n            out_valid <= 1'b1;\n            out_sum   <= sum_next;\n        end else if (out_valid && out_ready) begin\n            out_valid <= 1'b0;\n        end\n    end\n\nendmodule\n"
+      }
+    ],
+    "contract_checks": [
+      {
+        "requirement": "Exactly one manifest module with frozen ports and no parameters.",
+        "satisfied": true,
+        "evidence": "unsigned_adder.sv defines only unsigned_adder with all nine declared ports."
+      },
+      {
+        "requirement": "Exact unsigned addition with explicit 9-bit extensions.",
+        "satisfied": true,
+        "evidence": "Both operands are zero-extended into unsigned 9-bit signals; all nine sum bits are stored, covering 0 through 510."
+      },
+      {
+        "requirement": "Single-entry elastic storage and one-cycle unstalled transfer latency.",
+        "satisfied": true,
+        "evidence": "Only out_sum and out_valid are registered. Acceptance captures the result; consumption can occur on the following edge. Input acceptance takes priority over output-only consumption to support replacement."
+      },
+      {
+        "requirement": "Exact readiness and stable output under backpressure.",
+        "satisfied": true,
+        "evidence": "in_ready implements rst_n && (!out_valid || out_ready). A full stalled slot has no state update; output-only consumption retains out_sum."
+      },
+      {
+        "requirement": "Active-low synchronous reset clears data and validity and suppresses transfers.",
+        "satisfied": true,
+        "evidence": "The rising-edge process gives reset highest priority and clears both registers. Readiness is forced low combinationally during reset."
+      },
+      {
+        "requirement": "Synthesizable RTL with no forbidden constructs, additional storage, or unresolved dependencies.",
+        "satisfied": true,
+        "evidence": "Textual review finds continuous combinational assignments and one always_ff process, single drivers, no latches, and no submodules."
+      }
+    ],
+    "changed_modules": [
+      "unsigned_adder"
+    ],
+    "architecture_conflict": null,
+    "blocked_reason": "",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [
+      "Compilation, independent functional/protocol regression, and synthesis have not been run."
+    ],
+    "regression_required": "FULL"
+  },
+  "rtl_files": [
+    "unsigned_adder.sv"
+  ],
+  "architecture_conflict": null,
+  "needs_regression": true,
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "rtl_contract_version": 1,
+  "history": [
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "ppa_iteration": 0,
+      "files": [
+        "unsigned_adder.sv"
+      ]
+    }
+  ]
+}

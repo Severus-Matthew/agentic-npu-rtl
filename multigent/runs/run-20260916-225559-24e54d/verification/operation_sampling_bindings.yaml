@@ -1,0 +1,73 @@
+- operation: add
+  point: operation.add.operand_a
+  template: integer_operand
+  event: transfer
+  channel: input_pair
+  fields:
+    value:
+      signal: in_a
+  data_type: uint8
+- operation: add
+  point: operation.add.operand_b
+  template: integer_operand
+  event: transfer
+  channel: input_pair
+  fields:
+    value:
+      signal: in_b
+  data_type: uint8
+- operation: add
+  point: operation.add.exact_widened_sum
+  template: custom
+  observer: observe_sum
+  event: transfer
+  channel: output_sum
+  fields:
+    sum:
+      signal: out_sum
+- operation: add
+  point: operation.add.carry_boundary
+  template: custom
+  observer: observe_carry
+  event: transfer
+  channel: input_pair
+  fields:
+    a:
+      signal: in_a
+    b:
+      signal: in_b
+- operation: add
+  point: operation.add.single_entry_elastic_output
+  template: custom
+  observer: observe_slot
+  event: clock
+  fields:
+    reset:
+      signal: rst_n
+    valid:
+      signal: out_valid
+    ready:
+      signal: out_ready
+- operation: add
+  point: operation.add.simultaneous_consume_replace
+  template: custom
+  observer: observe_replace
+  event: transfer
+  channel: input_pair
+  fields:
+    valid:
+      signal: out_valid
+    ready:
+      signal: out_ready
+- operation: add
+  point: operation.add.reset_abort
+  template: custom
+  observer: observe_reset
+  event: clock
+  fields:
+    reset:
+      signal: rst_n
+    valid:
+      signal: out_valid
+    sum:
+      signal: out_sum

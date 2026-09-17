@@ -1,0 +1,45 @@
+top_module: stream_matvec_int8
+test_modules:
+- test_stream_matvec
+test_categories:
+- bit_exact_arithmetic
+- operand_and_result_order
+- tail_tiles
+- exact_cycle_schedule
+- ready_valid_stability
+- back_to_back_commands
+- completion
+- invalid_dimension_recovery
+- reset_abort
+- parameter_boundaries
+- deterministic_randomized
+randomized_test_count: 100
+seed: 637901
+timeout_seconds: 900
+regression_groups:
+  smoke:
+  - test_stream_matvec
+  targeted:
+  - test_stream_matvec
+  full:
+  - test_stream_matvec
+pass_criteria: Full regression completes without assertions or timeouts. Every pre-edge
+  and settled post-edge external output matches the frozen schedule; every result
+  matches the independent arithmetic oracle. All 100 randomized jobs complete. Required
+  parameter profiles must also pass before parameterized acceptance.
+protocol_assumptions:
+- Use default MAX_ROWS=256 and MAX_COLS=256 unless both elaboration parameters and
+  matching VERIFY_MAX_ROWS/VERIFY_MAX_COLS simulator plusargs are explicitly supplied.
+- 'Required additional builds: MAX_ROWS=16/MAX_COLS=1, MAX_ROWS=33/MAX_COLS=19, and
+  MAX_ROWS=65535/MAX_COLS=65535. Execute the same full module with matching plusargs
+  for each build.'
+- Make reference/matvec_oracle.py importable as matvec_oracle through the verification
+  runtime's Python search path.
+- A single manual clock owner uses 5 ns low and high phases; no concurrent Clock task
+  is permitted.
+- Queued command and operand sources retain valid and payload through stalls. Reset
+  alone may cancel outstanding source beats.
+- Maximum row and column counts are exercised separately for large builds; simultaneous
+  maxima are exercised when their product is at most 262144.
+- Smoke and targeted groups intentionally retain the full checks rather than reducing
+  initial acceptance coverage.

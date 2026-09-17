@@ -1,0 +1,139 @@
+design:
+  name: u8_registered_adder
+  version: '1.0'
+  description: Clocked two-input unsigned adder with a single-entry elastic output
+    register.
+operations:
+- name: add_unsigned
+  kind: unsigned_addition
+  coverage_family: unsigned_binary_add
+  coverage_family_source: novel
+  features:
+  - two_operand_unsigned_addition
+  - widened_exact_result
+  feature_extensions:
+  - registered_result
+  - single_entry_backpressure_buffer
+  semantics: 'Mandatory operation: sum = zero_extend(operand_a,9) + zero_extend(operand_b,9).
+    No truncation, saturation, optional mode, or runtime configuration.'
+  inputs:
+  - operand_a
+  - operand_b
+  outputs:
+  - sum
+data_types:
+- name: uint8_operand
+  role: Unsigned addend
+  width_bits: 8
+  signed: false
+  representation: 8-bit binary unsigned integer, range 0..255
+  conversion_semantics: Zero-extend to 9 bits before addition.
+  overflow_semantics: Not applicable within the 8-bit source representation.
+  rounding_semantics: None.
+- name: uint9_sum
+  role: Exact addition result
+  width_bits: 9
+  signed: false
+  representation: 9-bit binary unsigned integer, range 0..510
+  conversion_semantics: Direct exact result representation.
+  overflow_semantics: No overflow is possible for two legal uint8 operands.
+  rounding_semantics: None.
+data_objects:
+- name: operand_a
+  role: First scalar addend of an accepted transaction
+  data_type: uint8_operand
+  dimensions: []
+  producer: external
+  consumers:
+  - add_unsigned
+  external: true
+- name: operand_b
+  role: Second scalar addend of an accepted transaction
+  data_type: uint8_operand
+  dimensions: []
+  producer: external
+  consumers:
+  - add_unsigned
+  external: true
+- name: sum
+  role: Exact scalar sum associated with one accepted transaction
+  data_type: uint9_sum
+  dimensions: []
+  producer: add_unsigned
+  consumers:
+  - external
+  external: true
+dimensions: []
+parameters: []
+compute:
+  organization: One combinational 9-bit unsigned adder feeding the output register.
+  dataflow: On an input transfer, unpack both operands, zero-extend them, add them,
+    and write the result into the output register.
+  parallelism: One addition per accepted input transaction; up to one transaction
+    accepted per clock when the output slot is available or simultaneously released.
+  scheduling: Single-entry elastic schedule. Input acceptance is permitted when the
+    output register is empty or its current item transfers on the same edge.
+storage:
+- name: output_register
+  stored_objects:
+  - sum
+  capacity_expression: 1 element
+  capacity_at_default_parameters: 1
+  access_pattern: Continuously read for output; written on each accepted input transaction.
+  port_requirements: One 9-bit write path and one continuous read path. Same-edge
+    output consumption and replacement are supported.
+  implementation_hint: Nine flip-flops plus one valid flip-flop.
+  reuse_semantics: Each stored sum is held until transferred or discarded by reset;
+    it is never reused.
+  lifetime: From its input acceptance edge until its output transfer edge or an asserted
+    reset edge.
+pipeline:
+- stage: add_and_capture
+  responsibility: Accept packed operands, compute the exact 9-bit sum, and capture
+    it in the output register.
+  registered: true
+  valid_behavior: An accepted input causes out_valid to be asserted after that edge.
+    If an existing output transfers simultaneously, it is replaced without an invalid
+    cycle.
+  stall_behavior: When out_valid=1 and out_ready=0, input ready is low and output
+    valid/payload remain unchanged. Reset is the sole exception and aborts the pending
+    item.
+control:
+  strategy: One valid bit controls the single-entry elastic output register.
+  state_progression: Empty remains empty without input; empty becomes full on input
+    transfer; full remains full while stalled; full becomes empty on output-only transfer;
+    full remains full on simultaneous output and input transfers.
+  counters: []
+  error_behavior: All payload encodings are legal, so no encoded error or error state
+    exists. A producer violating ready/valid stall stability is outside the protocol
+    contract and is not detected.
+  error_recovery: Synchronous reset returns the interface and valid state to empty;
+    no separate recovery command exists.
+reset:
+  style: Synchronous reset sampled on the rising clock edge with priority over transfers.
+  polarity: Active-low through rst_n.
+  required_state: When rst_n=0 at a rising edge, suppress all transfers, discard any
+    pending result, clear out_valid, and clear the output payload register. in_ready
+    is 0 while rst_n is low.
+latency_model: 'Let an input transfer occur at rising edge A, designated cycle-zero
+  acceptance. The result is registered immediately after A and is eligible to transfer
+  at A+1. With out_ready=1 throughout, transfer occurs at A+1: exactly one clock interval.
+  If out_ready is low on S consecutive eligible edges beginning at A+1, transfer occurs
+  at A+S+1. The final transfer edge is included. Input-side stalls delay acceptance
+  and are not part of post-acceptance latency.'
+architectural_invariants:
+- A transfer occurs only on a rising edge with rst_n=1 and channel valid and ready
+  both high.
+- Every non-aborted accepted input produces exactly one output with value operand_a
+  + operand_b.
+- Output order equals input acceptance order.
+- At most one untransferred result exists.
+- Output payload and valid remain stable during output backpressure except when synchronous
+  reset aborts the item.
+- No input transfer occurs while a result is stalled.
+- Simultaneous output transfer and input acceptance replace the output register atomically.
+open_assumptions:
+- The shared input payload packs operand_a in bits [7:0] and operand_b in bits [15:8].
+- A combinational path from out_ready through occupancy control to in_ready is acceptable.
+- No transaction identifiers, framing markers, completion signal, or error signal
+  are required.

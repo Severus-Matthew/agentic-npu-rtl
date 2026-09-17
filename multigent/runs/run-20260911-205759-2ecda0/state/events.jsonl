@@ -1,0 +1,12 @@
+{"stage": "architect", "phase": "started", "time": "2026-09-11T20:58:01.355968+00:00"}
+{"stage": "architect", "phase": "finished", "time": "2026-09-11T21:01:09.739507+00:00", "status": null, "history": [{"stage": "architect", "status": "READY", "architecture_version": 1, "revision": false}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T21:01:09.742568+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T21:02:14.408943+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 0, "ppa_iteration": 0, "files": ["stream_matvec_int8.sv"]}]}
+{"stage": "verifier", "phase": "started", "time": "2026-09-11T21:02:14.411974+00:00"}
+{"stage": "verifier", "phase": "finished", "time": "2026-09-11T21:07:35.290031+00:00", "status": null, "history": [{"stage": "verifier_generation", "status": "VERIFICATION_READY", "architecture_version": 1, "repair_iteration": 0, "semantic_retry": true, "semantic_retry_error": "Generated verification file test_stream_matvec.py calls forbidden capability run"}]}
+{"stage": "verification_tools", "phase": "started", "time": "2026-09-11T21:07:35.293088+00:00"}
+{"stage": "verification_tools", "phase": "finished", "time": "2026-09-11T21:07:55.586112+00:00", "status": "VERIFIED_RTL", "history": [{"stage": "deterministic_verification", "status": "PASS", "failure_class": null}]}
+{"stage": "synthesis", "phase": "started", "time": "2026-09-11T21:07:55.589467+00:00"}
+{"stage": "synthesis", "phase": "finished", "time": "2026-09-11T21:07:55.684002+00:00", "status": "VIVADO_TOOL_UNAVAILABLE", "history": [{"stage": "vivado", "status": "TOOL_UNAVAILABLE", "bundle": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-205759-2ecda0/synthesis/av1-r0-p0-v0-attempt4"}]}
+{"stage": "final_report", "phase": "started", "time": "2026-09-11T21:07:55.686608+00:00"}
+{"stage": "final_report", "phase": "finished", "time": "2026-09-11T21:07:55.704287+00:00", "status": "VIVADO_TOOL_UNAVAILABLE"}

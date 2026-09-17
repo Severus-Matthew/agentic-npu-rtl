@@ -1,0 +1,108 @@
+{
+  "rtl_status": "RTL_GENERATED",
+  "rtl_result": {
+    "status": "RTL_GENERATED",
+    "task_type": "INITIAL_GENERATION",
+    "summary": "Implemented the frozen three-module architecture with 16 signed MAC lanes, handshake-driven scheduling, and wrapping bias/ReLU processing.",
+    "files": [
+      {
+        "path": "stream_matvec_int8_16.sv",
+        "module": "stream_matvec_int8_16",
+        "purpose": "Command handling, staging memories, tile scheduling, and streaming interfaces.",
+        "content": "module stream_matvec_int8_16 #(\n  parameter integer MAX_ROWS = 256,\n  parameter integer MAX_COLS = 256\n) (\n  input  logic clk,\n  input  logic rst_n,\n  input  logic cfg_valid,\n  output logic cfg_ready,\n  input  logic [((MAX_ROWS < 2) ? 1 : $clog2(MAX_ROWS+1))-1:0] cfg_rows,\n  input  logic [((MAX_COLS < 2) ? 1 : $clog2(MAX_COLS+1))-1:0] cfg_cols,\n  input  logic cfg_bias_enable,\n  input  logic cfg_relu_enable,\n  input  logic in_valid,\n  output logic in_ready,\n  input  logic [127:0] in_data,\n  output logic out_valid,\n  input  logic out_ready,\n  output logic signed [31:0] out_data,\n  output logic out_last,\n  output logic out_error\n);\n  localparam integer RW = (MAX_ROWS < 2) ? 1 : $clog2(MAX_ROWS+1);\n  localparam integer CW = (MAX_COLS < 2) ? 1 : $clog2(MAX_COLS+1);\n  // For small configurations there can only be one tile. This bound\n  // keeps all row-boundary arithmetic representable in RW+1 bits.\n  localparam logic [RW:0] TILE_SPAN = (RW+1)'((MAX_ROWS < 16) ? MAX_ROWS : 16);\n  localparam logic [RW-1:0] ROW_BOUND = RW'(MAX_ROWS);\n  localparam logic [CW-1:0] COL_BOUND = CW'(MAX_COLS);\n\n  generate\n    if ((MAX_ROWS < 1) || (MAX_ROWS > 65535) ||\n        (MAX_COLS < 1) || (MAX_COLS > 65535)) begin : g_invalid_parameters\n      // Static configuration diagnostic; no functional initialization.\n      initial $fatal(1, \"MAX_ROWS and MAX_COLS must be in 1..65535\");\n    end\n  endgenerate\n\n  typedef enum logic [2:0] {IDLE, VECTOR, BIAS, MAC, EMIT, ERROR} state_t;\n  state_t state;\n  logic [RW-1:0] rows, base;\n  logic [CW-1:0] cols, k;\n  logic [3:0] j;\n  logic bias_enable, relu_enable;\n  logic signed [7:0] vector_store [0:MAX_COLS-1];\n  logic signed [31:0] bias_store [0:15];\n  logic signed [7:0] vector_value;\n  logic signed [31:0] dot_value, bias_value, result_value;\n  logic [511:0] accumulators;\n  logic cfg_fire, in_fire, out_fire;\n  logic command_legal, active_job;\n  logic [RW:0] remaining_rows, next_base;\n  logic [4:0] lane_count;\n  logic column_last, lane_last, final_tile;\n  logic mac_clear, mac_step;\n\n  assign cfg_ready = rst_n && (state == IDLE);\n  assign in_ready = rst_n && ((state == VECTOR) || (state == BIAS) || (state == MAC));\n  assign out_valid = rst_n && ((state == EMIT) || (state == ERROR));\n  assign cfg_fire = cfg_valid && cfg_ready;\n  assign in_fire = in_valid && in_ready;\n  assign out_fire = out_valid && out_ready;\n  assign command_legal = (cfg_rows != '0) && (cfg_rows <= ROW_BOUND) &&\n                         (cfg_cols != '0) && (cfg_cols <= COL_BOUND);\n  assign active_job = (state == VECTOR) || (state == BIAS) ||\n                      (state == MAC) || (state == EMIT);\n  assign column_last = active_job && (k == (cols - CW'(1)));\n\n  always_comb begin\n    remaining_rows = '0;\n    next_base = {1'b0, base};\n    lane_count = 5'd0;\n    final_tile = 1'b0;\n    if (active_job) begin\n      remaining_rows = {1'b0, rows} - {1'b0, base};\n      final_tile = (remaining_rows <= TILE_SPAN);\n      if (remaining_rows > TILE_SPAN)\n        lane_count = 5'd16;\n      else\n        lane_count = 5'(remaining_rows);\n      // Whenever another tile exists, TILE_SPAN is exactly 16.\n      if (!final_tile)\n        next_base = {1'b0, base} + TILE_SPAN;\n    end\n  end\n\n  assign lane_last = active_job && (({1'b0, j} + 5'd1) == lane_count);\n  assign mac_clear = ((state == VECTOR) && in_fire && column_last) ||\n                     ((state == EMIT) && out_fire && lane_last && !final_tile);\n  assign mac_step = (state == MAC) && in_fire;\n\n  // Reads are asynchronous and are enabled only after the relevant loads.\n  always_comb begin\n    vector_value = 8'sd0;\n    bias_value = 32'sd0;\n    dot_value = 32'sd0;\n    if (rst_n && (state == MAC))\n      vector_value = vector_store[k];\n    if (rst_n && (state == EMIT)) begin\n      dot_value = $signed(accumulators[32*j +: 32]);\n      if (bias_enable)\n        bias_value = bias_store[j];\n    end\n  end\n\n  // Neither staging memory is reset or initialized.\n  always_ff @(posedge clk) begin\n    if (rst_n && in_fire) begin\n      if (state == VECTOR)\n        vector_store[k] <= $signed(in_data[7:0]);\n      if (state == BIAS)\n        bias_store[j] <= $signed(in_data[31:0]);\n    end\n  end\n\n  int8_mac16_bank u_mac_bank (\n    .clk(clk),\n    .rst_n(rst_n),\n    .clear(mac_clear),\n    .step(mac_step),\n    .vector_value(vector_value),\n    .matrix_values(in_data),\n    .accumulators(accumulators)\n  );\n\n  int32_bias_relu u_finalizer (\n    .dot_value(dot_value),\n    .bias_value(bias_value),\n    .bias_enable(bias_enable),\n    .relu_enable(relu_enable),\n    .result_value(result_value)\n  );\n\n  always_comb begin\n    out_data = 32'sd0;\n    out_last = 1'b0;\n    out_error = 1'b0;\n    if (out_valid) begin\n      if (state == EMIT) begin\n        out_data = result_value;\n        out_last = final_tile && lane_last;\n      end else if (state == ERROR) begin\n        out_last = 1'b1;\n        out_error = 1'b1;\n      end\n    end\n  end\n\n  always_ff @(posedge clk) begin\n    if (!rst_n) begin\n      state <= IDLE;\n      rows <= '0;\n      cols <= '0;\n      base <= '0;\n      k <= '0;\n      j <= '0;\n      bias_enable <= 1'b0;\n      relu_enable <= 1'b0;\n    end else begin\n      case (state)\n        IDLE: begin\n          if (cfg_fire) begin\n            rows <= cfg_rows;\n            cols <= cfg_cols;\n            bias_enable <= cfg_bias_enable;\n            relu_enable <= cfg_relu_enable;\n            base <= '0;\n            k <= '0;\n            j <= '0;\n            if (command_legal)\n              state <= VECTOR;\n            else\n              state <= ERROR;\n          end\n        end\n        VECTOR: begin\n          if (in_fire) begin\n            if (column_last) begin\n              k <= '0;\n              j <= '0;\n              if (bias_enable)\n                state <= BIAS;\n              else\n                state <= MAC;\n            end else begin\n              k <= k + CW'(1);\n            end\n          end\n        end\n        BIAS: begin\n          if (in_fire) begin\n            if (lane_last) begin\n              j <= '0;\n              k <= '0;\n              state <= MAC;\n            end else begin\n              j <= j + 4'd1;\n            end\n          end\n        end\n        MAC: begin\n          if (in_fire) begin\n            if (column_last) begin\n              k <= '0;\n              j <= '0;\n              state <= EMIT;\n            end else begin\n              k <= k + CW'(1);\n            end\n          end\n        end\n        EMIT: begin\n          if (out_fire) begin\n            if (lane_last) begin\n              if (final_tile) begin\n                state <= IDLE;\n              end else begin\n                base <= next_base[RW-1:0];\n                k <= '0;\n                j <= '0;\n                if (bias_enable)\n                  state <= BIAS;\n                else\n                  state <= MAC;\n              end\n            end else begin\n              j <= j + 4'd1;\n            end\n          end\n        end\n        ERROR: begin\n          if (out_fire)\n            state <= IDLE;\n        end\n        default: begin\n          // Unreachable after the required reset; retain state.\n        end\n      endcase\n    end\n  end\nendmodule\n"
+      },
+      {
+        "path": "int8_mac16_bank.sv",
+        "module": "int8_mac16_bank",
+        "purpose": "Sixteen parallel signed INT8 products and wrapping INT32 accumulators.",
+        "content": "module int8_mac16_bank (\n  input  logic clk,\n  input  logic rst_n,\n  input  logic clear,\n  input  logic step,\n  input  logic signed [7:0] vector_value,\n  input  logic [127:0] matrix_values,\n  output wire [511:0] accumulators\n);\n  generate\n    for (genvar lane = 0; lane < 16; lane = lane + 1) begin : g_lane\n      logic signed [31:0] accumulator;\n      wire signed [7:0] matrix_value;\n      wire signed [15:0] product;\n      wire signed [31:0] product_extended;\n      wire signed [32:0] sum_extended;\n\n      assign matrix_value = $signed(matrix_values[8*lane +: 8]);\n      // The 16-bit signed destination retains the exact INT8 product.\n      assign product = matrix_value * vector_value;\n      assign product_extended = $signed({{16{product[15]}}, product});\n      assign sum_extended = $signed({accumulator[31], accumulator}) +\n                            $signed({product_extended[31], product_extended});\n      assign accumulators[32*lane +: 32] = accumulator;\n\n      always_ff @(posedge clk) begin\n        if (!rst_n)\n          accumulator <= 32'sd0;\n        else if (clear)\n          accumulator <= 32'sd0;\n        else if (step)\n          // Discard carry/sign overflow: modulo 2^32, without saturation.\n          accumulator <= $signed(sum_extended[31:0]);\n      end\n    end\n  endgenerate\nendmodule\n"
+      },
+      {
+        "path": "int32_bias_relu.sv",
+        "module": "int32_bias_relu",
+        "purpose": "Combinational wrapping bias addition followed by selectable ReLU.",
+        "content": "module int32_bias_relu (\n  input  logic signed [31:0] dot_value,\n  input  logic signed [31:0] bias_value,\n  input  logic bias_enable,\n  input  logic relu_enable,\n  output logic signed [31:0] result_value\n);\n  logic signed [32:0] sum_extended;\n  logic signed [31:0] adjusted;\n\n  always_comb begin\n    sum_extended = $signed({dot_value[31], dot_value}) +\n                   $signed({bias_value[31], bias_value});\n    adjusted = dot_value;\n    if (bias_enable)\n      adjusted = $signed(sum_extended[31:0]);\n    // Test the sign only after truncation to the wrapped INT32 value.\n    if (relu_enable && adjusted[31])\n      result_value = 32'sd0;\n    else\n      result_value = adjusted;\n  end\nendmodule\n"
+      }
+    ],
+    "contract_checks": [
+      {
+        "requirement": "Exact frozen module manifest and interfaces.",
+        "satisfied": true,
+        "evidence": "Three complete files preserve all ports and top parameters; both child instances use explicit connections."
+      },
+      {
+        "requirement": "Sixteen signed INT8 MAC paths with wrapping INT32 arithmetic.",
+        "satisfied": true,
+        "evidence": "Sixteen generated lanes independently cast matrix bytes, form signed 16-bit products, sign-extend, and truncate sums to 32 bits."
+      },
+      {
+        "requirement": "Declared storage capacity, access timing, and lifetime.",
+        "satisfied": true,
+        "evidence": "MAX_COLS-byte vector and 16-word bias arrays have handshake-qualified synchronous writes and phase-gated asynchronous reads; neither memory is reset."
+      },
+      {
+        "requirement": "Frozen phase schedule and transfer-edge latency.",
+        "satisfied": true,
+        "evidence": "FSM transitions directly between required phases; the final weight edge updates accumulators and enters EMIT without a staging cycle."
+      },
+      {
+        "requirement": "Stable stalled outputs and exact tile-boundary clearing.",
+        "satisfied": true,
+        "evidence": "EMIT advances only on output handshakes; MAC clear occurs only on the final vector transfer or accepted last output of a nonfinal tile."
+      },
+      {
+        "requirement": "Legal parameter range and partial-tile handling.",
+        "satisfied": true,
+        "evidence": "Guarded index widths, RW+1-bit row arithmetic, five-bit lane counts, and static illegal-parameter diagnostics cover configured bounds and partial tiles."
+      },
+      {
+        "requirement": "Reset, invalid-command response, and invalid-output values.",
+        "satisfied": true,
+        "evidence": "Synchronous reset clears control and accumulators; reset gates handshakes. Invalid commands enter ERROR, producing one zero/error/last response; invalid outputs are zero."
+      },
+      {
+        "requirement": "Structural synthesizable-RTL self-review.",
+        "satisfied": true,
+        "evidence": "Textual inspection found complete combinational assignments, single register drivers, bounded storage accesses, and no additional functional pipeline or helper modules. No tools were run."
+      }
+    ],
+    "changed_modules": [
+      "stream_matvec_int8_16",
+      "int8_mac16_bank",
+      "int32_bias_relu"
+    ],
+    "architecture_conflict": null,
+    "blocked_reason": "",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [
+      "Compilation, parameter elaboration, simulation, and synthesis remain unverified; full regression is required before synthesis handoff."
+    ],
+    "regression_required": "FULL"
+  },
+  "rtl_files": [
+    "stream_matvec_int8_16.sv",
+    "int8_mac16_bank.sv",
+    "int32_bias_relu.sv"
+  ],
+  "architecture_conflict": null,
+  "needs_regression": true,
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "history": [
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "ppa_iteration": 0,
+      "files": [
+        "stream_matvec_int8_16.sv",
+        "int8_mac16_bank.sv",
+        "int32_bias_relu.sv"
+      ]
+    }
+  ]
+}

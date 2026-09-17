@@ -1,0 +1,38 @@
+functional:
+- For every legal job, output exactly matches the specified increasing-k wrap32 GEMM,
+  wrap32 bias addition, and signed ReLU.
+- Verify INT8 extrema, negative values, INT32 overflow, bias overflow, zero-after-ReLU,
+  and positive INT32 outputs.
+- Verify all legal boundary dimensions including 1 and each configured maximum, plus
+  dimensions not divisible by eight.
+- Verify exact tile-major output ordering and M*ceil(N/8) output transfers.
+verification:
+- Run at least 100 randomized legal transactions with exact integer comparison against
+  an independent model.
+- Check exact A, B, and bias transfer counts, lane packing, section order, tlast placement,
+  boundary-lane masking, and no replay requirement.
+- Randomly stall every input and output channel; assert payload stability and absence
+  of lost or duplicated transfers.
+- Test reset from every FSM phase, including output stalls, and confirm deterministic
+  return to IDLE.
+- Test zero and over-maximum dimensions plus early and missing tlast; confirm sticky
+  ERROR and reset-only recovery.
+- Check done is a one-cycle pulse coincident with the final accepted output transfer
+  and busy spans the job.
+- Regression wall timeout shall be at least 120 seconds.
+rtl:
+- RTL shall be synthesizable SystemVerilog and use none of real, shortreal, delays,
+  force/release, or classes.
+- All parameter-dependent widths shall remain at least one bit for every legal parameter
+  value.
+- Memory write enables, asynchronous-read behavior, tile_start, mac_enable, finalize,
+  done, and stall semantics shall match this contract.
+- Lint/elaboration shall report no unresolved modules, inferred latches, multiple
+  drivers, or width-dependent packing overflow.
+fpga_handoff:
+- Only verified RTL may be submitted to Vivado.
+- Vivado scripts, part selection, clocks, constraints, source ordering, and top module
+  shall be deterministic and archived.
+- Synthesis results shall conform to multigent/schemas/synthesis_result.schema.json.
+- Timing, area, power, frequency, and utilization may be reported only from deterministic
+  tool reports; no estimated metrics are acceptable.

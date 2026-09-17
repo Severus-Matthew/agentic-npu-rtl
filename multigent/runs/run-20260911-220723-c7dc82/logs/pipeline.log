@@ -1,0 +1,17 @@
+{
+  "status": "FAILED",
+  "vivado_status": null,
+  "final_report": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/reports/final.json",
+  "errors": [],
+  "architecture_status": "READY",
+  "architecture_version": 1,
+  "architecture_revision": 0,
+  "rtl_status": "REPAIR_BLOCKED",
+  "rtl_files": [],
+  "verifier_status": "VERIFICATION_READY",
+  "verification_status": "PENDING",
+  "debugger_status": "REPAIR_PLAN_READY",
+  "repair_iteration": 1,
+  "failure_class": "UNKNOWN",
+  "architecture_conflict": null
+}

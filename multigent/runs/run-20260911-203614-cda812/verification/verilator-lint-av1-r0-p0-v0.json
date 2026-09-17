@@ -1,0 +1,32 @@
+{
+  "stage": "verilator_lint",
+  "status": "PASS",
+  "failure_class": null,
+  "return_code": 0,
+  "command": [
+    "/u/mjha1/.local/verilator-env/bin/verilator",
+    "--lint-only",
+    "--sv",
+    "-Wno-fatal",
+    "--top-module",
+    "mv_npu_top",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_ctrl_fsm.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_mac16_core.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_postproc.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_stream_if.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_vec_buffer.sv"
+  ],
+  "sources": [
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_ctrl_fsm.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_mac16_core.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_postproc.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_stream_if.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_vec_buffer.sv"
+  ],
+  "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.141 MB sources in 7 modules, into 0.002 MB in 3 C++ files needing 0.000 MB\n- Verilator: Walltime 0.011 s (elab=0.002, cvt=0.001, bld=0.000); cpu 0.005 s on 1 threads; allocated 25.688 MB\n",
+  "stderr": "",
+  "error_diagnostics": [],
+  "top_module": "mv_npu_top"
+}

@@ -1,0 +1,501 @@
+{
+  "schema_version": 3,
+  "source": "interface taxonomy + verifier operation coverage",
+  "monitor": {
+    "clock": "clk",
+    "reset": "rst_n",
+    "signals": [
+      "clk",
+      "rst_n",
+      "in_valid",
+      "in_ready",
+      "in_payload",
+      "out_valid",
+      "out_ready",
+      "out_payload"
+    ]
+  },
+  "obligations": [
+    {
+      "id": "channel.input_operands.handshake_states",
+      "template": "handshake_states",
+      "scope": "channel",
+      "scope_name": "input_operands",
+      "description": "Cover all producer-valid and consumer-ready states.",
+      "bindings": {
+        "valid": "in_valid",
+        "ready": "in_ready"
+      },
+      "bins": [
+        {
+          "name": "idle",
+          "intent": "valid=0 and ready=0"
+        },
+        {
+          "name": "receiver_ready",
+          "intent": "valid=0 and ready=1"
+        },
+        {
+          "name": "backpressured",
+          "intent": "valid=1 and ready=0"
+        },
+        {
+          "name": "transfer",
+          "intent": "valid=1 and ready=1"
+        }
+      ]
+    },
+    {
+      "id": "channel.input_operands.stall_stability",
+      "template": "stall_stability",
+      "scope": "channel",
+      "scope_name": "input_operands",
+      "description": "Exercise a stalled transfer and hold all producer-owned content stable.",
+      "bindings": {
+        "valid": "in_valid",
+        "ready": "in_ready",
+        "payload": [
+          "in_payload"
+        ]
+      },
+      "bins": [
+        {
+          "name": "one_cycle_stall",
+          "intent": "Observe exactly one stalled cycle."
+        },
+        {
+          "name": "short_stall",
+          "intent": "Observe two through four consecutive stalled cycles."
+        },
+        {
+          "name": "long_stall",
+          "intent": "Observe five or more consecutive stalled cycles."
+        }
+      ]
+    },
+    {
+      "id": "channel.output_sum.handshake_states",
+      "template": "handshake_states",
+      "scope": "channel",
+      "scope_name": "output_sum",
+      "description": "Cover all producer-valid and consumer-ready states.",
+      "bindings": {
+        "valid": "out_valid",
+        "ready": "out_ready"
+      },
+      "bins": [
+        {
+          "name": "idle",
+          "intent": "valid=0 and ready=0"
+        },
+        {
+          "name": "receiver_ready",
+          "intent": "valid=0 and ready=1"
+        },
+        {
+          "name": "backpressured",
+          "intent": "valid=1 and ready=0"
+        },
+        {
+          "name": "transfer",
+          "intent": "valid=1 and ready=1"
+        }
+      ]
+    },
+    {
+      "id": "channel.output_sum.stall_stability",
+      "template": "stall_stability",
+      "scope": "channel",
+      "scope_name": "output_sum",
+      "description": "Exercise a stalled transfer and hold all producer-owned content stable.",
+      "bindings": {
+        "valid": "out_valid",
+        "ready": "out_ready",
+        "payload": [
+          "out_payload"
+        ]
+      },
+      "bins": [
+        {
+          "name": "one_cycle_stall",
+          "intent": "Observe exactly one stalled cycle."
+        },
+        {
+          "name": "short_stall",
+          "intent": "Observe two through four consecutive stalled cycles."
+        },
+        {
+          "name": "long_stall",
+          "intent": "Observe five or more consecutive stalled cycles."
+        }
+      ]
+    },
+    {
+      "id": "operation.add_unsigned.accepted_sum",
+      "template": "operation_coverpoint",
+      "scope": "operation",
+      "scope_name": "add_unsigned",
+      "kind": "coverpoint",
+      "description": "Observe the mathematical sum class of each accepted packed operand pair.",
+      "bindings": {
+        "operation_name": "add_unsigned",
+        "family": "unsigned_binary_add",
+        "field": "accepted_operand_sum",
+        "concept": "two_operand_unsigned_addition",
+        "source": "baseline",
+        "sampling": {
+          "template": "custom",
+          "event": "clock",
+          "channel": {},
+          "fields": {
+            "rst_n": {
+              "signal": "rst_n",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "in_valid": {
+              "signal": "in_valid",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "in_ready": {
+              "signal": "in_ready",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "in_payload": {
+              "signal": "in_payload",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 16
+            }
+          },
+          "guards": [],
+          "field_binding_origin": "verifier_declared",
+          "observer": "observe_accepted_sum",
+          "field_types": {}
+        }
+      },
+      "bins": [
+        {
+          "name": "zero",
+          "intent": "Both accepted operands are zero.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              0
+            ]
+          }
+        },
+        {
+          "name": "low_or_no_carry",
+          "intent": "Accepted sum is between 1 and 255.",
+          "predicate": {
+            "op": "between",
+            "args": [
+              1,
+              255
+            ]
+          }
+        },
+        {
+          "name": "widened_result",
+          "intent": "Accepted sum requires the ninth result bit.",
+          "predicate": {
+            "op": "between",
+            "args": [
+              256,
+              509
+            ]
+          }
+        },
+        {
+          "name": "maximum",
+          "intent": "Both operands are at their maximum.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              510
+            ]
+          }
+        }
+      ],
+      "checks": []
+    },
+    {
+      "id": "operation.add_unsigned.output_buffer_stall",
+      "template": "operation_coverpoint",
+      "scope": "operation",
+      "scope_name": "add_unsigned",
+      "kind": "coverpoint",
+      "description": "Observe released stalls in the single-entry output register.",
+      "bindings": {
+        "operation_name": "add_unsigned",
+        "family": "unsigned_binary_add",
+        "field": "released_output_stall_cycles",
+        "concept": "single_entry_backpressure_buffer",
+        "source": "architect_extension",
+        "sampling": {
+          "template": "channel_stall",
+          "event": "transfer",
+          "channel": {
+            "valid": "out_valid",
+            "ready": "out_ready"
+          },
+          "fields": {},
+          "guards": [],
+          "field_binding_origin": "verifier_declared"
+        }
+      },
+      "bins": [
+        {
+          "name": "none",
+          "intent": "An actual transfer with no preceding stall.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              0
+            ]
+          }
+        },
+        {
+          "name": "one_cycle",
+          "intent": "An actual transfer after exactly one stalled observation.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              1
+            ]
+          }
+        },
+        {
+          "name": "short",
+          "intent": "An actual transfer after two through four stalled observations.",
+          "predicate": {
+            "op": "between",
+            "args": [
+              2,
+              4
+            ]
+          }
+        },
+        {
+          "name": "long",
+          "intent": "An actual transfer after five or more stalled observations.",
+          "predicate": {
+            "op": "gte",
+            "args": [
+              5
+            ]
+          }
+        }
+      ],
+      "checks": []
+    },
+    {
+      "id": "operation.add_unsigned.registered_latency",
+      "template": "operation_coverpoint",
+      "scope": "operation",
+      "scope_name": "add_unsigned",
+      "kind": "coverpoint",
+      "description": "Observe input-acceptance to associated output-transfer distance.",
+      "bindings": {
+        "operation_name": "add_unsigned",
+        "family": "unsigned_binary_add",
+        "field": "acceptance_to_transfer_cycles",
+        "concept": "registered_result",
+        "source": "architect_extension",
+        "sampling": {
+          "template": "custom",
+          "event": "clock",
+          "channel": {},
+          "fields": {
+            "rst_n": {
+              "signal": "rst_n",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "in_valid": {
+              "signal": "in_valid",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "in_ready": {
+              "signal": "in_ready",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "out_valid": {
+              "signal": "out_valid",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "out_ready": {
+              "signal": "out_ready",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            }
+          },
+          "guards": [],
+          "field_binding_origin": "verifier_declared",
+          "observer": "observe_registered_latency",
+          "field_types": {}
+        }
+      },
+      "bins": [
+        {
+          "name": "one_cycle",
+          "intent": "Unstalled result transfers exactly one cycle after acceptance.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              1
+            ]
+          }
+        },
+        {
+          "name": "backpressured_delay",
+          "intent": "Output backpressure extends transfer latency.",
+          "predicate": {
+            "op": "gte",
+            "args": [
+              2
+            ]
+          }
+        }
+      ],
+      "checks": []
+    },
+    {
+      "id": "operation.add_unsigned.transferred_sum",
+      "template": "operation_coverpoint",
+      "scope": "operation",
+      "scope_name": "add_unsigned",
+      "kind": "coverpoint",
+      "description": "Observe exact transferred 9-bit result values.",
+      "bindings": {
+        "operation_name": "add_unsigned",
+        "family": "unsigned_binary_add",
+        "field": "transferred_sum",
+        "concept": "widened_exact_result",
+        "source": "baseline",
+        "sampling": {
+          "template": "custom",
+          "event": "clock",
+          "channel": {},
+          "fields": {
+            "rst_n": {
+              "signal": "rst_n",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "out_valid": {
+              "signal": "out_valid",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "out_ready": {
+              "signal": "out_ready",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "out_payload": {
+              "signal": "out_payload",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 9
+            }
+          },
+          "guards": [],
+          "field_binding_origin": "verifier_declared",
+          "observer": "observe_transferred_sum",
+          "field_types": {}
+        }
+      },
+      "bins": [
+        {
+          "name": "zero",
+          "intent": "Transferred result is zero.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              0
+            ]
+          }
+        },
+        {
+          "name": "uint8_range",
+          "intent": "Transferred result fits in eight bits.",
+          "predicate": {
+            "op": "between",
+            "args": [
+              1,
+              255
+            ]
+          }
+        },
+        {
+          "name": "ninth_bit_set",
+          "intent": "Transferred result exercises widened representation.",
+          "predicate": {
+            "op": "between",
+            "args": [
+              256,
+              509
+            ]
+          }
+        },
+        {
+          "name": "maximum",
+          "intent": "Transferred result is 510.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              510
+            ]
+          }
+        }
+      ],
+      "checks": []
+    },
+    {
+      "id": "signal.rst_n.reset_behavior",
+      "template": "reset_behavior",
+      "scope": "signal",
+      "scope_name": "rst_n",
+      "description": "Exercise reset assertion/deassertion and verify contract reset state.",
+      "bindings": {
+        "signal": "rst_n",
+        "active_value": 0
+      },
+      "bins": [
+        {
+          "name": "asserted",
+          "intent": "Observe reset in its asserted state."
+        },
+        {
+          "name": "deasserted",
+          "intent": "Observe reset in its deasserted state."
+        },
+        {
+          "name": "release",
+          "intent": "Observe the transition from reset into operation."
+        }
+      ]
+    }
+  ],
+  "requirements": {
+    "randomized_transactions_minimum": 100
+  }
+}

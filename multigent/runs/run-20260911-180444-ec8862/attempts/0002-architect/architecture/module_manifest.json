@@ -1,0 +1,591 @@
+{
+  "top": "fc_accelerator",
+  "modules": [
+    {
+      "name": "fc_accelerator",
+      "responsibility": "Top-level wiring for controller, operand storage, and compute array.",
+      "dependencies": [
+        "fc_controller",
+        "operand_store",
+        "gemm_array_8x8"
+      ],
+      "parameters": [
+        "ARRAY_ROWS",
+        "ARRAY_COLS",
+        "MAX_M",
+        "MAX_N",
+        "MAX_K"
+      ],
+      "stateful": false,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Clock."
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Synchronous active-high reset."
+        },
+        {
+          "name": "cmd_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Command valid."
+        },
+        {
+          "name": "cmd_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Command ready."
+        },
+        {
+          "name": "cmd_m",
+          "direction": "input",
+          "width": "$clog2(MAX_M+1)",
+          "signed": false,
+          "semantics": "Runtime M."
+        },
+        {
+          "name": "cmd_n",
+          "direction": "input",
+          "width": "$clog2(MAX_N+1)",
+          "signed": false,
+          "semantics": "Runtime N."
+        },
+        {
+          "name": "cmd_k",
+          "direction": "input",
+          "width": "$clog2(MAX_K+1)",
+          "signed": false,
+          "semantics": "Runtime K."
+        },
+        {
+          "name": "a_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Activation valid."
+        },
+        {
+          "name": "a_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Activation ready."
+        },
+        {
+          "name": "a_data",
+          "direction": "input",
+          "width": "ARRAY_COLS*8",
+          "signed": false,
+          "semantics": "Packed activation lanes."
+        },
+        {
+          "name": "a_last",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Activation final marker."
+        },
+        {
+          "name": "b_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Weight valid."
+        },
+        {
+          "name": "b_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Weight ready."
+        },
+        {
+          "name": "b_data",
+          "direction": "input",
+          "width": "ARRAY_COLS*8",
+          "signed": false,
+          "semantics": "Packed weight lanes."
+        },
+        {
+          "name": "b_last",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Weight final marker."
+        },
+        {
+          "name": "bias_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Bias valid."
+        },
+        {
+          "name": "bias_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Bias ready."
+        },
+        {
+          "name": "bias_data",
+          "direction": "input",
+          "width": "ARRAY_COLS*32",
+          "signed": false,
+          "semantics": "Packed bias lanes."
+        },
+        {
+          "name": "bias_last",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Bias final marker."
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Result valid."
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Result ready."
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "ARRAY_COLS*32",
+          "signed": false,
+          "semantics": "Packed results."
+        },
+        {
+          "name": "out_keep",
+          "direction": "output",
+          "width": "ARRAY_COLS",
+          "signed": false,
+          "semantics": "Result lane mask."
+        },
+        {
+          "name": "out_last",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Final result marker."
+        },
+        {
+          "name": "busy",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Job active."
+        },
+        {
+          "name": "done",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Final-transfer completion pulse."
+        },
+        {
+          "name": "error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Sticky error."
+        }
+      ]
+    },
+    {
+      "name": "fc_controller",
+      "responsibility": "Decode framing, sequence loads and tiles, generate storage addresses and array start/MAC/finalize pulses, and implement output handshaking.",
+      "dependencies": [],
+      "parameters": [
+        "ARRAY_ROWS",
+        "ARRAY_COLS",
+        "MAX_M",
+        "MAX_N",
+        "MAX_K"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Clock."
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Synchronous reset."
+        },
+        {
+          "name": "external_bus",
+          "direction": "inout",
+          "width": "protocol signal bundle",
+          "signed": false,
+          "semantics": "All top-level command, input, output, status, and handshake signals with identical timing and widths to the interface contract."
+        },
+        {
+          "name": "store_write_bus",
+          "direction": "output",
+          "width": "control plus ARRAY_COLS*32",
+          "signed": false,
+          "semantics": "Synchronous A/B/bias write enables, row/chunk addresses, lane enables, and payloads; enables assert only on accepted input transfers."
+        },
+        {
+          "name": "store_read_address_bus",
+          "direction": "output",
+          "width": "parameter-derived",
+          "signed": false,
+          "semantics": "Current m_base, n_base, and k_index; addresses remain fixed for each MAC or finalize cycle."
+        },
+        {
+          "name": "a_vector",
+          "direction": "input",
+          "width": "ARRAY_ROWS*8",
+          "signed": false,
+          "semantics": "Asynchronous A vector from storage for current m_base and k."
+        },
+        {
+          "name": "b_vector",
+          "direction": "input",
+          "width": "ARRAY_COLS*8",
+          "signed": false,
+          "semantics": "Asynchronous B vector from storage for current n_base and k."
+        },
+        {
+          "name": "bias_vector",
+          "direction": "input",
+          "width": "ARRAY_COLS*32",
+          "signed": false,
+          "semantics": "Asynchronous bias vector for current n_base."
+        },
+        {
+          "name": "tile_start",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "One-cycle pulse clearing array accumulators and latching masks."
+        },
+        {
+          "name": "mac_enable",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "One-cycle enable for each k update; asserted exactly K times per tile."
+        },
+        {
+          "name": "finalize",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "One-cycle pulse adding bias and applying ReLU after the final MAC."
+        },
+        {
+          "name": "active_rows",
+          "direction": "output",
+          "width": "ARRAY_ROWS",
+          "signed": false,
+          "semantics": "Current tile row mask, stable from tile_start through emission."
+        },
+        {
+          "name": "active_cols",
+          "direction": "output",
+          "width": "ARRAY_COLS",
+          "signed": false,
+          "semantics": "Current tile column mask, stable from tile_start through emission."
+        },
+        {
+          "name": "result_row_index",
+          "direction": "output",
+          "width": "$clog2(ARRAY_ROWS)",
+          "signed": false,
+          "semantics": "Combinational array row selector; changes only after accepted output transfers."
+        },
+        {
+          "name": "array_result",
+          "direction": "input",
+          "width": "ARRAY_COLS*32",
+          "signed": false,
+          "semantics": "Selected finalized array row; stable while output is stalled."
+        }
+      ]
+    },
+    {
+      "name": "operand_store",
+      "responsibility": "Retain complete A, B, and bias objects and provide parallel asynchronous compute reads.",
+      "dependencies": [],
+      "parameters": [
+        "ARRAY_ROWS",
+        "ARRAY_COLS",
+        "MAX_M",
+        "MAX_N",
+        "MAX_K"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Write clock."
+        },
+        {
+          "name": "a_wr_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Writes enabled lanes of a_wr_data on the rising edge."
+        },
+        {
+          "name": "a_wr_row",
+          "direction": "input",
+          "width": "((MAX_M<=1)?1:$clog2(MAX_M))",
+          "signed": false,
+          "semantics": "Activation row address."
+        },
+        {
+          "name": "a_wr_chunk",
+          "direction": "input",
+          "width": "((MAX_K<=8)?1:$clog2((MAX_K+7)/8))",
+          "signed": false,
+          "semantics": "Activation eight-element chunk address."
+        },
+        {
+          "name": "a_wr_data",
+          "direction": "input",
+          "width": "ARRAY_COLS*8",
+          "signed": false,
+          "semantics": "Activation write data."
+        },
+        {
+          "name": "a_wr_mask",
+          "direction": "input",
+          "width": "ARRAY_COLS",
+          "signed": false,
+          "semantics": "Per-lane synchronous activation write enables."
+        },
+        {
+          "name": "b_wr_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Writes enabled lanes of b_wr_data on the rising edge."
+        },
+        {
+          "name": "b_wr_row",
+          "direction": "input",
+          "width": "((MAX_K<=1)?1:$clog2(MAX_K))",
+          "signed": false,
+          "semantics": "Weight k-row address."
+        },
+        {
+          "name": "b_wr_chunk",
+          "direction": "input",
+          "width": "((MAX_N<=8)?1:$clog2((MAX_N+7)/8))",
+          "signed": false,
+          "semantics": "Weight eight-element chunk address."
+        },
+        {
+          "name": "b_wr_data",
+          "direction": "input",
+          "width": "ARRAY_COLS*8",
+          "signed": false,
+          "semantics": "Weight write data."
+        },
+        {
+          "name": "b_wr_mask",
+          "direction": "input",
+          "width": "ARRAY_COLS",
+          "signed": false,
+          "semantics": "Per-lane synchronous weight write enables."
+        },
+        {
+          "name": "bias_wr_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Writes enabled bias lanes on the rising edge."
+        },
+        {
+          "name": "bias_wr_chunk",
+          "direction": "input",
+          "width": "((MAX_N<=8)?1:$clog2((MAX_N+7)/8))",
+          "signed": false,
+          "semantics": "Bias chunk address."
+        },
+        {
+          "name": "bias_wr_data",
+          "direction": "input",
+          "width": "ARRAY_COLS*32",
+          "signed": false,
+          "semantics": "Bias write data."
+        },
+        {
+          "name": "bias_wr_mask",
+          "direction": "input",
+          "width": "ARRAY_COLS",
+          "signed": false,
+          "semantics": "Per-lane synchronous bias write enables."
+        },
+        {
+          "name": "rd_m_base",
+          "direction": "input",
+          "width": "((MAX_M<=1)?1:$clog2(MAX_M))",
+          "signed": false,
+          "semantics": "First activation row; asynchronous read address."
+        },
+        {
+          "name": "rd_n_base",
+          "direction": "input",
+          "width": "((MAX_N<=1)?1:$clog2(MAX_N))",
+          "signed": false,
+          "semantics": "First weight/bias column; asynchronous read address."
+        },
+        {
+          "name": "rd_k",
+          "direction": "input",
+          "width": "((MAX_K<=1)?1:$clog2(MAX_K))",
+          "signed": false,
+          "semantics": "Reduction index; asynchronous read address."
+        },
+        {
+          "name": "rd_a_vector",
+          "direction": "output",
+          "width": "ARRAY_ROWS*8",
+          "signed": false,
+          "semantics": "Zero-latency combinational A values for rows rd_m_base through +7 at rd_k."
+        },
+        {
+          "name": "rd_b_vector",
+          "direction": "output",
+          "width": "ARRAY_COLS*8",
+          "signed": false,
+          "semantics": "Zero-latency combinational B values at rd_k for columns rd_n_base through +7."
+        },
+        {
+          "name": "rd_bias_vector",
+          "direction": "output",
+          "width": "ARRAY_COLS*32",
+          "signed": false,
+          "semantics": "Zero-latency combinational bias values for rd_n_base through +7."
+        }
+      ]
+    },
+    {
+      "name": "gemm_array_8x8",
+      "responsibility": "Maintain 64 accumulators, perform parallel signed MAC updates, bias/ReLU finalization, and row selection.",
+      "dependencies": [],
+      "parameters": [
+        "ARRAY_ROWS",
+        "ARRAY_COLS"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Clock."
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Clears accumulator validity and data on the rising edge."
+        },
+        {
+          "name": "tile_start",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "On the rising edge, clears all accumulators and latches masks; mutually exclusive with mac_enable and finalize."
+        },
+        {
+          "name": "mac_enable",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "On the rising edge, each active PE performs one wrapping signed MAC."
+        },
+        {
+          "name": "finalize",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "On the rising edge, each active PE adds its column bias with wrap and applies ReLU."
+        },
+        {
+          "name": "a_vector",
+          "direction": "input",
+          "width": "ARRAY_ROWS*8",
+          "signed": false,
+          "semantics": "Packed signed activation operands for one k step."
+        },
+        {
+          "name": "b_vector",
+          "direction": "input",
+          "width": "ARRAY_COLS*8",
+          "signed": false,
+          "semantics": "Packed signed weight operands for one k step."
+        },
+        {
+          "name": "bias_vector",
+          "direction": "input",
+          "width": "ARRAY_COLS*32",
+          "signed": false,
+          "semantics": "Packed signed biases used only when finalize is asserted."
+        },
+        {
+          "name": "active_rows",
+          "direction": "input",
+          "width": "ARRAY_ROWS",
+          "signed": false,
+          "semantics": "Row mask latched at tile_start."
+        },
+        {
+          "name": "active_cols",
+          "direction": "input",
+          "width": "ARRAY_COLS",
+          "signed": false,
+          "semantics": "Column mask latched at tile_start."
+        },
+        {
+          "name": "result_row_index",
+          "direction": "input",
+          "width": "$clog2(ARRAY_ROWS)",
+          "signed": false,
+          "semantics": "Combinational finalized-row selector."
+        },
+        {
+          "name": "result_data",
+          "direction": "output",
+          "width": "ARRAY_COLS*32",
+          "signed": false,
+          "semantics": "Zero-latency selected accumulator row, stable whenever accumulators and selector are stable."
+        }
+      ]
+    }
+  ]
+}

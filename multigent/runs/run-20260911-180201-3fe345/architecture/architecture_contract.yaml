@@ -1,0 +1,296 @@
+design:
+  name: fc_tiled_gemm_int8_accel
+  version: '1.0'
+  description: 'Tiled fully-connected layer accelerator: INT8xINT8->INT32 GEMM, INT32
+    bias add, ReLU, using fixed 8x8 PE array.'
+operations:
+- name: op_load_config
+  kind: control
+  semantics: Latch layer/job configuration on cfg channel handshake; validate bounds
+    before execution.
+  inputs:
+  - obj_cfg_packet
+  outputs:
+  - obj_cfg_state
+- name: op_gemm_tile
+  kind: compute
+  semantics: 'For each output tile (m_tile,n_tile) and reduction chunk k_chunk, compute
+    partial sums: acc[m,n]+=sum over k of (A[m,k]*W[k,n]) with signed INT8 multiply
+    and signed INT32 accumulation.'
+  inputs:
+  - obj_activation_stream
+  - obj_weight_stream
+  - obj_cfg_state
+  outputs:
+  - obj_accum_tile
+- name: op_bias_add
+  kind: compute
+  semantics: 'Add INT32 bias for each output column: z[m,n]=acc[m,n]+bias[n].'
+  inputs:
+  - obj_accum_tile
+  - obj_bias_stream
+  - obj_cfg_state
+  outputs:
+  - obj_biased_tile
+- name: op_relu
+  kind: compute
+  semantics: 'Apply ReLU elementwise on INT32: y=max(0,z).'
+  inputs:
+  - obj_biased_tile
+  outputs:
+  - obj_output_tile
+- name: op_store_output
+  kind: egress
+  semantics: Emit output elements in tile-major deterministic order with boundary
+    masking for partial tiles.
+  inputs:
+  - obj_output_tile
+  - obj_cfg_state
+  outputs:
+  - obj_output_stream
+data_types:
+- name: dt_int8
+  role: activations/weights element
+  width_bits: 8
+  signed: true
+  representation: two_complement
+  conversion_semantics: No implicit conversion
+  overflow_semantics: wrap
+  rounding_semantics: not_applicable
+- name: dt_int32
+  role: accumulator/bias/output element
+  width_bits: 32
+  signed: true
+  representation: two_complement
+  conversion_semantics: INT8 operands sign-extended before multiply/accumulate
+  overflow_semantics: wrap
+  rounding_semantics: not_applicable
+- name: dt_cfg
+  role: runtime configuration packet
+  width_bits: 128
+  signed: false
+  representation: packed_fields
+  conversion_semantics: field-wise unsigned decode
+  overflow_semantics: not_applicable
+  rounding_semantics: not_applicable
+data_objects:
+- name: obj_cfg_packet
+  role: job configuration transfer
+  data_type: dt_cfg
+  dimensions: []
+  producer: external
+  consumers:
+  - op_load_config
+  external: true
+- name: obj_cfg_state
+  role: latched runtime dimensions/strides
+  data_type: dt_cfg
+  dimensions: []
+  producer: op_load_config
+  consumers:
+  - op_gemm_tile
+  - op_bias_add
+  - op_store_output
+  external: false
+- name: obj_activation_stream
+  role: A matrix elements
+  data_type: dt_int8
+  dimensions:
+  - M
+  - K
+  producer: external
+  consumers:
+  - op_gemm_tile
+  external: true
+- name: obj_weight_stream
+  role: W matrix elements
+  data_type: dt_int8
+  dimensions:
+  - K
+  - N
+  producer: external
+  consumers:
+  - op_gemm_tile
+  external: true
+- name: obj_bias_stream
+  role: bias vector elements
+  data_type: dt_int32
+  dimensions:
+  - N
+  producer: external
+  consumers:
+  - op_bias_add
+  external: true
+- name: obj_accum_tile
+  role: tile partial/final accumulators
+  data_type: dt_int32
+  dimensions:
+  - TM
+  - TN
+  producer: op_gemm_tile
+  consumers:
+  - op_bias_add
+  external: false
+- name: obj_biased_tile
+  role: post-bias tile
+  data_type: dt_int32
+  dimensions:
+  - TM
+  - TN
+  producer: op_bias_add
+  consumers:
+  - op_relu
+  external: false
+- name: obj_output_tile
+  role: post-ReLU tile
+  data_type: dt_int32
+  dimensions:
+  - TM
+  - TN
+  producer: op_relu
+  consumers:
+  - op_store_output
+  external: false
+- name: obj_output_stream
+  role: output matrix elements
+  data_type: dt_int32
+  dimensions:
+  - M
+  - N
+  producer: op_store_output
+  consumers:
+  - external
+  external: true
+dimensions:
+- name: M
+  semantic: output rows / activation rows, runtime legal range 1..MAX_M
+  minimum: 1
+  maximum: 256
+  runtime_configurable: true
+  bound_parameter: MAX_M
+- name: K
+  semantic: reduction dimension, runtime legal range 1..MAX_K
+  minimum: 1
+  maximum: 256
+  runtime_configurable: true
+  bound_parameter: MAX_K
+- name: N
+  semantic: output cols / weight cols / bias length, runtime legal range 1..MAX_N
+  minimum: 1
+  maximum: 256
+  runtime_configurable: true
+  bound_parameter: MAX_N
+- name: TM
+  semantic: tile rows processed by array, fixed 8
+  minimum: 8
+  maximum: 8
+  runtime_configurable: false
+  bound_parameter: ARRAY_M
+- name: TN
+  semantic: tile cols processed by array, fixed 8
+  minimum: 8
+  maximum: 8
+  runtime_configurable: false
+  bound_parameter: ARRAY_N
+parameters:
+- name: ARRAY_M
+  default_value: '8'
+  legality_constraint: =8
+  description: PE rows
+- name: ARRAY_N
+  default_value: '8'
+  legality_constraint: =8
+  description: PE cols
+- name: MAX_M
+  default_value: '256'
+  legality_constraint: '>=1'
+  description: max runtime M
+- name: MAX_K
+  default_value: '256'
+  legality_constraint: '>=1'
+  description: max runtime K
+- name: MAX_N
+  default_value: '256'
+  legality_constraint: '>=1'
+  description: max runtime N
+compute:
+  organization: 2D MAC array with 64 INT8xINT8 MAC PEs and shared control
+  dataflow: Output-stationary per 8x8 tile; accumulators held local for full K sweep
+  parallelism: Up to 64 MACs/cycle during inner-k for full tile, with boundary masking
+  scheduling: 'Tile-nested loops: for m0 in 0..M-1 step8, for n0 in 0..N-1 step8,
+    zero accum, for k0 in 0..K-1 stream operands and accumulate, then bias+ReLU+egress'
+storage:
+- name: rf_accum_tile
+  stored_objects:
+  - obj_accum_tile
+  capacity_expression: ARRAY_M*ARRAY_N*32
+  capacity_at_default_parameters: 2048
+  access_pattern: read-modify-write each cycle during K loop; read during bias stage
+  port_requirements: 64 logical accumulator lanes (or time-multiplexed equivalent
+    sustaining 64 MAC updates/cycle)
+  implementation_hint: register file
+  reuse_semantics: retained across all k for current tile only
+  lifetime: from tile start until tile output emitted
+- name: buf_bias_tile
+  stored_objects:
+  - obj_bias_stream
+  capacity_expression: ARRAY_N*32
+  capacity_at_default_parameters: 256
+  access_pattern: loaded once per n-tile then broadcast across tile rows
+  port_requirements: 1 write lane, ARRAY_N read lanes or broadcast network
+  implementation_hint: register array
+  reuse_semantics: reused for all rows in current m-tile at same n-tile
+  lifetime: during one (m_tile,n_tile) compute
+pipeline:
+- stage: S0_cfg
+  responsibility: accept/decode config
+  registered: true
+  valid_behavior: cfg_valid&&cfg_ready latches config
+  stall_behavior: cfg_ready deasserted when busy
+- stage: S1_load_compute
+  responsibility: stream A/W, perform MAC updates
+  registered: true
+  valid_behavior: advance on required operand handshakes
+  stall_behavior: hold loop counters and accumulator write enables when stalled
+- stage: S2_post
+  responsibility: bias add + ReLU
+  registered: true
+  valid_behavior: process one output element per cycle (or implementation-equivalent
+    deterministic order)
+  stall_behavior: hold element index and data stable
+- stage: S3_out
+  responsibility: output streaming
+  registered: true
+  valid_behavior: out transfer on out_valid&&out_ready
+  stall_behavior: hold out_valid and out_data stable
+control:
+  strategy: single FSM with nested counters
+  state_progression: IDLE->LOAD_CFG->RUN_TILE_LOOP->POST_TILE->EMIT_TILE->DONE->IDLE
+  counters:
+  - m0
+  - n0
+  - k_idx
+  - tm_idx
+  - tn_idx
+  error_behavior: on illegal cfg bounds or protocol order violation, enter ERROR,
+    assert error flag, block compute/output
+  error_recovery: synchronous reset required to leave ERROR
+reset:
+  style: synchronous
+  polarity: active_high
+  required_state: FSM IDLE, busy=0, done=0, error=0, counters/pointers zeroed, valid
+    outputs deasserted
+latency_model: Cycles = cfg(1) + sum_tiles[ K_load_compute + post(<=64) + emit(valid_outputs_in_tile)
+  ], where K_load_compute includes operand transfer stalls; no overlap between different
+  tiles in baseline architecture.
+architectural_invariants:
+- Array geometry fixed 8x8
+- Arithmetic is signed INT8*INT8 accumulated in signed INT32
+- Bias and ReLU are always applied (mandatory)
+- 'Output ordering is tile-major: n-tile fastest, then m-tile; within tile row-major
+  with boundary masking'
+open_assumptions:
+- External host sends activations and weights in exact compute-consumption order per
+  tile and k index (no internal full-matrix buffering).
+- Single in-flight job; next cfg accepted only after done and return to IDLE.
+- No quantization/downcast at output; outputs are INT32 after ReLU.

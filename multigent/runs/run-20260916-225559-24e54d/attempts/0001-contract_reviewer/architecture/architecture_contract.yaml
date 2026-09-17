@@ -1,0 +1,154 @@
+design:
+  name: unsigned_adder
+  version: 1.0.0
+  description: Clocked unsigned 8-bit addition with one elastic 9-bit output register.
+operations:
+- name: add
+  kind: unsigned_addition
+  coverage_family: scalar_unsigned_addition
+  coverage_family_source: novel
+  features:
+  - operand_values
+  - exact_widened_sum
+  - carry_boundary
+  feature_extensions:
+  - single_entry_elastic_output
+  - simultaneous_consume_replace
+  - reset_abort
+  semantics: 'Mandatory operation: sum = zero_extend_9(operand_a) + zero_extend_9(operand_b).
+    Every accepted input pair produces exactly one ordered result unless reset aborts
+    it.'
+  inputs:
+  - operand_a
+  - operand_b
+  outputs:
+  - sum
+data_types:
+- name: uint8
+  role: Input operand
+  width_bits: 8
+  signed: false
+  representation: Unsigned binary integer, range 0 through 255.
+  conversion_semantics: Zero-extend to 9 bits before addition.
+  overflow_semantics: All input encodings are legal.
+  rounding_semantics: None.
+- name: uint9
+  role: Exact sum
+  width_bits: 9
+  signed: false
+  representation: Unsigned binary integer; produced values range from 0 through 510.
+  conversion_semantics: Store all 9 result bits without truncation.
+  overflow_semantics: Overflow is impossible for two uint8 operands.
+  rounding_semantics: None.
+data_objects:
+- name: operand_a
+  role: First scalar operand of an input transaction
+  data_type: uint8
+  dimensions: []
+  producer: external
+  consumers:
+  - add
+  external: true
+- name: operand_b
+  role: Second scalar operand of the same input transaction
+  data_type: uint8
+  dimensions: []
+  producer: external
+  consumers:
+  - add
+  external: true
+- name: sum
+  role: Scalar result
+  data_type: uint9
+  dimensions: []
+  producer: add
+  consumers:
+  - external
+  external: true
+dimensions: []
+parameters: []
+compute:
+  organization: One combinational 9-bit unsigned adder feeding one output register.
+  dataflow: Both input operands arrive together and directly feed the adder; the result
+    is captured only on input acceptance.
+  parallelism: One addition per accepted input pair.
+  scheduling: Accept when the output slot is empty or its current result transfers
+    on the same edge. Simultaneous output consumption and input acceptance replace
+    the slot without a bubble.
+storage:
+- name: output_slot
+  stored_objects:
+  - sum
+  capacity_expression: 1 * 9 bits
+  capacity_at_default_parameters: 9
+  access_pattern: Continuously expose the registered sum. Write on input acceptance;
+    otherwise retain it except on reset.
+  port_requirements: One register write and continuous register read; old data is
+    consumed on a replacement edge before the new registered value becomes visible.
+  implementation_hint: Nine data flip-flops and one separate occupancy/valid flip-flop;
+    no RAM.
+  reuse_semantics: Retain a result unchanged until consumption or reset.
+  lifetime: From its input acceptance edge through its output consumption edge, or
+    until reset.
+pipeline:
+- stage: addition
+  responsibility: Combinational zero-extension and addition of the simultaneously
+    presented operands.
+  registered: false
+  valid_behavior: Only an accepted input causes the combinational result to be captured.
+  stall_behavior: No internal state or operand staging.
+- stage: output_slot
+  responsibility: Register the exact sum and track whether it is pending.
+  registered: true
+  valid_behavior: Reset clears valid. Otherwise input acceptance sets valid; output
+    consumption without replacement clears valid; all other cases preserve valid.
+  stall_behavior: When out_valid is high and out_ready is low, retain valid and sum.
+    A sampled reset overrides the hold and discards the result.
+control:
+  strategy: A single occupancy bit, exposed as out_valid; no FSM, commands, or counters.
+  state_progression: EMPTY accepts into FULL. FULL remains FULL on stall or consume-and-replace,
+    and becomes EMPTY on consumption without replacement. Reset forces EMPTY.
+  counters: []
+  error_behavior: Every operand encoding is legal. Producer withdrawal or payload
+    changes while stalled, outside reset, violate the interface and are not detected
+    by hardware. No error output exists.
+  error_recovery: A sampled reset discards any pending result and restores an empty
+    slot. Behavior following a protocol violation is not guaranteed until reset.
+reset:
+  style: Synchronous, sampled on the rising clock edge; highest state-update priority.
+  polarity: Active-low.
+  required_state: On an edge with rst_n=0, clear out_valid and the sum register to
+    zero. Suppress both transfer events on that edge. in_ready is combinationally
+    forced low while rst_n=0. Reset permits withdrawal of stalled input and output
+    transactions; discarded work never reappears.
+latency_model: 'Let E0 be the rising edge accepting an input, numbered cycle zero.
+  Both operands arrive in that single transfer; no preceding staging cycles are required.
+  Its registered sum and valid become visible immediately after E0, and the earliest
+  output transfer is E1, exactly one cycle later. If out_ready is low for S consecutive
+  candidate transfer edges starting at E1, the result transfers at E(1+S), absent
+  reset. The release-handshake edge is included; there is no extra completion cycle.
+  A pending input blocked before E0 is not yet accepted and its waiting time is excluded.
+  Loading a new pair and consuming the prior result can occur on the same edge using
+  the one output slot. With continuous input valid and output ready, acceptance and
+  output throughput are one transaction per cycle after initial fill. Example: accept
+  (255,1) at E0, expose 256 after E0, consume 256 at E1 and optionally replace it
+  with the next sum. Reset aborts latency obligations; unbounded output backpressure
+  permits unbounded completion time.'
+architectural_invariants:
+- At most one accepted, unconsumed result exists.
+- in_ready = rst_n AND (NOT out_valid OR out_ready).
+- Input and output transfer events use pre-edge signal values and require rst_n=1.
+- Without reset, accepted-input count minus consumed-output count equals output occupancy.
+- No combinational input-to-output payload bypass exists.
+- Output consumption alone clears valid but leaves the sum register unchanged.
+- Output ordering is input acceptance order; replacement cannot overwrite an unconsumed
+  result.
+open_assumptions:
+- Chosen top name is unsigned_adder, with rising-edge clock clk and reset rst_n.
+- The shared input channel uses two separate 8-bit operand ports rather than one packed
+  port.
+- An elastic consume-and-replace schedule is chosen; in_ready may depend combinationally
+  on out_ready.
+- The small sum register is reset to zero for deterministic idle payload behavior.
+- Widths are fixed; no compile-time parameters, runtime dimensions, completion signal,
+  or error signal are needed.

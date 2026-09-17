@@ -1,0 +1,29 @@
+top_module: mv_npu_top
+test_modules:
+- test_mv_npu
+test_categories:
+- functional
+- protocol
+- reset
+- backpressure
+- error_recovery
+- randomized
+randomized_test_count: 100
+seed: 20260911
+timeout_seconds: 300
+regression_groups:
+  smoke:
+  - test_mv_npu
+  targeted:
+  - test_mv_npu
+  full:
+  - test_mv_npu
+pass_criteria: All cocotb tests pass; exact integer match for all checked outputs;
+  protocol/order/count assertions hold; illegal-config error/recovery checks pass.
+protocol_assumptions:
+- Input transfer only on in_valid&&in_ready with stable in_data/in_type/in_last while
+  stalled.
+- Output transfer only on out_valid&&out_ready; out_data/out_last stability expected
+  while stalled.
+- Input section order strictly CFG->X->A->BIAS(if enabled).
+- Exactly M output beats per legal job; out_last only on final beat.

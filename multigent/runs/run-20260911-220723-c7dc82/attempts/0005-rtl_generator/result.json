@@ -1,0 +1,53 @@
+{
+  "rtl_status": "REPAIR_BLOCKED",
+  "rtl_result": {
+    "status": "REPAIR_BLOCKED",
+    "task_type": "FUNCTIONAL_REPAIR",
+    "summary": "Repair requires coherent redesign of top/FSM sequencing around section-aware handshakes and row-finalize timing, but available module interfaces do not provide sufficient control/observation signals (e.g., explicit section progress, A-consume acknowledge, bias-consume acknowledge, output-buffer availability) to deterministically enforce frozen sequencing/invariants without risking architectural reinterpretation.",
+    "files": [],
+    "contract_checks": [
+      {
+        "requirement": "Change only affected modules and preserve frozen interfaces",
+        "satisfied": true,
+        "evidence": "No files changed; protected modules/interfaces untouched."
+      },
+      {
+        "requirement": "Do not silently alter architecture when evidence is insufficient",
+        "satisfied": true,
+        "evidence": "Blocked instead of introducing speculative FSM/top protocol behavior."
+      },
+      {
+        "requirement": "Ready/valid and exact section/count sequencing must be enforced",
+        "satisfied": false,
+        "evidence": "Current available ports between mv_npu_top and ctrl_fsm are insufficient to unambiguously encode required section-consumption progress and one-finalize-per-row behavior under stalls."
+      }
+    ],
+    "changed_modules": [],
+    "architecture_conflict": null,
+    "blocked_reason": "Insufficient deterministic repair authority at current interfaces: ctrl_fsm lacks required observability/controls for section-level accepted-beat accounting (X/A/BIAS), row completion gating tied to actual accepted A beats and xmem latency alignment, and explicit coupling to output_if availability to prevent duplicate/missed finalize under backpressure. Implementing these semantics without additional contract-level signals would require speculative architectural reinterpretation.",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [
+      "If patched speculatively, may still violate exact M outputs and stall safety under randomized backpressure.",
+      "Potential off-by-one/latency coupling errors around x_buffer 1-cycle read and MAC step accounting."
+    ],
+    "regression_required": "NONE"
+  },
+  "rtl_files": [],
+  "architecture_conflict": null,
+  "needs_regression": false,
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "history": [
+    {
+      "stage": "rtl_generator",
+      "status": "REPAIR_BLOCKED",
+      "architecture_version": 1,
+      "repair_iteration": 1,
+      "ppa_iteration": 0,
+      "files": []
+    }
+  ]
+}

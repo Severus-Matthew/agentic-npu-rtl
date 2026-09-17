@@ -1,0 +1,34 @@
+{
+  "agent": "debugger",
+  "prompt_sha256": "add018b3730c7ea1ba145c04230eaddf6cffb4f0dd1edcd03948fc16468a6f81",
+  "skill_sha256": "c0d0670a8a7da96acc8d0cb33c2f50a27e9d172049696aa9f9ace6412229236c",
+  "api_mode": "responses",
+  "model_requested": "gpt-5.3-codex",
+  "schema": "/u/mjha1/agentic-npu-rtl/multigent/schemas/debugger_output.schema.json",
+  "verbosity": "low",
+  "attempts": [
+    {
+      "attempt": 1,
+      "response_id": "resp_00706998e7e45944016aa47bfcf77487d1ae7ff225011c9bf7",
+      "model_returned": "gpt-5.3-codex",
+      "status": "completed",
+      "incomplete_details": null,
+      "usage": {
+        "input_tokens": 19587,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 976,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 20563
+      },
+      "output_chars": 4285,
+      "output_text": "{\"status\":\"REPAIR_PLAN_READY\",\"summary\":\"Functional simulation fails due to incorrect cfg bitfield decode and broken control/handshake sequencing causing wrong output counts/data and timeouts.\",\"diagnosis\":{\"failure_class\":\"UNKNOWN\",\"root_cause\":\"Primary defect is in mv_npu_top control/datapath integration: cfg_m/cfg_n and bias/relu enables are decoded from wrong bit positions, compute starts immediately on cfg without enforcing section sequencing, row/output progress is driven by a_lane_valid rather than FSM-defined completion, and output emission does not honor backpressure/row-finalize protocol. This produces early divergence (output count/data mismatch) and later deadlock/timeouts.\",\"confidence\":0.93,\"first_divergence\":{\"cycle\":null,\"signal_or_output\":\"out_result stream beat count/content\",\"expected\":\"Exactly M outputs with correct dot/bias/relu values and final out_last\",\"observed\":\"Example failure shows len(out)=10 vs expected 8; other tests hit job timeout\"},\"evidence\":[{\"source\":\"cocotb stdout (test_backpressure_in_out)\",\"observation\":\"Assertion failure: len(out)=10 while expected M=8\",\"relevance\":\"Direct violation of architectural invariant exactly one output per row\"},{\"source\":\"cocotb stdout (test_illegal_cfg_error_recovery, test_randomized_100)\",\"observation\":\"SimTimeoutError: job timeout\",\"relevance\":\"Control/progress protocol can stall or fail to complete jobs\"},{\"source\":\"frozen test pack_cfg\",\"observation\":\"pack_cfg encodes M in bits[7:0], N in bits[15:8], bias_en bit16, relu_en bit17\",\"relevance\":\"Authoritative expected cfg encoding\"},{\"source\":\"rtl/mv_npu_top.sv\",\"observation\":\"cfg_m<=cfg_word[15:8], cfg_n<=cfg_word[23:16], cfg_bias_en<=cfg_word[0], cfg_relu_en<=cfg_word[1]\",\"relevance\":\"Deterministic decode mismatch against frozen verifier contract\"},{\"source\":\"rtl/mv_npu_top.sv + ctrl_fsm.sv\",\"observation\":\"Top drives compute_active/start_row locally and ignores ctrl_fsm pulses for sequencing; out emission tied inside a_lane_valid/col_idx path\",\"relevance\":\"Explains output duplication/loss and timeout under stalls\"},{\"source\":\"verilator lint\",\"observation\":\"Only WIDTHEXPAND warnings, no fatal compile/elab errors\",\"relevance\":\"Confirms failure is functional simulation, not compile-time\"}],\"affected_modules\":[\"mv_npu_top\",\"ctrl_fsm\"],\"alternative_hypotheses\":[\"x_buffer_mem read latency misalignment contributes to arithmetic mismatch\",\"output_if may drop in_valid pulses if producer protocol is violated upstream\"],\"architecture_change_required\":false,\"additional_evidence_requested\":[]},\"repair_plan\":{\"action\":\"PATCH\",\"affected_modules\":[\"mv_npu_top\",\"ctrl_fsm\"],\"protected_modules\":[\"input_router\",\"x_buffer_mem\",\"mac16_core\",\"postproc_unit\",\"output_if\"],\"protected_interfaces\":[\"clk\",\"rst_n\",\"in_valid\",\"in_ready\",\"in_data\",\"in_type\",\"in_last\",\"out_valid\",\"out_ready\",\"out_data\",\"out_last\",\"busy\",\"status_err\"],\"recommended_change\":\"1) Fix cfg decode in mv_npu_top to match frozen verifier encoding (M[7:0], N[15:8], bias_en[16], relu_en[17]) with proper zero-extension to MW/NW. 2) Rework control so job progression follows contract sections and FSM pulses: load X first, then consume A for exactly M*N elements, finalize exactly once per row, optional bias per row only when enabled, emit exactly M outputs in row order. 3) Gate counter/state advances strictly on ready&&valid handshakes; hold output payload/valid during out_ready=0; prevent duplicate finalize/output on stalls. 4) Ensure illegal cfg handling and recovery semantics in ctrl_fsm: status_err latches in ERROR for invalid bounds and clears on next legal cfg accept; busy reflects active legal job only. 5) Align top-level start_row/step_valid/out_in_valid generation with FSM-defined compute_step/row_finalize/job_done events rather than raw in_beat acceptance.\",\"do_not_change\":[\"Do not modify frozen tests or reference model\",\"Do not change module interfaces or signal widths at top level\",\"Do not alter arithmetic semantics (INT8 signed multiply, INT32 wrap, optional bias, optional ReLU)\",\"Do not change input section ordering contract\"],\"expected_side_effects\":[\"Cycle timing/latency per job may shift to contract-compliant behavior\",\"Width warnings may reduce after cfg decode correction\"],\"regression_required\":\"FULL\"},\"architecture_conflict\":null}",
+      "validated": true
+    }
+  ],
+  "successful_attempt": 1
+}

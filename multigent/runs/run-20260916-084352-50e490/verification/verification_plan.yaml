@@ -1,0 +1,28 @@
+top_module: rv_uadd8_top
+test_modules:
+- test_rv_uadd8
+test_categories:
+- directed
+- randomized
+- reset
+- backpressure
+- latency
+randomized_test_count: 100
+seed: 424242
+timeout_seconds: 120
+regression_groups:
+  smoke:
+  - test_rv_uadd8
+  targeted:
+  - test_rv_uadd8
+  full:
+  - test_rv_uadd8
+pass_criteria: All cocotb tests pass, all declared interface/operation obligations
+  are hit, exact oracle match for every accepted transaction, and no protocol/accounting
+  assertion failures.
+protocol_assumptions:
+- Transfers occur only on rising edge when valid&&ready&&rst_n==1.
+- Source holds valid/payload stable while stalled.
+- Sink may apply arbitrary legal backpressure.
+- Synchronous active-low reset suppresses transfers on asserted edge and clears pending
+  output.

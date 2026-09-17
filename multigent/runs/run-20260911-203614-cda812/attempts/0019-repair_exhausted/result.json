@@ -1,0 +1,11 @@
+{
+  "status": "REPAIR_BUDGET_EXHAUSTED",
+  "history": [
+    {
+      "stage": "repair",
+      "status": "BUDGET_EXHAUSTED",
+      "repair_iteration": 5,
+      "failure_class": "UNKNOWN"
+    }
+  ]
+}

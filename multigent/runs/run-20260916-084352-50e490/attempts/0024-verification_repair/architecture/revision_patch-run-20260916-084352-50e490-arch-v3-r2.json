@@ -1,0 +1,54 @@
+{
+  "status": "PATCH_READY",
+  "edits": [
+    {
+      "op": "replace",
+      "path": "/architecture_contract/control/state_progression",
+      "value_json": "\"EMPTY -> FULL on input transfer; FULL -> EMPTY on output transfer when no same-cycle refill. If FULL at cycle start and out_ready=1, same-edge dequeue/enqueue is allowed: when in_valid=1 the old output is transferred and a new input is accepted on that same edge, state remains FULL and out_sum for the transferred beat is from the pre-edge register value. If FULL at cycle start and out_ready=0, in_ready=0 and no input acceptance.\"",
+      "reason": "Fixes throughput conflict by permitting same-cycle dequeue/enqueue in FULL, preserving one-cycle no-stall behavior."
+    },
+    {
+      "op": "replace",
+      "path": "/architecture_contract/pipeline/stage=s0_accept_compute/stall_behavior",
+      "value_json": "\"If out_reg valid and out_ready=0, in_ready=0 so no acceptance. If out_reg valid and out_ready=1, pipeline permits concurrent output consumption and new input acceptance on the same edge.\"",
+      "reason": "Aligns pipeline stall semantics with revised simultaneous dequeue/enqueue rule."
+    },
+    {
+      "op": "replace",
+      "path": "/architecture_contract/latency_model",
+      "value_json": "\"Exact latency definition with cycle-0 at an accepted input edge (in_valid&&in_ready&&rst_n==1). For any accepted input at cycle t, its corresponding out_valid assertion occurs at cycle t+1. If output channel is not stalled at t+1 (out_ready=1), transfer occurs at t+1. Under sustained out_ready=1, design accepts one input and produces one output every cycle after initial fill; when FULL at cycle start with out_ready=1, old output transfer and new input acceptance occur on that same edge. Backpressure (out_ready=0 while out_valid=1) can delay transfer arbitrarily; out_sum/out_valid remain stable until transfer.\"",
+      "reason": "Makes latency/throughput and phase accounting consistent with no-bubble steady state."
+    },
+    {
+      "op": "replace",
+      "path": "/interface_contract/channels/name=in_chan/backpressure",
+      "value_json": "\"DUT deasserts in_ready only when output register is occupied and cannot be consumed on the current edge (out_valid=1 && out_ready=0) or when reset is asserted. If out_valid=1 && out_ready=1, in_ready is asserted to allow same-edge refill.\"",
+      "reason": "Removes ambiguity and matches control/backpressure behavior."
+    },
+    {
+      "op": "replace",
+      "path": "/architecture_contract/reset/required_state",
+      "value_json": "\"on cycle with rst_n=0: out_valid=0, in_ready=0, out_sum=0, pending/pre-reset work discarded\"",
+      "reason": "Adds explicit deterministic post-reset out_sum value to resolve reset ambiguity."
+    },
+    {
+      "op": "replace",
+      "path": "/interface_contract/signals/name=out_sum/semantic",
+      "value_json": "\"Unsigned exact sum of one previously accepted input pair. During reset cycles (rst_n=0 sampled on rising edge), out_sum is driven to 0 and out_valid=0.\"",
+      "reason": "Keeps signal-level executable rule consistent with reset contract."
+    },
+    {
+      "op": "add",
+      "path": "/acceptance_criteria/verification/-",
+      "value_json": "\"Same-cycle dequeue/enqueue test: with out_valid=1 and out_ready=1 while FULL, and in_valid=1, verify output transfer of old out_sum and input acceptance occur on the same edge, occupancy remains FULL, and next sum appears without bubble.\"",
+      "reason": "Adds missing executable verification for revised simultaneous handshake rule."
+    },
+    {
+      "op": "add",
+      "path": "/acceptance_criteria/verification/-",
+      "value_json": "\"Reset value test for payload determinism: when rst_n=0 on a rising edge, verify out_valid=0 and out_sum==0 on the following cycle regardless of prior stored value.\"",
+      "reason": "Adds explicit check for defined reset value behavior of out_sum."
+    }
+  ],
+  "issue": ""
+}

@@ -1,0 +1,2447 @@
+{
+  "run_id": "run-20260916-084820-cad227",
+  "model": "gpt-5.6-sol",
+  "user_request": "Design a small clocked unsigned adder. Each accepted input transaction carries two 8-bit operands and produces their exact 9-bit sum. Use one shared input valid/ready handshake and one output valid/ready handshake, a single-entry output register, active-low synchronous reset, and one-cycle latency without stalls. Hold output stable under backpressure. Reset discards pending work and deasserts output valid. Use one top module, no optional modes or runtime configuration.",
+  "architecture_dir": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/architecture",
+  "architecture_version": 1,
+  "architecture_status": "READY",
+  "architecture_artifacts": {
+    "architecture_contract": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/architecture/architecture_contract.yaml",
+    "interface_contract": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/architecture/interface_contract.yaml",
+    "module_manifest": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/architecture/module_manifest.json",
+    "acceptance_criteria": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/architecture/acceptance_criteria.yaml"
+  },
+  "architecture_conflict": null,
+  "architecture_revision": 0,
+  "architecture_revision_patch": null,
+  "max_architecture_revisions": 12,
+  "rtl_context": {
+    "user_request": "Design a small clocked unsigned adder. Each accepted input transaction carries two 8-bit operands and produces their exact 9-bit sum. Use one shared input valid/ready handshake and one output valid/ready handshake, a single-entry output register, active-low synchronous reset, and one-cycle latency without stalls. Hold output stable under backpressure. Reset discards pending work and deasserts output valid. Use one top module, no optional modes or runtime configuration.",
+    "fixed_rtl_constraints": {
+      "language": "SystemVerilog",
+      "synthesizable_only": true,
+      "forbidden_constructs": [
+        "real",
+        "shortreal",
+        "delay_statements",
+        "force_release",
+        "classes"
+      ]
+    },
+    "synthesis_policy": {
+      "provider": "vivado",
+      "requires_verified_rtl": true,
+      "result_schema": "multigent/schemas/synthesis_result.schema.json",
+      "authoritative_metrics_source": "deterministic_tool_report",
+      "prohibit_metric_estimation": true
+    },
+    "frozen_architecture": {
+      "architecture_contract": {
+        "design": {
+          "name": "u8_registered_adder",
+          "version": "1.0",
+          "description": "Clocked two-input unsigned adder with a single-entry elastic output register."
+        },
+        "operations": [
+          {
+            "name": "add_unsigned",
+            "kind": "unsigned_addition",
+            "coverage_family": "unsigned_binary_add",
+            "coverage_family_source": "novel",
+            "features": [
+              "two_operand_unsigned_addition",
+              "widened_exact_result"
+            ],
+            "feature_extensions": [
+              "registered_result",
+              "single_entry_backpressure_buffer"
+            ],
+            "semantics": "Mandatory operation: sum = zero_extend(operand_a,9) + zero_extend(operand_b,9). No truncation, saturation, optional mode, or runtime configuration.",
+            "inputs": [
+              "operand_a",
+              "operand_b"
+            ],
+            "outputs": [
+              "sum"
+            ]
+          }
+        ],
+        "data_types": [
+          {
+            "name": "uint8_operand",
+            "role": "Unsigned addend",
+            "width_bits": 8,
+            "signed": false,
+            "representation": "8-bit binary unsigned integer, range 0..255",
+            "conversion_semantics": "Zero-extend to 9 bits before addition.",
+            "overflow_semantics": "Not applicable within the 8-bit source representation.",
+            "rounding_semantics": "None."
+          },
+          {
+            "name": "uint9_sum",
+            "role": "Exact addition result",
+            "width_bits": 9,
+            "signed": false,
+            "representation": "9-bit binary unsigned integer, range 0..510",
+            "conversion_semantics": "Direct exact result representation.",
+            "overflow_semantics": "No overflow is possible for two legal uint8 operands.",
+            "rounding_semantics": "None."
+          }
+        ],
+        "data_objects": [
+          {
+            "name": "operand_a",
+            "role": "First scalar addend of an accepted transaction",
+            "data_type": "uint8_operand",
+            "dimensions": [],
+            "producer": "external",
+            "consumers": [
+              "add_unsigned"
+            ],
+            "external": true
+          },
+          {
+            "name": "operand_b",
+            "role": "Second scalar addend of an accepted transaction",
+            "data_type": "uint8_operand",
+            "dimensions": [],
+            "producer": "external",
+            "consumers": [
+              "add_unsigned"
+            ],
+            "external": true
+          },
+          {
+            "name": "sum",
+            "role": "Exact scalar sum associated with one accepted transaction",
+            "data_type": "uint9_sum",
+            "dimensions": [],
+            "producer": "add_unsigned",
+            "consumers": [
+              "external"
+            ],
+            "external": true
+          }
+        ],
+        "dimensions": [],
+        "parameters": [],
+        "compute": {
+          "organization": "One combinational 9-bit unsigned adder feeding the output register.",
+          "dataflow": "On an input transfer, unpack both operands, zero-extend them, add them, and write the result into the output register.",
+          "parallelism": "One addition per accepted input transaction; up to one transaction accepted per clock when the output slot is available or simultaneously released.",
+          "scheduling": "Single-entry elastic schedule. Input acceptance is permitted when the output register is empty or its current item transfers on the same edge."
+        },
+        "storage": [
+          {
+            "name": "output_register",
+            "stored_objects": [
+              "sum"
+            ],
+            "capacity_expression": "1 element",
+            "capacity_at_default_parameters": 1,
+            "access_pattern": "Continuously read for output; written on each accepted input transaction.",
+            "port_requirements": "One 9-bit write path and one continuous read path. Same-edge output consumption and replacement are supported.",
+            "implementation_hint": "Nine flip-flops plus one valid flip-flop.",
+            "reuse_semantics": "Each stored sum is held until transferred or discarded by reset; it is never reused.",
+            "lifetime": "From its input acceptance edge until its output transfer edge or an asserted reset edge."
+          }
+        ],
+        "pipeline": [
+          {
+            "stage": "add_and_capture",
+            "responsibility": "Accept packed operands, compute the exact 9-bit sum, and capture it in the output register.",
+            "registered": true,
+            "valid_behavior": "An accepted input causes out_valid to be asserted after that edge. If an existing output transfers simultaneously, it is replaced without an invalid cycle.",
+            "stall_behavior": "When out_valid=1 and out_ready=0, input ready is low and output valid/payload remain unchanged. Reset is the sole exception and aborts the pending item."
+          }
+        ],
+        "control": {
+          "strategy": "One valid bit controls the single-entry elastic output register.",
+          "state_progression": "Empty remains empty without input; empty becomes full on input transfer; full remains full while stalled; full becomes empty on output-only transfer; full remains full on simultaneous output and input transfers.",
+          "counters": [],
+          "error_behavior": "All payload encodings are legal, so no encoded error or error state exists. A producer violating ready/valid stall stability is outside the protocol contract and is not detected.",
+          "error_recovery": "Synchronous reset returns the interface and valid state to empty; no separate recovery command exists."
+        },
+        "reset": {
+          "style": "Synchronous reset sampled on the rising clock edge with priority over transfers.",
+          "polarity": "Active-low through rst_n.",
+          "required_state": "When rst_n=0 at a rising edge, suppress all transfers, discard any pending result, clear out_valid, and clear the output payload register. in_ready is 0 while rst_n is low."
+        },
+        "latency_model": "Let an input transfer occur at rising edge A, designated cycle-zero acceptance. The result is registered immediately after A and is eligible to transfer at A+1. With out_ready=1 throughout, transfer occurs at A+1: exactly one clock interval. If out_ready is low on S consecutive eligible edges beginning at A+1, transfer occurs at A+S+1. The final transfer edge is included. Input-side stalls delay acceptance and are not part of post-acceptance latency.",
+        "architectural_invariants": [
+          "A transfer occurs only on a rising edge with rst_n=1 and channel valid and ready both high.",
+          "Every non-aborted accepted input produces exactly one output with value operand_a + operand_b.",
+          "Output order equals input acceptance order.",
+          "At most one untransferred result exists.",
+          "Output payload and valid remain stable during output backpressure except when synchronous reset aborts the item.",
+          "No input transfer occurs while a result is stalled.",
+          "Simultaneous output transfer and input acceptance replace the output register atomically."
+        ],
+        "open_assumptions": [
+          "The shared input payload packs operand_a in bits [7:0] and operand_b in bits [15:8].",
+          "A combinational path from out_ready through occupancy control to in_ready is acceptable.",
+          "No transaction identifiers, framing markers, completion signal, or error signal are required."
+        ]
+      },
+      "interface_contract": {
+        "protocol": "Two independent ready/valid channels sharing one clock and synchronous active-low reset.",
+        "clock": "clk",
+        "reset": "rst_n",
+        "channels": [
+          {
+            "name": "input_operands",
+            "direction": "input",
+            "protocol_profile": "ready_valid",
+            "purpose": "Carries one pair of unsigned operands per transfer.",
+            "data_objects": [
+              "operand_a",
+              "operand_b"
+            ],
+            "metadata": [],
+            "framing": "Each transfer is one complete transaction; no last marker. Exactly one input transfer is required per result.",
+            "ordering": "Acceptance order defines result order. Bits [7:0] carry operand_a and bits [15:8] carry operand_b.",
+            "backpressure": "The DUT deasserts in_ready while the output register is full and not transferring. A waiting producer may hold valid and payload until acceptance."
+          },
+          {
+            "name": "output_sum",
+            "direction": "output",
+            "protocol_profile": "ready_valid",
+            "purpose": "Carries one exact 9-bit sum per transfer.",
+            "data_objects": [
+              "sum"
+            ],
+            "metadata": [],
+            "framing": "Each transfer is one complete result; no last marker. Exactly one output transfer occurs per non-aborted accepted input.",
+            "ordering": "Results appear in input acceptance order.",
+            "backpressure": "The consumer may deassert out_ready indefinitely. While stalled, out_valid and out_payload remain stable unless reset is asserted."
+          }
+        ],
+        "signals": [
+          {
+            "name": "clk",
+            "role": "clock",
+            "semantic_class": null,
+            "channel": null,
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Rising-edge clock advancing all synchronous state.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "rst_n",
+            "role": "reset",
+            "semantic_class": null,
+            "channel": null,
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Active-low synchronous reset sampled on clk rising edges; reset has priority over transfers.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "in_valid",
+            "role": "valid",
+            "semantic_class": null,
+            "channel": "input_operands",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Indicates that in_payload contains a complete operand pair.",
+            "reset_value": "Environment-controlled"
+          },
+          {
+            "name": "in_ready",
+            "role": "ready",
+            "semantic_class": null,
+            "channel": "input_operands",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "High when the operand pair can transfer; equals rst_n && (!out_valid || out_ready).",
+            "reset_value": "0 while rst_n=0"
+          },
+          {
+            "name": "in_payload",
+            "role": "payload",
+            "semantic_class": "data",
+            "channel": "input_operands",
+            "direction": "input",
+            "width": "16",
+            "signed": false,
+            "semantic": "Bits [7:0]=operand_a; bits [15:8]=operand_b.",
+            "reset_value": "Environment-controlled"
+          },
+          {
+            "name": "out_valid",
+            "role": "valid",
+            "semantic_class": null,
+            "channel": "output_sum",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Indicates that out_payload contains a pending exact sum.",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_ready",
+            "role": "ready",
+            "semantic_class": null,
+            "channel": "output_sum",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Consumer acceptance qualifier for the pending sum.",
+            "reset_value": "Environment-controlled"
+          },
+          {
+            "name": "out_payload",
+            "role": "payload",
+            "semantic_class": "data",
+            "channel": "output_sum",
+            "direction": "output",
+            "width": "9",
+            "signed": false,
+            "semantic": "Exact unsigned sum corresponding to the oldest non-aborted accepted input.",
+            "reset_value": "0 after a reset edge"
+          }
+        ],
+        "global_handshake_rules": {
+          "transfer_condition": "A channel transfers on a rising clk edge only when rst_n=1 and its valid and ready are both 1. No transfer occurs on an edge where rst_n=0.",
+          "stall_behavior": "Valid and associated payload must remain stable while valid=1 and ready=0. Synchronous reset aborts pending transfers and permits valid/payload withdrawal after the reset edge."
+        }
+      },
+      "module_manifest": {
+        "top": "u8_registered_adder",
+        "modules": [
+          {
+            "name": "u8_registered_adder",
+            "responsibility": "Implement input/output handshakes, exact unsigned addition, single-entry result storage, backpressure, and synchronous reset.",
+            "dependencies": [],
+            "parameters": [],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Rising-edge clock for all state."
+              },
+              {
+                "name": "rst_n",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Active-low synchronous reset with priority over all transfer and register enables."
+              },
+              {
+                "name": "in_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Input operand-pair valid."
+              },
+              {
+                "name": "in_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Combinational input readiness: rst_n && (!out_valid || out_ready)."
+              },
+              {
+                "name": "in_payload",
+                "direction": "input",
+                "width": "16",
+                "signed": false,
+                "semantics": "Packed operands: A=[7:0], B=[15:8]; sampled only on input transfer."
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Registered output occupancy indication."
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Output consumer readiness."
+              },
+              {
+                "name": "out_payload",
+                "direction": "output",
+                "width": "9",
+                "signed": false,
+                "semantics": "Registered sum; written with {1'b0,A}+{1'b0,B} on input transfer and held during stalls."
+              }
+            ]
+          }
+        ]
+      },
+      "acceptance_criteria": {
+        "functional": [
+          "For every non-aborted input transfer, exactly one output transfers with the unsigned 9-bit value operand_a + operand_b.",
+          "Verify boundary cases 0+0=0, 255+0=255, 255+1=256, and 255+255=510.",
+          "Verify input acceptance and output transfer ordering, including consecutive same-edge consume-and-replace operation.",
+          "No output transfer may occur without a corresponding accepted input."
+        ],
+        "verification": [
+          "Use exact integer comparison for every transferred result.",
+          "Run at least 100 randomized transactions with randomized operands and independently randomized input-valid and output-ready stalls.",
+          "Verify one-cycle acceptance-to-transfer latency when out_ready remains asserted.",
+          "Verify output valid and payload stability for arbitrary backpressure durations.",
+          "Verify reset while empty, while a result is pending, and while output is stalled; no pre-reset result may transfer afterward.",
+          "Verify no transfer occurs on a reset edge and in_ready is low while rst_n=0.",
+          "Verify a producer may present and hold a next transaction while blocked and that it transfers on the first eligible release edge.",
+          "Use a regression wall timeout of at least 120 seconds."
+        ],
+        "rtl": [
+          "RTL shall be synthesizable SystemVerilog and contain no real, shortreal, delay statements, force/release, or classes.",
+          "The implementation shall contain one top module and no required submodules.",
+          "No inferred latch, multiple driver, width truncation, or signed arithmetic ambiguity is permitted.",
+          "Reset shall synchronously clear valid and payload state without relying on memory initialization."
+        ],
+        "fpga_handoff": [
+          "Vivado handoff is permitted only after verification passes.",
+          "Provide deterministic Vivado logs/reports and a result conforming to multigent/schemas/synthesis_result.schema.json.",
+          "Do not estimate timing, area, power, frequency, or utilization; only deterministic tool reports are authoritative."
+        ]
+      }
+    }
+  },
+  "rtl_task_type": "INITIAL_GENERATION",
+  "rtl_feedback": null,
+  "rtl_status": "RTL_GENERATED",
+  "rtl_result": {
+    "status": "RTL_GENERATED",
+    "task_type": "INITIAL_GENERATION",
+    "summary": "Implemented the single-entry elastic unsigned 8-bit registered adder.",
+    "files": [
+      {
+        "path": "u8_registered_adder.sv",
+        "module": "u8_registered_adder",
+        "purpose": "Top-level handshakes, exact addition, output storage, backpressure, and synchronous reset.",
+        "content": "module u8_registered_adder (\n    input  logic        clk,\n    input  logic        rst_n,\n    input  logic        in_valid,\n    output logic        in_ready,\n    input  logic [15:0] in_payload,\n    output logic        out_valid,\n    input  logic        out_ready,\n    output logic [8:0]  out_payload\n);\n\n    logic [8:0] operand_a_ext;\n    logic [8:0] operand_b_ext;\n    logic [8:0] sum_next;\n\n    always_comb begin\n        in_ready     = rst_n && (!out_valid || out_ready);\n        operand_a_ext = {1'b0, in_payload[7:0]};\n        operand_b_ext = {1'b0, in_payload[15:8]};\n        sum_next      = operand_a_ext + operand_b_ext;\n    end\n\n    always_ff @(posedge clk) begin\n        if (!rst_n) begin\n            out_valid   <= 1'b0;\n            out_payload <= 9'b0;\n        end else if (in_valid && in_ready) begin\n            out_valid   <= 1'b1;\n            out_payload <= sum_next;\n        end else if (out_valid && out_ready) begin\n            out_valid <= 1'b0;\n        end\n    end\n\nendmodule\n"
+      }
+    ],
+    "contract_checks": [
+      {
+        "requirement": "Exact unsigned 9-bit addition",
+        "satisfied": true,
+        "evidence": "Both packed 8-bit operands are explicitly zero-extended to 9 bits before addition."
+      },
+      {
+        "requirement": "Single-entry elastic output register",
+        "satisfied": true,
+        "evidence": "out_valid tracks occupancy; simultaneous output consumption and input acceptance replaces the payload atomically."
+      },
+      {
+        "requirement": "Backpressure stability",
+        "satisfied": true,
+        "evidence": "When out_valid is high and out_ready is low, in_ready is low and neither output register is assigned."
+      },
+      {
+        "requirement": "Active-low synchronous reset",
+        "satisfied": true,
+        "evidence": "Reset is sampled only in always_ff at posedge clk, has priority, and clears output valid and payload; combinational in_ready is low while rst_n is low."
+      },
+      {
+        "requirement": "Frozen module manifest and interface",
+        "satisfied": true,
+        "evidence": "Exactly one parameterless u8_registered_adder module is emitted with the declared ports and widths."
+      }
+    ],
+    "changed_modules": [
+      "u8_registered_adder"
+    ],
+    "architecture_conflict": null,
+    "blocked_reason": "",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [
+      "No compiler, simulation, or synthesis tool was run as part of this generation."
+    ],
+    "regression_required": "FULL"
+  },
+  "rtl_files": [
+    "u8_registered_adder.sv"
+  ],
+  "rtl_contract_version": 1,
+  "verification_context": {
+    "user_request": "Design a small clocked unsigned adder. Each accepted input transaction carries two 8-bit operands and produces their exact 9-bit sum. Use one shared input valid/ready handshake and one output valid/ready handshake, a single-entry output register, active-low synchronous reset, and one-cycle latency without stalls. Hold output stable under backpressure. Reset discards pending work and deasserts output valid. Use one top module, no optional modes or runtime configuration.",
+    "verification_policy": {
+      "exact_integer_match_when_applicable": true,
+      "randomized_transactions_minimum": 100,
+      "require_reset_tests": true,
+      "require_backpressure_tests_when_applicable": true,
+      "regression_wall_timeout_seconds_minimum": 120,
+      "require_completion_behavior_tests_when_defined": true,
+      "require_error_behavior_tests_when_defined": true
+    },
+    "frozen_architecture": {
+      "architecture_contract": {
+        "design": {
+          "name": "u8_registered_adder",
+          "version": "1.0",
+          "description": "Clocked two-input unsigned adder with a single-entry elastic output register."
+        },
+        "operations": [
+          {
+            "name": "add_unsigned",
+            "kind": "unsigned_addition",
+            "coverage_family": "unsigned_binary_add",
+            "coverage_family_source": "novel",
+            "features": [
+              "two_operand_unsigned_addition",
+              "widened_exact_result"
+            ],
+            "feature_extensions": [
+              "registered_result",
+              "single_entry_backpressure_buffer"
+            ],
+            "semantics": "Mandatory operation: sum = zero_extend(operand_a,9) + zero_extend(operand_b,9). No truncation, saturation, optional mode, or runtime configuration.",
+            "inputs": [
+              "operand_a",
+              "operand_b"
+            ],
+            "outputs": [
+              "sum"
+            ]
+          }
+        ],
+        "data_types": [
+          {
+            "name": "uint8_operand",
+            "role": "Unsigned addend",
+            "width_bits": 8,
+            "signed": false,
+            "representation": "8-bit binary unsigned integer, range 0..255",
+            "conversion_semantics": "Zero-extend to 9 bits before addition.",
+            "overflow_semantics": "Not applicable within the 8-bit source representation.",
+            "rounding_semantics": "None."
+          },
+          {
+            "name": "uint9_sum",
+            "role": "Exact addition result",
+            "width_bits": 9,
+            "signed": false,
+            "representation": "9-bit binary unsigned integer, range 0..510",
+            "conversion_semantics": "Direct exact result representation.",
+            "overflow_semantics": "No overflow is possible for two legal uint8 operands.",
+            "rounding_semantics": "None."
+          }
+        ],
+        "data_objects": [
+          {
+            "name": "operand_a",
+            "role": "First scalar addend of an accepted transaction",
+            "data_type": "uint8_operand",
+            "dimensions": [],
+            "producer": "external",
+            "consumers": [
+              "add_unsigned"
+            ],
+            "external": true
+          },
+          {
+            "name": "operand_b",
+            "role": "Second scalar addend of an accepted transaction",
+            "data_type": "uint8_operand",
+            "dimensions": [],
+            "producer": "external",
+            "consumers": [
+              "add_unsigned"
+            ],
+            "external": true
+          },
+          {
+            "name": "sum",
+            "role": "Exact scalar sum associated with one accepted transaction",
+            "data_type": "uint9_sum",
+            "dimensions": [],
+            "producer": "add_unsigned",
+            "consumers": [
+              "external"
+            ],
+            "external": true
+          }
+        ],
+        "dimensions": [],
+        "parameters": [],
+        "compute": {
+          "organization": "One combinational 9-bit unsigned adder feeding the output register.",
+          "dataflow": "On an input transfer, unpack both operands, zero-extend them, add them, and write the result into the output register.",
+          "parallelism": "One addition per accepted input transaction; up to one transaction accepted per clock when the output slot is available or simultaneously released.",
+          "scheduling": "Single-entry elastic schedule. Input acceptance is permitted when the output register is empty or its current item transfers on the same edge."
+        },
+        "storage": [
+          {
+            "name": "output_register",
+            "stored_objects": [
+              "sum"
+            ],
+            "capacity_expression": "1 element",
+            "capacity_at_default_parameters": 1,
+            "access_pattern": "Continuously read for output; written on each accepted input transaction.",
+            "port_requirements": "One 9-bit write path and one continuous read path. Same-edge output consumption and replacement are supported.",
+            "implementation_hint": "Nine flip-flops plus one valid flip-flop.",
+            "reuse_semantics": "Each stored sum is held until transferred or discarded by reset; it is never reused.",
+            "lifetime": "From its input acceptance edge until its output transfer edge or an asserted reset edge."
+          }
+        ],
+        "pipeline": [
+          {
+            "stage": "add_and_capture",
+            "responsibility": "Accept packed operands, compute the exact 9-bit sum, and capture it in the output register.",
+            "registered": true,
+            "valid_behavior": "An accepted input causes out_valid to be asserted after that edge. If an existing output transfers simultaneously, it is replaced without an invalid cycle.",
+            "stall_behavior": "When out_valid=1 and out_ready=0, input ready is low and output valid/payload remain unchanged. Reset is the sole exception and aborts the pending item."
+          }
+        ],
+        "control": {
+          "strategy": "One valid bit controls the single-entry elastic output register.",
+          "state_progression": "Empty remains empty without input; empty becomes full on input transfer; full remains full while stalled; full becomes empty on output-only transfer; full remains full on simultaneous output and input transfers.",
+          "counters": [],
+          "error_behavior": "All payload encodings are legal, so no encoded error or error state exists. A producer violating ready/valid stall stability is outside the protocol contract and is not detected.",
+          "error_recovery": "Synchronous reset returns the interface and valid state to empty; no separate recovery command exists."
+        },
+        "reset": {
+          "style": "Synchronous reset sampled on the rising clock edge with priority over transfers.",
+          "polarity": "Active-low through rst_n.",
+          "required_state": "When rst_n=0 at a rising edge, suppress all transfers, discard any pending result, clear out_valid, and clear the output payload register. in_ready is 0 while rst_n is low."
+        },
+        "latency_model": "Let an input transfer occur at rising edge A, designated cycle-zero acceptance. The result is registered immediately after A and is eligible to transfer at A+1. With out_ready=1 throughout, transfer occurs at A+1: exactly one clock interval. If out_ready is low on S consecutive eligible edges beginning at A+1, transfer occurs at A+S+1. The final transfer edge is included. Input-side stalls delay acceptance and are not part of post-acceptance latency.",
+        "architectural_invariants": [
+          "A transfer occurs only on a rising edge with rst_n=1 and channel valid and ready both high.",
+          "Every non-aborted accepted input produces exactly one output with value operand_a + operand_b.",
+          "Output order equals input acceptance order.",
+          "At most one untransferred result exists.",
+          "Output payload and valid remain stable during output backpressure except when synchronous reset aborts the item.",
+          "No input transfer occurs while a result is stalled.",
+          "Simultaneous output transfer and input acceptance replace the output register atomically."
+        ],
+        "open_assumptions": [
+          "The shared input payload packs operand_a in bits [7:0] and operand_b in bits [15:8].",
+          "A combinational path from out_ready through occupancy control to in_ready is acceptable.",
+          "No transaction identifiers, framing markers, completion signal, or error signal are required."
+        ]
+      },
+      "interface_contract": {
+        "protocol": "Two independent ready/valid channels sharing one clock and synchronous active-low reset.",
+        "clock": "clk",
+        "reset": "rst_n",
+        "channels": [
+          {
+            "name": "input_operands",
+            "direction": "input",
+            "protocol_profile": "ready_valid",
+            "purpose": "Carries one pair of unsigned operands per transfer.",
+            "data_objects": [
+              "operand_a",
+              "operand_b"
+            ],
+            "metadata": [],
+            "framing": "Each transfer is one complete transaction; no last marker. Exactly one input transfer is required per result.",
+            "ordering": "Acceptance order defines result order. Bits [7:0] carry operand_a and bits [15:8] carry operand_b.",
+            "backpressure": "The DUT deasserts in_ready while the output register is full and not transferring. A waiting producer may hold valid and payload until acceptance."
+          },
+          {
+            "name": "output_sum",
+            "direction": "output",
+            "protocol_profile": "ready_valid",
+            "purpose": "Carries one exact 9-bit sum per transfer.",
+            "data_objects": [
+              "sum"
+            ],
+            "metadata": [],
+            "framing": "Each transfer is one complete result; no last marker. Exactly one output transfer occurs per non-aborted accepted input.",
+            "ordering": "Results appear in input acceptance order.",
+            "backpressure": "The consumer may deassert out_ready indefinitely. While stalled, out_valid and out_payload remain stable unless reset is asserted."
+          }
+        ],
+        "signals": [
+          {
+            "name": "clk",
+            "role": "clock",
+            "semantic_class": null,
+            "channel": null,
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Rising-edge clock advancing all synchronous state.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "rst_n",
+            "role": "reset",
+            "semantic_class": null,
+            "channel": null,
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Active-low synchronous reset sampled on clk rising edges; reset has priority over transfers.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "in_valid",
+            "role": "valid",
+            "semantic_class": null,
+            "channel": "input_operands",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Indicates that in_payload contains a complete operand pair.",
+            "reset_value": "Environment-controlled"
+          },
+          {
+            "name": "in_ready",
+            "role": "ready",
+            "semantic_class": null,
+            "channel": "input_operands",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "High when the operand pair can transfer; equals rst_n && (!out_valid || out_ready).",
+            "reset_value": "0 while rst_n=0"
+          },
+          {
+            "name": "in_payload",
+            "role": "payload",
+            "semantic_class": "data",
+            "channel": "input_operands",
+            "direction": "input",
+            "width": "16",
+            "signed": false,
+            "semantic": "Bits [7:0]=operand_a; bits [15:8]=operand_b.",
+            "reset_value": "Environment-controlled"
+          },
+          {
+            "name": "out_valid",
+            "role": "valid",
+            "semantic_class": null,
+            "channel": "output_sum",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Indicates that out_payload contains a pending exact sum.",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_ready",
+            "role": "ready",
+            "semantic_class": null,
+            "channel": "output_sum",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Consumer acceptance qualifier for the pending sum.",
+            "reset_value": "Environment-controlled"
+          },
+          {
+            "name": "out_payload",
+            "role": "payload",
+            "semantic_class": "data",
+            "channel": "output_sum",
+            "direction": "output",
+            "width": "9",
+            "signed": false,
+            "semantic": "Exact unsigned sum corresponding to the oldest non-aborted accepted input.",
+            "reset_value": "0 after a reset edge"
+          }
+        ],
+        "global_handshake_rules": {
+          "transfer_condition": "A channel transfers on a rising clk edge only when rst_n=1 and its valid and ready are both 1. No transfer occurs on an edge where rst_n=0.",
+          "stall_behavior": "Valid and associated payload must remain stable while valid=1 and ready=0. Synchronous reset aborts pending transfers and permits valid/payload withdrawal after the reset edge."
+        }
+      },
+      "module_manifest": {
+        "top": "u8_registered_adder",
+        "modules": [
+          {
+            "name": "u8_registered_adder",
+            "responsibility": "Implement input/output handshakes, exact unsigned addition, single-entry result storage, backpressure, and synchronous reset.",
+            "dependencies": [],
+            "parameters": [],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Rising-edge clock for all state."
+              },
+              {
+                "name": "rst_n",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Active-low synchronous reset with priority over all transfer and register enables."
+              },
+              {
+                "name": "in_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Input operand-pair valid."
+              },
+              {
+                "name": "in_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Combinational input readiness: rst_n && (!out_valid || out_ready)."
+              },
+              {
+                "name": "in_payload",
+                "direction": "input",
+                "width": "16",
+                "signed": false,
+                "semantics": "Packed operands: A=[7:0], B=[15:8]; sampled only on input transfer."
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Registered output occupancy indication."
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Output consumer readiness."
+              },
+              {
+                "name": "out_payload",
+                "direction": "output",
+                "width": "9",
+                "signed": false,
+                "semantics": "Registered sum; written with {1'b0,A}+{1'b0,B} on input transfer and held during stalls."
+              }
+            ]
+          }
+        ]
+      },
+      "acceptance_criteria": {
+        "functional": [
+          "For every non-aborted input transfer, exactly one output transfers with the unsigned 9-bit value operand_a + operand_b.",
+          "Verify boundary cases 0+0=0, 255+0=255, 255+1=256, and 255+255=510.",
+          "Verify input acceptance and output transfer ordering, including consecutive same-edge consume-and-replace operation.",
+          "No output transfer may occur without a corresponding accepted input."
+        ],
+        "verification": [
+          "Use exact integer comparison for every transferred result.",
+          "Run at least 100 randomized transactions with randomized operands and independently randomized input-valid and output-ready stalls.",
+          "Verify one-cycle acceptance-to-transfer latency when out_ready remains asserted.",
+          "Verify output valid and payload stability for arbitrary backpressure durations.",
+          "Verify reset while empty, while a result is pending, and while output is stalled; no pre-reset result may transfer afterward.",
+          "Verify no transfer occurs on a reset edge and in_ready is low while rst_n=0.",
+          "Verify a producer may present and hold a next transaction while blocked and that it transfers on the first eligible release edge.",
+          "Use a regression wall timeout of at least 120 seconds."
+        ],
+        "rtl": [
+          "RTL shall be synthesizable SystemVerilog and contain no real, shortreal, delay statements, force/release, or classes.",
+          "The implementation shall contain one top module and no required submodules.",
+          "No inferred latch, multiple driver, width truncation, or signed arithmetic ambiguity is permitted.",
+          "Reset shall synchronously clear valid and payload state without relying on memory initialization."
+        ],
+        "fpga_handoff": [
+          "Vivado handoff is permitted only after verification passes.",
+          "Provide deterministic Vivado logs/reports and a result conforming to multigent/schemas/synthesis_result.schema.json.",
+          "Do not estimate timing, area, power, frequency, or utilization; only deterministic tool reports are authoritative."
+        ]
+      }
+    },
+    "execution_configuration": {
+      "elaboration": "declared_defaults",
+      "parameter_overrides": {},
+      "declared_parameter_defaults": {}
+    },
+    "provenance": {
+      "includes_generated_rtl": false,
+      "includes_rtl_generator_output": false
+    },
+    "semantic_validation_review": {
+      "validator_error": "Verifier TB review structure is invalid: Every Verifier-authored assert needs a feature comment immediately above it; line 64",
+      "missing_concepts": [],
+      "instruction": "This is a defect in the verifier-owned output, not an architecture conflict. Start from previous_verifier_output when it is present and resolve validator_error below. While you are there, also check previous_verifier_output against every other structural rule you were given for verifier-authored output (required section markers, a # STIMULUS [label] comment for every declared stimulus intent and a feature comment immediately above every assert, an OPERATION_SAMPLING_BINDINGS entry for every declared operation coverage point, a coverage intent for every declared coverage_obligation, references to every required role-tagged completion/error signal, and real executable cocotb test bodies rather than descriptions) and fix any of those you can identify as still violated in the same response, not only validator_error. Reproduce every other line of previous_verifier_output byte-for-byte: working oracle/test code, comments, coverage points, checks, and stimulus that are not implicated by validator_error or one of the rules above must not change. The response schema still requires complete file content, but only the regions implicated by validator_error or a rule above may differ from previous_verifier_output. If there is no previous output, generate a fresh complete oracle and test suite from the frozen contract; prior sources are not required. Coverage field names, bins and test schedules are your decisions, not missing Architect decisions. For every missing concept, add an operation coverpoint whose concept ID matches byte-for-byte, whose source is baseline or architect_extension as required by the frozen contract, and whose field, reachable bins, predicates, test stimulus, and reusable/custom DUT observer are mutually consistent, without touching unrelated existing coverpoints. Preserve all already-required features and checks. Do not return ARCHITECTURE_CONFLICT to evade this validator error. Response length, token budget, delivery format, and missing prior source are process concerns and are never architecture conflicts; emit the corrected artifact now.",
+      "previous_verifier_output": {
+        "status": "VERIFICATION_READY",
+        "summary": "Independent exact-sum oracle and cocotb regression cover boundaries, reset aborts, elastic replacement, directed stalls, and 100 deterministic randomized transactions.",
+        "reference_files": [
+          {
+            "path": "reference/adder_model.py",
+            "purpose": "Independent unsigned-adder oracle and analytical sanity checks.",
+            "content": "def add_unsigned(a, b):\n    if not (0 <= a <= 255 and 0 <= b <= 255):\n        raise ValueError(\"operands must be uint8\")\n    return a + b\n\n\ndef sanity_check():\n    known = ((0, 0, 0), (255, 0, 255), (255, 1, 256), (255, 255, 510))\n    for a, b, expected in known:\n        actual = add_unsigned(a, b)\n        if actual != expected:\n            raise AssertionError(f\"oracle sanity failed: {a}+{b}, expected={expected}, actual={actual}\")\n"
+          }
+        ],
+        "test_files": [
+          {
+            "path": "tests/test_u8_registered_adder.py",
+            "purpose": "Protocol-aware directed and randomized cocotb verification.",
+            "categories": [
+              "oracle_sanity",
+              "boundary",
+              "latency",
+              "backpressure",
+              "reset",
+              "ordering",
+              "randomized"
+            ],
+            "regression_groups": [
+              "smoke",
+              "targeted",
+              "full"
+            ],
+            "coverage_obligations": [
+              "channel.input_operands.handshake_states",
+              "channel.input_operands.stall_stability",
+              "channel.output_sum.handshake_states",
+              "channel.output_sum.stall_stability",
+              "signal.rst_n.reset_behavior",
+              "operation.add_unsigned.accepted_sum",
+              "operation.add_unsigned.transferred_sum",
+              "operation.add_unsigned.registered_latency",
+              "operation.add_unsigned.output_buffer_stall"
+            ],
+            "content": "import random\nimport cocotb\nfrom cocotb.clock import Clock\nfrom cocotb.triggers import FallingEdge, RisingEdge, Timer\nfrom multigent.verifier_tool.coverage.runtime import contract_coverage, sample_operation\nfrom reference.adder_model import add_unsigned, sanity_check\n\nCOVERAGE_OBLIGATIONS = {\n    \"channel.input_operands.handshake_states\",\n    \"channel.input_operands.stall_stability\",\n    \"channel.output_sum.handshake_states\",\n    \"channel.output_sum.stall_stability\",\n    \"signal.rst_n.reset_behavior\",\n    \"operation.add_unsigned.accepted_sum\",\n    \"operation.add_unsigned.transferred_sum\",\n    \"operation.add_unsigned.registered_latency\",\n    \"operation.add_unsigned.output_buffer_stall\",\n}\n\nSTIMULUS_COVERAGE_INTENTS = [\n    {\"label\": \"boundary_zero\", \"targets\": [\"channel.input_operands.handshake_states\", \"channel.output_sum.handshake_states\", \"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\", \"operation.add_unsigned.registered_latency\"]},\n    {\"label\": \"boundary_255_0\", \"targets\": [\"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\"]},\n    {\"label\": \"boundary_255_1\", \"targets\": [\"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\"]},\n    {\"label\": \"boundary_max\", \"targets\": [\"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\"]},\n    {\"label\": \"stall_one\", \"targets\": [\"channel.input_operands.stall_stability\", \"channel.output_sum.stall_stability\", \"operation.add_unsigned.output_buffer_stall\"]},\n    {\"label\": \"stall_short\", \"targets\": [\"channel.input_operands.stall_stability\", \"channel.output_sum.stall_stability\", \"operation.add_unsigned.output_buffer_stall\"]},\n    {\"label\": \"stall_long\", \"targets\": [\"channel.input_operands.stall_stability\", \"channel.output_sum.stall_stability\", \"operation.add_unsigned.output_buffer_stall\"]},\n    {\"label\": \"reset_pending\", \"targets\": [\"signal.rst_n.reset_behavior\"]},\n    {\"label\": \"reset_stalled\", \"targets\": [\"signal.rst_n.reset_behavior\", \"channel.input_operands.handshake_states\", \"channel.output_sum.handshake_states\"]},\n    {\"label\": \"randomized_job\", \"targets\": [\"channel.input_operands.handshake_states\", \"channel.output_sum.handshake_states\", \"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\", \"operation.add_unsigned.registered_latency\"]},\n]\n\n\ndef observe_accepted_sum(values, state):\n    if not int(values[\"rst_n\"]):\n        return None\n    if int(values[\"in_valid\"]) and int(values[\"in_ready\"]):\n        p = int(values[\"in_payload\"])\n        return (p & 255) + ((p >> 8) & 255)\n    return None\n\n\ndef observe_transferred_sum(values, state):\n    if int(values[\"rst_n\"]) and int(values[\"out_valid\"]) and int(values[\"out_ready\"]):\n        return int(values[\"out_payload\"])\n    return None\n\n\ndef observe_registered_latency(values, state):\n    if not int(values[\"rst_n\"]):\n        state.clear()\n        return None\n    result = None\n    pending = bool(state.get(\"pending\", False))\n    age = int(state.get(\"age\", 0))\n    if pending:\n        age += 1\n        if int(values[\"out_valid\"]) and int(values[\"out_ready\"]):\n            result = age\n            pending = False\n    if int(values[\"in_valid\"]) and int(values[\"in_ready\"]):\n        pending = True\n        age = 0\n    state[\"pending\"] = pending\n    state[\"age\"] = age\n    return result\n\n\nOPERATION_SAMPLING_BINDINGS = [\n    {\"operation\": \"add_unsigned\", \"point\": \"operation.add_unsigned.accepted_sum\", \"template\": \"custom\", \"observer\": \"observe_accepted_sum\", \"event\": \"clock\", \"fields\": {\"rst_n\": {\"signal\": \"rst_n\"}, \"in_valid\": {\"signal\": \"in_valid\"}, \"in_ready\": {\"signal\": \"in_ready\"}, \"in_payload\": {\"signal\": \"in_payload\"}}},\n    {\"operation\": \"add_unsigned\", \"point\": \"operation.add_unsigned.transferred_sum\", \"template\": \"custom\", \"observer\": \"observe_transferred_sum\", \"event\": \"clock\", \"fields\": {\"rst_n\": {\"signal\": \"rst_n\"}, \"out_valid\": {\"signal\": \"out_valid\"}, \"out_ready\": {\"signal\": \"out_ready\"}, \"out_payload\": {\"signal\": \"out_payload\"}}},\n    {\"operation\": \"add_unsigned\", \"point\": \"operation.add_unsigned.registered_latency\", \"template\": \"custom\", \"observer\": \"observe_registered_latency\", \"event\": \"clock\", \"fields\": {\"rst_n\": {\"signal\": \"rst_n\"}, \"in_valid\": {\"signal\": \"in_valid\"}, \"in_ready\": {\"signal\": \"in_ready\"}, \"out_valid\": {\"signal\": \"out_valid\"}, \"out_ready\": {\"signal\": \"out_ready\"}}},\n    {\"operation\": \"add_unsigned\", \"point\": \"operation.add_unsigned.output_buffer_stall\", \"template\": \"channel_stall\", \"event\": \"transfer\", \"channel\": \"output_sum\", \"fields\": {}},\n]\n\n# === LLM-GENERATED OPERATION ASSERTIONS ===\n\n\ndef check(condition, message):\n    # FEATURE [external_contract_checker]\n    assert condition, message\n\n\nclass Bench:\n    def __init__(self, dut):\n        self.dut = dut\n        self.queue = []\n        self.cycle_index = 0\n        self.previous_output_stall = None\n\n    async def cycle(self, **drives):\n        await FallingEdge(self.dut.clk)\n        for name, value in drives.items():\n            getattr(self.dut, name).value = value\n        await Timer(1, unit=\"ns\")\n        pre = {name: int(getattr(self.dut, name).value) for name in\n               (\"rst_n\", \"in_valid\", \"in_ready\", \"in_payload\", \"out_valid\", \"out_ready\", \"out_payload\")}\n        expected_ready = int(bool(pre[\"rst_n\"] and (not pre[\"out_valid\"] or pre[\"out_ready\"])))\n        check(pre[\"in_ready\"] == expected_ready,\n              f\"cycle={self.cycle_index} in_ready expected={expected_ready} observed={pre['in_ready']} signals={pre}\")\n        if self.previous_output_stall is not None and pre[\"rst_n\"]:\n            held_valid, held_payload = self.previous_output_stall\n            check(pre[\"out_valid\"] == held_valid and pre[\"out_payload\"] == held_payload,\n                  f\"cycle={self.cycle_index} stalled output changed; held_valid={held_valid} held_payload={held_payload} observed={pre}\")\n        self.previous_output_stall = (pre[\"out_valid\"], pre[\"out_payload\"]) if pre[\"rst_n\"] and pre[\"out_valid\"] and not pre[\"out_ready\"] else None\n        await RisingEdge(self.dut.clk)\n        await Timer(1, unit=\"ns\")\n        event = {\"input\": None, \"output\": None, \"reset\": not bool(pre[\"rst_n\"]), \"cycle\": self.cycle_index}\n        if not pre[\"rst_n\"]:\n            self.queue.clear()\n            self.previous_output_stall = None\n            check(int(self.dut.out_valid.value) == 0 and int(self.dut.out_payload.value) == 0,\n                  f\"reset edge failed to clear out_valid/out_payload: valid={int(self.dut.out_valid.value)} payload={int(self.dut.out_payload.value)}\")\n        else:\n            if pre[\"out_valid\"] and pre[\"out_ready\"]:\n                check(bool(self.queue), f\"cycle={self.cycle_index} unsolicited output transfer payload={pre['out_payload']}\")\n                expected = self.queue.pop(0)\n                check(pre[\"out_payload\"] == expected[\"sum\"],\n                      f\"cycle={self.cycle_index} output mismatch expected={expected} observed_payload={pre['out_payload']}\")\n                event[\"output\"] = {\"sum\": pre[\"out_payload\"], \"accepted_cycle\": expected[\"cycle\"]}\n            if pre[\"in_valid\"] and pre[\"in_ready\"]:\n                a = pre[\"in_payload\"] & 255\n                b = (pre[\"in_payload\"] >> 8) & 255\n                self.queue.append({\"sum\": add_unsigned(a, b), \"cycle\": self.cycle_index})\n                event[\"input\"] = {\"operand_a\": a, \"operand_b\": b}\n        self.cycle_index += 1\n        return event\n\n    async def single(self, a, b, source_delay=0, ready_pattern=None, require_latency_one=False):\n        accepted = []\n        outputs = []\n        for _ in range(source_delay):\n            event = await self.cycle(in_valid=0)\n            check(event[\"input\"] is None, f\"source-idle cycle unexpectedly accepted input: {event}\")\n        payload = (b << 8) | a\n        while not accepted:\n            event = await self.cycle(in_valid=1, in_payload=payload)\n            if event[\"input\"] is not None:\n                accepted.append(event[\"input\"])\n        index = 0\n        while not outputs:\n            ready = 1 if ready_pattern is None else ready_pattern[min(index, len(ready_pattern) - 1)]\n            event = await self.cycle(in_valid=0, out_ready=ready)\n            if event[\"output\"] is not None:\n                outputs.append(event[\"output\"])\n            index += 1\n        check(accepted == [{\"operand_a\": a, \"operand_b\": b}], f\"input accounting expected={[a,b]} observed={accepted}\")\n        check([x[\"sum\"] for x in outputs] == [add_unsigned(a, b)], f\"output accounting expected={add_unsigned(a,b)} observed={outputs}\")\n        if require_latency_one:\n            check(outputs[0][\"accepted_cycle\"] + 1 == event[\"cycle\"], f\"one-cycle latency failed input_cycle={outputs[0]['accepted_cycle']} output_cycle={event['cycle']}\")\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None, f\"extra output after completed job: {guard}\")\n        return {\"accepted_inputs\": accepted, \"outputs\": [x[\"sum\"] for x in outputs], \"aborted\": False, \"reset_edges\": 0}\n\n    async def stall_pair(self, first, second, stall_cycles):\n        a1, b1 = first\n        a2, b2 = second\n        accepted = []\n        outputs = []\n        event = await self.cycle(in_valid=1, in_payload=(b1 << 8) | a1, out_ready=1)\n        if event[\"input\"] is not None:\n            accepted.append(event[\"input\"])\n        for _ in range(stall_cycles):\n            event = await self.cycle(in_valid=1, in_payload=(b2 << 8) | a2, out_ready=0)\n            check(event[\"input\"] is None, f\"input transferred while output stalled: event={event}\")\n        event = await self.cycle(in_valid=1, in_payload=(b2 << 8) | a2, out_ready=1)\n        if event[\"output\"] is not None:\n            outputs.append(event[\"output\"])\n        if event[\"input\"] is not None:\n            accepted.append(event[\"input\"])\n        check(event[\"output\"] is not None and event[\"input\"] is not None,\n              f\"same-edge consume-and-replace missing: event={event} stall_cycles={stall_cycles}\")\n        event = await self.cycle(in_valid=0, out_ready=1)\n        if event[\"output\"] is not None:\n            outputs.append(event[\"output\"])\n        expected_inputs = [{\"operand_a\": a1, \"operand_b\": b1}, {\"operand_a\": a2, \"operand_b\": b2}]\n        expected_outputs = [add_unsigned(a1, b1), add_unsigned(a2, b2)]\n        check(accepted == expected_inputs, f\"pair input accounting expected={expected_inputs} observed={accepted}\")\n        check([x[\"sum\"] for x in outputs] == expected_outputs, f\"pair output order expected={expected_outputs} observed={outputs}\")\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None, f\"extra pair output: {guard}\")\n        return {\"accepted_inputs\": accepted, \"outputs\": [x[\"sum\"] for x in outputs], \"aborted\": False, \"reset_edges\": 0}\n\n    async def reset_abort(self, a, b, stalled):\n        event = await self.cycle(in_valid=1, in_payload=(b << 8) | a, out_ready=0 if stalled else 1)\n        check(event[\"input\"] == {\"operand_a\": a, \"operand_b\": b}, f\"abort job was not accepted: {event}\")\n        if stalled:\n            event = await self.cycle(in_valid=0, out_ready=0)\n            check(event[\"output\"] is None, f\"stalled abort job transferred unexpectedly: {event}\")\n        event = await self.cycle(rst_n=0, in_valid=1, out_ready=1)\n        check(event[\"input\"] is None and event[\"output\"] is None, f\"transfer occurred on reset edge: {event}\")\n        await self.cycle(rst_n=1, in_valid=0, out_ready=1)\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None and not self.queue, f\"ghost result after reset: event={guard} queue={self.queue}\")\n        return {\"accepted_inputs\": [{\"operand_a\": a, \"operand_b\": b}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n\n\n@cocotb.test(timeout_time=500, timeout_unit=\"us\")\n@contract_coverage()\nasync def verify_u8_registered_adder(dut):\n    sanity_check()\n    check(len(dut.in_payload) == 16 and len(dut.out_payload) == 9, f\"port widths in={len(dut.in_payload)} out={len(dut.out_payload)}\")\n    dut.rst_n.value = 1\n    dut.in_valid.value = 0\n    dut.in_payload.value = 0\n    dut.out_ready.value = 0\n    clock_task = cocotb.start_soon(Clock(dut.clk, 10, unit=\"ns\").start())\n    bench = Bench(dut)\n\n    await bench.cycle(rst_n=0, in_valid=0, out_ready=0)\n    await bench.cycle(rst_n=1, in_valid=0, out_ready=0)\n\n    observed = await bench.single(0, 0, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 0, \"operand_b\": 0}], \"outputs\": [0], \"aborted\": False, \"reset_edges\": 0}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 0, \"operand_b\": 0}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_zero\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 0, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 0}], \"outputs\": [255], \"aborted\": False, \"reset_edges\": 0}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 0}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_255_0\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 1, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 1}], \"outputs\": [256], \"aborted\": False, \"reset_edges\": 0}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 1}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_255_1\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 255, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 255}], \"outputs\": [510], \"aborted\": False, \"reset_edges\": 0}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 255}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_max\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    for label, first, second, stalls in ((\"stall_one\", (1, 2), (3, 4), 1), (\"stall_short\", (5, 6), (7, 8), 3), (\"stall_long\", (9, 10), (11, 12), 5)):\n        observed = await bench.stall_pair(first, second, stalls)\n        submitted = {\"transactions\": [{\"operand_a\": first[0], \"operand_b\": first[1]}, {\"operand_a\": second[0], \"operand_b\": second[1]}], \"stall_cycles\": stalls}\n        expected = {\"accepted_inputs\": submitted[\"transactions\"], \"outputs\": [add_unsigned(*first), add_unsigned(*second)], \"aborted\": False, \"reset_edges\": 0}\n        if label == \"stall_one\":\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_one\")\n        elif label == \"stall_short\":\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_short\")\n        else:\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_long\")\n        sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.reset_abort(21, 22, False)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 21, \"operand_b\": 22}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 21, \"operand_b\": 22, \"reset_before_output\": True}, expected, observed, operations=(\"add_unsigned\",), label=\"reset_pending\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.reset_abort(23, 24, True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 23, \"operand_b\": 24}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 23, \"operand_b\": 24, \"reset_while_stalled\": True}, expected, observed, operations=(\"add_unsigned\",), label=\"reset_stalled\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    rng = random.Random(180417)\n    for transaction in range(100):\n        a = rng.randrange(256)\n        b = rng.randrange(256)\n        source_delay = rng.randrange(5)\n        stall_count = rng.randrange(7)\n        ready_pattern = [0] * stall_count + [1]\n        observed = await bench.single(a, b, source_delay=source_delay, ready_pattern=ready_pattern)\n        expected = {\"accepted_inputs\": [{\"operand_a\": a, \"operand_b\": b}], \"outputs\": [add_unsigned(a, b)], \"aborted\": False, \"reset_edges\": 0}\n        submitted = {\"operand_a\": a, \"operand_b\": b, \"source_idle_cycles\": source_delay, \"sink_stall_cycles\": stall_count, \"transaction\": transaction}\n        stimulus_id = _contract_record_checked_stimulus(\"randomized\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"randomized_job\")\n        sample_operation(\"add_unsigned\", {}, \"randomized\", stimulus_id)\n\n    for _ in range(3):\n        event = await bench.cycle(in_valid=0, out_ready=1)\n        check(event[\"output\"] is None, f\"late unsolicited output at end of regression: {event}\")\n    clock_task.cancel()\n"
+          }
+        ],
+        "operation_coverage": [
+          {
+            "operation_name": "add_unsigned",
+            "family": "unsigned_binary_add",
+            "coverpoints": [
+              {
+                "id": "operation.add_unsigned.accepted_sum",
+                "concept": "two_operand_unsigned_addition",
+                "field": "accepted_operand_sum",
+                "source": "baseline",
+                "description": "Observe the mathematical sum class of each accepted packed operand pair.",
+                "bins": [
+                  {
+                    "name": "zero",
+                    "intent": "Both accepted operands are zero.",
+                    "predicate": {
+                      "op": "eq",
+                      "args": [
+                        0
+                      ]
+                    }
+                  },
+                  {
+                    "name": "low_or_no_carry",
+                    "intent": "Accepted sum is between 1 and 255.",
+                    "predicate": {
+                      "op": "between",
+                      "args": [
+                        1,
+                        255
+                      ]
+                    }
+                  },
+                  {
+                    "name": "widened_result",
+                    "intent": "Accepted sum requires the ninth result bit.",
+                    "predicate": {
+                      "op": "between",
+                      "args": [
+                        256,
+                        509
+                      ]
+                    }
+                  },
+                  {
+                    "name": "maximum",
+                    "intent": "Both operands are at their maximum.",
+                    "predicate": {
+                      "op": "eq",
+                      "args": [
+                        510
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "operation.add_unsigned.transferred_sum",
+                "concept": "widened_exact_result",
+                "field": "transferred_sum",
+                "source": "baseline",
+                "description": "Observe exact transferred 9-bit result values.",
+                "bins": [
+                  {
+                    "name": "zero",
+                    "intent": "Transferred result is zero.",
+                    "predicate": {
+                      "op": "eq",
+                      "args": [
+                        0
+                      ]
+                    }
+                  },
+                  {
+                    "name": "uint8_range",
+                    "intent": "Transferred result fits in eight bits.",
+                    "predicate": {
+                      "op": "between",
+                      "args": [
+                        1,
+                        255
+                      ]
+                    }
+                  },
+                  {
+                    "name": "ninth_bit_set",
+                    "intent": "Transferred result exercises widened representation.",
+                    "predicate": {
+                      "op": "between",
+                      "args": [
+                        256,
+                        509
+                      ]
+                    }
+                  },
+                  {
+                    "name": "maximum",
+                    "intent": "Transferred result is 510.",
+                    "predicate": {
+                      "op": "eq",
+                      "args": [
+                        510
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "operation.add_unsigned.registered_latency",
+                "concept": "registered_result",
+                "field": "acceptance_to_transfer_cycles",
+                "source": "architect_extension",
+                "description": "Observe input-acceptance to associated output-transfer distance.",
+                "bins": [
+                  {
+                    "name": "one_cycle",
+                    "intent": "Unstalled result transfers exactly one cycle after acceptance.",
+                    "predicate": {
+                      "op": "eq",
+                      "args": [
+                        1
+                      ]
+                    }
+                  },
+                  {
+                    "name": "backpressured_delay",
+                    "intent": "Output backpressure extends transfer latency.",
+                    "predicate": {
+                      "op": "gte",
+                      "args": [
+                        2
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "operation.add_unsigned.output_buffer_stall",
+                "concept": "single_entry_backpressure_buffer",
+                "field": "released_output_stall_cycles",
+                "source": "architect_extension",
+                "description": "Observe released stalls in the single-entry output register.",
+                "bins": [
+                  {
+                    "name": "one_cycle",
+                    "intent": "Release after exactly one stalled cycle.",
+                    "predicate": {
+                      "op": "eq",
+                      "args": [
+                        1
+                      ]
+                    }
+                  },
+                  {
+                    "name": "short",
+                    "intent": "Release after two through four stalled cycles.",
+                    "predicate": {
+                      "op": "between",
+                      "args": [
+                        2,
+                        4
+                      ]
+                    }
+                  },
+                  {
+                    "name": "long",
+                    "intent": "Release after at least five stalled cycles.",
+                    "predicate": {
+                      "op": "gte",
+                      "args": [
+                        5
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "verification_plan": {
+          "top_module": "u8_registered_adder",
+          "test_modules": [
+            "test_u8_registered_adder"
+          ],
+          "test_categories": [
+            "oracle_sanity",
+            "boundary",
+            "latency",
+            "backpressure",
+            "reset",
+            "ordering",
+            "randomized"
+          ],
+          "randomized_test_count": 100,
+          "seed": 180417,
+          "timeout_seconds": 120,
+          "regression_groups": {
+            "smoke": [
+              "test_u8_registered_adder"
+            ],
+            "targeted": [
+              "test_u8_registered_adder"
+            ],
+            "full": [
+              "test_u8_registered_adder"
+            ]
+          },
+          "pass_criteria": "All exact arithmetic, accounting, ordering, reset, latency, stability, coverage, and watchdog checks pass with no unsolicited transfer.",
+          "protocol_assumptions": [
+            "Transfers are sampled from stable pre-rising-edge ready/valid state.",
+            "Reset has synchronous priority and aborts pending work.",
+            "No exact ready schedule is assumed beyond the frozen combinational readiness rule."
+          ]
+        },
+        "architecture_conflict": null,
+        "known_verification_gaps": []
+      }
+    }
+  },
+  "verifier_status": "VERIFICATION_READY",
+  "verifier_result": {
+    "status": "VERIFICATION_READY",
+    "summary": "Verifier source completion; deterministic validation and simulation remain authoritative.",
+    "reference_files": [
+      {
+        "path": "reference/adder_model.py",
+        "purpose": "Independent unsigned-adder oracle and analytical sanity checks.",
+        "content": "def add_unsigned(a, b):\n    if not (0 <= a <= 255 and 0 <= b <= 255):\n        raise ValueError(\"operands must be uint8\")\n    return a + b\n\n\ndef sanity_check():\n    known = ((0, 0, 0), (255, 0, 255), (255, 1, 256), (255, 255, 510))\n    for a, b, expected in known:\n        actual = add_unsigned(a, b)\n        if actual != expected:\n            raise AssertionError(f\"oracle sanity failed: {a}+{b}, expected={expected}, actual={actual}\")\n"
+      }
+    ],
+    "test_files": [
+      {
+        "path": "tests/test_u8_registered_adder.py",
+        "purpose": "Protocol-aware directed and randomized cocotb verification.",
+        "categories": [
+          "oracle_sanity",
+          "boundary",
+          "latency",
+          "backpressure",
+          "reset",
+          "ordering",
+          "randomized"
+        ],
+        "regression_groups": [
+          "smoke",
+          "targeted",
+          "full"
+        ],
+        "coverage_obligations": [
+          "channel.input_operands.handshake_states",
+          "channel.input_operands.stall_stability",
+          "channel.output_sum.handshake_states",
+          "channel.output_sum.stall_stability",
+          "signal.rst_n.reset_behavior",
+          "operation.add_unsigned.accepted_sum",
+          "operation.add_unsigned.transferred_sum",
+          "operation.add_unsigned.registered_latency",
+          "operation.add_unsigned.output_buffer_stall"
+        ],
+        "content": "import random\nimport cocotb\nfrom cocotb.clock import Clock\nfrom cocotb.triggers import FallingEdge, RisingEdge, Timer\nfrom multigent.verifier_tool.coverage.runtime import contract_coverage, sample_operation\nfrom reference.adder_model import add_unsigned, sanity_check\n\nCOVERAGE_OBLIGATIONS = {\n    \"channel.input_operands.handshake_states\",\n    \"channel.input_operands.stall_stability\",\n    \"channel.output_sum.handshake_states\",\n    \"channel.output_sum.stall_stability\",\n    \"signal.rst_n.reset_behavior\",\n    \"operation.add_unsigned.accepted_sum\",\n    \"operation.add_unsigned.transferred_sum\",\n    \"operation.add_unsigned.registered_latency\",\n    \"operation.add_unsigned.output_buffer_stall\",\n}\n\n\n\ndef observe_accepted_sum(values, state):\n    if not int(values[\"rst_n\"]):\n        return None\n    if int(values[\"in_valid\"]) and int(values[\"in_ready\"]):\n        p = int(values[\"in_payload\"])\n        return (p & 255) + ((p >> 8) & 255)\n    return None\n\n\ndef observe_transferred_sum(values, state):\n    if int(values[\"rst_n\"]) and int(values[\"out_valid\"]) and int(values[\"out_ready\"]):\n        return int(values[\"out_payload\"])\n    return None\n\n\ndef observe_registered_latency(values, state):\n    if not int(values[\"rst_n\"]):\n        state.clear()\n        return None\n    result = None\n    pending = bool(state.get(\"pending\", False))\n    age = int(state.get(\"age\", 0))\n    if pending:\n        age += 1\n        if int(values[\"out_valid\"]) and int(values[\"out_ready\"]):\n            result = age\n            pending = False\n    if int(values[\"in_valid\"]) and int(values[\"in_ready\"]):\n        pending = True\n        age = 0\n    state[\"pending\"] = pending\n    state[\"age\"] = age\n    return result\n\n\nOPERATION_SAMPLING_BINDINGS = [{'operation': 'add_unsigned', 'point': 'operation.add_unsigned.accepted_sum', 'template': 'custom', 'observer': 'observe_accepted_sum', 'event': 'clock', 'fields': {'rst_n': {'signal': 'rst_n'}, 'in_valid': {'signal': 'in_valid'}, 'in_ready': {'signal': 'in_ready'}, 'in_payload': {'signal': 'in_payload'}}}, {'operation': 'add_unsigned', 'point': 'operation.add_unsigned.transferred_sum', 'template': 'custom', 'observer': 'observe_transferred_sum', 'event': 'clock', 'fields': {'rst_n': {'signal': 'rst_n'}, 'out_valid': {'signal': 'out_valid'}, 'out_ready': {'signal': 'out_ready'}, 'out_payload': {'signal': 'out_payload'}}}, {'operation': 'add_unsigned', 'point': 'operation.add_unsigned.registered_latency', 'template': 'custom', 'observer': 'observe_registered_latency', 'event': 'clock', 'fields': {'rst_n': {'signal': 'rst_n'}, 'in_valid': {'signal': 'in_valid'}, 'in_ready': {'signal': 'in_ready'}, 'out_valid': {'signal': 'out_valid'}, 'out_ready': {'signal': 'out_ready'}}}, {'operation': 'add_unsigned', 'point': 'operation.add_unsigned.output_buffer_stall', 'template': 'channel_stall', 'event': 'transfer', 'channel': 'output_sum', 'fields': {}}]\n\n# === LLM-GENERATED OPERATION ASSERTIONS ===\n\n\ndef check(condition, message):\n    # LLM-GENERATED OPERATION ASSERTION [external_contract_checker]\n    assert condition, message\n\n\nclass Bench:\n    def __init__(self, dut):\n        self.dut = dut\n        self.queue = []\n        self.cycle_index = 0\n        self.previous_output_stall = None\n\n    async def cycle(self, **drives):\n        await FallingEdge(self.dut.clk)\n        for name, value in drives.items():\n            getattr(self.dut, name).value = value\n        await Timer(1, unit=\"ns\")\n        pre = {name: int(getattr(self.dut, name).value) for name in\n               (\"rst_n\", \"in_valid\", \"in_ready\", \"in_payload\", \"out_valid\", \"out_ready\", \"out_payload\")}\n        expected_ready = int(bool(pre[\"rst_n\"] and (not pre[\"out_valid\"] or pre[\"out_ready\"])))\n        check(pre[\"in_ready\"] == expected_ready,\n              f\"cycle={self.cycle_index} in_ready expected={expected_ready} observed={pre['in_ready']} signals={pre}\")\n        if self.previous_output_stall is not None and pre[\"rst_n\"]:\n            held_valid, held_payload = self.previous_output_stall\n            check(pre[\"out_valid\"] == held_valid and pre[\"out_payload\"] == held_payload,\n                  f\"cycle={self.cycle_index} stalled output changed; held_valid={held_valid} held_payload={held_payload} observed={pre}\")\n        self.previous_output_stall = (pre[\"out_valid\"], pre[\"out_payload\"]) if pre[\"rst_n\"] and pre[\"out_valid\"] and not pre[\"out_ready\"] else None\n        await RisingEdge(self.dut.clk)\n        await Timer(1, unit=\"ns\")\n        event = {\"input\": None, \"output\": None, \"reset\": not bool(pre[\"rst_n\"]), \"cycle\": self.cycle_index}\n        if not pre[\"rst_n\"]:\n            self.queue.clear()\n            self.previous_output_stall = None\n            check(int(self.dut.out_valid.value) == 0 and int(self.dut.out_payload.value) == 0,\n                  f\"reset edge failed to clear out_valid/out_payload: valid={int(self.dut.out_valid.value)} payload={int(self.dut.out_payload.value)}\")\n        else:\n            if pre[\"out_valid\"] and pre[\"out_ready\"]:\n                check(bool(self.queue), f\"cycle={self.cycle_index} unsolicited output transfer payload={pre['out_payload']}\")\n                expected = self.queue.pop(0)\n                check(pre[\"out_payload\"] == expected[\"sum\"],\n                      f\"cycle={self.cycle_index} output mismatch expected={expected} observed_payload={pre['out_payload']}\")\n                event[\"output\"] = {\"sum\": pre[\"out_payload\"], \"accepted_cycle\": expected[\"cycle\"]}\n            if pre[\"in_valid\"] and pre[\"in_ready\"]:\n                a = pre[\"in_payload\"] & 255\n                b = (pre[\"in_payload\"] >> 8) & 255\n                self.queue.append({\"sum\": add_unsigned(a, b), \"cycle\": self.cycle_index})\n                event[\"input\"] = {\"operand_a\": a, \"operand_b\": b}\n        self.cycle_index += 1\n        return event\n\n    async def single(self, a, b, source_delay=0, ready_pattern=None, require_latency_one=False):\n        accepted = []\n        outputs = []\n        for _ in range(source_delay):\n            event = await self.cycle(in_valid=0)\n            check(event[\"input\"] is None, f\"source-idle cycle unexpectedly accepted input: {event}\")\n        payload = (b << 8) | a\n        while not accepted:\n            event = await self.cycle(in_valid=1, in_payload=payload)\n            if event[\"input\"] is not None:\n                accepted.append(event[\"input\"])\n        index = 0\n        while not outputs:\n            ready = 1 if ready_pattern is None else ready_pattern[min(index, len(ready_pattern) - 1)]\n            event = await self.cycle(in_valid=0, out_ready=ready)\n            if event[\"output\"] is not None:\n                outputs.append(event[\"output\"])\n            index += 1\n        check(accepted == [{\"operand_a\": a, \"operand_b\": b}], f\"input accounting expected={[a,b]} observed={accepted}\")\n        check([x[\"sum\"] for x in outputs] == [add_unsigned(a, b)], f\"output accounting expected={add_unsigned(a,b)} observed={outputs}\")\n        if require_latency_one:\n            check(outputs[0][\"accepted_cycle\"] + 1 == event[\"cycle\"], f\"one-cycle latency failed input_cycle={outputs[0]['accepted_cycle']} output_cycle={event['cycle']}\")\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None, f\"extra output after completed job: {guard}\")\n        return {\"accepted_inputs\": accepted, \"outputs\": [x[\"sum\"] for x in outputs], \"aborted\": False, \"reset_edges\": 0}\n\n    async def stall_pair(self, first, second, stall_cycles):\n        a1, b1 = first\n        a2, b2 = second\n        accepted = []\n        outputs = []\n        event = await self.cycle(in_valid=1, in_payload=(b1 << 8) | a1, out_ready=1)\n        if event[\"input\"] is not None:\n            accepted.append(event[\"input\"])\n        for _ in range(stall_cycles):\n            event = await self.cycle(in_valid=1, in_payload=(b2 << 8) | a2, out_ready=0)\n            check(event[\"input\"] is None, f\"input transferred while output stalled: event={event}\")\n        event = await self.cycle(in_valid=1, in_payload=(b2 << 8) | a2, out_ready=1)\n        if event[\"output\"] is not None:\n            outputs.append(event[\"output\"])\n        if event[\"input\"] is not None:\n            accepted.append(event[\"input\"])\n        check(event[\"output\"] is not None and event[\"input\"] is not None,\n              f\"same-edge consume-and-replace missing: event={event} stall_cycles={stall_cycles}\")\n        event = await self.cycle(in_valid=0, out_ready=1)\n        if event[\"output\"] is not None:\n            outputs.append(event[\"output\"])\n        expected_inputs = [{\"operand_a\": a1, \"operand_b\": b1}, {\"operand_a\": a2, \"operand_b\": b2}]\n        expected_outputs = [add_unsigned(a1, b1), add_unsigned(a2, b2)]\n        check(accepted == expected_inputs, f\"pair input accounting expected={expected_inputs} observed={accepted}\")\n        check([x[\"sum\"] for x in outputs] == expected_outputs, f\"pair output order expected={expected_outputs} observed={outputs}\")\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None, f\"extra pair output: {guard}\")\n        return {\"accepted_inputs\": accepted, \"outputs\": [x[\"sum\"] for x in outputs], \"aborted\": False, \"reset_edges\": 0}\n\n    async def reset_abort(self, a, b, stalled):\n        event = await self.cycle(in_valid=1, in_payload=(b << 8) | a, out_ready=0 if stalled else 1)\n        check(event[\"input\"] == {\"operand_a\": a, \"operand_b\": b}, f\"abort job was not accepted: {event}\")\n        if stalled:\n            event = await self.cycle(in_valid=0, out_ready=0)\n            check(event[\"output\"] is None, f\"stalled abort job transferred unexpectedly: {event}\")\n        event = await self.cycle(rst_n=0, in_valid=1, out_ready=1)\n        check(event[\"input\"] is None and event[\"output\"] is None, f\"transfer occurred on reset edge: {event}\")\n        await self.cycle(rst_n=1, in_valid=0, out_ready=1)\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None and not self.queue, f\"ghost result after reset: event={guard} queue={self.queue}\")\n        return {\"accepted_inputs\": [{\"operand_a\": a, \"operand_b\": b}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n\n\n@cocotb.test(timeout_time=500, timeout_unit=\"us\")\n@contract_coverage()\nasync def verify_u8_registered_adder(dut):\n    sanity_check()\n    check(len(dut.in_payload) == 16 and len(dut.out_payload) == 9, f\"port widths in={len(dut.in_payload)} out={len(dut.out_payload)}\")\n    dut.rst_n.value = 1\n    dut.in_valid.value = 0\n    dut.in_payload.value = 0\n    dut.out_ready.value = 0\n    clock_task = cocotb.start_soon(Clock(dut.clk, 10, unit=\"ns\").start())\n    bench = Bench(dut)\n\n    await bench.cycle(rst_n=0, in_valid=0, out_ready=0)\n    await bench.cycle(rst_n=1, in_valid=0, out_ready=0)\n\n    observed = await bench.single(0, 0, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 0, \"operand_b\": 0}], \"outputs\": [0], \"aborted\": False, \"reset_edges\": 0}\n    # STIMULUS [boundary_zero] targets=('channel.input_operands.handshake_states', 'channel.output_sum.handshake_states', 'operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum', 'operation.add_unsigned.registered_latency')\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 0, \"operand_b\": 0}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_zero\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 0, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 0}], \"outputs\": [255], \"aborted\": False, \"reset_edges\": 0}\n    # STIMULUS [boundary_255_0] targets=('operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum')\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 0}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_255_0\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 1, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 1}], \"outputs\": [256], \"aborted\": False, \"reset_edges\": 0}\n    # STIMULUS [boundary_255_1] targets=('operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum')\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 1}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_255_1\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 255, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 255}], \"outputs\": [510], \"aborted\": False, \"reset_edges\": 0}\n    # STIMULUS [boundary_max] targets=('operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum')\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 255}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_max\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    for label, first, second, stalls in ((\"stall_one\", (1, 2), (3, 4), 1), (\"stall_short\", (5, 6), (7, 8), 3), (\"stall_long\", (9, 10), (11, 12), 5)):\n        observed = await bench.stall_pair(first, second, stalls)\n        submitted = {\"transactions\": [{\"operand_a\": first[0], \"operand_b\": first[1]}, {\"operand_a\": second[0], \"operand_b\": second[1]}], \"stall_cycles\": stalls}\n        expected = {\"accepted_inputs\": submitted[\"transactions\"], \"outputs\": [add_unsigned(*first), add_unsigned(*second)], \"aborted\": False, \"reset_edges\": 0}\n        if label == \"stall_one\":\n            # STIMULUS [stall_one] targets=('channel.input_operands.stall_stability', 'channel.output_sum.stall_stability', 'operation.add_unsigned.output_buffer_stall')\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_one\")\n        elif label == \"stall_short\":\n            # STIMULUS [stall_short] targets=('channel.input_operands.stall_stability', 'channel.output_sum.stall_stability', 'operation.add_unsigned.output_buffer_stall')\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_short\")\n        else:\n            # STIMULUS [stall_long] targets=('channel.input_operands.stall_stability', 'channel.output_sum.stall_stability', 'operation.add_unsigned.output_buffer_stall')\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_long\")\n        sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.reset_abort(21, 22, False)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 21, \"operand_b\": 22}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n    # STIMULUS [reset_pending] targets=('signal.rst_n.reset_behavior',)\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 21, \"operand_b\": 22, \"reset_before_output\": True}, expected, observed, operations=(\"add_unsigned\",), label=\"reset_pending\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.reset_abort(23, 24, True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 23, \"operand_b\": 24}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n    # STIMULUS [reset_stalled] targets=('signal.rst_n.reset_behavior', 'channel.input_operands.handshake_states', 'channel.output_sum.handshake_states')\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 23, \"operand_b\": 24, \"reset_while_stalled\": True}, expected, observed, operations=(\"add_unsigned\",), label=\"reset_stalled\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    rng = random.Random(180417)\n    for transaction in range(100):\n        a = rng.randrange(256)\n        b = rng.randrange(256)\n        source_delay = rng.randrange(5)\n        stall_count = rng.randrange(7)\n        ready_pattern = [0] * stall_count + [1]\n        observed = await bench.single(a, b, source_delay=source_delay, ready_pattern=ready_pattern)\n        expected = {\"accepted_inputs\": [{\"operand_a\": a, \"operand_b\": b}], \"outputs\": [add_unsigned(a, b)], \"aborted\": False, \"reset_edges\": 0}\n        submitted = {\"operand_a\": a, \"operand_b\": b, \"source_idle_cycles\": source_delay, \"sink_stall_cycles\": stall_count, \"transaction\": transaction}\n        # STIMULUS [randomized_job] targets=('channel.input_operands.handshake_states', 'channel.output_sum.handshake_states', 'operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum', 'operation.add_unsigned.registered_latency')\n        stimulus_id = _contract_record_checked_stimulus(\"randomized\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"randomized_job\")\n        sample_operation(\"add_unsigned\", {}, \"randomized\", stimulus_id)\n\n    for _ in range(3):\n        event = await bench.cycle(in_valid=0, out_ready=1)\n        check(event[\"output\"] is None, f\"late unsolicited output at end of regression: {event}\")\n    clock_task.cancel()\n\n# === BEGIN PIPELINE-GENERATED VERIFIER ANNOTATIONS ===\n# This literal and the following comments are emitted by my_v.\n# The Verifier chooses semantic label-to-target mappings; code owns syntax.\n# === STIMULUS AND COVERAGE INTENT ===\nSTIMULUS_COVERAGE_INTENTS = [{'label': 'boundary_zero', 'targets': ['channel.input_operands.handshake_states', 'channel.output_sum.handshake_states', 'operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum', 'operation.add_unsigned.registered_latency']}, {'label': 'boundary_255_0', 'targets': ['operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum']}, {'label': 'boundary_255_1', 'targets': ['operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum']}, {'label': 'boundary_max', 'targets': ['operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum']}, {'label': 'stall_one', 'targets': ['channel.input_operands.stall_stability', 'channel.output_sum.stall_stability', 'operation.add_unsigned.output_buffer_stall']}, {'label': 'stall_short', 'targets': ['channel.input_operands.stall_stability', 'channel.output_sum.stall_stability', 'operation.add_unsigned.output_buffer_stall']}, {'label': 'stall_long', 'targets': ['channel.input_operands.stall_stability', 'channel.output_sum.stall_stability', 'operation.add_unsigned.output_buffer_stall']}, {'label': 'reset_pending', 'targets': ['signal.rst_n.reset_behavior']}, {'label': 'reset_stalled', 'targets': ['signal.rst_n.reset_behavior', 'channel.input_operands.handshake_states', 'channel.output_sum.handshake_states']}, {'label': 'randomized_job', 'targets': ['channel.input_operands.handshake_states', 'channel.output_sum.handshake_states', 'operation.add_unsigned.accepted_sum', 'operation.add_unsigned.transferred_sum', 'operation.add_unsigned.registered_latency']}]\n# === END PIPELINE-GENERATED VERIFIER ANNOTATIONS ===\n\n# === BEGIN CONTRACT-GENERATED PROTOCOL MONITOR ===\n# This block is emitted by my_v from the frozen interface contract.\n# It is not authored or repaired by the LLM.\nfrom multigent.verifier_tool.coverage.runtime import (\n    capture_contract_snapshot,\n    observe_contract_reset_snapshot,\n    sample_contract_snapshot,\n    normalize_verification_value as _contract_normalize_verification_value,\n    record_stimulus as _contract_runtime_record_stimulus,\n)\nfrom cocotb.triggers import Edge, ReadOnly\n\nCONTRACT_SIGNAL_NAMES = ('clk', 'rst_n', 'in_valid', 'in_ready', 'in_payload', 'out_valid', 'out_ready', 'out_payload')\nCONTRACT_PROTOCOL_ASSERTION_FEATURES = ('channel.input_operands.stall_stability', 'channel.output_sum.stall_stability')\nCONTRACT_OPERATION_ASSERTION_FEATURES = {}\n_CONTRACT_PROTOCOL_STATE = {}\n\ndef _contract_record_checked_stimulus(stimulus_kind, stimulus, expected, observed, *, operations, label):\n    \"\"\"Apply taxonomy-owned assertions for catalog operation features.\"\"\"\n    expected_value = _contract_normalize_verification_value(expected, 'expected')\n    observed_value = _contract_normalize_verification_value(observed, 'observed')\n    return _contract_runtime_record_stimulus(\n        stimulus_kind, stimulus, expected_value, label=label\n    )\n\ndef _check_contract_protocol_assertions(snapshot):\n    \"\"\"Run protocol assertions and return completed temporal observations.\"\"\"\n    completed_stalls = {}\n    if int(bool(snapshot['rst_n'])) == 0:\n        _CONTRACT_PROTOCOL_STATE.clear()\n        return completed_stalls\n\n    # PROTOCOL ASSERTION [channel.input_operands.stall_stability]\n    _p0_valid = int(bool(snapshot['in_valid']))\n    _p0_ready = int(bool(snapshot['in_ready']))\n    _p0_content = tuple(snapshot[name] for name in ('in_payload',))\n    _p0_previous = _CONTRACT_PROTOCOL_STATE.get('channel.input_operands.stall_stability')\n    if _p0_previous is not None:\n        assert _p0_valid == 1, (\n            \"protocol valid was withdrawn before stalled transfer completed; feature=channel.input_operands.stall_stability; related_signals=('in_valid', 'in_ready', 'in_payload'); observed=\"\n            + repr({name: snapshot[name] for name in ('in_valid', 'in_ready', 'in_payload')})\n        )\n        assert _p0_content == _p0_previous['content'], (\n            \"producer-owned content changed during stall or release; feature=channel.input_operands.stall_stability; related_signals=('in_valid', 'in_ready', 'in_payload'); previous=\"\n            + repr(_p0_previous['content']) + '; observed='\n            + repr(_p0_content)\n        )\n    if _p0_valid and not _p0_ready:\n        if _p0_previous is None:\n            _CONTRACT_PROTOCOL_STATE['channel.input_operands.stall_stability'] = {\n                'content': _p0_content, 'length': 1\n            }\n        else:\n            _p0_previous['length'] += 1\n    else:\n        if _p0_previous is not None:\n            completed_stalls['channel.input_operands.stall_stability'] = _p0_previous['length']\n        _CONTRACT_PROTOCOL_STATE.pop('channel.input_operands.stall_stability', None)\n\n    # PROTOCOL ASSERTION [channel.output_sum.stall_stability]\n    _p1_valid = int(bool(snapshot['out_valid']))\n    _p1_ready = int(bool(snapshot['out_ready']))\n    _p1_content = tuple(snapshot[name] for name in ('out_payload',))\n    _p1_previous = _CONTRACT_PROTOCOL_STATE.get('channel.output_sum.stall_stability')\n    if _p1_previous is not None:\n        assert _p1_valid == 1, (\n            \"protocol valid was withdrawn before stalled transfer completed; feature=channel.output_sum.stall_stability; related_signals=('out_valid', 'out_ready', 'out_payload'); observed=\"\n            + repr({name: snapshot[name] for name in ('out_valid', 'out_ready', 'out_payload')})\n        )\n        assert _p1_content == _p1_previous['content'], (\n            \"producer-owned content changed during stall or release; feature=channel.output_sum.stall_stability; related_signals=('out_valid', 'out_ready', 'out_payload'); previous=\"\n            + repr(_p1_previous['content']) + '; observed='\n            + repr(_p1_content)\n        )\n    if _p1_valid and not _p1_ready:\n        if _p1_previous is None:\n            _CONTRACT_PROTOCOL_STATE['channel.output_sum.stall_stability'] = {\n                'content': _p1_content, 'length': 1\n            }\n        else:\n            _p1_previous['length'] += 1\n    else:\n        if _p1_previous is not None:\n            completed_stalls['channel.output_sum.stall_stability'] = _p1_previous['length']\n        _CONTRACT_PROTOCOL_STATE.pop('channel.output_sum.stall_stability', None)\n    return completed_stalls\n\nasync def _contract_generated_monitor(dut):\n    \"\"\"Observe the interface once and share it with assertions and coverage.\"\"\"\n    clock = getattr(dut, 'clk')\n    while True:\n        await Edge(clock)\n        await ReadOnly()\n        if int(clock.value) != 0:\n            reset_snapshot = capture_contract_snapshot(dut, ('rst_n',))\n            if reset_snapshot:\n                observe_contract_reset_snapshot(\n                    reset_snapshot, _check_contract_protocol_assertions\n                )\n            continue\n        snapshot = capture_contract_snapshot(dut, CONTRACT_SIGNAL_NAMES)\n        sample_contract_snapshot(snapshot, _check_contract_protocol_assertions)\n\n# === END CONTRACT-GENERATED PROTOCOL MONITOR ===\n"
+      }
+    ],
+    "operation_coverage": [
+      {
+        "operation_name": "add_unsigned",
+        "family": "unsigned_binary_add",
+        "coverpoints": [
+          {
+            "id": "operation.add_unsigned.accepted_sum",
+            "concept": "two_operand_unsigned_addition",
+            "field": "accepted_operand_sum",
+            "source": "baseline",
+            "description": "Observe the mathematical sum class of each accepted packed operand pair.",
+            "bins": [
+              {
+                "name": "zero",
+                "intent": "Both accepted operands are zero.",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    0
+                  ]
+                }
+              },
+              {
+                "name": "low_or_no_carry",
+                "intent": "Accepted sum is between 1 and 255.",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    1,
+                    255
+                  ]
+                }
+              },
+              {
+                "name": "widened_result",
+                "intent": "Accepted sum requires the ninth result bit.",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    256,
+                    509
+                  ]
+                }
+              },
+              {
+                "name": "maximum",
+                "intent": "Both operands are at their maximum.",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    510
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.add_unsigned.transferred_sum",
+            "concept": "widened_exact_result",
+            "field": "transferred_sum",
+            "source": "baseline",
+            "description": "Observe exact transferred 9-bit result values.",
+            "bins": [
+              {
+                "name": "zero",
+                "intent": "Transferred result is zero.",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    0
+                  ]
+                }
+              },
+              {
+                "name": "uint8_range",
+                "intent": "Transferred result fits in eight bits.",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    1,
+                    255
+                  ]
+                }
+              },
+              {
+                "name": "ninth_bit_set",
+                "intent": "Transferred result exercises widened representation.",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    256,
+                    509
+                  ]
+                }
+              },
+              {
+                "name": "maximum",
+                "intent": "Transferred result is 510.",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    510
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.add_unsigned.registered_latency",
+            "concept": "registered_result",
+            "field": "acceptance_to_transfer_cycles",
+            "source": "architect_extension",
+            "description": "Observe input-acceptance to associated output-transfer distance.",
+            "bins": [
+              {
+                "name": "one_cycle",
+                "intent": "Unstalled result transfers exactly one cycle after acceptance.",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    1
+                  ]
+                }
+              },
+              {
+                "name": "backpressured_delay",
+                "intent": "Output backpressure extends transfer latency.",
+                "predicate": {
+                  "op": "gte",
+                  "args": [
+                    2
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.add_unsigned.output_buffer_stall",
+            "concept": "single_entry_backpressure_buffer",
+            "field": "released_output_stall_cycles",
+            "source": "architect_extension",
+            "description": "Observe released stalls in the single-entry output register.",
+            "bins": [
+              {
+                "name": "one_cycle",
+                "intent": "Release after exactly one stalled cycle.",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    1
+                  ]
+                }
+              },
+              {
+                "name": "short",
+                "intent": "Release after two through four stalled cycles.",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    2,
+                    4
+                  ]
+                }
+              },
+              {
+                "name": "long",
+                "intent": "Release after at least five stalled cycles.",
+                "predicate": {
+                  "op": "gte",
+                  "args": [
+                    5
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "verification_plan": {
+      "top_module": "u8_registered_adder",
+      "test_modules": [
+        "test_u8_registered_adder"
+      ],
+      "test_categories": [
+        "oracle_sanity",
+        "boundary",
+        "latency",
+        "backpressure",
+        "reset",
+        "ordering",
+        "randomized"
+      ],
+      "randomized_test_count": 100,
+      "seed": 180417,
+      "timeout_seconds": 120,
+      "regression_groups": {
+        "smoke": [
+          "test_u8_registered_adder"
+        ],
+        "targeted": [
+          "test_u8_registered_adder"
+        ],
+        "full": [
+          "test_u8_registered_adder"
+        ]
+      },
+      "pass_criteria": "All exact arithmetic, accounting, ordering, reset, latency, stability, coverage, and watchdog checks pass with no unsolicited transfer.",
+      "protocol_assumptions": [
+        "Transfers are sampled from stable pre-rising-edge ready/valid state.",
+        "Reset has synchronous priority and aborts pending work.",
+        "No exact ready schedule is assumed beyond the frozen combinational readiness rule."
+      ]
+    },
+    "architecture_conflict": null,
+    "known_verification_gaps": []
+  },
+  "verifier_draft": {
+    "status": "VERIFICATION_READY",
+    "summary": "Independent exact-sum oracle and cocotb regression cover boundaries, reset aborts, elastic replacement, directed stalls, and 100 deterministic randomized transactions.",
+    "reference_files": [
+      {
+        "path": "reference/adder_model.py",
+        "purpose": "Independent unsigned-adder oracle and analytical sanity checks.",
+        "content": "def add_unsigned(a, b):\n    if not (0 <= a <= 255 and 0 <= b <= 255):\n        raise ValueError(\"operands must be uint8\")\n    return a + b\n\n\ndef sanity_check():\n    known = ((0, 0, 0), (255, 0, 255), (255, 1, 256), (255, 255, 510))\n    for a, b, expected in known:\n        actual = add_unsigned(a, b)\n        if actual != expected:\n            raise AssertionError(f\"oracle sanity failed: {a}+{b}, expected={expected}, actual={actual}\")\n"
+      }
+    ],
+    "test_files": [
+      {
+        "path": "tests/test_u8_registered_adder.py",
+        "purpose": "Protocol-aware directed and randomized cocotb verification.",
+        "categories": [
+          "oracle_sanity",
+          "boundary",
+          "latency",
+          "backpressure",
+          "reset",
+          "ordering",
+          "randomized"
+        ],
+        "regression_groups": [
+          "smoke",
+          "targeted",
+          "full"
+        ],
+        "coverage_obligations": [
+          "channel.input_operands.handshake_states",
+          "channel.input_operands.stall_stability",
+          "channel.output_sum.handshake_states",
+          "channel.output_sum.stall_stability",
+          "signal.rst_n.reset_behavior",
+          "operation.add_unsigned.accepted_sum",
+          "operation.add_unsigned.transferred_sum",
+          "operation.add_unsigned.registered_latency",
+          "operation.add_unsigned.output_buffer_stall"
+        ],
+        "content": "import random\nimport cocotb\nfrom cocotb.clock import Clock\nfrom cocotb.triggers import FallingEdge, RisingEdge, Timer\nfrom multigent.verifier_tool.coverage.runtime import contract_coverage, sample_operation\nfrom reference.adder_model import add_unsigned, sanity_check\n\nCOVERAGE_OBLIGATIONS = {\n    \"channel.input_operands.handshake_states\",\n    \"channel.input_operands.stall_stability\",\n    \"channel.output_sum.handshake_states\",\n    \"channel.output_sum.stall_stability\",\n    \"signal.rst_n.reset_behavior\",\n    \"operation.add_unsigned.accepted_sum\",\n    \"operation.add_unsigned.transferred_sum\",\n    \"operation.add_unsigned.registered_latency\",\n    \"operation.add_unsigned.output_buffer_stall\",\n}\n\nSTIMULUS_COVERAGE_INTENTS = [\n    {\"label\": \"boundary_zero\", \"targets\": [\"channel.input_operands.handshake_states\", \"channel.output_sum.handshake_states\", \"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\", \"operation.add_unsigned.registered_latency\"]},\n    {\"label\": \"boundary_255_0\", \"targets\": [\"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\"]},\n    {\"label\": \"boundary_255_1\", \"targets\": [\"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\"]},\n    {\"label\": \"boundary_max\", \"targets\": [\"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\"]},\n    {\"label\": \"stall_one\", \"targets\": [\"channel.input_operands.stall_stability\", \"channel.output_sum.stall_stability\", \"operation.add_unsigned.output_buffer_stall\"]},\n    {\"label\": \"stall_short\", \"targets\": [\"channel.input_operands.stall_stability\", \"channel.output_sum.stall_stability\", \"operation.add_unsigned.output_buffer_stall\"]},\n    {\"label\": \"stall_long\", \"targets\": [\"channel.input_operands.stall_stability\", \"channel.output_sum.stall_stability\", \"operation.add_unsigned.output_buffer_stall\"]},\n    {\"label\": \"reset_pending\", \"targets\": [\"signal.rst_n.reset_behavior\"]},\n    {\"label\": \"reset_stalled\", \"targets\": [\"signal.rst_n.reset_behavior\", \"channel.input_operands.handshake_states\", \"channel.output_sum.handshake_states\"]},\n    {\"label\": \"randomized_job\", \"targets\": [\"channel.input_operands.handshake_states\", \"channel.output_sum.handshake_states\", \"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\", \"operation.add_unsigned.registered_latency\"]},\n]\n\n\ndef observe_accepted_sum(values, state):\n    if not int(values[\"rst_n\"]):\n        return None\n    if int(values[\"in_valid\"]) and int(values[\"in_ready\"]):\n        p = int(values[\"in_payload\"])\n        return (p & 255) + ((p >> 8) & 255)\n    return None\n\n\ndef observe_transferred_sum(values, state):\n    if int(values[\"rst_n\"]) and int(values[\"out_valid\"]) and int(values[\"out_ready\"]):\n        return int(values[\"out_payload\"])\n    return None\n\n\ndef observe_registered_latency(values, state):\n    if not int(values[\"rst_n\"]):\n        state.clear()\n        return None\n    result = None\n    pending = bool(state.get(\"pending\", False))\n    age = int(state.get(\"age\", 0))\n    if pending:\n        age += 1\n        if int(values[\"out_valid\"]) and int(values[\"out_ready\"]):\n            result = age\n            pending = False\n    if int(values[\"in_valid\"]) and int(values[\"in_ready\"]):\n        pending = True\n        age = 0\n    state[\"pending\"] = pending\n    state[\"age\"] = age\n    return result\n\n\nOPERATION_SAMPLING_BINDINGS = [\n    {\"operation\": \"add_unsigned\", \"point\": \"operation.add_unsigned.accepted_sum\", \"template\": \"custom\", \"observer\": \"observe_accepted_sum\", \"event\": \"clock\", \"fields\": {\"rst_n\": {\"signal\": \"rst_n\"}, \"in_valid\": {\"signal\": \"in_valid\"}, \"in_ready\": {\"signal\": \"in_ready\"}, \"in_payload\": {\"signal\": \"in_payload\"}}},\n    {\"operation\": \"add_unsigned\", \"point\": \"operation.add_unsigned.transferred_sum\", \"template\": \"custom\", \"observer\": \"observe_transferred_sum\", \"event\": \"clock\", \"fields\": {\"rst_n\": {\"signal\": \"rst_n\"}, \"out_valid\": {\"signal\": \"out_valid\"}, \"out_ready\": {\"signal\": \"out_ready\"}, \"out_payload\": {\"signal\": \"out_payload\"}}},\n    {\"operation\": \"add_unsigned\", \"point\": \"operation.add_unsigned.registered_latency\", \"template\": \"custom\", \"observer\": \"observe_registered_latency\", \"event\": \"clock\", \"fields\": {\"rst_n\": {\"signal\": \"rst_n\"}, \"in_valid\": {\"signal\": \"in_valid\"}, \"in_ready\": {\"signal\": \"in_ready\"}, \"out_valid\": {\"signal\": \"out_valid\"}, \"out_ready\": {\"signal\": \"out_ready\"}}},\n    {\"operation\": \"add_unsigned\", \"point\": \"operation.add_unsigned.output_buffer_stall\", \"template\": \"channel_stall\", \"event\": \"transfer\", \"channel\": \"output_sum\", \"fields\": {}},\n]\n\n# === LLM-GENERATED OPERATION ASSERTIONS ===\n\n\ndef check(condition, message):\n    # FEATURE [external_contract_checker]\n    assert condition, message\n\n\nclass Bench:\n    def __init__(self, dut):\n        self.dut = dut\n        self.queue = []\n        self.cycle_index = 0\n        self.previous_output_stall = None\n\n    async def cycle(self, **drives):\n        await FallingEdge(self.dut.clk)\n        for name, value in drives.items():\n            getattr(self.dut, name).value = value\n        await Timer(1, unit=\"ns\")\n        pre = {name: int(getattr(self.dut, name).value) for name in\n               (\"rst_n\", \"in_valid\", \"in_ready\", \"in_payload\", \"out_valid\", \"out_ready\", \"out_payload\")}\n        expected_ready = int(bool(pre[\"rst_n\"] and (not pre[\"out_valid\"] or pre[\"out_ready\"])))\n        check(pre[\"in_ready\"] == expected_ready,\n              f\"cycle={self.cycle_index} in_ready expected={expected_ready} observed={pre['in_ready']} signals={pre}\")\n        if self.previous_output_stall is not None and pre[\"rst_n\"]:\n            held_valid, held_payload = self.previous_output_stall\n            check(pre[\"out_valid\"] == held_valid and pre[\"out_payload\"] == held_payload,\n                  f\"cycle={self.cycle_index} stalled output changed; held_valid={held_valid} held_payload={held_payload} observed={pre}\")\n        self.previous_output_stall = (pre[\"out_valid\"], pre[\"out_payload\"]) if pre[\"rst_n\"] and pre[\"out_valid\"] and not pre[\"out_ready\"] else None\n        await RisingEdge(self.dut.clk)\n        await Timer(1, unit=\"ns\")\n        event = {\"input\": None, \"output\": None, \"reset\": not bool(pre[\"rst_n\"]), \"cycle\": self.cycle_index}\n        if not pre[\"rst_n\"]:\n            self.queue.clear()\n            self.previous_output_stall = None\n            check(int(self.dut.out_valid.value) == 0 and int(self.dut.out_payload.value) == 0,\n                  f\"reset edge failed to clear out_valid/out_payload: valid={int(self.dut.out_valid.value)} payload={int(self.dut.out_payload.value)}\")\n        else:\n            if pre[\"out_valid\"] and pre[\"out_ready\"]:\n                check(bool(self.queue), f\"cycle={self.cycle_index} unsolicited output transfer payload={pre['out_payload']}\")\n                expected = self.queue.pop(0)\n                check(pre[\"out_payload\"] == expected[\"sum\"],\n                      f\"cycle={self.cycle_index} output mismatch expected={expected} observed_payload={pre['out_payload']}\")\n                event[\"output\"] = {\"sum\": pre[\"out_payload\"], \"accepted_cycle\": expected[\"cycle\"]}\n            if pre[\"in_valid\"] and pre[\"in_ready\"]:\n                a = pre[\"in_payload\"] & 255\n                b = (pre[\"in_payload\"] >> 8) & 255\n                self.queue.append({\"sum\": add_unsigned(a, b), \"cycle\": self.cycle_index})\n                event[\"input\"] = {\"operand_a\": a, \"operand_b\": b}\n        self.cycle_index += 1\n        return event\n\n    async def single(self, a, b, source_delay=0, ready_pattern=None, require_latency_one=False):\n        accepted = []\n        outputs = []\n        for _ in range(source_delay):\n            event = await self.cycle(in_valid=0)\n            check(event[\"input\"] is None, f\"source-idle cycle unexpectedly accepted input: {event}\")\n        payload = (b << 8) | a\n        while not accepted:\n            event = await self.cycle(in_valid=1, in_payload=payload)\n            if event[\"input\"] is not None:\n                accepted.append(event[\"input\"])\n        index = 0\n        while not outputs:\n            ready = 1 if ready_pattern is None else ready_pattern[min(index, len(ready_pattern) - 1)]\n            event = await self.cycle(in_valid=0, out_ready=ready)\n            if event[\"output\"] is not None:\n                outputs.append(event[\"output\"])\n            index += 1\n        check(accepted == [{\"operand_a\": a, \"operand_b\": b}], f\"input accounting expected={[a,b]} observed={accepted}\")\n        check([x[\"sum\"] for x in outputs] == [add_unsigned(a, b)], f\"output accounting expected={add_unsigned(a,b)} observed={outputs}\")\n        if require_latency_one:\n            check(outputs[0][\"accepted_cycle\"] + 1 == event[\"cycle\"], f\"one-cycle latency failed input_cycle={outputs[0]['accepted_cycle']} output_cycle={event['cycle']}\")\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None, f\"extra output after completed job: {guard}\")\n        return {\"accepted_inputs\": accepted, \"outputs\": [x[\"sum\"] for x in outputs], \"aborted\": False, \"reset_edges\": 0}\n\n    async def stall_pair(self, first, second, stall_cycles):\n        a1, b1 = first\n        a2, b2 = second\n        accepted = []\n        outputs = []\n        event = await self.cycle(in_valid=1, in_payload=(b1 << 8) | a1, out_ready=1)\n        if event[\"input\"] is not None:\n            accepted.append(event[\"input\"])\n        for _ in range(stall_cycles):\n            event = await self.cycle(in_valid=1, in_payload=(b2 << 8) | a2, out_ready=0)\n            check(event[\"input\"] is None, f\"input transferred while output stalled: event={event}\")\n        event = await self.cycle(in_valid=1, in_payload=(b2 << 8) | a2, out_ready=1)\n        if event[\"output\"] is not None:\n            outputs.append(event[\"output\"])\n        if event[\"input\"] is not None:\n            accepted.append(event[\"input\"])\n        check(event[\"output\"] is not None and event[\"input\"] is not None,\n              f\"same-edge consume-and-replace missing: event={event} stall_cycles={stall_cycles}\")\n        event = await self.cycle(in_valid=0, out_ready=1)\n        if event[\"output\"] is not None:\n            outputs.append(event[\"output\"])\n        expected_inputs = [{\"operand_a\": a1, \"operand_b\": b1}, {\"operand_a\": a2, \"operand_b\": b2}]\n        expected_outputs = [add_unsigned(a1, b1), add_unsigned(a2, b2)]\n        check(accepted == expected_inputs, f\"pair input accounting expected={expected_inputs} observed={accepted}\")\n        check([x[\"sum\"] for x in outputs] == expected_outputs, f\"pair output order expected={expected_outputs} observed={outputs}\")\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None, f\"extra pair output: {guard}\")\n        return {\"accepted_inputs\": accepted, \"outputs\": [x[\"sum\"] for x in outputs], \"aborted\": False, \"reset_edges\": 0}\n\n    async def reset_abort(self, a, b, stalled):\n        event = await self.cycle(in_valid=1, in_payload=(b << 8) | a, out_ready=0 if stalled else 1)\n        check(event[\"input\"] == {\"operand_a\": a, \"operand_b\": b}, f\"abort job was not accepted: {event}\")\n        if stalled:\n            event = await self.cycle(in_valid=0, out_ready=0)\n            check(event[\"output\"] is None, f\"stalled abort job transferred unexpectedly: {event}\")\n        event = await self.cycle(rst_n=0, in_valid=1, out_ready=1)\n        check(event[\"input\"] is None and event[\"output\"] is None, f\"transfer occurred on reset edge: {event}\")\n        await self.cycle(rst_n=1, in_valid=0, out_ready=1)\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None and not self.queue, f\"ghost result after reset: event={guard} queue={self.queue}\")\n        return {\"accepted_inputs\": [{\"operand_a\": a, \"operand_b\": b}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n\n\n@cocotb.test(timeout_time=500, timeout_unit=\"us\")\n@contract_coverage()\nasync def verify_u8_registered_adder(dut):\n    sanity_check()\n    check(len(dut.in_payload) == 16 and len(dut.out_payload) == 9, f\"port widths in={len(dut.in_payload)} out={len(dut.out_payload)}\")\n    dut.rst_n.value = 1\n    dut.in_valid.value = 0\n    dut.in_payload.value = 0\n    dut.out_ready.value = 0\n    clock_task = cocotb.start_soon(Clock(dut.clk, 10, unit=\"ns\").start())\n    bench = Bench(dut)\n\n    await bench.cycle(rst_n=0, in_valid=0, out_ready=0)\n    await bench.cycle(rst_n=1, in_valid=0, out_ready=0)\n\n    observed = await bench.single(0, 0, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 0, \"operand_b\": 0}], \"outputs\": [0], \"aborted\": False, \"reset_edges\": 0}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 0, \"operand_b\": 0}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_zero\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 0, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 0}], \"outputs\": [255], \"aborted\": False, \"reset_edges\": 0}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 0}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_255_0\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 1, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 1}], \"outputs\": [256], \"aborted\": False, \"reset_edges\": 0}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 1}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_255_1\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 255, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 255}], \"outputs\": [510], \"aborted\": False, \"reset_edges\": 0}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 255}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_max\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    for label, first, second, stalls in ((\"stall_one\", (1, 2), (3, 4), 1), (\"stall_short\", (5, 6), (7, 8), 3), (\"stall_long\", (9, 10), (11, 12), 5)):\n        observed = await bench.stall_pair(first, second, stalls)\n        submitted = {\"transactions\": [{\"operand_a\": first[0], \"operand_b\": first[1]}, {\"operand_a\": second[0], \"operand_b\": second[1]}], \"stall_cycles\": stalls}\n        expected = {\"accepted_inputs\": submitted[\"transactions\"], \"outputs\": [add_unsigned(*first), add_unsigned(*second)], \"aborted\": False, \"reset_edges\": 0}\n        if label == \"stall_one\":\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_one\")\n        elif label == \"stall_short\":\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_short\")\n        else:\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_long\")\n        sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.reset_abort(21, 22, False)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 21, \"operand_b\": 22}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 21, \"operand_b\": 22, \"reset_before_output\": True}, expected, observed, operations=(\"add_unsigned\",), label=\"reset_pending\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.reset_abort(23, 24, True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 23, \"operand_b\": 24}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 23, \"operand_b\": 24, \"reset_while_stalled\": True}, expected, observed, operations=(\"add_unsigned\",), label=\"reset_stalled\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    rng = random.Random(180417)\n    for transaction in range(100):\n        a = rng.randrange(256)\n        b = rng.randrange(256)\n        source_delay = rng.randrange(5)\n        stall_count = rng.randrange(7)\n        ready_pattern = [0] * stall_count + [1]\n        observed = await bench.single(a, b, source_delay=source_delay, ready_pattern=ready_pattern)\n        expected = {\"accepted_inputs\": [{\"operand_a\": a, \"operand_b\": b}], \"outputs\": [add_unsigned(a, b)], \"aborted\": False, \"reset_edges\": 0}\n        submitted = {\"operand_a\": a, \"operand_b\": b, \"source_idle_cycles\": source_delay, \"sink_stall_cycles\": stall_count, \"transaction\": transaction}\n        stimulus_id = _contract_record_checked_stimulus(\"randomized\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"randomized_job\")\n        sample_operation(\"add_unsigned\", {}, \"randomized\", stimulus_id)\n\n    for _ in range(3):\n        event = await bench.cycle(in_valid=0, out_ready=1)\n        check(event[\"output\"] is None, f\"late unsolicited output at end of regression: {event}\")\n    clock_task.cancel()\n"
+      }
+    ],
+    "operation_coverage": [
+      {
+        "operation_name": "add_unsigned",
+        "family": "unsigned_binary_add",
+        "coverpoints": [
+          {
+            "id": "operation.add_unsigned.accepted_sum",
+            "concept": "two_operand_unsigned_addition",
+            "field": "accepted_operand_sum",
+            "source": "baseline",
+            "description": "Observe the mathematical sum class of each accepted packed operand pair.",
+            "bins": [
+              {
+                "name": "zero",
+                "intent": "Both accepted operands are zero.",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    0
+                  ]
+                }
+              },
+              {
+                "name": "low_or_no_carry",
+                "intent": "Accepted sum is between 1 and 255.",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    1,
+                    255
+                  ]
+                }
+              },
+              {
+                "name": "widened_result",
+                "intent": "Accepted sum requires the ninth result bit.",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    256,
+                    509
+                  ]
+                }
+              },
+              {
+                "name": "maximum",
+                "intent": "Both operands are at their maximum.",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    510
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.add_unsigned.transferred_sum",
+            "concept": "widened_exact_result",
+            "field": "transferred_sum",
+            "source": "baseline",
+            "description": "Observe exact transferred 9-bit result values.",
+            "bins": [
+              {
+                "name": "zero",
+                "intent": "Transferred result is zero.",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    0
+                  ]
+                }
+              },
+              {
+                "name": "uint8_range",
+                "intent": "Transferred result fits in eight bits.",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    1,
+                    255
+                  ]
+                }
+              },
+              {
+                "name": "ninth_bit_set",
+                "intent": "Transferred result exercises widened representation.",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    256,
+                    509
+                  ]
+                }
+              },
+              {
+                "name": "maximum",
+                "intent": "Transferred result is 510.",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    510
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.add_unsigned.registered_latency",
+            "concept": "registered_result",
+            "field": "acceptance_to_transfer_cycles",
+            "source": "architect_extension",
+            "description": "Observe input-acceptance to associated output-transfer distance.",
+            "bins": [
+              {
+                "name": "one_cycle",
+                "intent": "Unstalled result transfers exactly one cycle after acceptance.",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    1
+                  ]
+                }
+              },
+              {
+                "name": "backpressured_delay",
+                "intent": "Output backpressure extends transfer latency.",
+                "predicate": {
+                  "op": "gte",
+                  "args": [
+                    2
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "operation.add_unsigned.output_buffer_stall",
+            "concept": "single_entry_backpressure_buffer",
+            "field": "released_output_stall_cycles",
+            "source": "architect_extension",
+            "description": "Observe released stalls in the single-entry output register.",
+            "bins": [
+              {
+                "name": "one_cycle",
+                "intent": "Release after exactly one stalled cycle.",
+                "predicate": {
+                  "op": "eq",
+                  "args": [
+                    1
+                  ]
+                }
+              },
+              {
+                "name": "short",
+                "intent": "Release after two through four stalled cycles.",
+                "predicate": {
+                  "op": "between",
+                  "args": [
+                    2,
+                    4
+                  ]
+                }
+              },
+              {
+                "name": "long",
+                "intent": "Release after at least five stalled cycles.",
+                "predicate": {
+                  "op": "gte",
+                  "args": [
+                    5
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "verification_plan": {
+      "top_module": "u8_registered_adder",
+      "test_modules": [
+        "test_u8_registered_adder"
+      ],
+      "test_categories": [
+        "oracle_sanity",
+        "boundary",
+        "latency",
+        "backpressure",
+        "reset",
+        "ordering",
+        "randomized"
+      ],
+      "randomized_test_count": 100,
+      "seed": 180417,
+      "timeout_seconds": 120,
+      "regression_groups": {
+        "smoke": [
+          "test_u8_registered_adder"
+        ],
+        "targeted": [
+          "test_u8_registered_adder"
+        ],
+        "full": [
+          "test_u8_registered_adder"
+        ]
+      },
+      "pass_criteria": "All exact arithmetic, accounting, ordering, reset, latency, stability, coverage, and watchdog checks pass with no unsolicited transfer.",
+      "protocol_assumptions": [
+        "Transfers are sampled from stable pre-rising-edge ready/valid state.",
+        "Reset has synchronous priority and aborts pending work.",
+        "No exact ready schedule is assumed beyond the frozen combinational readiness rule."
+      ]
+    },
+    "architecture_conflict": null,
+    "known_verification_gaps": []
+  },
+  "verifier_review_status": "APPROVED",
+  "verifier_review_result": {
+    "status": "APPROVED",
+    "summary": "Coverage, observers, executable checkers, and declared stimulus mappings are semantically sufficient for the frozen contract.",
+    "findings": []
+  },
+  "verifier_review_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "c4193e2bdb8e221ce2b6c211ce855b80a17bdf55d64017efd5dc67eb99fe9c00",
+      "architect_result.json": "72897b2a2574302dac2288c2f3ca431b6ea18178e55bff728bfbbcfa5c157dba",
+      "architecture_contract.yaml": "07e2df46e290e9251a6392267deb102c2617196eba03c459aa2fe28b58e9c3fd",
+      "interface_contract.yaml": "bec7df126c1e01057be849b03fc565255dce72c35a26039ae2bed3d637e8d497",
+      "module_manifest.json": "255985ad453acf5a783a6f426ddaba0d023f9190059179c9ff3b13bafdb6b241"
+    },
+    "tests": {
+      "test_u8_registered_adder.py": "96a3a36fcd98d2ca5f05d132f4202e6032d9d03866fb73918d4016799948b055"
+    },
+    "reference": {
+      "adder_model.py": "905fa9ed1e7d9cd124ccc8f6d7d857a81c22ffafad9e97ad2fdf53cf6c57f6f7"
+    },
+    "operation_coverage": "d947ad9d6c6bca28562f114b6a78394b90f30d81b863a71e5bc9a81b764caeaf",
+    "taxonomy_and_monitor": {
+      "verifier_tool/coverage/operation/families.yaml": "9d6e4acc50e16b09362248e76da9d2381cc5ff548ec11003af49e35af34eec3b",
+      "verifier_tool/coverage/operation/sampling_templates.yaml": "99ee06f294892df8c0eb21e9b269c44956e0f2da41b34770071d2dfc64676dd0",
+      "verifier_tool/coverage/protocol/templates.yaml": "04c6aded32ae73cd60b17dc6ba0ffd996831c4fbb8b05336ee778e3f2e0c7445",
+      "verifier_tool/predefined_assertion/operation/assertions.yaml": "fc5a3f563fa23b38b5202a1e491256dc3f6ff8b0eac4a086ab2807d0442ef8e7",
+      "verifier_tool/role_pool/interface_protocol_profiles.yaml": "a4ecb99223e5803c6c6f4403c4104a4f3a3c1fd3145db1c02c67f23c982a9903",
+      "verifier_tool/role_pool/interface_semantic_classes.yaml": "7f9a94fa2f22559863de224197442fa11033f5fc4b2cf344a68bc65cf3aecc0a",
+      "verifier_tool/role_pool/interface_signal_roles.yaml": "759b2f89b76135a6fa69d56d2ededc333f0b78bab893f51284d834d5f3823e81",
+      "verifier_tool/coverage/runtime.py": "ba544563eb2615c738c443ce41f44268477110b47b2b175d2adb9c0599d03e92",
+      "verifier_tool/coverage/cocotb_model.py": "abe7cabcf91ec7d165be17102acd443f9cd677b12478f5d444a8171f2280227f",
+      "verifier_tool/coverage/operation/plan.py": "357af0d8bd41f6875635c39bc465cb19b3c5ada24ff1e86463b2a22ac3d178ae",
+      "verifier_tool/coverage/operation/sampling.py": "95561453bcdd93597d998e5682d200b88a5286b69dc54e3c94ed423164345f48",
+      "verifier_tool/predefined_assertion/protocol/generator.py": "70fc33cef6b21b00c9d3e7845ce41a7518f8ae2a6f5b6df6e611938053ce345a",
+      "verifier_tool/predefined_assertion/operation/generator.py": "0fab64b98122a2f9452fd5a1896b59d6070e429243badb7780dd85fd9fb5064c",
+      "verifier_tool/predefined_assertion/instrumentation.py": "6794c4d52cc79c6e7a8aef7d787558e1f30aedaf8d7e1e3564f38f5671d87774"
+    }
+  },
+  "verification_plan": {
+    "top_module": "u8_registered_adder",
+    "test_modules": [
+      "test_u8_registered_adder"
+    ],
+    "test_categories": [
+      "oracle_sanity",
+      "boundary",
+      "latency",
+      "backpressure",
+      "reset",
+      "ordering",
+      "randomized"
+    ],
+    "randomized_test_count": 100,
+    "seed": 180417,
+    "timeout_seconds": 120,
+    "regression_groups": {
+      "smoke": [
+        "test_u8_registered_adder"
+      ],
+      "targeted": [
+        "test_u8_registered_adder"
+      ],
+      "full": [
+        "test_u8_registered_adder"
+      ]
+    },
+    "pass_criteria": "All exact arithmetic, accounting, ordering, reset, latency, stability, coverage, and watchdog checks pass with no unsolicited transfer.",
+    "protocol_assumptions": [
+      "Transfers are sampled from stable pre-rising-edge ready/valid state.",
+      "Reset has synchronous priority and aborts pending work.",
+      "No exact ready schedule is assumed beyond the frozen combinational readiness rule."
+    ]
+  },
+  "verification_status": "PASS",
+  "verification_evidence": {
+    "architecture_version": 1,
+    "repair_iteration": 0,
+    "top_module": "u8_registered_adder",
+    "regression_scope": "FULL",
+    "verilator": {
+      "stage": "verilator_lint",
+      "status": "PASS",
+      "failure_class": null,
+      "return_code": 0,
+      "command": [
+        "/u/mjha1/.local/verilator-env/bin/verilator",
+        "--lint-only",
+        "--sv",
+        "-Wno-fatal",
+        "--top-module",
+        "u8_registered_adder",
+        "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/rtl/u8_registered_adder.sv"
+      ],
+      "sources": [
+        "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/rtl/u8_registered_adder.sv"
+      ],
+      "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.034 MB sources in 2 modules, into 0.021 MB in 3 C++ files needing 0.000 MB\n- Verilator: Walltime 0.007 s (elab=0.000, cvt=0.001, bld=0.000); cpu 0.004 s on 1 threads; allocated 25.562 MB\n",
+      "stderr": "",
+      "error_diagnostics": [],
+      "top_module": "u8_registered_adder"
+    },
+    "cocotb": {
+      "stage": "cocotb_regression",
+      "status": "PASS",
+      "failure_class": null,
+      "tests": 1,
+      "failures": 0,
+      "seed": 180417,
+      "top_module": "u8_registered_adder",
+      "test_modules": [
+        "test_u8_registered_adder"
+      ],
+      "results_xml": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/verification/build/av1-r0-p0-v1/results.xml",
+      "worker_error": null,
+      "functional_coverage": {
+        "status": "PASS",
+        "samples": 811,
+        "operation_samples": 109,
+        "directed_operation_samples": 9,
+        "randomized_operation_samples": 100,
+        "stimulus_count": 109,
+        "directed_stimuli": 9,
+        "randomized_stimuli": 100,
+        "randomized_transactions_observed": 100,
+        "stimulus_ledger_enabled": true,
+        "randomized_transactions_minimum": 100,
+        "coverage_engine": "cocotb-coverage",
+        "required_bins": 31,
+        "hit_bins": 31,
+        "coverage_percent": 100.0,
+        "missing_bins": [],
+        "covered_bins": [
+          "channel.input_operands.handshake_states.backpressured",
+          "channel.input_operands.handshake_states.idle",
+          "channel.input_operands.handshake_states.receiver_ready",
+          "channel.input_operands.handshake_states.transfer",
+          "channel.input_operands.stall_stability.long_stall",
+          "channel.input_operands.stall_stability.one_cycle_stall",
+          "channel.input_operands.stall_stability.short_stall",
+          "channel.output_sum.handshake_states.backpressured",
+          "channel.output_sum.handshake_states.idle",
+          "channel.output_sum.handshake_states.receiver_ready",
+          "channel.output_sum.handshake_states.transfer",
+          "channel.output_sum.stall_stability.long_stall",
+          "channel.output_sum.stall_stability.one_cycle_stall",
+          "channel.output_sum.stall_stability.short_stall",
+          "operation.add_unsigned.accepted_sum.low_or_no_carry",
+          "operation.add_unsigned.accepted_sum.maximum",
+          "operation.add_unsigned.accepted_sum.widened_result",
+          "operation.add_unsigned.accepted_sum.zero",
+          "operation.add_unsigned.output_buffer_stall.long",
+          "operation.add_unsigned.output_buffer_stall.none",
+          "operation.add_unsigned.output_buffer_stall.one_cycle",
+          "operation.add_unsigned.output_buffer_stall.short",
+          "operation.add_unsigned.registered_latency.backpressured_delay",
+          "operation.add_unsigned.registered_latency.one_cycle",
+          "operation.add_unsigned.transferred_sum.maximum",
+          "operation.add_unsigned.transferred_sum.ninth_bit_set",
+          "operation.add_unsigned.transferred_sum.uint8_range",
+          "operation.add_unsigned.transferred_sum.zero",
+          "signal.rst_n.reset_behavior.asserted",
+          "signal.rst_n.reset_behavior.deasserted",
+          "signal.rst_n.reset_behavior.release"
+        ],
+        "bin_hits": {
+          "channel.input_operands.handshake_states.backpressured": 9,
+          "channel.input_operands.handshake_states.idle": 269,
+          "channel.input_operands.handshake_states.receiver_ready": 418,
+          "channel.input_operands.handshake_states.transfer": 112,
+          "channel.input_operands.stall_stability.long_stall": 1,
+          "channel.input_operands.stall_stability.one_cycle_stall": 1,
+          "channel.input_operands.stall_stability.short_stall": 1,
+          "channel.output_sum.handshake_states.backpressured": 278,
+          "channel.output_sum.handshake_states.idle": 3,
+          "channel.output_sum.handshake_states.receiver_ready": 417,
+          "channel.output_sum.handshake_states.transfer": 110,
+          "channel.output_sum.stall_stability.long_stall": 23,
+          "channel.output_sum.stall_stability.one_cycle_stall": 18,
+          "channel.output_sum.stall_stability.short_stall": 48,
+          "operation.add_unsigned.accepted_sum.low_or_no_carry": 61,
+          "operation.add_unsigned.accepted_sum.maximum": 1,
+          "operation.add_unsigned.accepted_sum.widened_result": 48,
+          "operation.add_unsigned.accepted_sum.zero": 2,
+          "operation.add_unsigned.output_buffer_stall.long": 23,
+          "operation.add_unsigned.output_buffer_stall.none": 21,
+          "operation.add_unsigned.output_buffer_stall.one_cycle": 18,
+          "operation.add_unsigned.output_buffer_stall.short": 48,
+          "operation.add_unsigned.registered_latency.backpressured_delay": 89,
+          "operation.add_unsigned.registered_latency.one_cycle": 21,
+          "operation.add_unsigned.transferred_sum.maximum": 1,
+          "operation.add_unsigned.transferred_sum.ninth_bit_set": 48,
+          "operation.add_unsigned.transferred_sum.uint8_range": 59,
+          "operation.add_unsigned.transferred_sum.zero": 2,
+          "signal.rst_n.reset_behavior.asserted": 6,
+          "signal.rst_n.reset_behavior.deasserted": 808,
+          "signal.rst_n.reset_behavior.release": 3
+        },
+        "assertion_failures": [],
+        "failure_records": [],
+        "last_observed_snapshot": {
+          "clk": 0,
+          "rst_n": 1,
+          "in_valid": 0,
+          "in_ready": 1,
+          "in_payload": 54291,
+          "out_valid": 0,
+          "out_ready": 1,
+          "out_payload": 231
+        },
+        "operation_sampling": [
+          {
+            "id": "operation.add_unsigned.accepted_sum",
+            "origin": "runtime_dut_observation",
+            "implementation": "llm_custom_observer",
+            "template": "custom",
+            "field_binding_origin": "verifier_declared",
+            "samples": 112,
+            "last_value": 231
+          },
+          {
+            "id": "operation.add_unsigned.output_buffer_stall",
+            "origin": "runtime_dut_observation",
+            "implementation": "reusable_template",
+            "template": "channel_stall",
+            "field_binding_origin": "verifier_declared",
+            "samples": 110,
+            "last_value": 2
+          },
+          {
+            "id": "operation.add_unsigned.registered_latency",
+            "origin": "runtime_dut_observation",
+            "implementation": "llm_custom_observer",
+            "template": "custom",
+            "field_binding_origin": "verifier_declared",
+            "samples": 110,
+            "last_value": 3
+          },
+          {
+            "id": "operation.add_unsigned.transferred_sum",
+            "origin": "runtime_dut_observation",
+            "implementation": "llm_custom_observer",
+            "template": "custom",
+            "field_binding_origin": "verifier_declared",
+            "samples": 110,
+            "last_value": 231
+          }
+        ],
+        "report_path": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/verification/functional-coverage-av1-r0-p0-v1.json"
+      },
+      "worker_return_code": 0,
+      "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.031 MB sources in 2 modules, into 0.038 MB in 6 C++ files needing 0.000 MB\n- Verilator: Walltime 0.068 s (elab=0.000, cvt=0.031, bld=0.000); cpu 0.008 s on 1 threads; allocated 25.500 MB\nmake: Entering directory '/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/verification/build/av1-r0-p0-v1'\ng++  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -Os  -c -o verilator.o /u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/share/lib/verilator/verilator.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated_dpi.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated_dpi.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated_vpi.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated_vpi.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated_threads.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated_threads.cpp\npython3 /u/mjha1/.local/verilator-env/share/verilator/bin/verilator_includer -DVL_INCLUDE_OPT=include Vtop.cpp Vtop___024root__0.cpp Vtop__Dpi.cpp Vtop___024root__Slow.cpp Vtop___024root__0__Slow.cpp Vtop__Syms__Slow.cpp > Vtop__ALL.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o Vtop__ALL.o Vtop__ALL.cpp\ng++    -rdynamic verilator.o verilated.o verilated_dpi.o verilated_vpi.o verilated_threads.o Vtop__ALL.a   -Wl,-rpath,/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/libs -L/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/libs -lcocotbvpi_verilator  -pthread -lpthread -latomic -ldl   -o u8_registered_adder\nrm Vtop__ALL.verilator_deplist.tmp\nmake: Leaving directory '/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/verification/build/av1-r0-p0-v1'\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:242  in gpi_load_users                  Loaded entry library: '/sw/user/python/miniforge3-pytorch-2.10.0/lib/libpython3.12.so.1.0'\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:233  in gpi_load_users                  Running entry func 'initialize' from loaded library '/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/simulator.cpython-312-aarch64-linux-gnu.so'\n     -.--ns INFO     pygpi                              ..ib/pygpi/embed.cpp:114  in initialize                      Using Python 3.12.9 interpreter at /u/mjha1/agentic-npu-rtl-integration/.venv/bin/python\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:74   in gpi_print_registered_impl       GPI: VPI support registered\n     0.00ns INFO     cocotb.initialize                  Seeding Python random module with 180417\n     0.00ns INFO     cocotb.initialize                  Initialized cocotb v2.1.0 from /u/mjha1/agentic-npu-rtl-integration/.venv/lib/python3.12/site-packages/cocotb\n     0.00ns INFO     cocotb.initialize                  Running on Verilator version 5.050 2026-07-01\n     0.00ns INFO     cocotb.regression                  Running tests\n     0.00ns INFO     cocotb.regression                  running test_u8_registered_adder.verify_u8_registered_adder (1/1)\n     0.00ns WARNING  py.warnings                        /u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/tests/test_u8_registered_adder.py:364: DeprecationWarning: Use `signal.value_change` instead.\n                                                          await Edge(clock)\n  8111.00ns INFO     cocotb.regression                  test_u8_registered_adder.verify_u8_registered_adder passed\n  8111.00ns INFO     cocotb.regression                  *************************************************************************************************************\n                                                        ** TEST                                                 STATUS  SIM TIME (ns)  REAL TIME (s)  RATIO (ns/s) **\n                                                        *************************************************************************************************************\n                                                        ** test_u8_registered_adder.verify_u8_registered_adder   PASS        8111.00           1.04       7790.96  **\n                                                        *************************************************************************************************************\n                                                        ** TESTS=1 PASS=1 FAIL=0 SKIP=0                                      8111.00           1.04       7787.86  **\n                                                        *************************************************************************************************************\n- :0: Verilog $finish\n",
+      "stderr": "",
+      "stimulus_ledger": {
+        "path": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/verification/stimulus-ledger-av1-r0-p0-v1.json",
+        "status": "PASS",
+        "stimulus_count": 109,
+        "directed_stimuli": 9,
+        "randomized_stimuli": 100
+      },
+      "stimulus_history": {
+        "path": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/verification/stimulus-history.json",
+        "run_count": 1,
+        "stimulus_count": 109,
+        "unique_stimulus_count": 109,
+        "duplicate_execution_count": 0
+      }
+    },
+    "stimulus_history": {
+      "path": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/verification/stimulus-history.json",
+      "run_count": 1,
+      "stimulus_count": 109,
+      "unique_stimulus_count": 109,
+      "duplicate_execution_count": 0
+    },
+    "status": "PASS",
+    "failure_class": null
+  },
+  "verification_only": true,
+  "synthesis_result": null,
+  "optimization_plan": null,
+  "repair_iteration": 0,
+  "max_repair_iterations": 7,
+  "ppa_iteration": 0,
+  "max_ppa_iterations": 3,
+  "needs_regression": false,
+  "failure_class": null,
+  "status": "SUCCESS",
+  "history": [
+    {
+      "stage": "architect",
+      "status": "READY",
+      "architecture_version": 1,
+      "revision": false,
+      "architect_decision": "INITIAL_CONTRACT",
+      "rtl_preserved": false
+    },
+    {
+      "stage": "contract_reviewer",
+      "status": "APPROVED",
+      "findings": []
+    },
+    {
+      "stage": "generation_start",
+      "status": "PARALLEL_GENERATION"
+    },
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "ppa_iteration": 0,
+      "files": [
+        "u8_registered_adder.sv"
+      ]
+    },
+    {
+      "stage": "verifier_generation",
+      "status": "SEMANTIC_VALIDATION_FAILED",
+      "validator_error": "Verifier TB review structure is invalid: Every Verifier-authored assert needs a feature comment immediately above it; line 64"
+    },
+    {
+      "stage": "generation_join",
+      "status": "JOINED"
+    },
+    {
+      "stage": "verification_repair",
+      "status": "SEMANTIC_CORRECTION",
+      "missing_concepts": []
+    },
+    {
+      "stage": "verifier_generation",
+      "status": "VERIFICATION_READY",
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "semantic_retry": true,
+      "semantic_retry_error": "Verifier TB review structure is invalid: Every Verifier-authored assert needs a feature comment immediately above it; line 64"
+    },
+    {
+      "stage": "verifier_review",
+      "status": "APPROVED",
+      "findings": [],
+      "stimulus_reviewed": true
+    },
+    {
+      "stage": "deterministic_verification",
+      "status": "PASS",
+      "failure_class": null
+    }
+  ],
+  "errors": [
+    "Verifier TB review structure is invalid: Every Verifier-authored assert needs a feature comment immediately above it; line 64"
+  ],
+  "vivado_config": {},
+  "vivado_executable": "vivado",
+  "vivado_timeout": 3600,
+  "ppa_objective": "lut",
+  "ppa_status": "PENDING",
+  "best_candidate": null,
+  "verifier_revision": 1,
+  "max_verifier_revisions": 7,
+  "frozen_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "c4193e2bdb8e221ce2b6c211ce855b80a17bdf55d64017efd5dc67eb99fe9c00",
+      "architect_result.json": "72897b2a2574302dac2288c2f3ca431b6ea18178e55bff728bfbbcfa5c157dba",
+      "architecture_contract.yaml": "07e2df46e290e9251a6392267deb102c2617196eba03c459aa2fe28b58e9c3fd",
+      "interface_contract.yaml": "bec7df126c1e01057be849b03fc565255dce72c35a26039ae2bed3d637e8d497",
+      "module_manifest.json": "255985ad453acf5a783a6f426ddaba0d023f9190059179c9ff3b13bafdb6b241"
+    },
+    "rtl": {
+      "u8_registered_adder.sv": "8937d7e2f1f6389804d4c0a9713243160ce52de059b213d05b3185fae9cea0ee"
+    },
+    "tests": {
+      "test_u8_registered_adder.py": "96a3a36fcd98d2ca5f05d132f4202e6032d9d03866fb73918d4016799948b055"
+    },
+    "reference": {
+      "adder_model.py": "905fa9ed1e7d9cd124ccc8f6d7d857a81c22ffafad9e97ad2fdf53cf6c57f6f7"
+    }
+  },
+  "verified_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "c4193e2bdb8e221ce2b6c211ce855b80a17bdf55d64017efd5dc67eb99fe9c00",
+      "architect_result.json": "72897b2a2574302dac2288c2f3ca431b6ea18178e55bff728bfbbcfa5c157dba",
+      "architecture_contract.yaml": "07e2df46e290e9251a6392267deb102c2617196eba03c459aa2fe28b58e9c3fd",
+      "interface_contract.yaml": "bec7df126c1e01057be849b03fc565255dce72c35a26039ae2bed3d637e8d497",
+      "module_manifest.json": "255985ad453acf5a783a6f426ddaba0d023f9190059179c9ff3b13bafdb6b241"
+    },
+    "rtl": {
+      "u8_registered_adder.sv": "8937d7e2f1f6389804d4c0a9713243160ce52de059b213d05b3185fae9cea0ee"
+    },
+    "tests": {
+      "test_u8_registered_adder.py": "96a3a36fcd98d2ca5f05d132f4202e6032d9d03866fb73918d4016799948b055"
+    },
+    "reference": {
+      "adder_model.py": "905fa9ed1e7d9cd124ccc8f6d7d857a81c22ffafad9e97ad2fdf53cf6c57f6f7"
+    }
+  },
+  "diagnostic_iteration": 0,
+  "max_diagnostic_iterations": 2,
+  "workspace_root": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227",
+  "contract_review_status": "APPROVED",
+  "contract_review_result": {
+    "status": "APPROVED",
+    "summary": "Contracts consistently define exact unsigned addition, single-entry elastic buffering, ready/valid behavior, synchronous active-low reset, one-cycle unstalled latency, backpressure stability, ports, ordering, and executable acceptance criteria.",
+    "findings": []
+  },
+  "contract_review_hashes": {
+    "acceptance_criteria.yaml": "c4193e2bdb8e221ce2b6c211ce855b80a17bdf55d64017efd5dc67eb99fe9c00",
+    "architect_result.json": "72897b2a2574302dac2288c2f3ca431b6ea18178e55bff728bfbbcfa5c157dba",
+    "architecture_contract.yaml": "07e2df46e290e9251a6392267deb102c2617196eba03c459aa2fe28b58e9c3fd",
+    "interface_contract.yaml": "bec7df126c1e01057be849b03fc565255dce72c35a26039ae2bed3d637e8d497",
+    "module_manifest.json": "255985ad453acf5a783a6f426ddaba0d023f9190059179c9ff3b13bafdb6b241"
+  },
+  "contract_review_revision": 0,
+  "max_contract_review_revisions": 3,
+  "architecture_escalation": 0,
+  "max_architecture_escalations": 3,
+  "repair_cycle_iteration": 0,
+  "rtl_branch_update": {
+    "rtl_status": "RTL_GENERATED",
+    "rtl_result": {
+      "status": "RTL_GENERATED",
+      "task_type": "INITIAL_GENERATION",
+      "summary": "Implemented the single-entry elastic unsigned 8-bit registered adder.",
+      "files": [
+        {
+          "path": "u8_registered_adder.sv",
+          "module": "u8_registered_adder",
+          "purpose": "Top-level handshakes, exact addition, output storage, backpressure, and synchronous reset.",
+          "content": "module u8_registered_adder (\n    input  logic        clk,\n    input  logic        rst_n,\n    input  logic        in_valid,\n    output logic        in_ready,\n    input  logic [15:0] in_payload,\n    output logic        out_valid,\n    input  logic        out_ready,\n    output logic [8:0]  out_payload\n);\n\n    logic [8:0] operand_a_ext;\n    logic [8:0] operand_b_ext;\n    logic [8:0] sum_next;\n\n    always_comb begin\n        in_ready     = rst_n && (!out_valid || out_ready);\n        operand_a_ext = {1'b0, in_payload[7:0]};\n        operand_b_ext = {1'b0, in_payload[15:8]};\n        sum_next      = operand_a_ext + operand_b_ext;\n    end\n\n    always_ff @(posedge clk) begin\n        if (!rst_n) begin\n            out_valid   <= 1'b0;\n            out_payload <= 9'b0;\n        end else if (in_valid && in_ready) begin\n            out_valid   <= 1'b1;\n            out_payload <= sum_next;\n        end else if (out_valid && out_ready) begin\n            out_valid <= 1'b0;\n        end\n    end\n\nendmodule\n"
+        }
+      ],
+      "contract_checks": [
+        {
+          "requirement": "Exact unsigned 9-bit addition",
+          "satisfied": true,
+          "evidence": "Both packed 8-bit operands are explicitly zero-extended to 9 bits before addition."
+        },
+        {
+          "requirement": "Single-entry elastic output register",
+          "satisfied": true,
+          "evidence": "out_valid tracks occupancy; simultaneous output consumption and input acceptance replaces the payload atomically."
+        },
+        {
+          "requirement": "Backpressure stability",
+          "satisfied": true,
+          "evidence": "When out_valid is high and out_ready is low, in_ready is low and neither output register is assigned."
+        },
+        {
+          "requirement": "Active-low synchronous reset",
+          "satisfied": true,
+          "evidence": "Reset is sampled only in always_ff at posedge clk, has priority, and clears output valid and payload; combinational in_ready is low while rst_n is low."
+        },
+        {
+          "requirement": "Frozen module manifest and interface",
+          "satisfied": true,
+          "evidence": "Exactly one parameterless u8_registered_adder module is emitted with the declared ports and widths."
+        }
+      ],
+      "changed_modules": [
+        "u8_registered_adder"
+      ],
+      "architecture_conflict": null,
+      "blocked_reason": "",
+      "architecture_changed": false,
+      "interface_changed": false,
+      "latency_changed": false,
+      "known_risks": [
+        "No compiler, simulation, or synthesis tool was run as part of this generation."
+      ],
+      "regression_required": "FULL"
+    },
+    "rtl_files": [
+      "u8_registered_adder.sv"
+    ],
+    "architecture_conflict": null,
+    "needs_regression": true,
+    "verification_status": "PENDING",
+    "verification_evidence": null,
+    "synthesis_result": null,
+    "rtl_contract_version": 1,
+    "history": [
+      {
+        "stage": "rtl_generator",
+        "status": "RTL_GENERATED",
+        "architecture_version": 1,
+        "repair_iteration": 0,
+        "ppa_iteration": 0,
+        "files": [
+          "u8_registered_adder.sv"
+        ]
+      }
+    ]
+  },
+  "tb_branch_update": {
+    "verifier_status": "SEMANTIC_VALIDATION_FAILED",
+    "verifier_review_status": "PENDING",
+    "verifier_review_result": null,
+    "verifier_review_hashes": {},
+    "errors": [
+      "Verifier TB review structure is invalid: Every Verifier-authored assert needs a feature comment immediately above it; line 64"
+    ],
+    "history": [
+      {
+        "stage": "verifier_generation",
+        "status": "SEMANTIC_VALIDATION_FAILED",
+        "validator_error": "Verifier TB review structure is invalid: Every Verifier-authored assert needs a feature comment immediately above it; line 64"
+      }
+    ],
+    "verifier_draft": {
+      "status": "VERIFICATION_READY",
+      "summary": "Independent exact-sum oracle and cocotb regression cover boundaries, reset aborts, elastic replacement, directed stalls, and 100 deterministic randomized transactions.",
+      "reference_files": [
+        {
+          "path": "reference/adder_model.py",
+          "purpose": "Independent unsigned-adder oracle and analytical sanity checks.",
+          "content": "def add_unsigned(a, b):\n    if not (0 <= a <= 255 and 0 <= b <= 255):\n        raise ValueError(\"operands must be uint8\")\n    return a + b\n\n\ndef sanity_check():\n    known = ((0, 0, 0), (255, 0, 255), (255, 1, 256), (255, 255, 510))\n    for a, b, expected in known:\n        actual = add_unsigned(a, b)\n        if actual != expected:\n            raise AssertionError(f\"oracle sanity failed: {a}+{b}, expected={expected}, actual={actual}\")\n"
+        }
+      ],
+      "test_files": [
+        {
+          "path": "tests/test_u8_registered_adder.py",
+          "purpose": "Protocol-aware directed and randomized cocotb verification.",
+          "categories": [
+            "oracle_sanity",
+            "boundary",
+            "latency",
+            "backpressure",
+            "reset",
+            "ordering",
+            "randomized"
+          ],
+          "regression_groups": [
+            "smoke",
+            "targeted",
+            "full"
+          ],
+          "coverage_obligations": [
+            "channel.input_operands.handshake_states",
+            "channel.input_operands.stall_stability",
+            "channel.output_sum.handshake_states",
+            "channel.output_sum.stall_stability",
+            "signal.rst_n.reset_behavior",
+            "operation.add_unsigned.accepted_sum",
+            "operation.add_unsigned.transferred_sum",
+            "operation.add_unsigned.registered_latency",
+            "operation.add_unsigned.output_buffer_stall"
+          ],
+          "content": "import random\nimport cocotb\nfrom cocotb.clock import Clock\nfrom cocotb.triggers import FallingEdge, RisingEdge, Timer\nfrom multigent.verifier_tool.coverage.runtime import contract_coverage, sample_operation\nfrom reference.adder_model import add_unsigned, sanity_check\n\nCOVERAGE_OBLIGATIONS = {\n    \"channel.input_operands.handshake_states\",\n    \"channel.input_operands.stall_stability\",\n    \"channel.output_sum.handshake_states\",\n    \"channel.output_sum.stall_stability\",\n    \"signal.rst_n.reset_behavior\",\n    \"operation.add_unsigned.accepted_sum\",\n    \"operation.add_unsigned.transferred_sum\",\n    \"operation.add_unsigned.registered_latency\",\n    \"operation.add_unsigned.output_buffer_stall\",\n}\n\nSTIMULUS_COVERAGE_INTENTS = [\n    {\"label\": \"boundary_zero\", \"targets\": [\"channel.input_operands.handshake_states\", \"channel.output_sum.handshake_states\", \"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\", \"operation.add_unsigned.registered_latency\"]},\n    {\"label\": \"boundary_255_0\", \"targets\": [\"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\"]},\n    {\"label\": \"boundary_255_1\", \"targets\": [\"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\"]},\n    {\"label\": \"boundary_max\", \"targets\": [\"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\"]},\n    {\"label\": \"stall_one\", \"targets\": [\"channel.input_operands.stall_stability\", \"channel.output_sum.stall_stability\", \"operation.add_unsigned.output_buffer_stall\"]},\n    {\"label\": \"stall_short\", \"targets\": [\"channel.input_operands.stall_stability\", \"channel.output_sum.stall_stability\", \"operation.add_unsigned.output_buffer_stall\"]},\n    {\"label\": \"stall_long\", \"targets\": [\"channel.input_operands.stall_stability\", \"channel.output_sum.stall_stability\", \"operation.add_unsigned.output_buffer_stall\"]},\n    {\"label\": \"reset_pending\", \"targets\": [\"signal.rst_n.reset_behavior\"]},\n    {\"label\": \"reset_stalled\", \"targets\": [\"signal.rst_n.reset_behavior\", \"channel.input_operands.handshake_states\", \"channel.output_sum.handshake_states\"]},\n    {\"label\": \"randomized_job\", \"targets\": [\"channel.input_operands.handshake_states\", \"channel.output_sum.handshake_states\", \"operation.add_unsigned.accepted_sum\", \"operation.add_unsigned.transferred_sum\", \"operation.add_unsigned.registered_latency\"]},\n]\n\n\ndef observe_accepted_sum(values, state):\n    if not int(values[\"rst_n\"]):\n        return None\n    if int(values[\"in_valid\"]) and int(values[\"in_ready\"]):\n        p = int(values[\"in_payload\"])\n        return (p & 255) + ((p >> 8) & 255)\n    return None\n\n\ndef observe_transferred_sum(values, state):\n    if int(values[\"rst_n\"]) and int(values[\"out_valid\"]) and int(values[\"out_ready\"]):\n        return int(values[\"out_payload\"])\n    return None\n\n\ndef observe_registered_latency(values, state):\n    if not int(values[\"rst_n\"]):\n        state.clear()\n        return None\n    result = None\n    pending = bool(state.get(\"pending\", False))\n    age = int(state.get(\"age\", 0))\n    if pending:\n        age += 1\n        if int(values[\"out_valid\"]) and int(values[\"out_ready\"]):\n            result = age\n            pending = False\n    if int(values[\"in_valid\"]) and int(values[\"in_ready\"]):\n        pending = True\n        age = 0\n    state[\"pending\"] = pending\n    state[\"age\"] = age\n    return result\n\n\nOPERATION_SAMPLING_BINDINGS = [\n    {\"operation\": \"add_unsigned\", \"point\": \"operation.add_unsigned.accepted_sum\", \"template\": \"custom\", \"observer\": \"observe_accepted_sum\", \"event\": \"clock\", \"fields\": {\"rst_n\": {\"signal\": \"rst_n\"}, \"in_valid\": {\"signal\": \"in_valid\"}, \"in_ready\": {\"signal\": \"in_ready\"}, \"in_payload\": {\"signal\": \"in_payload\"}}},\n    {\"operation\": \"add_unsigned\", \"point\": \"operation.add_unsigned.transferred_sum\", \"template\": \"custom\", \"observer\": \"observe_transferred_sum\", \"event\": \"clock\", \"fields\": {\"rst_n\": {\"signal\": \"rst_n\"}, \"out_valid\": {\"signal\": \"out_valid\"}, \"out_ready\": {\"signal\": \"out_ready\"}, \"out_payload\": {\"signal\": \"out_payload\"}}},\n    {\"operation\": \"add_unsigned\", \"point\": \"operation.add_unsigned.registered_latency\", \"template\": \"custom\", \"observer\": \"observe_registered_latency\", \"event\": \"clock\", \"fields\": {\"rst_n\": {\"signal\": \"rst_n\"}, \"in_valid\": {\"signal\": \"in_valid\"}, \"in_ready\": {\"signal\": \"in_ready\"}, \"out_valid\": {\"signal\": \"out_valid\"}, \"out_ready\": {\"signal\": \"out_ready\"}}},\n    {\"operation\": \"add_unsigned\", \"point\": \"operation.add_unsigned.output_buffer_stall\", \"template\": \"channel_stall\", \"event\": \"transfer\", \"channel\": \"output_sum\", \"fields\": {}},\n]\n\n# === LLM-GENERATED OPERATION ASSERTIONS ===\n\n\ndef check(condition, message):\n    # FEATURE [external_contract_checker]\n    assert condition, message\n\n\nclass Bench:\n    def __init__(self, dut):\n        self.dut = dut\n        self.queue = []\n        self.cycle_index = 0\n        self.previous_output_stall = None\n\n    async def cycle(self, **drives):\n        await FallingEdge(self.dut.clk)\n        for name, value in drives.items():\n            getattr(self.dut, name).value = value\n        await Timer(1, unit=\"ns\")\n        pre = {name: int(getattr(self.dut, name).value) for name in\n               (\"rst_n\", \"in_valid\", \"in_ready\", \"in_payload\", \"out_valid\", \"out_ready\", \"out_payload\")}\n        expected_ready = int(bool(pre[\"rst_n\"] and (not pre[\"out_valid\"] or pre[\"out_ready\"])))\n        check(pre[\"in_ready\"] == expected_ready,\n              f\"cycle={self.cycle_index} in_ready expected={expected_ready} observed={pre['in_ready']} signals={pre}\")\n        if self.previous_output_stall is not None and pre[\"rst_n\"]:\n            held_valid, held_payload = self.previous_output_stall\n            check(pre[\"out_valid\"] == held_valid and pre[\"out_payload\"] == held_payload,\n                  f\"cycle={self.cycle_index} stalled output changed; held_valid={held_valid} held_payload={held_payload} observed={pre}\")\n        self.previous_output_stall = (pre[\"out_valid\"], pre[\"out_payload\"]) if pre[\"rst_n\"] and pre[\"out_valid\"] and not pre[\"out_ready\"] else None\n        await RisingEdge(self.dut.clk)\n        await Timer(1, unit=\"ns\")\n        event = {\"input\": None, \"output\": None, \"reset\": not bool(pre[\"rst_n\"]), \"cycle\": self.cycle_index}\n        if not pre[\"rst_n\"]:\n            self.queue.clear()\n            self.previous_output_stall = None\n            check(int(self.dut.out_valid.value) == 0 and int(self.dut.out_payload.value) == 0,\n                  f\"reset edge failed to clear out_valid/out_payload: valid={int(self.dut.out_valid.value)} payload={int(self.dut.out_payload.value)}\")\n        else:\n            if pre[\"out_valid\"] and pre[\"out_ready\"]:\n                check(bool(self.queue), f\"cycle={self.cycle_index} unsolicited output transfer payload={pre['out_payload']}\")\n                expected = self.queue.pop(0)\n                check(pre[\"out_payload\"] == expected[\"sum\"],\n                      f\"cycle={self.cycle_index} output mismatch expected={expected} observed_payload={pre['out_payload']}\")\n                event[\"output\"] = {\"sum\": pre[\"out_payload\"], \"accepted_cycle\": expected[\"cycle\"]}\n            if pre[\"in_valid\"] and pre[\"in_ready\"]:\n                a = pre[\"in_payload\"] & 255\n                b = (pre[\"in_payload\"] >> 8) & 255\n                self.queue.append({\"sum\": add_unsigned(a, b), \"cycle\": self.cycle_index})\n                event[\"input\"] = {\"operand_a\": a, \"operand_b\": b}\n        self.cycle_index += 1\n        return event\n\n    async def single(self, a, b, source_delay=0, ready_pattern=None, require_latency_one=False):\n        accepted = []\n        outputs = []\n        for _ in range(source_delay):\n            event = await self.cycle(in_valid=0)\n            check(event[\"input\"] is None, f\"source-idle cycle unexpectedly accepted input: {event}\")\n        payload = (b << 8) | a\n        while not accepted:\n            event = await self.cycle(in_valid=1, in_payload=payload)\n            if event[\"input\"] is not None:\n                accepted.append(event[\"input\"])\n        index = 0\n        while not outputs:\n            ready = 1 if ready_pattern is None else ready_pattern[min(index, len(ready_pattern) - 1)]\n            event = await self.cycle(in_valid=0, out_ready=ready)\n            if event[\"output\"] is not None:\n                outputs.append(event[\"output\"])\n            index += 1\n        check(accepted == [{\"operand_a\": a, \"operand_b\": b}], f\"input accounting expected={[a,b]} observed={accepted}\")\n        check([x[\"sum\"] for x in outputs] == [add_unsigned(a, b)], f\"output accounting expected={add_unsigned(a,b)} observed={outputs}\")\n        if require_latency_one:\n            check(outputs[0][\"accepted_cycle\"] + 1 == event[\"cycle\"], f\"one-cycle latency failed input_cycle={outputs[0]['accepted_cycle']} output_cycle={event['cycle']}\")\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None, f\"extra output after completed job: {guard}\")\n        return {\"accepted_inputs\": accepted, \"outputs\": [x[\"sum\"] for x in outputs], \"aborted\": False, \"reset_edges\": 0}\n\n    async def stall_pair(self, first, second, stall_cycles):\n        a1, b1 = first\n        a2, b2 = second\n        accepted = []\n        outputs = []\n        event = await self.cycle(in_valid=1, in_payload=(b1 << 8) | a1, out_ready=1)\n        if event[\"input\"] is not None:\n            accepted.append(event[\"input\"])\n        for _ in range(stall_cycles):\n            event = await self.cycle(in_valid=1, in_payload=(b2 << 8) | a2, out_ready=0)\n            check(event[\"input\"] is None, f\"input transferred while output stalled: event={event}\")\n        event = await self.cycle(in_valid=1, in_payload=(b2 << 8) | a2, out_ready=1)\n        if event[\"output\"] is not None:\n            outputs.append(event[\"output\"])\n        if event[\"input\"] is not None:\n            accepted.append(event[\"input\"])\n        check(event[\"output\"] is not None and event[\"input\"] is not None,\n              f\"same-edge consume-and-replace missing: event={event} stall_cycles={stall_cycles}\")\n        event = await self.cycle(in_valid=0, out_ready=1)\n        if event[\"output\"] is not None:\n            outputs.append(event[\"output\"])\n        expected_inputs = [{\"operand_a\": a1, \"operand_b\": b1}, {\"operand_a\": a2, \"operand_b\": b2}]\n        expected_outputs = [add_unsigned(a1, b1), add_unsigned(a2, b2)]\n        check(accepted == expected_inputs, f\"pair input accounting expected={expected_inputs} observed={accepted}\")\n        check([x[\"sum\"] for x in outputs] == expected_outputs, f\"pair output order expected={expected_outputs} observed={outputs}\")\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None, f\"extra pair output: {guard}\")\n        return {\"accepted_inputs\": accepted, \"outputs\": [x[\"sum\"] for x in outputs], \"aborted\": False, \"reset_edges\": 0}\n\n    async def reset_abort(self, a, b, stalled):\n        event = await self.cycle(in_valid=1, in_payload=(b << 8) | a, out_ready=0 if stalled else 1)\n        check(event[\"input\"] == {\"operand_a\": a, \"operand_b\": b}, f\"abort job was not accepted: {event}\")\n        if stalled:\n            event = await self.cycle(in_valid=0, out_ready=0)\n            check(event[\"output\"] is None, f\"stalled abort job transferred unexpectedly: {event}\")\n        event = await self.cycle(rst_n=0, in_valid=1, out_ready=1)\n        check(event[\"input\"] is None and event[\"output\"] is None, f\"transfer occurred on reset edge: {event}\")\n        await self.cycle(rst_n=1, in_valid=0, out_ready=1)\n        guard = await self.cycle(in_valid=0, out_ready=1)\n        check(guard[\"output\"] is None and not self.queue, f\"ghost result after reset: event={guard} queue={self.queue}\")\n        return {\"accepted_inputs\": [{\"operand_a\": a, \"operand_b\": b}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n\n\n@cocotb.test(timeout_time=500, timeout_unit=\"us\")\n@contract_coverage()\nasync def verify_u8_registered_adder(dut):\n    sanity_check()\n    check(len(dut.in_payload) == 16 and len(dut.out_payload) == 9, f\"port widths in={len(dut.in_payload)} out={len(dut.out_payload)}\")\n    dut.rst_n.value = 1\n    dut.in_valid.value = 0\n    dut.in_payload.value = 0\n    dut.out_ready.value = 0\n    clock_task = cocotb.start_soon(Clock(dut.clk, 10, unit=\"ns\").start())\n    bench = Bench(dut)\n\n    await bench.cycle(rst_n=0, in_valid=0, out_ready=0)\n    await bench.cycle(rst_n=1, in_valid=0, out_ready=0)\n\n    observed = await bench.single(0, 0, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 0, \"operand_b\": 0}], \"outputs\": [0], \"aborted\": False, \"reset_edges\": 0}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 0, \"operand_b\": 0}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_zero\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 0, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 0}], \"outputs\": [255], \"aborted\": False, \"reset_edges\": 0}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 0}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_255_0\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 1, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 1}], \"outputs\": [256], \"aborted\": False, \"reset_edges\": 0}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 1}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_255_1\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.single(255, 255, require_latency_one=True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 255, \"operand_b\": 255}], \"outputs\": [510], \"aborted\": False, \"reset_edges\": 0}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 255, \"operand_b\": 255}, expected, observed, operations=(\"add_unsigned\",), label=\"boundary_max\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    for label, first, second, stalls in ((\"stall_one\", (1, 2), (3, 4), 1), (\"stall_short\", (5, 6), (7, 8), 3), (\"stall_long\", (9, 10), (11, 12), 5)):\n        observed = await bench.stall_pair(first, second, stalls)\n        submitted = {\"transactions\": [{\"operand_a\": first[0], \"operand_b\": first[1]}, {\"operand_a\": second[0], \"operand_b\": second[1]}], \"stall_cycles\": stalls}\n        expected = {\"accepted_inputs\": submitted[\"transactions\"], \"outputs\": [add_unsigned(*first), add_unsigned(*second)], \"aborted\": False, \"reset_edges\": 0}\n        if label == \"stall_one\":\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_one\")\n        elif label == \"stall_short\":\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_short\")\n        else:\n            stimulus_id = _contract_record_checked_stimulus(\"directed\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"stall_long\")\n        sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.reset_abort(21, 22, False)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 21, \"operand_b\": 22}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 21, \"operand_b\": 22, \"reset_before_output\": True}, expected, observed, operations=(\"add_unsigned\",), label=\"reset_pending\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    observed = await bench.reset_abort(23, 24, True)\n    expected = {\"accepted_inputs\": [{\"operand_a\": 23, \"operand_b\": 24}], \"outputs\": [], \"aborted\": True, \"reset_edges\": 1}\n    stimulus_id = _contract_record_checked_stimulus(\"directed\", {\"operand_a\": 23, \"operand_b\": 24, \"reset_while_stalled\": True}, expected, observed, operations=(\"add_unsigned\",), label=\"reset_stalled\")\n    sample_operation(\"add_unsigned\", {}, \"directed\", stimulus_id)\n\n    rng = random.Random(180417)\n    for transaction in range(100):\n        a = rng.randrange(256)\n        b = rng.randrange(256)\n        source_delay = rng.randrange(5)\n        stall_count = rng.randrange(7)\n        ready_pattern = [0] * stall_count + [1]\n        observed = await bench.single(a, b, source_delay=source_delay, ready_pattern=ready_pattern)\n        expected = {\"accepted_inputs\": [{\"operand_a\": a, \"operand_b\": b}], \"outputs\": [add_unsigned(a, b)], \"aborted\": False, \"reset_edges\": 0}\n        submitted = {\"operand_a\": a, \"operand_b\": b, \"source_idle_cycles\": source_delay, \"sink_stall_cycles\": stall_count, \"transaction\": transaction}\n        stimulus_id = _contract_record_checked_stimulus(\"randomized\", submitted, expected, observed, operations=(\"add_unsigned\",), label=\"randomized_job\")\n        sample_operation(\"add_unsigned\", {}, \"randomized\", stimulus_id)\n\n    for _ in range(3):\n        event = await bench.cycle(in_valid=0, out_ready=1)\n        check(event[\"output\"] is None, f\"late unsolicited output at end of regression: {event}\")\n    clock_task.cancel()\n"
+        }
+      ],
+      "operation_coverage": [
+        {
+          "operation_name": "add_unsigned",
+          "family": "unsigned_binary_add",
+          "coverpoints": [
+            {
+              "id": "operation.add_unsigned.accepted_sum",
+              "concept": "two_operand_unsigned_addition",
+              "field": "accepted_operand_sum",
+              "source": "baseline",
+              "description": "Observe the mathematical sum class of each accepted packed operand pair.",
+              "bins": [
+                {
+                  "name": "zero",
+                  "intent": "Both accepted operands are zero.",
+                  "predicate": {
+                    "op": "eq",
+                    "args": [
+                      0
+                    ]
+                  }
+                },
+                {
+                  "name": "low_or_no_carry",
+                  "intent": "Accepted sum is between 1 and 255.",
+                  "predicate": {
+                    "op": "between",
+                    "args": [
+                      1,
+                      255
+                    ]
+                  }
+                },
+                {
+                  "name": "widened_result",
+                  "intent": "Accepted sum requires the ninth result bit.",
+                  "predicate": {
+                    "op": "between",
+                    "args": [
+                      256,
+                      509
+                    ]
+                  }
+                },
+                {
+                  "name": "maximum",
+                  "intent": "Both operands are at their maximum.",
+                  "predicate": {
+                    "op": "eq",
+                    "args": [
+                      510
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "operation.add_unsigned.transferred_sum",
+              "concept": "widened_exact_result",
+              "field": "transferred_sum",
+              "source": "baseline",
+              "description": "Observe exact transferred 9-bit result values.",
+              "bins": [
+                {
+                  "name": "zero",
+                  "intent": "Transferred result is zero.",
+                  "predicate": {
+                    "op": "eq",
+                    "args": [
+                      0
+                    ]
+                  }
+                },
+                {
+                  "name": "uint8_range",
+                  "intent": "Transferred result fits in eight bits.",
+                  "predicate": {
+                    "op": "between",
+                    "args": [
+                      1,
+                      255
+                    ]
+                  }
+                },
+                {
+                  "name": "ninth_bit_set",
+                  "intent": "Transferred result exercises widened representation.",
+                  "predicate": {
+                    "op": "between",
+                    "args": [
+                      256,
+                      509
+                    ]
+                  }
+                },
+                {
+                  "name": "maximum",
+                  "intent": "Transferred result is 510.",
+                  "predicate": {
+                    "op": "eq",
+                    "args": [
+                      510
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "operation.add_unsigned.registered_latency",
+              "concept": "registered_result",
+              "field": "acceptance_to_transfer_cycles",
+              "source": "architect_extension",
+              "description": "Observe input-acceptance to associated output-transfer distance.",
+              "bins": [
+                {
+                  "name": "one_cycle",
+                  "intent": "Unstalled result transfers exactly one cycle after acceptance.",
+                  "predicate": {
+                    "op": "eq",
+                    "args": [
+                      1
+                    ]
+                  }
+                },
+                {
+                  "name": "backpressured_delay",
+                  "intent": "Output backpressure extends transfer latency.",
+                  "predicate": {
+                    "op": "gte",
+                    "args": [
+                      2
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "operation.add_unsigned.output_buffer_stall",
+              "concept": "single_entry_backpressure_buffer",
+              "field": "released_output_stall_cycles",
+              "source": "architect_extension",
+              "description": "Observe released stalls in the single-entry output register.",
+              "bins": [
+                {
+                  "name": "one_cycle",
+                  "intent": "Release after exactly one stalled cycle.",
+                  "predicate": {
+                    "op": "eq",
+                    "args": [
+                      1
+                    ]
+                  }
+                },
+                {
+                  "name": "short",
+                  "intent": "Release after two through four stalled cycles.",
+                  "predicate": {
+                    "op": "between",
+                    "args": [
+                      2,
+                      4
+                    ]
+                  }
+                },
+                {
+                  "name": "long",
+                  "intent": "Release after at least five stalled cycles.",
+                  "predicate": {
+                    "op": "gte",
+                    "args": [
+                      5
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "verification_plan": {
+        "top_module": "u8_registered_adder",
+        "test_modules": [
+          "test_u8_registered_adder"
+        ],
+        "test_categories": [
+          "oracle_sanity",
+          "boundary",
+          "latency",
+          "backpressure",
+          "reset",
+          "ordering",
+          "randomized"
+        ],
+        "randomized_test_count": 100,
+        "seed": 180417,
+        "timeout_seconds": 120,
+        "regression_groups": {
+          "smoke": [
+            "test_u8_registered_adder"
+          ],
+          "targeted": [
+            "test_u8_registered_adder"
+          ],
+          "full": [
+            "test_u8_registered_adder"
+          ]
+        },
+        "pass_criteria": "All exact arithmetic, accounting, ordering, reset, latency, stability, coverage, and watchdog checks pass with no unsolicited transfer.",
+        "protocol_assumptions": [
+          "Transfers are sampled from stable pre-rising-edge ready/valid state.",
+          "Reset has synchronous priority and aborts pending work.",
+          "No exact ready schedule is assumed beyond the frozen combinational readiness rule."
+        ]
+      },
+      "architecture_conflict": null,
+      "known_verification_gaps": []
+    }
+  },
+  "workspace": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227",
+  "artifact_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "c4193e2bdb8e221ce2b6c211ce855b80a17bdf55d64017efd5dc67eb99fe9c00",
+      "architect_result.json": "72897b2a2574302dac2288c2f3ca431b6ea18178e55bff728bfbbcfa5c157dba",
+      "architecture_contract.yaml": "07e2df46e290e9251a6392267deb102c2617196eba03c459aa2fe28b58e9c3fd",
+      "interface_contract.yaml": "bec7df126c1e01057be849b03fc565255dce72c35a26039ae2bed3d637e8d497",
+      "module_manifest.json": "255985ad453acf5a783a6f426ddaba0d023f9190059179c9ff3b13bafdb6b241"
+    },
+    "rtl": {
+      "u8_registered_adder.sv": "8937d7e2f1f6389804d4c0a9713243160ce52de059b213d05b3185fae9cea0ee"
+    },
+    "tests": {
+      "test_u8_registered_adder.py": "96a3a36fcd98d2ca5f05d132f4202e6032d9d03866fb73918d4016799948b055"
+    },
+    "reference": {
+      "adder_model.py": "905fa9ed1e7d9cd124ccc8f6d7d857a81c22ffafad9e97ad2fdf53cf6c57f6f7"
+    }
+  },
+  "limitations": [
+    "Generated oracle and tests undergo deterministic structural checks and simulation; this is not a proof of oracle correctness.",
+    "Vivado adapter requires validation against the installed Vivado version and FPGA target.",
+    "Out-of-context PPA excludes board I/O integration; power is a tool estimate and maximum frequency is not measured."
+  ],
+  "selected_rtl": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/run-20260916-084820-cad227/rtl"
+}

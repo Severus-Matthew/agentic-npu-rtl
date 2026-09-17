@@ -1,0 +1,245 @@
+design:
+  name: gemm8x8x32_seq_int8_relu_bias
+  version: '1.0'
+  description: Sequential fixed-shape GEMM accelerator for C=ReLU(AxB+bias) with int8
+    inputs and int32 wraparound accumulation.
+operations:
+- name: gemm_core
+  kind: matrix_multiply
+  coverage_family: matrix_multiply
+  coverage_family_source: catalog
+  features:
+  - dimensions
+  - operand_values
+  - accumulation
+  - post_processing
+  feature_extensions:
+  - bias
+  - activation
+  - overflow_policy
+  semantics: For one job, compute 8x8 output matrix C where C[i,j]=ReLU(sum_{k=0..31}(A[i,k]*B[k,j])
+    + bias[j]). A and B elements are signed int8, multiplication is signed, product
+    is sign-extended to int32 before accumulation, accumulation is int32 two's-complement
+    wraparound per add, bias add is int32 wraparound, ReLU outputs 0 when value<0
+    else value. Fixed dimensions, no optional modes.
+  inputs:
+  - A_stream
+  - B_stream
+  - bias_stream
+  outputs:
+  - C_stream
+data_types:
+- name: int8_s
+  role: A/B element
+  width_bits: 8
+  signed: true
+  representation: two_complement
+  conversion_semantics: No conversion on ingress payload; used directly as signed
+    int8.
+  overflow_semantics: N/A at storage type
+  rounding_semantics: exact
+- name: int32_s
+  role: accumulator/bias/output element
+  width_bits: 32
+  signed: true
+  representation: two_complement
+  conversion_semantics: int8*int8 product sign-extended to int32 before add; ReLU
+    compares signed int32.
+  overflow_semantics: wraparound modulo 2^32 for accumulator and bias addition
+  rounding_semantics: exact
+data_objects:
+- name: A_stream
+  role: matrix A elements in row-major order
+  data_type: int8_s
+  dimensions:
+  - M
+  - K
+  producer: external
+  consumers:
+  - gemm_core
+  external: true
+- name: B_stream
+  role: matrix B elements in row-major order over KxN
+  data_type: int8_s
+  dimensions:
+  - K
+  - N
+  producer: external
+  consumers:
+  - gemm_core
+  external: true
+- name: bias_stream
+  role: per-column bias vector
+  data_type: int32_s
+  dimensions:
+  - N
+  producer: external
+  consumers:
+  - gemm_core
+  external: true
+- name: C_stream
+  role: result matrix elements in row-major order
+  data_type: int32_s
+  dimensions:
+  - M
+  - N
+  producer: gemm_core
+  consumers:
+  - external
+  external: true
+dimensions:
+- name: M
+  semantic: output rows; fixed runtime value 8
+  minimum: 8
+  maximum: 8
+  runtime_configurable: false
+  bound_parameter: M_FIXED
+- name: N
+  semantic: output columns; fixed runtime value 8
+  minimum: 8
+  maximum: 8
+  runtime_configurable: false
+  bound_parameter: N_FIXED
+- name: K
+  semantic: reduction dimension; fixed runtime value 32
+  minimum: 32
+  maximum: 32
+  runtime_configurable: false
+  bound_parameter: K_FIXED
+parameters:
+- name: M_FIXED
+  default_value: '8'
+  legality_constraint: integer == 8
+  description: Fixed GEMM M dimension
+- name: N_FIXED
+  default_value: '8'
+  legality_constraint: integer == 8
+  description: Fixed GEMM N dimension
+- name: K_FIXED
+  default_value: '32'
+  legality_constraint: integer == 32
+  description: Fixed GEMM K dimension
+compute:
+  organization: single-MAC iterative datapath with nested counters
+  dataflow: load A/B/bias to local buffers, then compute all outputs, then stream
+    outputs
+  parallelism: 1 multiply-accumulate per cycle during compute phase
+  scheduling: strictly sequential phased FSM
+storage:
+- name: a_buf
+  stored_objects:
+  - A_stream
+  capacity_expression: M_FIXED*K_FIXED elements of int8
+  capacity_at_default_parameters: 256
+  access_pattern: write sequential during A load; read by address i*K_FIXED+k during
+    compute
+  port_requirements: 1R/1W logically (single-port time-multiplex acceptable by phase
+    separation)
+  implementation_hint: register file or inferred RAM
+  reuse_semantics: each A element reused across all N outputs of its row during compute
+  lifetime: from A load completion until compute completion
+- name: b_buf
+  stored_objects:
+  - B_stream
+  capacity_expression: K_FIXED*N_FIXED elements of int8
+  capacity_at_default_parameters: 256
+  access_pattern: write sequential during B load; read by address k*N_FIXED+j during
+    compute
+  port_requirements: 1R/1W logically (single-port time-multiplex acceptable by phase
+    separation)
+  implementation_hint: register file or inferred RAM
+  reuse_semantics: each B element reused across all M outputs of its column during
+    compute
+  lifetime: from B load completion until compute completion
+- name: bias_buf
+  stored_objects:
+  - bias_stream
+  capacity_expression: N_FIXED elements of int32
+  capacity_at_default_parameters: 8
+  access_pattern: write sequential during bias load; read by index j at start of each
+    output dot-product
+  port_requirements: 1R/1W logically
+  implementation_hint: register array
+  reuse_semantics: each bias reused for every row output in its column
+  lifetime: from bias load completion until compute completion
+- name: c_buf
+  stored_objects:
+  - C_stream
+  capacity_expression: M_FIXED*N_FIXED elements of int32
+  capacity_at_default_parameters: 64
+  access_pattern: write sequential per computed output; read sequential for output
+    streaming
+  port_requirements: 1R/1W logically; phase-separated
+  implementation_hint: register file or inferred RAM
+  reuse_semantics: temporary retention between compute and output phases
+  lifetime: from first computed output until final output handshake
+pipeline:
+- stage: ingress
+  responsibility: accept command then A/B/bias streams via ready/valid into local
+    buffers
+  registered: true
+  valid_behavior: input transfers occur only on ready&&valid
+  stall_behavior: when not ready, sender must hold valid/payload stable; DUT state
+    unchanged
+- stage: compute
+  responsibility: iterative MAC, bias add, ReLU, store C element
+  registered: true
+  valid_behavior: internal step each cycle when not reset
+  stall_behavior: no external backpressure in compute; stage runs until done or reset
+- stage: egress
+  responsibility: stream C buffer via ready/valid
+  registered: true
+  valid_behavior: output transfer occurs only on ready&&valid
+  stall_behavior: hold out_valid and payload stable while out_ready=0
+control:
+  strategy: single FSM controlling phase progression IDLE->LOAD_A->LOAD_B->LOAD_BIAS->COMPUTE->OUTPUT->DONE->IDLE;
+    DONE is exactly one cycle
+  state_progression: advance only when phase transfer/count complete; compute advances
+    per cycle by counters i,j,k; DONE lasts exactly one cycle, with all input ready
+    outputs low during DONE, and transition to IDLE occurs on the next cycle where
+    cmd_ready may reassert
+  counters:
+  - a_load_count 0..M_FIXED*K_FIXED
+  - b_load_count 0..K_FIXED*N_FIXED
+  - bias_load_count 0..N_FIXED
+  - i 0..M_FIXED-1
+  - j 0..N_FIXED-1
+  - k 0..K_FIXED-1
+  - out_count 0..M_FIXED*N_FIXED
+  error_behavior: 'Protocol violation is evaluated only on attempted transfer events
+    (ready&&valid), not on valid-only observation while ready=0. Error pulses for
+    one cycle when: (a) cmd transfer occurs with cmd_payload!=1, or (b) any input
+    transfer occurs on a channel whose phase is inactive, or (c) a command transfer
+    occurs while not IDLE. In all cases the illegal transfer is ignored for state/count
+    progression and FSM remains in current legal state.'
+  error_recovery: automatic recovery by remaining in current legal state; next legal
+    handshake proceeds without reset
+reset:
+  style: synchronous
+  polarity: active_low
+  required_state: FSM=IDLE, busy=0, completion=0, error=0, all channel ready outputs
+    low (cmd_ready=0, a_ready=0, b_ready=0, bias_ready=0), valid outputs=0, counters/pointers
+    reset to 0, internal partial-job data treated invalid
+latency_model: 'Variable due to ready/valid stalls. Stall-free legal job timing uses
+  cycle count from first cycle after accepted final bias beat to compute_done pulse
+  inclusive with 1-cycle synchronous operand reads: per output element, 1 bias-read
+  issue cycle + 1 bias-capture/init cycle + K_FIXED MAC iterations each with (1 address-issue
+  cycle + 1 MAC-update cycle) + 1 finalize/write cycle = (2*K_FIXED + 3) cycles; total
+  compute cycles = M_FIXED*N_FIXED*(2*K_FIXED + 3) = 4288 at defaults. Full stall-free
+  job latency components: 1 cmd beat +256 A beats +256 B beats +8 bias beats +4288
+  compute cycles +64 output beats +1 completion pulse cycle. Reset aborts in-flight
+  job and no completion for aborted job.'
+architectural_invariants:
+- Exactly one job in flight; no overlap or queueing.
+- Accepted command snapshots fixed dimensions implicitly (8,8,32).
+- No operand transfer accepted outside its designated phase.
+- Output order is strict row-major C[0,0]..C[7,7].
+- Each accepted legal job produces exactly 64 output transfers and one completion
+  pulse.
+- ready/valid transfer rule is globally ready&&valid; payload stability required under
+  stall.
+open_assumptions:
+- Single clock domain.
+- Command payload is 1-bit start token with value 1 as only legal encoding.
+- Host presents A then B then bias sections; no interleaving.
+- Illegal transfers are physically representable and reported by one-cycle error pulse.

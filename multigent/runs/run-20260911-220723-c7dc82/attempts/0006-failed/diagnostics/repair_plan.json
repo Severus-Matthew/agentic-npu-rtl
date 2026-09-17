@@ -1,0 +1,41 @@
+{
+  "action": "PATCH",
+  "affected_modules": [
+    "mv_npu_top",
+    "ctrl_fsm"
+  ],
+  "protected_modules": [
+    "input_router",
+    "x_buffer_mem",
+    "mac16_core",
+    "postproc_unit",
+    "output_if"
+  ],
+  "protected_interfaces": [
+    "clk",
+    "rst_n",
+    "in_valid",
+    "in_ready",
+    "in_data",
+    "in_type",
+    "in_last",
+    "out_valid",
+    "out_ready",
+    "out_data",
+    "out_last",
+    "busy",
+    "status_err"
+  ],
+  "recommended_change": "1) Fix cfg decode in mv_npu_top to match frozen verifier encoding (M[7:0], N[15:8], bias_en[16], relu_en[17]) with proper zero-extension to MW/NW. 2) Rework control so job progression follows contract sections and FSM pulses: load X first, then consume A for exactly M*N elements, finalize exactly once per row, optional bias per row only when enabled, emit exactly M outputs in row order. 3) Gate counter/state advances strictly on ready&&valid handshakes; hold output payload/valid during out_ready=0; prevent duplicate finalize/output on stalls. 4) Ensure illegal cfg handling and recovery semantics in ctrl_fsm: status_err latches in ERROR for invalid bounds and clears on next legal cfg accept; busy reflects active legal job only. 5) Align top-level start_row/step_valid/out_in_valid generation with FSM-defined compute_step/row_finalize/job_done events rather than raw in_beat acceptance.",
+  "do_not_change": [
+    "Do not modify frozen tests or reference model",
+    "Do not change module interfaces or signal widths at top level",
+    "Do not alter arithmetic semantics (INT8 signed multiply, INT32 wrap, optional bias, optional ReLU)",
+    "Do not change input section ordering contract"
+  ],
+  "expected_side_effects": [
+    "Cycle timing/latency per job may shift to contract-compliant behavior",
+    "Width warnings may reduce after cfg decode correction"
+  ],
+  "regression_required": "FULL"
+}

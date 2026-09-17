@@ -1,0 +1,242 @@
+design:
+  name: mv_npu_int8x16
+  version: '1.0'
+  description: Streaming matrix-vector INT8 inference accelerator with 16 parallel
+    MACs, INT32 accumulation, optional bias add, selectable ReLU.
+operations:
+- name: dot_product_row
+  kind: arithmetic
+  semantics: For each output row r, compute acc_r = sum_{c=0..N-1}(A[r,c]*x[c]) using
+    signed INT8 operands and signed INT32 accumulation.
+  inputs:
+  - matrix_a_stream
+  - vector_x_stream
+  outputs:
+  - acc_row_internal
+- name: bias_add
+  kind: arithmetic_optional
+  semantics: If cfg_bias_enable=1, y_pre = acc_r + bias[r]; else y_pre = acc_r.
+  inputs:
+  - acc_row_internal
+  - bias_stream
+  - job_config
+  outputs:
+  - y_pre_internal
+- name: relu
+  kind: arithmetic_optional
+  semantics: If cfg_relu_enable=1, y = max(0,y_pre); else y = y_pre.
+  inputs:
+  - y_pre_internal
+  - job_config
+  outputs:
+  - result_y_stream
+data_types:
+- name: int8_s
+  role: input element
+  width_bits: 8
+  signed: true
+  representation: two_complement
+  conversion_semantics: Sign-extend to multiplier internal width
+  overflow_semantics: N/A at source type
+  rounding_semantics: exact integer
+- name: int32_s
+  role: accumulator/output element
+  width_bits: 32
+  signed: true
+  representation: two_complement
+  conversion_semantics: Products accumulated in INT32; optional bias add in INT32
+  overflow_semantics: wrap two_complement on overflow
+  rounding_semantics: exact integer
+- name: cfg_word
+  role: job configuration
+  width_bits: 64
+  signed: false
+  representation: bitfield
+  conversion_semantics: bit decode only
+  overflow_semantics: N/A
+  rounding_semantics: N/A
+data_objects:
+- name: job_config
+  role: per-job control fields (M,N,bias_enable,relu_enable)
+  data_type: cfg_word
+  dimensions: []
+  producer: external
+  consumers:
+  - bias_add
+  - relu
+  external: true
+- name: matrix_a_stream
+  role: matrix elements A in row-major order
+  data_type: int8_s
+  dimensions:
+  - M
+  - N
+  producer: external
+  consumers:
+  - dot_product_row
+  external: true
+- name: vector_x_stream
+  role: vector elements x
+  data_type: int8_s
+  dimensions:
+  - N
+  producer: external
+  consumers:
+  - dot_product_row
+  external: true
+- name: bias_stream
+  role: optional bias per row
+  data_type: int32_s
+  dimensions:
+  - M
+  producer: external
+  consumers:
+  - bias_add
+  external: true
+- name: acc_row_internal
+  role: row dot-product accumulator
+  data_type: int32_s
+  dimensions:
+  - M
+  producer: dot_product_row
+  consumers:
+  - bias_add
+  external: false
+- name: y_pre_internal
+  role: post-bias pre-activation result
+  data_type: int32_s
+  dimensions:
+  - M
+  producer: bias_add
+  consumers:
+  - relu
+  external: false
+- name: result_y_stream
+  role: final output vector y
+  data_type: int32_s
+  dimensions:
+  - M
+  producer: relu
+  consumers:
+  - external
+  external: true
+dimensions:
+- name: M
+  semantic: number of matrix rows / output length; runtime value from job_config;
+    legal iff 1<=M<=MAX_M
+  minimum: 1
+  maximum: 256
+  runtime_configurable: true
+  bound_parameter: MAX_M
+- name: N
+  semantic: number of matrix columns / input vector length; runtime value from job_config;
+    legal iff 1<=N<=MAX_N
+  minimum: 1
+  maximum: 256
+  runtime_configurable: true
+  bound_parameter: MAX_N
+parameters:
+- name: LANES
+  default_value: '16'
+  legality_constraint: integer >=1
+  description: parallel INT8 MAC lanes
+- name: MAX_M
+  default_value: '256'
+  legality_constraint: integer >=1
+  description: maximum supported rows per job
+- name: MAX_N
+  default_value: '256'
+  legality_constraint: integer >=1
+  description: maximum supported columns per job
+compute:
+  organization: Single-core vectorized dot-product engine
+  dataflow: Row-stationary over A rows with local x buffer reuse
+  parallelism: Up to LANES=16 multiplies per cycle during compute phase
+  scheduling: 'Per job: load x (N beats), then for each row load A row chunked by
+    LANES and accumulate; optional bias and relu on row finalize; stream out row result
+    immediately'
+storage:
+- name: x_buffer
+  stored_objects:
+  - vector_x_stream
+  capacity_expression: MAX_N elements of int8_s
+  capacity_at_default_parameters: 256
+  access_pattern: Sequential write during x load; random/strided read by column index
+    during row compute
+  port_requirements: 1W + 1R per cycle logical (dual-port RAM or equivalent)
+  implementation_hint: inferred simple dual-port RAM
+  reuse_semantics: Loaded once per job, reused across all M rows
+  lifetime: from x load completion until job completion
+- name: acc_regfile
+  stored_objects:
+  - acc_row_internal
+  capacity_expression: 1 element of int32_s
+  capacity_at_default_parameters: 1
+  access_pattern: read/modify/write each compute cycle for current row
+  port_requirements: 1R + 1W per cycle
+  implementation_hint: register
+  reuse_semantics: cleared at row start, finalized at row end
+  lifetime: one row
+- name: a_lane_regs
+  stored_objects:
+  - matrix_a_stream
+  capacity_expression: LANES elements of int8_s
+  capacity_at_default_parameters: 16
+  access_pattern: loaded each A-data beat then consumed same/next cycle
+  port_requirements: LANES write-enable bits, LANES reads
+  implementation_hint: register array
+  reuse_semantics: no long-term reuse
+  lifetime: one chunk
+pipeline:
+- stage: S0_ingress_decode
+  responsibility: accept config and classify incoming stream sections
+  registered: true
+  valid_behavior: latch on ready&&valid
+  stall_behavior: hold state/payload
+- stage: S1_operand_stage
+  responsibility: write x_buffer or lane/bias staging from input stream
+  registered: true
+  valid_behavior: writes only on transfer
+  stall_behavior: no write on stall
+- stage: S2_mac_reduce
+  responsibility: 16 parallel int8 multiplies + reduction + acc update
+  registered: true
+  valid_behavior: update acc only when compute_enable
+  stall_behavior: freeze acc and indices when downstream stall affects progress
+- stage: S3_finalize_emit
+  responsibility: optional bias, optional relu, drive output valid/data
+  registered: true
+  valid_behavior: emit one row result per successful output transfer
+  stall_behavior: hold output data/valid until accepted
+control:
+  strategy: Central FSM
+  state_progression: IDLE->RECV_CFG->LOAD_X->COMPUTE_ROWS->DONE; within COMPUTE_ROWS
+    iterate col_chunk then finalize row
+  counters:
+  - m_idx in [0..M-1]
+  - n_idx in [0..N-1]
+  - chunk_idx step LANES
+  - x_load_count
+  - out_count
+  error_behavior: If config has M or N out of legal range, enter ERROR and raise status_err;
+    ignore input payload until new valid cfg accepted
+  error_recovery: From ERROR, accept next cfg transfer with legal bounds and transition
+    to LOAD_X
+reset:
+  style: synchronous
+  polarity: active_low
+  required_state: FSM=IDLE, counters=0, valid outputs deasserted, status_err=0, busy=0
+latency_model: Cycles = 1(cfg)+N(load_x)+sum_{r=0..M-1}(ceil(N/LANES)+row_finalize_and_output_wait).
+  With no output backpressure and continuous input A/bias, row_finalize_and_output_wait=1.
+architectural_invariants:
+- Exactly one output produced per row.
+- x vector is loaded once per job and not required to be retransmitted during row
+  compute.
+- Result order strictly row index ascending 0..M-1.
+- All transfers use ready&&valid semantics with stable payload while stalled.
+open_assumptions:
+- Single unified input data channel carries config, x, A, and optional bias sections
+  distinguished by metadata type field.
+- A elements are provided row-major matching compute traversal.
+- Bias section is present iff cfg_bias_enable=1; absent otherwise.
+- INT32 overflow behavior is wraparound as user did not request saturation.

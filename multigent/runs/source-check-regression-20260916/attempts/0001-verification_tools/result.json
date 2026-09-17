@@ -1,0 +1,252 @@
+{
+  "verification_status": "PASS",
+  "verification_evidence": {
+    "architecture_version": 1,
+    "repair_iteration": 0,
+    "top_module": "u8_registered_adder",
+    "regression_scope": "FULL",
+    "verilator": {
+      "stage": "verilator_lint",
+      "status": "PASS",
+      "failure_class": null,
+      "return_code": 0,
+      "command": [
+        "/u/mjha1/.local/verilator-env/bin/verilator",
+        "--lint-only",
+        "--sv",
+        "-Wno-fatal",
+        "--top-module",
+        "u8_registered_adder",
+        "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/rtl/u8_registered_adder.sv"
+      ],
+      "sources": [
+        "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/rtl/u8_registered_adder.sv"
+      ],
+      "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.034 MB sources in 2 modules, into 0.021 MB in 3 C++ files needing 0.000 MB\n- Verilator: Walltime 0.006 s (elab=0.000, cvt=0.001, bld=0.000); cpu 0.004 s on 1 threads; allocated 25.500 MB\n",
+      "stderr": "",
+      "error_diagnostics": [],
+      "top_module": "u8_registered_adder"
+    },
+    "cocotb": {
+      "stage": "cocotb_regression",
+      "status": "PASS",
+      "failure_class": null,
+      "tests": 1,
+      "failures": 0,
+      "seed": 180417,
+      "top_module": "u8_registered_adder",
+      "test_modules": [
+        "test_u8_registered_adder"
+      ],
+      "results_xml": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/build/av1-r0-p0-v1/results.xml",
+      "worker_error": null,
+      "functional_coverage": {
+        "status": "PASS",
+        "samples": 811,
+        "operation_samples": 109,
+        "directed_operation_samples": 9,
+        "randomized_operation_samples": 100,
+        "stimulus_count": 109,
+        "directed_stimuli": 9,
+        "randomized_stimuli": 100,
+        "randomized_transactions_observed": 100,
+        "stimulus_ledger_enabled": true,
+        "randomized_transactions_minimum": 100,
+        "coverage_engine": "cocotb-coverage",
+        "required_bins": 31,
+        "hit_bins": 31,
+        "coverage_percent": 100.0,
+        "missing_bins": [],
+        "covered_bins": [
+          "channel.input_operands.handshake_states.backpressured",
+          "channel.input_operands.handshake_states.idle",
+          "channel.input_operands.handshake_states.receiver_ready",
+          "channel.input_operands.handshake_states.transfer",
+          "channel.input_operands.stall_stability.long_stall",
+          "channel.input_operands.stall_stability.one_cycle_stall",
+          "channel.input_operands.stall_stability.short_stall",
+          "channel.output_sum.handshake_states.backpressured",
+          "channel.output_sum.handshake_states.idle",
+          "channel.output_sum.handshake_states.receiver_ready",
+          "channel.output_sum.handshake_states.transfer",
+          "channel.output_sum.stall_stability.long_stall",
+          "channel.output_sum.stall_stability.one_cycle_stall",
+          "channel.output_sum.stall_stability.short_stall",
+          "operation.add_unsigned.accepted_sum.low_or_no_carry",
+          "operation.add_unsigned.accepted_sum.maximum",
+          "operation.add_unsigned.accepted_sum.widened_result",
+          "operation.add_unsigned.accepted_sum.zero",
+          "operation.add_unsigned.output_buffer_stall.long",
+          "operation.add_unsigned.output_buffer_stall.none",
+          "operation.add_unsigned.output_buffer_stall.one_cycle",
+          "operation.add_unsigned.output_buffer_stall.short",
+          "operation.add_unsigned.registered_latency.backpressured_delay",
+          "operation.add_unsigned.registered_latency.one_cycle",
+          "operation.add_unsigned.transferred_sum.maximum",
+          "operation.add_unsigned.transferred_sum.ninth_bit_set",
+          "operation.add_unsigned.transferred_sum.uint8_range",
+          "operation.add_unsigned.transferred_sum.zero",
+          "signal.rst_n.reset_behavior.asserted",
+          "signal.rst_n.reset_behavior.deasserted",
+          "signal.rst_n.reset_behavior.release"
+        ],
+        "bin_hits": {
+          "channel.input_operands.handshake_states.backpressured": 9,
+          "channel.input_operands.handshake_states.idle": 269,
+          "channel.input_operands.handshake_states.receiver_ready": 418,
+          "channel.input_operands.handshake_states.transfer": 112,
+          "channel.input_operands.stall_stability.long_stall": 1,
+          "channel.input_operands.stall_stability.one_cycle_stall": 1,
+          "channel.input_operands.stall_stability.short_stall": 1,
+          "channel.output_sum.handshake_states.backpressured": 278,
+          "channel.output_sum.handshake_states.idle": 3,
+          "channel.output_sum.handshake_states.receiver_ready": 417,
+          "channel.output_sum.handshake_states.transfer": 110,
+          "channel.output_sum.stall_stability.long_stall": 23,
+          "channel.output_sum.stall_stability.one_cycle_stall": 18,
+          "channel.output_sum.stall_stability.short_stall": 48,
+          "operation.add_unsigned.accepted_sum.low_or_no_carry": 61,
+          "operation.add_unsigned.accepted_sum.maximum": 1,
+          "operation.add_unsigned.accepted_sum.widened_result": 48,
+          "operation.add_unsigned.accepted_sum.zero": 2,
+          "operation.add_unsigned.output_buffer_stall.long": 23,
+          "operation.add_unsigned.output_buffer_stall.none": 21,
+          "operation.add_unsigned.output_buffer_stall.one_cycle": 18,
+          "operation.add_unsigned.output_buffer_stall.short": 48,
+          "operation.add_unsigned.registered_latency.backpressured_delay": 89,
+          "operation.add_unsigned.registered_latency.one_cycle": 21,
+          "operation.add_unsigned.transferred_sum.maximum": 1,
+          "operation.add_unsigned.transferred_sum.ninth_bit_set": 48,
+          "operation.add_unsigned.transferred_sum.uint8_range": 59,
+          "operation.add_unsigned.transferred_sum.zero": 2,
+          "signal.rst_n.reset_behavior.asserted": 6,
+          "signal.rst_n.reset_behavior.deasserted": 808,
+          "signal.rst_n.reset_behavior.release": 3
+        },
+        "assertion_failures": [],
+        "failure_records": [],
+        "last_observed_snapshot": {
+          "clk": 0,
+          "rst_n": 1,
+          "in_valid": 0,
+          "in_ready": 1,
+          "in_payload": 54291,
+          "out_valid": 0,
+          "out_ready": 1,
+          "out_payload": 231
+        },
+        "operation_sampling": [
+          {
+            "id": "operation.add_unsigned.accepted_sum",
+            "origin": "runtime_dut_observation",
+            "implementation": "llm_custom_observer",
+            "template": "custom",
+            "field_binding_origin": "verifier_declared",
+            "samples": 112,
+            "last_value": 231
+          },
+          {
+            "id": "operation.add_unsigned.output_buffer_stall",
+            "origin": "runtime_dut_observation",
+            "implementation": "reusable_template",
+            "template": "channel_stall",
+            "field_binding_origin": "verifier_declared",
+            "samples": 110,
+            "last_value": 2
+          },
+          {
+            "id": "operation.add_unsigned.registered_latency",
+            "origin": "runtime_dut_observation",
+            "implementation": "llm_custom_observer",
+            "template": "custom",
+            "field_binding_origin": "verifier_declared",
+            "samples": 110,
+            "last_value": 3
+          },
+          {
+            "id": "operation.add_unsigned.transferred_sum",
+            "origin": "runtime_dut_observation",
+            "implementation": "llm_custom_observer",
+            "template": "custom",
+            "field_binding_origin": "verifier_declared",
+            "samples": 110,
+            "last_value": 231
+          }
+        ],
+        "report_path": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/functional-coverage-av1-r0-p0-v1.json"
+      },
+      "worker_return_code": 0,
+      "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.031 MB sources in 2 modules, into 0.038 MB in 6 C++ files needing 0.000 MB\n- Verilator: Walltime 0.071 s (elab=0.000, cvt=0.027, bld=0.000); cpu 0.008 s on 1 threads; allocated 25.562 MB\nmake: Entering directory '/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/build/av1-r0-p0-v1'\ng++  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -Os  -c -o verilator.o /u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/share/lib/verilator/verilator.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated_dpi.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated_dpi.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated_vpi.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated_vpi.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated_threads.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated_threads.cpp\npython3 /u/mjha1/.local/verilator-env/share/verilator/bin/verilator_includer -DVL_INCLUDE_OPT=include Vtop.cpp Vtop___024root__0.cpp Vtop__Dpi.cpp Vtop___024root__Slow.cpp Vtop___024root__0__Slow.cpp Vtop__Syms__Slow.cpp > Vtop__ALL.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o Vtop__ALL.o Vtop__ALL.cpp\ng++    -rdynamic verilator.o verilated.o verilated_dpi.o verilated_vpi.o verilated_threads.o Vtop__ALL.a   -Wl,-rpath,/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/libs -L/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/libs -lcocotbvpi_verilator  -pthread -lpthread -latomic -ldl   -o u8_registered_adder\nrm Vtop__ALL.verilator_deplist.tmp\nmake: Leaving directory '/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/build/av1-r0-p0-v1'\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:242  in gpi_load_users                  Loaded entry library: '/sw/user/python/miniforge3-pytorch-2.10.0/lib/libpython3.12.so.1.0'\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:233  in gpi_load_users                  Running entry func 'initialize' from loaded library '/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/simulator.cpython-312-aarch64-linux-gnu.so'\n     -.--ns INFO     pygpi                              ..ib/pygpi/embed.cpp:114  in initialize                      Using Python 3.12.9 interpreter at /u/mjha1/agentic-npu-rtl/.venv/bin/python\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:74   in gpi_print_registered_impl       GPI: VPI support registered\n     0.00ns INFO     cocotb.initialize                  Seeding Python random module with 180417\n     0.00ns INFO     cocotb.initialize                  Initialized cocotb v2.1.0 from /u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb\n     0.00ns INFO     cocotb.initialize                  Running on Verilator version 5.050 2026-07-01\n     0.00ns INFO     cocotb.regression                  Running tests\n     0.00ns INFO     cocotb.regression                  running test_u8_registered_adder.verify_u8_registered_adder (1/1)\n     0.00ns WARNING  py.warnings                        /u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/tests/test_u8_registered_adder.py:364: DeprecationWarning: Use `signal.value_change` instead.\n                                                          await Edge(clock)\n  8111.00ns INFO     cocotb.regression                  test_u8_registered_adder.verify_u8_registered_adder passed\n  8111.00ns INFO     cocotb.regression                  *************************************************************************************************************\n                                                        ** TEST                                                 STATUS  SIM TIME (ns)  REAL TIME (s)  RATIO (ns/s) **\n                                                        *************************************************************************************************************\n                                                        ** test_u8_registered_adder.verify_u8_registered_adder   PASS        8111.00           1.17       6903.87  **\n                                                        *************************************************************************************************************\n                                                        ** TESTS=1 PASS=1 FAIL=0 SKIP=0                                      8111.00           1.18       6900.93  **\n                                                        *************************************************************************************************************\n- :0: Verilog $finish\n",
+      "stderr": "",
+      "stimulus_ledger": {
+        "path": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-ledger-av1-r0-p0-v1.json",
+        "status": "PASS",
+        "stimulus_count": 109,
+        "directed_stimuli": 9,
+        "randomized_stimuli": 100
+      },
+      "stimulus_history": {
+        "path": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-history.json",
+        "run_count": 1,
+        "stimulus_count": 109,
+        "unique_stimulus_count": 109,
+        "duplicate_execution_count": 0
+      }
+    },
+    "checks": {
+      "cocotb_regression": {
+        "status": "PASS",
+        "tests": 1,
+        "failures": 0
+      },
+      "protocol_checks": {
+        "status": "PASS",
+        "failures": [],
+        "scope": "Contract monitor observations from this simulation"
+      },
+      "coverage_checks": {
+        "status": "PASS",
+        "hit_bins": 31,
+        "required_bins": 31,
+        "missing_bins": []
+      }
+    },
+    "stimulus_history": {
+      "path": "/u/mjha1/agentic-npu-rtl-integration/multigent/runs/source-check-regression-20260916/verification/stimulus-history.json",
+      "run_count": 1,
+      "stimulus_count": 109,
+      "unique_stimulus_count": 109,
+      "duplicate_execution_count": 0
+    },
+    "status": "PASS",
+    "failure_class": null
+  },
+  "failure_class": null,
+  "status": "VERIFIED_RTL",
+  "needs_regression": false,
+  "history": [
+    {
+      "stage": "deterministic_verification",
+      "status": "PASS",
+      "failure_class": null
+    }
+  ],
+  "verified_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "c4193e2bdb8e221ce2b6c211ce855b80a17bdf55d64017efd5dc67eb99fe9c00",
+      "architect_result.json": "72897b2a2574302dac2288c2f3ca431b6ea18178e55bff728bfbbcfa5c157dba",
+      "architecture_contract.yaml": "07e2df46e290e9251a6392267deb102c2617196eba03c459aa2fe28b58e9c3fd",
+      "interface_contract.yaml": "bec7df126c1e01057be849b03fc565255dce72c35a26039ae2bed3d637e8d497",
+      "module_manifest.json": "255985ad453acf5a783a6f426ddaba0d023f9190059179c9ff3b13bafdb6b241"
+    },
+    "rtl": {
+      "u8_registered_adder.sv": "8937d7e2f1f6389804d4c0a9713243160ce52de059b213d05b3185fae9cea0ee"
+    },
+    "tests": {
+      "test_u8_registered_adder.py": "96a3a36fcd98d2ca5f05d132f4202e6032d9d03866fb73918d4016799948b055"
+    },
+    "reference": {
+      "adder_model.py": "905fa9ed1e7d9cd124ccc8f6d7d857a81c22ffafad9e97ad2fdf53cf6c57f6f7"
+    }
+  }
+}

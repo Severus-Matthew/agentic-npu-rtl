@@ -1,0 +1,257 @@
+{
+  "debugger_status": "REPAIR_PLAN_READY",
+  "diagnosis": {
+    "failure_class": "UNKNOWN",
+    "root_cause": "mv_npu_top is effectively a stub with only parameter checks and no instantiated submodules or handshake/control logic. Therefore cmd_ready (and other interface outputs) are never driven per protocol/state, so no cmd transfer can occur and tests timeout waiting for cmd_ready.",
+    "confidence": 0.98,
+    "first_divergence": {
+      "cycle": null,
+      "signal_or_output": "cmd_ready",
+      "expected": "Asserted in IDLE to accept one command beat (subject to protocol/state)",
+      "observed": "Remains non-asserted/undriven from reset through test wait window; send_beat times out"
+    },
+    "evidence": [
+      {
+        "source": "cocotb test log (test_directed_basic)",
+        "observation": "SimTimeoutError at send_beat(... 'cmd_ready' ...) after max_wait; first failure at 1012ns.",
+        "relevance": "Authoritative first functional failure is command handshake deadlock."
+      },
+      {
+        "source": "cocotb test log (test_randomized_100_jobs)",
+        "observation": "Same SimTimeoutError waiting cmd_ready at job start.",
+        "relevance": "Confirms systematic inability to accept command, not random data mismatch."
+      },
+      {
+        "source": "rtl/mv_npu_top.sv",
+        "observation": "Top contains only initial parameter assertions; no FSM/datapath module instantiations, no assignments for cmd_ready/vec_ready/mat_ready/bias_ready/out_valid/out_data/status_*.",
+        "relevance": "Direct structural cause for missing protocol behavior and timeout."
+      },
+      {
+        "source": "frozen interface/architecture contract",
+        "observation": "Requires ready/valid streaming command ingress and phased control progression from IDLE.",
+        "relevance": "Establishes expected cmd_ready behavior and necessity of integrated control path."
+      }
+    ],
+    "affected_modules": [
+      "mv_npu_top"
+    ],
+    "alternative_hypotheses": [
+      "Reset sequencing bug in FSM",
+      "Testbench timing bug"
+    ],
+    "architecture_change_required": false,
+    "additional_evidence_requested": []
+  },
+  "repair_plan": {
+    "action": "PATCH",
+    "affected_modules": [
+      "mv_npu_top"
+    ],
+    "protected_modules": [
+      "mv_ctrl_fsm",
+      "mv_vec_buffer",
+      "mv_mac16_core",
+      "mv_postproc",
+      "mv_stream_if"
+    ],
+    "protected_interfaces": [
+      "clk",
+      "rst_n",
+      "cmd_valid",
+      "cmd_ready",
+      "cmd_data",
+      "vec_valid",
+      "vec_ready",
+      "vec_data",
+      "mat_valid",
+      "mat_ready",
+      "mat_data",
+      "bias_valid",
+      "bias_ready",
+      "bias_data",
+      "out_valid",
+      "out_ready",
+      "out_data",
+      "status_busy",
+      "status_error"
+    ],
+    "recommended_change": "Implement full top-level integration in mv_npu_top: instantiate mv_ctrl_fsm/mv_vec_buffer/mv_mac16_core/mv_postproc/mv_stream_if; generate all channel ready signals from FSM state and downstream readiness; generate xfer pulses strictly as ready&&valid; decode/store command via cmd_accept; route vector writes into buffer with proper address counter from FSM progress; unpack matrix beat to lanes and pair with vector lane chunk reads; drive compute/new_row sequencing and lane_valid_mask usage; connect row result into postproc with bias handshake and out backpressure support; expose status_busy/status_error from control. Ensure command ready is asserted in IDLE when able to accept a new job, and deasserted during active job per single-outstanding-job assumption.",
+    "do_not_change": [
+      "Do not alter module interfaces or parameter contracts.",
+      "Do not modify frozen tests/reference behavior.",
+      "Do not change arithmetic semantics (INT8 signed multiply, INT32 wrap, optional bias/ReLU).",
+      "Do not change single-job ordering/backpressure protocol requirements."
+    ],
+    "expected_side_effects": [
+      "Once integrated, failures may progress from handshake timeout to functional mismatches in compute/control sequencing if any submodule assumptions are inconsistent.",
+      "Ready/valid timing behavior becomes observable on all channels; regression may expose secondary protocol bugs."
+    ],
+    "regression_required": "FULL"
+  },
+  "architecture_conflict": null,
+  "repair_iteration": 1,
+  "rtl_task_type": "FUNCTIONAL_REPAIR",
+  "rtl_feedback": {
+    "source": "debugger",
+    "repair_iteration": 1,
+    "diagnosis": {
+      "failure_class": "UNKNOWN",
+      "root_cause": "mv_npu_top is effectively a stub with only parameter checks and no instantiated submodules or handshake/control logic. Therefore cmd_ready (and other interface outputs) are never driven per protocol/state, so no cmd transfer can occur and tests timeout waiting for cmd_ready.",
+      "confidence": 0.98,
+      "first_divergence": {
+        "cycle": null,
+        "signal_or_output": "cmd_ready",
+        "expected": "Asserted in IDLE to accept one command beat (subject to protocol/state)",
+        "observed": "Remains non-asserted/undriven from reset through test wait window; send_beat times out"
+      },
+      "evidence": [
+        {
+          "source": "cocotb test log (test_directed_basic)",
+          "observation": "SimTimeoutError at send_beat(... 'cmd_ready' ...) after max_wait; first failure at 1012ns.",
+          "relevance": "Authoritative first functional failure is command handshake deadlock."
+        },
+        {
+          "source": "cocotb test log (test_randomized_100_jobs)",
+          "observation": "Same SimTimeoutError waiting cmd_ready at job start.",
+          "relevance": "Confirms systematic inability to accept command, not random data mismatch."
+        },
+        {
+          "source": "rtl/mv_npu_top.sv",
+          "observation": "Top contains only initial parameter assertions; no FSM/datapath module instantiations, no assignments for cmd_ready/vec_ready/mat_ready/bias_ready/out_valid/out_data/status_*.",
+          "relevance": "Direct structural cause for missing protocol behavior and timeout."
+        },
+        {
+          "source": "frozen interface/architecture contract",
+          "observation": "Requires ready/valid streaming command ingress and phased control progression from IDLE.",
+          "relevance": "Establishes expected cmd_ready behavior and necessity of integrated control path."
+        }
+      ],
+      "affected_modules": [
+        "mv_npu_top"
+      ],
+      "alternative_hypotheses": [
+        "Reset sequencing bug in FSM",
+        "Testbench timing bug"
+      ],
+      "architecture_change_required": false,
+      "additional_evidence_requested": []
+    },
+    "repair_plan": {
+      "action": "PATCH",
+      "affected_modules": [
+        "mv_npu_top"
+      ],
+      "protected_modules": [
+        "mv_ctrl_fsm",
+        "mv_vec_buffer",
+        "mv_mac16_core",
+        "mv_postproc",
+        "mv_stream_if"
+      ],
+      "protected_interfaces": [
+        "clk",
+        "rst_n",
+        "cmd_valid",
+        "cmd_ready",
+        "cmd_data",
+        "vec_valid",
+        "vec_ready",
+        "vec_data",
+        "mat_valid",
+        "mat_ready",
+        "mat_data",
+        "bias_valid",
+        "bias_ready",
+        "bias_data",
+        "out_valid",
+        "out_ready",
+        "out_data",
+        "status_busy",
+        "status_error"
+      ],
+      "recommended_change": "Implement full top-level integration in mv_npu_top: instantiate mv_ctrl_fsm/mv_vec_buffer/mv_mac16_core/mv_postproc/mv_stream_if; generate all channel ready signals from FSM state and downstream readiness; generate xfer pulses strictly as ready&&valid; decode/store command via cmd_accept; route vector writes into buffer with proper address counter from FSM progress; unpack matrix beat to lanes and pair with vector lane chunk reads; drive compute/new_row sequencing and lane_valid_mask usage; connect row result into postproc with bias handshake and out backpressure support; expose status_busy/status_error from control. Ensure command ready is asserted in IDLE when able to accept a new job, and deasserted during active job per single-outstanding-job assumption.",
+      "do_not_change": [
+        "Do not alter module interfaces or parameter contracts.",
+        "Do not modify frozen tests/reference behavior.",
+        "Do not change arithmetic semantics (INT8 signed multiply, INT32 wrap, optional bias/ReLU).",
+        "Do not change single-job ordering/backpressure protocol requirements."
+      ],
+      "expected_side_effects": [
+        "Once integrated, failures may progress from handshake timeout to functional mismatches in compute/control sequencing if any submodule assumptions are inconsistent.",
+        "Ready/valid timing behavior becomes observable on all channels; regression may expose secondary protocol bugs."
+      ],
+      "regression_required": "FULL"
+    },
+    "verification_evidence": {
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "top_module": "mv_npu_top",
+      "regression_scope": "FULL",
+      "verilator": {
+        "stage": "verilator_lint",
+        "status": "PASS",
+        "failure_class": null,
+        "return_code": 0,
+        "command": [
+          "/u/mjha1/.local/verilator-env/bin/verilator",
+          "--lint-only",
+          "--sv",
+          "-Wno-fatal",
+          "--top-module",
+          "mv_npu_top",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_ctrl_fsm.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_mac16_core.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_postproc.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_stream_if.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_vec_buffer.sv"
+        ],
+        "sources": [
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_ctrl_fsm.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_mac16_core.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_postproc.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_stream_if.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_vec_buffer.sv"
+        ],
+        "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.141 MB sources in 7 modules, into 0.002 MB in 3 C++ files needing 0.000 MB\n- Verilator: Walltime 0.011 s (elab=0.002, cvt=0.001, bld=0.000); cpu 0.005 s on 1 threads; allocated 25.688 MB\n",
+        "stderr": "",
+        "error_diagnostics": [],
+        "top_module": "mv_npu_top"
+      },
+      "cocotb": {
+        "stage": "cocotb_regression",
+        "status": "SIMULATION_FAILURE",
+        "failure_class": "UNKNOWN",
+        "tests": 2,
+        "failures": 2,
+        "seed": 12345,
+        "top_module": "mv_npu_top",
+        "test_modules": [
+          "test_mv_npu"
+        ],
+        "results_xml": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/verification/build/av1-r0-p0-v0/results.xml",
+        "worker_error": null,
+        "worker_return_code": 1,
+        "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.133 MB sources in 7 modules, into 0.038 MB in 6 C++ files needing 0.000 MB\n- Verilator: Walltime 0.067 s (elab=0.000, cvt=0.022, bld=0.000); cpu 0.009 s on 1 threads; allocated 25.688 MB\nmake: Entering directory '/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/verification/build/av1-r0-p0-v0'\ng++  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -Os  -c -o verilator.o /u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/share/lib/verilator/verilator.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_\n[TRUNCATED: full evidence retained in run artifacts]\n'out_valid': int(dut.out_valid.value), 'out_data': int(dut.out_data.value.signed_integer),\n     1.00ns WARNING  py.warnings                        /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py:20: DeprecationWarning: The 'units' argument has been renamed to 'unit'.\n                                                          await Timer(1, units='ns')\n     2.00ns WARNING  py.warnings                        /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py:22: DeprecationWarning: `logic_array.signed_integer` getter is deprecated. Use `logic_array.to_signed()` instead.\n                                                          'out_valid': int(dut.out_valid.value), 'out_data': int(dut.out_data.value.signed_integer),\n  1012.00ns WARNING  cocotb.regression                  test_mv_npu.test_directed_basic failed\n                                                        Traceback (most recent call last):\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py\", line 54, in test_directed_basic\n                                                            await send_beat(dut, dut.cmd_valid, 'cmd_ready', dut.cmd_data, pack_cmd(M, N, 0, 0))\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py\", line 45, in send_beat\n                                                            raise SimTimeoutError(f'timeout waiting {ready_sig}')\n                                                        cocotb.triggers.SimTimeoutError: timeout waiting cmd_ready\n  1012.00ns INFO     cocotb.regression                  running test_mv_npu.test_randomized_100_jobs (2/2)\n  2024.00ns WARNING  cocotb.regression                  test_mv_npu.test_randomized_100_jobs failed\n                                                        Traceback (most recent call last):\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py\", line 87, in test_randomized_100_jobs\n                                                            await send_beat(dut, dut.cmd_valid, 'cmd_ready', dut.cmd_data, pack_cmd(M,N,bias_en,relu_en))\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py\", line 45, in send_beat\n                                                            raise SimTimeoutError(f'timeout waiting {ready_sig}')\n                                                        cocotb.triggers.SimTimeoutError: timeout waiting cmd_ready\n  2024.00ns INFO     cocotb.regression                  **********************************************************************************************\n                                                        ** TEST                                  STATUS  SIM TIME (ns)  REAL TIME (s)  RATIO (ns/s) **\n                                                        **********************************************************************************************\n                                                        ** test_mv_npu.test_directed_basic        FAIL        1012.00           0.02      61785.72  **\n                                                        ** test_mv_npu.test_randomized_100_jobs   FAIL        1012.00           0.01      69057.70  **\n                                                        **********************************************************************************************\n                                                        ** TESTS=2 PASS=0 FAIL=2 SKIP=0                       2024.00           0.03      62681.02  **\n                                                        **********************************************************************************************\n- :0: Verilog $finish\n",
+        "stderr": ""
+      },
+      "status": "SIMULATION_FAILURE",
+      "failure_class": "UNKNOWN"
+    },
+    "frozen_verifier": true
+  },
+  "needs_regression": true,
+  "history": [
+    {
+      "stage": "debugger",
+      "status": "REPAIR_PLAN_READY",
+      "failure_class": "UNKNOWN",
+      "repair_iteration_before": 0,
+      "repair_iteration_after": 1,
+      "affected_modules": [
+        "mv_npu_top"
+      ]
+    }
+  ]
+}

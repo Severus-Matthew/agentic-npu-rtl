@@ -1,0 +1,47 @@
+{
+  "action": "PATCH",
+  "affected_modules": [
+    "mv_npu_top"
+  ],
+  "protected_modules": [
+    "mv_ctrl_fsm",
+    "mv_vec_buffer",
+    "mv_mac16_core",
+    "mv_postproc",
+    "mv_stream_if"
+  ],
+  "protected_interfaces": [
+    "clk",
+    "rst_n",
+    "cmd_valid",
+    "cmd_ready",
+    "cmd_data",
+    "vec_valid",
+    "vec_ready",
+    "vec_data",
+    "mat_valid",
+    "mat_ready",
+    "mat_data",
+    "bias_valid",
+    "bias_ready",
+    "bias_data",
+    "out_valid",
+    "out_ready",
+    "out_data",
+    "status_busy",
+    "status_error"
+  ],
+  "recommended_change": "Refactor top-level row-completion handoff so matrix ingress acceptance is not circularly blocked by postproc readiness. Specifically: (1) decouple mat_ready from immediate pp_in_ready on the last chunk by buffering completed row result in a registered pending slot, (2) drive pp_in_valid from that pending slot until accepted (lossless valid/ready behavior), and (3) only advance/clear pending row-result state on actual postproc acceptance while allowing matrix stream progress per FSM phase rules. Ensure no combinational latch behavior in this control block by assigning defaults on all paths.",
+  "do_not_change": [
+    "Do not modify frozen tests or reference model.",
+    "Do not change architecture semantics, channel protocols, or top-level port list/widths.",
+    "Do not alter arithmetic definitions (INT8 multiply, INT32 wrap, optional bias/ReLU behavior).",
+    "Do not edit protected modules; keep fix localized to mv_npu_top integration/control sequencing."
+  ],
+  "expected_side_effects": [
+    "mat_ready should assert and accept required matrix beats without timeout.",
+    "Row-result delivery to postproc becomes deterministic under backpressure.",
+    "After deadlock removal, any remaining value/timing mismatches may surface and must be checked in full regression."
+  ],
+  "regression_required": "FULL"
+}

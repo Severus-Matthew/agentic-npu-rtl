@@ -1,0 +1,1264 @@
+{
+  "architecture_status": "READY",
+  "architecture_dir": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180201-3fe345/architecture",
+  "architecture_revision": 0,
+  "history": [
+    {
+      "stage": "architect",
+      "status": "READY",
+      "architecture_version": 1,
+      "revision": false
+    }
+  ],
+  "architecture_version": 1,
+  "architecture_artifacts": {
+    "architecture_contract": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180201-3fe345/architecture/architecture_contract.yaml",
+    "interface_contract": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180201-3fe345/architecture/interface_contract.yaml",
+    "module_manifest": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180201-3fe345/architecture/module_manifest.json",
+    "acceptance_criteria": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180201-3fe345/architecture/acceptance_criteria.yaml"
+  },
+  "architecture_conflict": null,
+  "rtl_context": {
+    "user_request": "Design a small AI accelerator for fully connected neural-network layers. The accelerator should primarily operate as a tiled GEMM engine, multiplying INT8 activation matrices by INT8 weight matrices, accumulating in INT32, adding a bias vector, and applying ReLU. Use an 8\u00d78 compute array and support matrices larger than the array through tiling.",
+    "fixed_rtl_constraints": {
+      "language": "SystemVerilog",
+      "synthesizable_only": true,
+      "forbidden_constructs": [
+        "real",
+        "shortreal",
+        "delay_statements",
+        "force_release",
+        "classes"
+      ]
+    },
+    "synthesis_policy": {
+      "provider": "vivado",
+      "requires_verified_rtl": true,
+      "result_schema": "multigent/schemas/synthesis_result.schema.json",
+      "authoritative_metrics_source": "deterministic_tool_report",
+      "prohibit_metric_estimation": true
+    },
+    "frozen_architecture": {
+      "architecture_contract": {
+        "design": {
+          "name": "fc_tiled_gemm_int8_accel",
+          "version": "1.0",
+          "description": "Tiled fully-connected layer accelerator: INT8xINT8->INT32 GEMM, INT32 bias add, ReLU, using fixed 8x8 PE array."
+        },
+        "operations": [
+          {
+            "name": "op_load_config",
+            "kind": "control",
+            "semantics": "Latch layer/job configuration on cfg channel handshake; validate bounds before execution.",
+            "inputs": [
+              "obj_cfg_packet"
+            ],
+            "outputs": [
+              "obj_cfg_state"
+            ]
+          },
+          {
+            "name": "op_gemm_tile",
+            "kind": "compute",
+            "semantics": "For each output tile (m_tile,n_tile) and reduction chunk k_chunk, compute partial sums: acc[m,n]+=sum over k of (A[m,k]*W[k,n]) with signed INT8 multiply and signed INT32 accumulation.",
+            "inputs": [
+              "obj_activation_stream",
+              "obj_weight_stream",
+              "obj_cfg_state"
+            ],
+            "outputs": [
+              "obj_accum_tile"
+            ]
+          },
+          {
+            "name": "op_bias_add",
+            "kind": "compute",
+            "semantics": "Add INT32 bias for each output column: z[m,n]=acc[m,n]+bias[n].",
+            "inputs": [
+              "obj_accum_tile",
+              "obj_bias_stream",
+              "obj_cfg_state"
+            ],
+            "outputs": [
+              "obj_biased_tile"
+            ]
+          },
+          {
+            "name": "op_relu",
+            "kind": "compute",
+            "semantics": "Apply ReLU elementwise on INT32: y=max(0,z).",
+            "inputs": [
+              "obj_biased_tile"
+            ],
+            "outputs": [
+              "obj_output_tile"
+            ]
+          },
+          {
+            "name": "op_store_output",
+            "kind": "egress",
+            "semantics": "Emit output elements in tile-major deterministic order with boundary masking for partial tiles.",
+            "inputs": [
+              "obj_output_tile",
+              "obj_cfg_state"
+            ],
+            "outputs": [
+              "obj_output_stream"
+            ]
+          }
+        ],
+        "data_types": [
+          {
+            "name": "dt_int8",
+            "role": "activations/weights element",
+            "width_bits": 8,
+            "signed": true,
+            "representation": "two_complement",
+            "conversion_semantics": "No implicit conversion",
+            "overflow_semantics": "wrap",
+            "rounding_semantics": "not_applicable"
+          },
+          {
+            "name": "dt_int32",
+            "role": "accumulator/bias/output element",
+            "width_bits": 32,
+            "signed": true,
+            "representation": "two_complement",
+            "conversion_semantics": "INT8 operands sign-extended before multiply/accumulate",
+            "overflow_semantics": "wrap",
+            "rounding_semantics": "not_applicable"
+          },
+          {
+            "name": "dt_cfg",
+            "role": "runtime configuration packet",
+            "width_bits": 128,
+            "signed": false,
+            "representation": "packed_fields",
+            "conversion_semantics": "field-wise unsigned decode",
+            "overflow_semantics": "not_applicable",
+            "rounding_semantics": "not_applicable"
+          }
+        ],
+        "data_objects": [
+          {
+            "name": "obj_cfg_packet",
+            "role": "job configuration transfer",
+            "data_type": "dt_cfg",
+            "dimensions": [],
+            "producer": "external",
+            "consumers": [
+              "op_load_config"
+            ],
+            "external": true
+          },
+          {
+            "name": "obj_cfg_state",
+            "role": "latched runtime dimensions/strides",
+            "data_type": "dt_cfg",
+            "dimensions": [],
+            "producer": "op_load_config",
+            "consumers": [
+              "op_gemm_tile",
+              "op_bias_add",
+              "op_store_output"
+            ],
+            "external": false
+          },
+          {
+            "name": "obj_activation_stream",
+            "role": "A matrix elements",
+            "data_type": "dt_int8",
+            "dimensions": [
+              "M",
+              "K"
+            ],
+            "producer": "external",
+            "consumers": [
+              "op_gemm_tile"
+            ],
+            "external": true
+          },
+          {
+            "name": "obj_weight_stream",
+            "role": "W matrix elements",
+            "data_type": "dt_int8",
+            "dimensions": [
+              "K",
+              "N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "op_gemm_tile"
+            ],
+            "external": true
+          },
+          {
+            "name": "obj_bias_stream",
+            "role": "bias vector elements",
+            "data_type": "dt_int32",
+            "dimensions": [
+              "N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "op_bias_add"
+            ],
+            "external": true
+          },
+          {
+            "name": "obj_accum_tile",
+            "role": "tile partial/final accumulators",
+            "data_type": "dt_int32",
+            "dimensions": [
+              "TM",
+              "TN"
+            ],
+            "producer": "op_gemm_tile",
+            "consumers": [
+              "op_bias_add"
+            ],
+            "external": false
+          },
+          {
+            "name": "obj_biased_tile",
+            "role": "post-bias tile",
+            "data_type": "dt_int32",
+            "dimensions": [
+              "TM",
+              "TN"
+            ],
+            "producer": "op_bias_add",
+            "consumers": [
+              "op_relu"
+            ],
+            "external": false
+          },
+          {
+            "name": "obj_output_tile",
+            "role": "post-ReLU tile",
+            "data_type": "dt_int32",
+            "dimensions": [
+              "TM",
+              "TN"
+            ],
+            "producer": "op_relu",
+            "consumers": [
+              "op_store_output"
+            ],
+            "external": false
+          },
+          {
+            "name": "obj_output_stream",
+            "role": "output matrix elements",
+            "data_type": "dt_int32",
+            "dimensions": [
+              "M",
+              "N"
+            ],
+            "producer": "op_store_output",
+            "consumers": [
+              "external"
+            ],
+            "external": true
+          }
+        ],
+        "dimensions": [
+          {
+            "name": "M",
+            "semantic": "output rows / activation rows, runtime legal range 1..MAX_M",
+            "minimum": 1,
+            "maximum": 256,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_M"
+          },
+          {
+            "name": "K",
+            "semantic": "reduction dimension, runtime legal range 1..MAX_K",
+            "minimum": 1,
+            "maximum": 256,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_K"
+          },
+          {
+            "name": "N",
+            "semantic": "output cols / weight cols / bias length, runtime legal range 1..MAX_N",
+            "minimum": 1,
+            "maximum": 256,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_N"
+          },
+          {
+            "name": "TM",
+            "semantic": "tile rows processed by array, fixed 8",
+            "minimum": 8,
+            "maximum": 8,
+            "runtime_configurable": false,
+            "bound_parameter": "ARRAY_M"
+          },
+          {
+            "name": "TN",
+            "semantic": "tile cols processed by array, fixed 8",
+            "minimum": 8,
+            "maximum": 8,
+            "runtime_configurable": false,
+            "bound_parameter": "ARRAY_N"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ARRAY_M",
+            "default_value": "8",
+            "legality_constraint": "=8",
+            "description": "PE rows"
+          },
+          {
+            "name": "ARRAY_N",
+            "default_value": "8",
+            "legality_constraint": "=8",
+            "description": "PE cols"
+          },
+          {
+            "name": "MAX_M",
+            "default_value": "256",
+            "legality_constraint": ">=1",
+            "description": "max runtime M"
+          },
+          {
+            "name": "MAX_K",
+            "default_value": "256",
+            "legality_constraint": ">=1",
+            "description": "max runtime K"
+          },
+          {
+            "name": "MAX_N",
+            "default_value": "256",
+            "legality_constraint": ">=1",
+            "description": "max runtime N"
+          }
+        ],
+        "compute": {
+          "organization": "2D MAC array with 64 INT8xINT8 MAC PEs and shared control",
+          "dataflow": "Output-stationary per 8x8 tile; accumulators held local for full K sweep",
+          "parallelism": "Up to 64 MACs/cycle during inner-k for full tile, with boundary masking",
+          "scheduling": "Tile-nested loops: for m0 in 0..M-1 step8, for n0 in 0..N-1 step8, zero accum, for k0 in 0..K-1 stream operands and accumulate, then bias+ReLU+egress"
+        },
+        "storage": [
+          {
+            "name": "rf_accum_tile",
+            "stored_objects": [
+              "obj_accum_tile"
+            ],
+            "capacity_expression": "ARRAY_M*ARRAY_N*32",
+            "capacity_at_default_parameters": 2048,
+            "access_pattern": "read-modify-write each cycle during K loop; read during bias stage",
+            "port_requirements": "64 logical accumulator lanes (or time-multiplexed equivalent sustaining 64 MAC updates/cycle)",
+            "implementation_hint": "register file",
+            "reuse_semantics": "retained across all k for current tile only",
+            "lifetime": "from tile start until tile output emitted"
+          },
+          {
+            "name": "buf_bias_tile",
+            "stored_objects": [
+              "obj_bias_stream"
+            ],
+            "capacity_expression": "ARRAY_N*32",
+            "capacity_at_default_parameters": 256,
+            "access_pattern": "loaded once per n-tile then broadcast across tile rows",
+            "port_requirements": "1 write lane, ARRAY_N read lanes or broadcast network",
+            "implementation_hint": "register array",
+            "reuse_semantics": "reused for all rows in current m-tile at same n-tile",
+            "lifetime": "during one (m_tile,n_tile) compute"
+          }
+        ],
+        "pipeline": [
+          {
+            "stage": "S0_cfg",
+            "responsibility": "accept/decode config",
+            "registered": true,
+            "valid_behavior": "cfg_valid&&cfg_ready latches config",
+            "stall_behavior": "cfg_ready deasserted when busy"
+          },
+          {
+            "stage": "S1_load_compute",
+            "responsibility": "stream A/W, perform MAC updates",
+            "registered": true,
+            "valid_behavior": "advance on required operand handshakes",
+            "stall_behavior": "hold loop counters and accumulator write enables when stalled"
+          },
+          {
+            "stage": "S2_post",
+            "responsibility": "bias add + ReLU",
+            "registered": true,
+            "valid_behavior": "process one output element per cycle (or implementation-equivalent deterministic order)",
+            "stall_behavior": "hold element index and data stable"
+          },
+          {
+            "stage": "S3_out",
+            "responsibility": "output streaming",
+            "registered": true,
+            "valid_behavior": "out transfer on out_valid&&out_ready",
+            "stall_behavior": "hold out_valid and out_data stable"
+          }
+        ],
+        "control": {
+          "strategy": "single FSM with nested counters",
+          "state_progression": "IDLE->LOAD_CFG->RUN_TILE_LOOP->POST_TILE->EMIT_TILE->DONE->IDLE",
+          "counters": [
+            "m0",
+            "n0",
+            "k_idx",
+            "tm_idx",
+            "tn_idx"
+          ],
+          "error_behavior": "on illegal cfg bounds or protocol order violation, enter ERROR, assert error flag, block compute/output",
+          "error_recovery": "synchronous reset required to leave ERROR"
+        },
+        "reset": {
+          "style": "synchronous",
+          "polarity": "active_high",
+          "required_state": "FSM IDLE, busy=0, done=0, error=0, counters/pointers zeroed, valid outputs deasserted"
+        },
+        "latency_model": "Cycles = cfg(1) + sum_tiles[ K_load_compute + post(<=64) + emit(valid_outputs_in_tile) ], where K_load_compute includes operand transfer stalls; no overlap between different tiles in baseline architecture.",
+        "architectural_invariants": [
+          "Array geometry fixed 8x8",
+          "Arithmetic is signed INT8*INT8 accumulated in signed INT32",
+          "Bias and ReLU are always applied (mandatory)",
+          "Output ordering is tile-major: n-tile fastest, then m-tile; within tile row-major with boundary masking"
+        ],
+        "open_assumptions": [
+          "External host sends activations and weights in exact compute-consumption order per tile and k index (no internal full-matrix buffering).",
+          "Single in-flight job; next cfg accepted only after done and return to IDLE.",
+          "No quantization/downcast at output; outputs are INT32 after ReLU."
+        ]
+      },
+      "interface_contract": {
+        "protocol": "ready/valid streaming with separate channels",
+        "clock": "single rising-edge clock",
+        "reset": "synchronous active-high rst",
+        "channels": [
+          {
+            "name": "cfg_ch",
+            "direction": "input",
+            "purpose": "job configuration",
+            "data_objects": [
+              "obj_cfg_packet"
+            ],
+            "metadata": [],
+            "framing": "single beat per job",
+            "ordering": "must arrive before any data streams for that job",
+            "backpressure": "supported via cfg_ready"
+          },
+          {
+            "name": "act_ch",
+            "direction": "input",
+            "purpose": "activation matrix stream",
+            "data_objects": [
+              "obj_activation_stream"
+            ],
+            "metadata": [
+              "section_id implicit by control phase"
+            ],
+            "framing": "scalar INT8 beat",
+            "ordering": "for each (m0,n0), for k_idx=0..K-1, provide up to 8 A elements for rows m0..m0+7 masked by M bound",
+            "backpressure": "supported via act_ready"
+          },
+          {
+            "name": "wgt_ch",
+            "direction": "input",
+            "purpose": "weight matrix stream",
+            "data_objects": [
+              "obj_weight_stream"
+            ],
+            "metadata": [
+              "section_id implicit by control phase"
+            ],
+            "framing": "scalar INT8 beat",
+            "ordering": "for each (m0,n0), for k_idx=0..K-1, provide up to 8 W elements for cols n0..n0+7 masked by N bound",
+            "backpressure": "supported via wgt_ready"
+          },
+          {
+            "name": "bias_ch",
+            "direction": "input",
+            "purpose": "bias vector stream",
+            "data_objects": [
+              "obj_bias_stream"
+            ],
+            "metadata": [],
+            "framing": "scalar INT32 beat",
+            "ordering": "for each n-tile, 8 bias values for cols n0..n0+7 with boundary masking",
+            "backpressure": "supported via bias_ready"
+          },
+          {
+            "name": "out_ch",
+            "direction": "output",
+            "purpose": "result matrix stream",
+            "data_objects": [
+              "obj_output_stream"
+            ],
+            "metadata": [],
+            "framing": "scalar INT32 beat",
+            "ordering": "tile-major deterministic as declared in invariants",
+            "backpressure": "supported via out_ready"
+          }
+        ],
+        "signals": [
+          {
+            "name": "clk",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "clock",
+            "reset_value": "0"
+          },
+          {
+            "name": "rst",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "synchronous reset, active high",
+            "reset_value": "0"
+          },
+          {
+            "name": "cfg_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "cfg beat valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "cfg_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "cfg beat ready",
+            "reset_value": "0"
+          },
+          {
+            "name": "cfg_data",
+            "direction": "input",
+            "width": "128",
+            "signed": false,
+            "semantic": "{reserved[31:0],N[31:0],K[31:0],M[31:0]}",
+            "reset_value": "0"
+          },
+          {
+            "name": "act_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "activation valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "act_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "activation ready",
+            "reset_value": "0"
+          },
+          {
+            "name": "act_data",
+            "direction": "input",
+            "width": "8",
+            "signed": true,
+            "semantic": "one INT8 activation element",
+            "reset_value": "0"
+          },
+          {
+            "name": "wgt_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "weight valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "wgt_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "weight ready",
+            "reset_value": "0"
+          },
+          {
+            "name": "wgt_data",
+            "direction": "input",
+            "width": "8",
+            "signed": true,
+            "semantic": "one INT8 weight element",
+            "reset_value": "0"
+          },
+          {
+            "name": "bias_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "bias valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "bias_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "bias ready",
+            "reset_value": "0"
+          },
+          {
+            "name": "bias_data",
+            "direction": "input",
+            "width": "32",
+            "signed": true,
+            "semantic": "one INT32 bias element",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_valid",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "output valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_ready",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "output ready",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_data",
+            "direction": "output",
+            "width": "32",
+            "signed": true,
+            "semantic": "one INT32 output element post-ReLU",
+            "reset_value": "0"
+          },
+          {
+            "name": "busy",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "engine processing current job",
+            "reset_value": "0"
+          },
+          {
+            "name": "done",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "1-cycle pulse when job completes",
+            "reset_value": "0"
+          },
+          {
+            "name": "error",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "latched error state indicator",
+            "reset_value": "0"
+          }
+        ],
+        "global_handshake_rules": {
+          "transfer_condition": "A channel transfer occurs iff ready && valid on that channel in the same cycle.",
+          "stall_behavior": "While valid=1 and ready=0, payload must remain stable; internal state and counters that depend on that transfer must not advance."
+        }
+      },
+      "module_manifest": {
+        "top": "fc_tiled_gemm_top",
+        "modules": [
+          {
+            "name": "fc_tiled_gemm_top",
+            "responsibility": "top integration and external interface",
+            "dependencies": [
+              "cfg_unit",
+              "control_fsm",
+              "pe_array_8x8",
+              "bias_relu_unit",
+              "output_unit"
+            ],
+            "parameters": [
+              "ARRAY_M",
+              "ARRAY_N",
+              "MAX_M",
+              "MAX_K",
+              "MAX_N"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "sync reset"
+              },
+              {
+                "name": "cfg_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "cfg valid"
+              },
+              {
+                "name": "cfg_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "cfg ready"
+              },
+              {
+                "name": "cfg_data",
+                "direction": "input",
+                "width": "128",
+                "signed": false,
+                "semantics": "config payload"
+              },
+              {
+                "name": "act_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "activation valid"
+              },
+              {
+                "name": "act_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "activation ready"
+              },
+              {
+                "name": "act_data",
+                "direction": "input",
+                "width": "8",
+                "signed": true,
+                "semantics": "activation data"
+              },
+              {
+                "name": "wgt_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "weight valid"
+              },
+              {
+                "name": "wgt_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "weight ready"
+              },
+              {
+                "name": "wgt_data",
+                "direction": "input",
+                "width": "8",
+                "signed": true,
+                "semantics": "weight data"
+              },
+              {
+                "name": "bias_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "bias valid"
+              },
+              {
+                "name": "bias_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "bias ready"
+              },
+              {
+                "name": "bias_data",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "bias data"
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "output valid"
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "output ready"
+              },
+              {
+                "name": "out_data",
+                "direction": "output",
+                "width": "32",
+                "signed": true,
+                "semantics": "output data"
+              },
+              {
+                "name": "busy",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "busy flag"
+              },
+              {
+                "name": "done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "done pulse"
+              },
+              {
+                "name": "error",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "error flag"
+              }
+            ]
+          },
+          {
+            "name": "cfg_unit",
+            "responsibility": "decode/validate cfg packet and hold runtime dims",
+            "dependencies": [],
+            "parameters": [
+              "MAX_M",
+              "MAX_K",
+              "MAX_N"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "cfg_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "input valid"
+              },
+              {
+                "name": "cfg_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "input ready"
+              },
+              {
+                "name": "cfg_data",
+                "direction": "input",
+                "width": "128",
+                "signed": false,
+                "semantics": "packed M,K,N"
+              },
+              {
+                "name": "cfg_latched",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "pulse on successful latch"
+              },
+              {
+                "name": "cfg_error",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "invalid bounds detected"
+              },
+              {
+                "name": "M_reg",
+                "direction": "output",
+                "width": "32",
+                "signed": false,
+                "semantics": "latched M"
+              },
+              {
+                "name": "K_reg",
+                "direction": "output",
+                "width": "32",
+                "signed": false,
+                "semantics": "latched K"
+              },
+              {
+                "name": "N_reg",
+                "direction": "output",
+                "width": "32",
+                "signed": false,
+                "semantics": "latched N"
+              }
+            ]
+          },
+          {
+            "name": "control_fsm",
+            "responsibility": "tile/k counters and handshakes orchestration",
+            "dependencies": [],
+            "parameters": [
+              "ARRAY_M",
+              "ARRAY_N"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "cfg_latched",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "start event"
+              },
+              {
+                "name": "cfg_error",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "config error"
+              },
+              {
+                "name": "busy",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "busy"
+              },
+              {
+                "name": "done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "done pulse"
+              },
+              {
+                "name": "error",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "latched error"
+              },
+              {
+                "name": "m0",
+                "direction": "output",
+                "width": "32",
+                "signed": false,
+                "semantics": "tile row base"
+              },
+              {
+                "name": "n0",
+                "direction": "output",
+                "width": "32",
+                "signed": false,
+                "semantics": "tile col base"
+              },
+              {
+                "name": "k_idx",
+                "direction": "output",
+                "width": "32",
+                "signed": false,
+                "semantics": "reduction index"
+              }
+            ]
+          },
+          {
+            "name": "pe_array_8x8",
+            "responsibility": "64-lane MAC accumulation for one tile",
+            "dependencies": [],
+            "parameters": [
+              "ARRAY_M",
+              "ARRAY_N"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "step_en",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "advance one k step"
+              },
+              {
+                "name": "clear_tile",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "zero accumulators for new tile"
+              },
+              {
+                "name": "a_vec",
+                "direction": "input",
+                "width": "ARRAY_M*8",
+                "signed": true,
+                "semantics": "packed 8 activation elements"
+              },
+              {
+                "name": "w_vec",
+                "direction": "input",
+                "width": "ARRAY_N*8",
+                "signed": true,
+                "semantics": "packed 8 weight elements"
+              },
+              {
+                "name": "acc_read_idx",
+                "direction": "input",
+                "width": "6",
+                "signed": false,
+                "semantics": "select accumulator element for post stage"
+              },
+              {
+                "name": "acc_read_data",
+                "direction": "output",
+                "width": "32",
+                "signed": true,
+                "semantics": "selected accumulator value"
+              }
+            ]
+          },
+          {
+            "name": "bias_relu_unit",
+            "responsibility": "add bias and apply relu on streamed tile elements",
+            "dependencies": [],
+            "parameters": [
+              "ARRAY_N"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "in_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "acc input valid"
+              },
+              {
+                "name": "in_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "acc input ready"
+              },
+              {
+                "name": "acc_in",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "accumulator input"
+              },
+              {
+                "name": "bias_in",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "bias for column"
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "post output valid"
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "post output ready"
+              },
+              {
+                "name": "out_data",
+                "direction": "output",
+                "width": "32",
+                "signed": true,
+                "semantics": "relu output"
+              }
+            ]
+          },
+          {
+            "name": "output_unit",
+            "responsibility": "boundary mask check and external out channel driving",
+            "dependencies": [],
+            "parameters": [],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "in_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "input valid"
+              },
+              {
+                "name": "in_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "input ready"
+              },
+              {
+                "name": "in_data",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "input data"
+              },
+              {
+                "name": "emit_enable",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "1 if index in MxN bound"
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "out valid"
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "out ready"
+              },
+              {
+                "name": "out_data",
+                "direction": "output",
+                "width": "32",
+                "signed": true,
+                "semantics": "out data"
+              }
+            ]
+          }
+        ]
+      },
+      "acceptance_criteria": {
+        "functional": [
+          "For any legal M,K,N, output Y equals ReLU(A*W + bias) with exact signed integer math and INT32 wrap on overflow.",
+          "Tiling across dimensions larger than 8 is functionally equivalent to untiled reference.",
+          "Boundary tiles (M or N not multiple of 8) emit only legal indices; masked lanes do not affect results."
+        ],
+        "verification": [
+          "At least 100 randomized legal transactions varying M,K,N including boundary values 1,8,9,MAX.",
+          "Ready/valid backpressure tests on all input/output channels with payload stability checks.",
+          "Reset tests verify deterministic state recovery from IDLE and from mid-operation.",
+          "Error tests verify illegal cfg (0 or >MAX dimension) sets error and blocks progress until reset."
+        ],
+        "rtl": [
+          "SystemVerilog synthesizable subset only; no forbidden constructs from project constraints.",
+          "No combinational path requiring protocol violation; transfer only on ready&&valid.",
+          "Module interfaces and widths must match manifest exactly."
+        ],
+        "fpga_handoff": [
+          "Vivado synthesis results accepted only from deterministic tool report conforming to required schema.",
+          "No estimated/fabricated PPA metrics permitted.",
+          "RTL must pass verification suite before synthesis handoff."
+        ]
+      }
+    }
+  },
+  "rtl_task_type": "INITIAL_GENERATION",
+  "verification_context": {},
+  "verifier_status": "PENDING",
+  "verification_plan": {},
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "rtl_feedback": null,
+  "best_candidate": null,
+  "optimization_plan": null,
+  "ppa_status": "PENDING",
+  "frozen_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "1544100e8611c6a7cb6cc1f1e734c3a3b00f823c93f13172bd3aec4c5cc41553",
+      "architect_result.json": "bd2b521c9fddbb3baba800330a1e2e575ee1906b4ac048037eb25096f7934dc5",
+      "architecture_contract.yaml": "fbd90a540aca7ba8763936a9ece4ba8535991cf634d38a2a65b173ff55c48f95",
+      "interface_contract.yaml": "233c64209da2dacc4aa609b2de428c0ffe2c3e551f239d81a5a78a402114b48e",
+      "module_manifest.json": "610a94410d0d04dce5e4a1e34b6a73fe2df9f916089c5499450667abb2f9599b"
+    },
+    "rtl": {},
+    "tests": {},
+    "reference": {}
+  }
+}

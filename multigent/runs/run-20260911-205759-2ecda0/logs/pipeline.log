@@ -1,0 +1,19 @@
+{
+  "status": "VIVADO_TOOL_UNAVAILABLE",
+  "vivado_status": "TOOL_UNAVAILABLE",
+  "final_report": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-205759-2ecda0/reports/final.json",
+  "errors": [],
+  "architecture_status": "READY",
+  "architecture_version": 1,
+  "architecture_revision": 0,
+  "rtl_status": "RTL_GENERATED",
+  "rtl_files": [
+    "stream_matvec_int8.sv"
+  ],
+  "verifier_status": "VERIFICATION_READY",
+  "verification_status": "PASS",
+  "debugger_status": null,
+  "repair_iteration": 0,
+  "failure_class": null,
+  "architecture_conflict": null
+}

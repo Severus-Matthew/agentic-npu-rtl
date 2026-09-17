@@ -1,0 +1,22 @@
+{
+  "stage": "verilator_lint",
+  "status": "PASS",
+  "failure_class": null,
+  "return_code": 0,
+  "command": [
+    "/u/mjha1/.local/verilator-env/bin/verilator",
+    "--lint-only",
+    "--sv",
+    "-Wno-fatal",
+    "--top-module",
+    "stream_matvec_int8",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-205759-2ecda0/rtl/stream_matvec_int8.sv"
+  ],
+  "sources": [
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-205759-2ecda0/rtl/stream_matvec_int8.sv"
+  ],
+  "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.044 MB sources in 2 modules, into 0.124 MB in 3 C++ files needing 0.000 MB\n- Verilator: Walltime 0.018 s (elab=0.002, cvt=0.010, bld=0.000); cpu 0.016 s on 1 threads; allocated 26.688 MB\n",
+  "stderr": "",
+  "error_diagnostics": [],
+  "top_module": "stream_matvec_int8"
+}

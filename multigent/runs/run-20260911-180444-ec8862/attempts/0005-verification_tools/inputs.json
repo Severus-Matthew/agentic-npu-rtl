@@ -1,0 +1,20 @@
+{
+  "architecture": {
+    "acceptance_criteria.yaml": "9067f4a48439f3b86d8288c1524c3c0fd9874fab83b0ca6fb1c34518e51c552e",
+    "architect_result.json": "84da7e301e684f5a2e8ba6a7bb6d386b649a6a297874d6d655340a63db78644b",
+    "architecture_contract.yaml": "bc9d8ddc85d7207aad3e4611237497cd5a7ca8749248eb6860131b29973ee7da",
+    "interface_contract.yaml": "d228d432f6f5ea0aac778753d35e22989c748493fb13de73e9b3d03468e30584",
+    "module_manifest.json": "86f8055602da2de018590dd6e6ff5b760920c7e07a3478b0f543a419506a1e70"
+  },
+  "rtl": {
+    "fc_accelerator.sv": "d2208c1dd40df976961d03311f141e70012fc16e06581421b2775b23008c0103",
+    "fc_controller.sv": "91bd399bed46049af1fb2c2cccc8adb377493da6e84ea1572b35f0055fe9e3f8",
+    "fc_datapath.sv": "ad9504cb28aef506e20026ba4dbc5b1ff3ab8d097771196461834d7a532dce5e"
+  },
+  "tests": {
+    "test_fc_accelerator.py": "f1bb2559b46815e2fe5f55c63131e3ba07e79715d5045562723644d6c4680b05"
+  },
+  "reference": {
+    "fc_reference.py": "b73aee37ba7870b24cb453c9c4985bdbc42fe13d180924927a2a4616ac91699e"
+  }
+}

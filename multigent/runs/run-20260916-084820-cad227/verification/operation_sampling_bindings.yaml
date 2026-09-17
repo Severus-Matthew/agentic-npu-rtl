@@ -1,0 +1,50 @@
+- operation: add_unsigned
+  point: operation.add_unsigned.accepted_sum
+  template: custom
+  observer: observe_accepted_sum
+  event: clock
+  fields:
+    rst_n:
+      signal: rst_n
+    in_valid:
+      signal: in_valid
+    in_ready:
+      signal: in_ready
+    in_payload:
+      signal: in_payload
+- operation: add_unsigned
+  point: operation.add_unsigned.transferred_sum
+  template: custom
+  observer: observe_transferred_sum
+  event: clock
+  fields:
+    rst_n:
+      signal: rst_n
+    out_valid:
+      signal: out_valid
+    out_ready:
+      signal: out_ready
+    out_payload:
+      signal: out_payload
+- operation: add_unsigned
+  point: operation.add_unsigned.registered_latency
+  template: custom
+  observer: observe_registered_latency
+  event: clock
+  fields:
+    rst_n:
+      signal: rst_n
+    in_valid:
+      signal: in_valid
+    in_ready:
+      signal: in_ready
+    out_valid:
+      signal: out_valid
+    out_ready:
+      signal: out_ready
+- operation: add_unsigned
+  point: operation.add_unsigned.output_buffer_stall
+  template: channel_stall
+  event: transfer
+  channel: output_sum
+  fields: {}

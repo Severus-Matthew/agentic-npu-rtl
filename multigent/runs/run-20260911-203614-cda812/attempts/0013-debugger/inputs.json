@@ -1,0 +1,23 @@
+{
+  "architecture": {
+    "acceptance_criteria.yaml": "e5b36d484166a63c6dc81413f74d66a822050e27c701a33de43b25746c4df612",
+    "architect_result.json": "53df299cdbb4d4b79b7f22e61562ba301ed306bbe763e7539b15e4412f9edfde",
+    "architecture_contract.yaml": "483612f372aa661f99cff6e6573a010372e8787841ec703c738c68f47d37a3c8",
+    "interface_contract.yaml": "343b657118caaa4d4e2e22ac0e9523655e4f456e5110dc3aa0b974d0734513ab",
+    "module_manifest.json": "c2b3f7887cc154786562a7bfa77b4a6d79bf75ef7000be560c208088a3764938"
+  },
+  "rtl": {
+    "mv_ctrl_fsm.sv": "0e170a0f087330eb5ef7750e91a881558456affb5e60fe432183f267129bf13e",
+    "mv_mac16_core.sv": "2daad82e3c73ac8127326eec3c864e00e71c03e18531625445922fa08b3ed7df",
+    "mv_npu_top.sv": "c50d4672aae3e380962ed63d1652ce03585c6ad410eba903b2bdc09b09dcd5c4",
+    "mv_postproc.sv": "dfad1162172fbc2e87ba531bb20ab21000973cfa57feda61442cccf437ac0dec",
+    "mv_stream_if.sv": "b6aa6ea7bed04ce02cb650faa0e1d2629d36d1729d050dd540fc147ca5525aba",
+    "mv_vec_buffer.sv": "1ba732b1f4c85b1126b0c6318dcdbf8f0347e2c7a529ee7c475944779fb1e6e7"
+  },
+  "tests": {
+    "test_mv_npu.py": "8ef4aecb3f93fed4f4890fbd655f65742b2fc5dd05c5d792c8a39208bd4ac6a0"
+  },
+  "reference": {
+    "mv_npu_ref.py": "43f43abd7579ab1561cfc7229827cb8d198d611df80b2d0e29afd9b7215ad165"
+  }
+}

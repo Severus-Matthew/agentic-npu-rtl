@@ -1,0 +1,76 @@
+{
+  "rtl_status": "RTL_GENERATED",
+  "rtl_result": {
+    "status": "RTL_GENERATED",
+    "task_type": "INITIAL_GENERATION",
+    "summary": "Implemented the single-entry elastic unsigned 8-bit registered adder.",
+    "files": [
+      {
+        "path": "u8_registered_adder.sv",
+        "module": "u8_registered_adder",
+        "purpose": "Top-level handshakes, exact addition, output storage, backpressure, and synchronous reset.",
+        "content": "module u8_registered_adder (\n    input  logic        clk,\n    input  logic        rst_n,\n    input  logic        in_valid,\n    output logic        in_ready,\n    input  logic [15:0] in_payload,\n    output logic        out_valid,\n    input  logic        out_ready,\n    output logic [8:0]  out_payload\n);\n\n    logic [8:0] operand_a_ext;\n    logic [8:0] operand_b_ext;\n    logic [8:0] sum_next;\n\n    always_comb begin\n        in_ready     = rst_n && (!out_valid || out_ready);\n        operand_a_ext = {1'b0, in_payload[7:0]};\n        operand_b_ext = {1'b0, in_payload[15:8]};\n        sum_next      = operand_a_ext + operand_b_ext;\n    end\n\n    always_ff @(posedge clk) begin\n        if (!rst_n) begin\n            out_valid   <= 1'b0;\n            out_payload <= 9'b0;\n        end else if (in_valid && in_ready) begin\n            out_valid   <= 1'b1;\n            out_payload <= sum_next;\n        end else if (out_valid && out_ready) begin\n            out_valid <= 1'b0;\n        end\n    end\n\nendmodule\n"
+      }
+    ],
+    "contract_checks": [
+      {
+        "requirement": "Exact unsigned 9-bit addition",
+        "satisfied": true,
+        "evidence": "Both packed 8-bit operands are explicitly zero-extended to 9 bits before addition."
+      },
+      {
+        "requirement": "Single-entry elastic output register",
+        "satisfied": true,
+        "evidence": "out_valid tracks occupancy; simultaneous output consumption and input acceptance replaces the payload atomically."
+      },
+      {
+        "requirement": "Backpressure stability",
+        "satisfied": true,
+        "evidence": "When out_valid is high and out_ready is low, in_ready is low and neither output register is assigned."
+      },
+      {
+        "requirement": "Active-low synchronous reset",
+        "satisfied": true,
+        "evidence": "Reset is sampled only in always_ff at posedge clk, has priority, and clears output valid and payload; combinational in_ready is low while rst_n is low."
+      },
+      {
+        "requirement": "Frozen module manifest and interface",
+        "satisfied": true,
+        "evidence": "Exactly one parameterless u8_registered_adder module is emitted with the declared ports and widths."
+      }
+    ],
+    "changed_modules": [
+      "u8_registered_adder"
+    ],
+    "architecture_conflict": null,
+    "blocked_reason": "",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [
+      "No compiler, simulation, or synthesis tool was run as part of this generation."
+    ],
+    "regression_required": "FULL"
+  },
+  "rtl_files": [
+    "u8_registered_adder.sv"
+  ],
+  "architecture_conflict": null,
+  "needs_regression": true,
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "rtl_contract_version": 1,
+  "history": [
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "ppa_iteration": 0,
+      "files": [
+        "u8_registered_adder.sv"
+      ]
+    }
+  ]
+}

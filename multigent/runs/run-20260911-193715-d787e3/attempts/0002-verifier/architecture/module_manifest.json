@@ -1,0 +1,225 @@
+{
+  "top": "fc_int8_tile8",
+  "modules": [
+    {
+      "name": "fc_int8_tile8",
+      "responsibility": "Own the job FSM, dimension checking, banked operand/bias storage, address generation, tile traversal, scalar bias/ReLU egress, and external protocol. Instantiate one mac_tile8x8. Operand/bias writes occur only on accepted input edges; memory reads are combinational with zero registered latency and never consumed concurrently with writes.",
+      "dependencies": [
+        "mac_tile8x8"
+      ],
+      "parameters": [
+        "MAX_M",
+        "MAX_N",
+        "MAX_K"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Common rising-edge clock; connected directly to mac_tile8x8.clk."
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Active-high synchronous reset with handshake suppression; connected directly to mac_tile8x8.rst."
+        },
+        {
+          "name": "cmd_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Command valid; acceptance requires cmd_ready and !rst."
+        },
+        {
+          "name": "cmd_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "IDLE && !rst; accepted legal command latches all three dimension fields."
+        },
+        {
+          "name": "cmd_m",
+          "direction": "input",
+          "width": "max(1,$clog2(MAX_M+1))",
+          "signed": false,
+          "semantics": "M command field; reject values outside 1..MAX_M."
+        },
+        {
+          "name": "cmd_n",
+          "direction": "input",
+          "width": "max(1,$clog2(MAX_N+1))",
+          "signed": false,
+          "semantics": "N command field; reject values outside 1..MAX_N."
+        },
+        {
+          "name": "cmd_k",
+          "direction": "input",
+          "width": "max(1,$clog2(MAX_K+1))",
+          "signed": false,
+          "semantics": "K command field; reject values outside 1..MAX_K."
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Scalar operand valid; must remain asserted with stable data while stalled."
+        },
+        {
+          "name": "in_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "High only in operand-loading phases and !rst."
+        },
+        {
+          "name": "in_data",
+          "direction": "input",
+          "width": "32",
+          "signed": false,
+          "semantics": "Implicit A/B/bias frame: A and B use low eight bits with upper bits ignored; bias uses all bits. Accepted edge writes exactly one element."
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "EMIT && !rst; payload is combinational from stable current-tile state."
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Advances output coordinate only with out_valid && !rst."
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "ReLU(wrap32(mac_tile8x8.sum+bias[current_column])) when out_valid, otherwise zero."
+        },
+        {
+          "name": "out_last",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "High only for the valid final output coordinate; stable throughout a stall."
+        },
+        {
+          "name": "busy",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "!rst && FSM!=IDLE."
+        },
+        {
+          "name": "done",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "One registered cycle after final output acceptance; zero on reset and otherwise cleared on the next edge."
+        },
+        {
+          "name": "error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "One registered cycle after each invalid command acceptance; IDLE remains ready. Reset clears the event."
+        }
+      ]
+    },
+    {
+      "name": "mac_tile8x8",
+      "responsibility": "Implement the fixed 64-lane outer-product MAC register array and combinational indexed accumulator read. No internal FSM, start/done protocol, or memory latency is hidden.",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Same rising-edge clock as parent."
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "When high at an edge, inhibit clear and step; accumulators need not reset. Combinational sum is forced to zero while high. Parent guarantees INIT before every use."
+        },
+        {
+          "name": "clear",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Parent drives !rst && FSM==INIT. At that rising edge, set all 64 accumulators to zero. Priority over step; asserted exactly one cycle per tile."
+        },
+        {
+          "name": "step",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Parent drives !rst && FSM==MAC. If clear=0, update all mask-enabled lanes on that edge. Parent asserts for exactly K successive edges per tile; no ready/done response."
+        },
+        {
+          "name": "act_lanes",
+          "direction": "input",
+          "width": "64",
+          "signed": false,
+          "semantics": "Parent combinational bank reads pack A[8*tr+i,k] into bits [8*i+7:8*i] for i=0..7. Each slice is independently signed INT8. Invalid rows and cycles outside MAC drive zero; no input register latency."
+        },
+        {
+          "name": "weight_lanes",
+          "direction": "input",
+          "width": "64",
+          "signed": false,
+          "semantics": "Parent combinational bank reads pack B[k,8*tc+j] into bits [8*j+7:8*j] for j=0..7. Each slice is independently signed INT8. Invalid columns and cycles outside MAC drive zero."
+        },
+        {
+          "name": "row_mask",
+          "direction": "input",
+          "width": "8",
+          "signed": false,
+          "semantics": "Parent drives bit i=(i<R) in INIT/MAC/EMIT and zero otherwise. Lane (i,j) updates only when row_mask[i] && col_mask[j]. Masked lanes hold."
+        },
+        {
+          "name": "col_mask",
+          "direction": "input",
+          "width": "8",
+          "signed": false,
+          "semantics": "Parent drives bit j=(j<C) in INIT/MAC/EMIT and zero otherwise. Masks remain fixed throughout a tile."
+        },
+        {
+          "name": "read_row",
+          "direction": "input",
+          "width": "3",
+          "signed": false,
+          "semantics": "Parent drives current local EMIT row i, or zero outside EMIT."
+        },
+        {
+          "name": "read_col",
+          "direction": "input",
+          "width": "3",
+          "signed": false,
+          "semantics": "Parent drives current local EMIT column j, or zero outside EMIT."
+        },
+        {
+          "name": "sum",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "Zero while rst is high; otherwise combinational acc[read_row][read_col], with no registered read latency. Reflects a MAC update immediately after its edge. Parent consumes only in EMIT and holds read indices under output stall. Contents before the first clear are unspecified and unobservable externally."
+        }
+      ]
+    }
+  ]
+}

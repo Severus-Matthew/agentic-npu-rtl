@@ -1,0 +1,34 @@
+{
+  "agent": "contract_reviewer",
+  "prompt_sha256": "bd5f5c852b89b4d8f035ec496f18bc903e784c68e91845245d4254c0f3ee4d37",
+  "skill_sha256": "051f7d396f023d6e26be34ae32f5275c923bf9790a370bcc3d13797630b5e6d9",
+  "api_mode": "responses",
+  "model_requested": "gpt-5.3-codex",
+  "schema": "/u/mjha1/agentic-npu-rtl-integration/multigent/schemas/contract_review.schema.json",
+  "verbosity": "low",
+  "attempts": [
+    {
+      "attempt": 1,
+      "response_id": "resp_063c91f70f20ee78016aaa56e2af7c87d1a13577b3b3fb6661",
+      "model_returned": "gpt-5.3-codex",
+      "status": "completed",
+      "incomplete_details": null,
+      "usage": {
+        "input_tokens": 5186,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 328,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 5514
+      },
+      "output_chars": 1740,
+      "output_text": "{\"status\":\"REVISION_REQUIRED\",\"summary\":\"Contract is close, but has reset/in_ready and latency semantics conflicts that can cause inconsistent implementations and verification expectations.\",\"findings\":[{\"contract_path\":\"frozen_architecture.architecture_contract.reset.required_state\",\"issue\":\"Spec says on rst_n=0 edge, in_ready=1 (since empty). Elsewhere, interface/module semantics state no transfer accepted on reset edge and in_ready high only when not in reset cycle, creating contradiction.\",\"requested_change\":\"Make reset behavior consistent across artifacts: explicitly define in_ready during rst_n=0 cycles (recommended 0 to match module/interface text) and update reset.required_state accordingly.\"},{\"contract_path\":\"frozen_architecture.architecture_contract.module_manifest.modules[0].ports[in_ready].semantics vs frozen_architecture.architecture_contract.reset.required_state\",\"issue\":\"Module manifest says in_ready high only when output register empty and not in reset cycle, conflicting with reset.required_state claiming in_ready=1 on reset cycle.\",\"requested_change\":\"Align module manifest and reset sections to one rule for in_ready during reset; ensure same rule appears in interface/backpressure text.\"},{\"contract_path\":\"frozen_architecture.architecture_contract.control.state_progression\",\"issue\":\"Text says simultaneous dequeue/enqueue replacement in FULL is 'not used here because one-cycle no-stall requires EMPTY at accept'. This is ambiguous and can be read as architectural prohibition or merely guidance.\",\"requested_change\":\"State explicit legality: either forbid simultaneous dequeue/enqueue in FULL, or permit it while preserving defined observable latency/ordering; remove ambiguous rationale sentence.\"}]}",
+      "validated": true
+    }
+  ],
+  "successful_attempt": 1
+}

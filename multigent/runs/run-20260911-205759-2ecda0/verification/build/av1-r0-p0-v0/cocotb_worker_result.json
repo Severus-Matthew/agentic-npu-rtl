@@ -1,0 +1,14 @@
+{
+  "stage": "cocotb_regression",
+  "status": "PASS",
+  "failure_class": null,
+  "tests": 1,
+  "failures": 0,
+  "seed": 637901,
+  "top_module": "stream_matvec_int8",
+  "test_modules": [
+    "test_stream_matvec"
+  ],
+  "results_xml": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-205759-2ecda0/verification/build/av1-r0-p0-v0/results.xml",
+  "worker_error": null
+}

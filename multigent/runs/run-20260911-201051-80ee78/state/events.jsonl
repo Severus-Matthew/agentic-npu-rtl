@@ -1,0 +1,10 @@
+{"stage": "architect", "phase": "started", "time": "2026-09-11T20:10:53.610418+00:00"}
+{"stage": "architect", "phase": "finished", "time": "2026-09-11T20:14:39.844261+00:00", "status": null, "history": [{"stage": "architect", "status": "READY", "architecture_version": 1, "revision": false}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T20:14:39.846992+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T20:15:45.371191+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 0, "ppa_iteration": 0, "files": ["tiled_int8_fc.sv"]}]}
+{"stage": "verifier", "phase": "started", "time": "2026-09-11T20:15:45.373982+00:00"}
+{"stage": "verifier", "phase": "finished", "time": "2026-09-11T20:22:35.470992+00:00", "status": null, "history": [{"stage": "verifier_generation", "status": "SEMANTIC_VALIDATION_FAILED"}]}
+{"stage": "failed", "phase": "started", "time": "2026-09-11T20:22:35.473604+00:00"}
+{"stage": "failed", "phase": "finished", "time": "2026-09-11T20:22:35.528598+00:00", "status": "FAILED", "history": [{"stage": "orchestrator", "status": "FAILED", "reason": "SEMANTIC_VALIDATION_FAILED"}]}
+{"stage": "final_report", "phase": "started", "time": "2026-09-11T20:22:35.531264+00:00"}
+{"stage": "final_report", "phase": "finished", "time": "2026-09-11T20:22:35.545510+00:00", "status": "FAILED"}

@@ -1,0 +1,259 @@
+{
+  "debugger_status": "REPAIR_PLAN_READY",
+  "diagnosis": {
+    "failure_class": "UNKNOWN",
+    "root_cause": "In mv_npu_top/mv_postproc integration, completed row results are presented with pp_in_valid from hold_row_valid, but mv_postproc only consumes when (!bias_en || bias_valid). For bias_en=0, acceptance can still be blocked because in_ready depends on out_valid/out_ready; if out_valid is held and out_ready toggles low, hold_row_valid may remain asserted, which directly deasserts mat_ready (gated by !hold_row_valid), causing matrix ingress timeout. This control coupling also perturbs row handoff timing and leads to arithmetic mismatch in directed case.",
+    "confidence": 0.86,
+    "first_divergence": {
+      "cycle": null,
+      "signal_or_output": "out_data (directed test)",
+      "expected": "[3, -55]",
+      "observed": "[3, -52]"
+    },
+    "evidence": [
+      {
+        "source": "cocotb test_directed_basic",
+        "observation": "Assertion failure at 34ns: got [3, -52] vs expected [3, -55].",
+        "relevance": "Earliest authoritative functional divergence before timeout symptoms."
+      },
+      {
+        "source": "cocotb test_randomized_100_jobs",
+        "observation": "SimTimeoutError timeout waiting mat_ready during matrix send.",
+        "relevance": "Confirms progress failure under runtime backpressure/handshake sequences."
+      },
+      {
+        "source": "rtl/mv_npu_top.sv",
+        "observation": "mat_ready is gated by !hold_row_valid; hold_row_valid is set on last chunk and cleared only when pp_in_ready.",
+        "relevance": "Direct mechanism for ingress stall when postproc acceptance is delayed."
+      },
+      {
+        "source": "rtl/mv_postproc.sv",
+        "observation": "Row consume/write requires in_valid && in_ready and conditional (!bias_en || bias_valid); in_ready depends on out_valid/out_ready.",
+        "relevance": "Explains coupling of row acceptance to output backpressure and possible retention of hold_row_valid."
+      }
+    ],
+    "affected_modules": [
+      "mv_npu_top"
+    ],
+    "alternative_hypotheses": [
+      "Latch warnings in mv_mac16_core combinational temporaries could cause value corruption, but current first causal control divergence is localized to top-level row/postproc handshake.",
+      "Width-truncation warnings may affect large-N addressing but do not explain immediate directed mismatch and mat_ready stall at small N."
+    ],
+    "architecture_change_required": false,
+    "additional_evidence_requested": []
+  },
+  "repair_plan": {
+    "action": "PATCH",
+    "affected_modules": [
+      "mv_npu_top"
+    ],
+    "protected_modules": [
+      "mv_ctrl_fsm",
+      "mv_vec_buffer",
+      "mv_mac16_core",
+      "mv_postproc",
+      "mv_stream_if"
+    ],
+    "protected_interfaces": [
+      "clk",
+      "rst_n",
+      "cmd_valid",
+      "cmd_ready",
+      "cmd_data",
+      "vec_valid",
+      "vec_ready",
+      "vec_data",
+      "mat_valid",
+      "mat_ready",
+      "mat_data",
+      "bias_valid",
+      "bias_ready",
+      "bias_data",
+      "out_valid",
+      "out_ready",
+      "out_data",
+      "status_busy",
+      "status_error"
+    ],
+    "recommended_change": "In mv_npu_top, refactor row-completion handoff to a strict one-entry decoupling buffer between compute and postproc: (1) capture final_row_sum only on accepted last matrix chunk, (2) drive pp_in_valid solely from buffered-valid state, (3) clear buffered-valid only on confirmed postproc input acceptance event, and (4) make mat_ready depend on compute phase/resource availability without circular dependence that can permanently block matrix ingress. Ensure bias-disabled rows are accepted without requiring bias_valid, and preserve transfer-on-ready&&valid semantics on all channels.",
+    "do_not_change": [
+      "Do not modify frozen tests/reference artifacts.",
+      "Do not alter architecture behavior, arithmetic semantics, or lane packing conventions.",
+      "Do not change top-level port list, widths, or ready/valid protocol definitions.",
+      "Do not edit protected modules; localize fix to mv_npu_top integration/control logic."
+    ],
+    "expected_side_effects": [
+      "Eliminates mat_ready timeout in randomized matrix ingress.",
+      "Stabilizes row-to-postproc transfer timing under out_ready backpressure.",
+      "May expose any remaining arithmetic-only defects after handshake repair; requires full rerun."
+    ],
+    "regression_required": "FULL"
+  },
+  "architecture_conflict": null,
+  "repair_iteration": 5,
+  "rtl_task_type": "FUNCTIONAL_REPAIR",
+  "rtl_feedback": {
+    "source": "debugger",
+    "repair_iteration": 5,
+    "diagnosis": {
+      "failure_class": "UNKNOWN",
+      "root_cause": "In mv_npu_top/mv_postproc integration, completed row results are presented with pp_in_valid from hold_row_valid, but mv_postproc only consumes when (!bias_en || bias_valid). For bias_en=0, acceptance can still be blocked because in_ready depends on out_valid/out_ready; if out_valid is held and out_ready toggles low, hold_row_valid may remain asserted, which directly deasserts mat_ready (gated by !hold_row_valid), causing matrix ingress timeout. This control coupling also perturbs row handoff timing and leads to arithmetic mismatch in directed case.",
+      "confidence": 0.86,
+      "first_divergence": {
+        "cycle": null,
+        "signal_or_output": "out_data (directed test)",
+        "expected": "[3, -55]",
+        "observed": "[3, -52]"
+      },
+      "evidence": [
+        {
+          "source": "cocotb test_directed_basic",
+          "observation": "Assertion failure at 34ns: got [3, -52] vs expected [3, -55].",
+          "relevance": "Earliest authoritative functional divergence before timeout symptoms."
+        },
+        {
+          "source": "cocotb test_randomized_100_jobs",
+          "observation": "SimTimeoutError timeout waiting mat_ready during matrix send.",
+          "relevance": "Confirms progress failure under runtime backpressure/handshake sequences."
+        },
+        {
+          "source": "rtl/mv_npu_top.sv",
+          "observation": "mat_ready is gated by !hold_row_valid; hold_row_valid is set on last chunk and cleared only when pp_in_ready.",
+          "relevance": "Direct mechanism for ingress stall when postproc acceptance is delayed."
+        },
+        {
+          "source": "rtl/mv_postproc.sv",
+          "observation": "Row consume/write requires in_valid && in_ready and conditional (!bias_en || bias_valid); in_ready depends on out_valid/out_ready.",
+          "relevance": "Explains coupling of row acceptance to output backpressure and possible retention of hold_row_valid."
+        }
+      ],
+      "affected_modules": [
+        "mv_npu_top"
+      ],
+      "alternative_hypotheses": [
+        "Latch warnings in mv_mac16_core combinational temporaries could cause value corruption, but current first causal control divergence is localized to top-level row/postproc handshake.",
+        "Width-truncation warnings may affect large-N addressing but do not explain immediate directed mismatch and mat_ready stall at small N."
+      ],
+      "architecture_change_required": false,
+      "additional_evidence_requested": []
+    },
+    "repair_plan": {
+      "action": "PATCH",
+      "affected_modules": [
+        "mv_npu_top"
+      ],
+      "protected_modules": [
+        "mv_ctrl_fsm",
+        "mv_vec_buffer",
+        "mv_mac16_core",
+        "mv_postproc",
+        "mv_stream_if"
+      ],
+      "protected_interfaces": [
+        "clk",
+        "rst_n",
+        "cmd_valid",
+        "cmd_ready",
+        "cmd_data",
+        "vec_valid",
+        "vec_ready",
+        "vec_data",
+        "mat_valid",
+        "mat_ready",
+        "mat_data",
+        "bias_valid",
+        "bias_ready",
+        "bias_data",
+        "out_valid",
+        "out_ready",
+        "out_data",
+        "status_busy",
+        "status_error"
+      ],
+      "recommended_change": "In mv_npu_top, refactor row-completion handoff to a strict one-entry decoupling buffer between compute and postproc: (1) capture final_row_sum only on accepted last matrix chunk, (2) drive pp_in_valid solely from buffered-valid state, (3) clear buffered-valid only on confirmed postproc input acceptance event, and (4) make mat_ready depend on compute phase/resource availability without circular dependence that can permanently block matrix ingress. Ensure bias-disabled rows are accepted without requiring bias_valid, and preserve transfer-on-ready&&valid semantics on all channels.",
+      "do_not_change": [
+        "Do not modify frozen tests/reference artifacts.",
+        "Do not alter architecture behavior, arithmetic semantics, or lane packing conventions.",
+        "Do not change top-level port list, widths, or ready/valid protocol definitions.",
+        "Do not edit protected modules; localize fix to mv_npu_top integration/control logic."
+      ],
+      "expected_side_effects": [
+        "Eliminates mat_ready timeout in randomized matrix ingress.",
+        "Stabilizes row-to-postproc transfer timing under out_ready backpressure.",
+        "May expose any remaining arithmetic-only defects after handshake repair; requires full rerun."
+      ],
+      "regression_required": "FULL"
+    },
+    "verification_evidence": {
+      "architecture_version": 1,
+      "repair_iteration": 4,
+      "top_module": "mv_npu_top",
+      "regression_scope": "FULL",
+      "verilator": {
+        "stage": "verilator_lint",
+        "status": "PASS",
+        "failure_class": null,
+        "return_code": 0,
+        "command": [
+          "/u/mjha1/.local/verilator-env/bin/verilator",
+          "--lint-only",
+          "--sv",
+          "-Wno-fatal",
+          "--top-module",
+          "mv_npu_top",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_ctrl_fsm.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_mac16_core.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_postproc.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_stream_if.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_vec_buffer.sv"
+        ],
+        "sources": [
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_ctrl_fsm.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_mac16_core.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_postproc.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_stream_if.sv",
+          "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_vec_buffer.sv"
+        ],
+        "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.170 MB sources in 7 modules, into 0.207 MB in 3 C++ files needing 0.000 MB\n- Verilator: Walltime 0.022 s (elab=0.002, cvt=0.010, bld=0.000); cpu 0.018 s on 1 threads; allocated 27.125 MB\n",
+        "stderr": "%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_vec_buffer.sv:23:47: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'rd_chunk_base' generates 8 bits.\n                                                                                                                   : ... note: In instance 'mv_npu_top.u_vec_buffer'\n   23 |         rd_data[j*8 +: 8] = mem[rd_chunk_base + j];\n      |                                               ^\n                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.050\n                      ... Use \"/* verilator lint_off WIDTHEXPAND */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_vec_buffer.sv:22:26: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'rd_chunk_base' generates 8 bits.\n                                                                                                                   : ... note: In instance 'mv_npu_top.u_vec_buffer'\n   22 |       if ((rd_chunk_base + j) < MAX_N)\n      |                          ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_ctrl_fsm.sv:31:29: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'cfg_N' generates 16 bits.\n                                                                                                                 : ... note: In instance 'mv_npu_top.u_ctrl'\n   31 |     chunks_per_row = (cfg_N + LANES - 1) / LANES;\n      |                             ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_ctrl_fsm.sv:31:20: Operator ASSIGN expects 16 bits on the Assign RHS, but Assign RHS's DIV generates 32 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top.u_ctrl'\n   31 |     chunks_\n[TRUNCATED: full evidence retained in run artifacts]\nDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv:80:90: Operator LT expects 16 bits on the LHS, but LHS's VARREF 'vec_wr_addr' generates 8 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top'\n   80 |   assign vec_ready  = status_busy && (!status_error) && (cfg_N != 16'd0) && (vec_wr_addr < cfg_N) && (k_chunk_idx == 16'd0) && (row_idx == 16'd0);\n      |                                                                                          ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv:82:90: Operator EQ expects 16 bits on the LHS, but LHS's VARREF 'vec_wr_addr' generates 8 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top'\n   82 |   assign mat_ready  = status_busy && (!status_error) && (cfg_N != 16'd0) && (vec_wr_addr == cfg_N) && (!hold_row_valid);\n      |                                                                                          ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv:92:29: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'cfg_N' generates 16 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top'\n   92 |     chunks_per_row = (cfg_N + LANES - 1) / LANES;\n      |                             ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv:92:20: Operator ASSIGN expects 16 bits on the Assign RHS, but Assign RHS's DIV generates 32 bits.\n                                                                                                               : ... note: In instance 'mv_npu_top'\n   92 |     chunks_per_row = (cfg_N + LANES - 1) / LANES;\n      |                    ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv:93:20: Operator ASSIGN expects 8 bits on the Assign RHS, but Assign RHS's MUL generates 32 bits.\n                                                                                                               : ... note: In instance 'mv_npu_top'\n   93 |     rd_chunk_base  = k_chunk_idx * LANES;\n      |                    ^\n%Warning-LATCH: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_mac16_core.sv:19:3: Latch inferred for signal 'mv_npu_top.u_mac.m_i' (not all control paths of combinational always assign a value)\n                                                                                                            : ... Suggest use of always_latch for intentional latches\n   19 |   always_comb begin\n      |   ^~~~~~~~~~~\n                ... For warning description see https://verilator.org/warn/LATCH?v=5.050\n                ... Use \"/* verilator lint_off LATCH */\" and lint_on around source to disable this message.\n%Warning-LATCH: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_mac16_core.sv:19:3: Latch inferred for signal 'mv_npu_top.u_mac.v_i' (not all control paths of combinational always assign a value)\n                                                                                                            : ... Suggest use of always_latch for intentional latches\n   19 |   always_comb begin\n      |   ^~~~~~~~~~~\n%Warning-LATCH: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_mac16_core.sv:19:3: Latch inferred for signal 'mv_npu_top.u_mac.p_i' (not all control paths of combinational always assign a value)\n                                                                                                            : ... Suggest use of always_latch for intentional latches\n   19 |   always_comb begin\n      |   ^~~~~~~~~~~\n",
+        "error_diagnostics": [],
+        "top_module": "mv_npu_top"
+      },
+      "cocotb": {
+        "stage": "cocotb_regression",
+        "status": "SIMULATION_FAILURE",
+        "failure_class": "UNKNOWN",
+        "tests": 2,
+        "failures": 2,
+        "seed": 12345,
+        "top_module": "mv_npu_top",
+        "test_modules": [
+          "test_mv_npu"
+        ],
+        "results_xml": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/verification/build/av1-r4-p0-v0/results.xml",
+        "worker_error": null,
+        "worker_return_code": 1,
+        "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.162 MB sources in 7 modules, into 0.140 MB in 6 C++ files needing 0.000 MB\n- Verilator: Walltime 0.092 s (elab=0.002, cvt=0.037, bld=0.000); cpu 0.021 s on 1 threads; allocated 26.562 MB\nmake: Entering directory '/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/verification/build/av1-r4-p0-v0'\ng++  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -Os  -c -o verilator.o /u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/share/lib/verilator/verilator.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_\n[TRUNCATED: full evidence retained in run artifacts]\n                                await Timer(1, units='ns')\n     1.00ns WARNING  py.warnings                        /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py:16: DeprecationWarning: `logic_array.signed_integer` getter is deprecated. Use `logic_array.to_signed()` instead.\n                                                          'out_valid': int(dut.out_valid.value), 'out_data': int(dut.out_data.value.signed_integer),\n     1.00ns WARNING  py.warnings                        /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py:20: DeprecationWarning: The 'units' argument has been renamed to 'unit'.\n                                                          await Timer(1, units='ns')\n     2.00ns WARNING  py.warnings                        /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py:22: DeprecationWarning: `logic_array.signed_integer` getter is deprecated. Use `logic_array.to_signed()` instead.\n                                                          'out_valid': int(dut.out_valid.value), 'out_data': int(dut.out_data.value.signed_integer),\n    34.00ns WARNING  cocotb.regression                  test_mv_npu.test_directed_basic failed\n                                                        Traceback (most recent call last):\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py\", line 71, in test_directed_basic\n                                                            assert got == exp\n                                                        AssertionError: assert [3, -52] == [3, -55]\n    34.00ns INFO     cocotb.regression                  running test_mv_npu.test_randomized_100_jobs (2/2)\n  1106.00ns WARNING  cocotb.regression                  test_mv_npu.test_randomized_100_jobs failed\n                                                        Traceback (most recent call last):\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py\", line 92, in test_randomized_100_jobs\n                                                            await send_beat(dut, dut.mat_valid, 'mat_ready', dut.mat_data, pack_mat_beat_lanes(lanes))\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/tests/test_mv_npu.py\", line 45, in send_beat\n                                                            raise SimTimeoutError(f'timeout waiting {ready_sig}')\n                                                        cocotb.triggers.SimTimeoutError: timeout waiting mat_ready\n  1106.00ns INFO     cocotb.regression                  **********************************************************************************************\n                                                        ** TEST                                  STATUS  SIM TIME (ns)  REAL TIME (s)  RATIO (ns/s) **\n                                                        **********************************************************************************************\n                                                        ** test_mv_npu.test_directed_basic        FAIL          34.00           0.00      15099.68  **\n                                                        ** test_mv_npu.test_randomized_100_jobs   FAIL        1072.00           0.02      56388.38  **\n                                                        **********************************************************************************************\n                                                        ** TESTS=2 PASS=0 FAIL=2 SKIP=0                       1106.00           0.02      48334.39  **\n                                                        **********************************************************************************************\n- :0: Verilog $finish\n",
+        "stderr": "%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_vec_buffer.sv:23:47: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'rd_chunk_base' generates 8 bits.\n                                                                                                                   : ... note: In instance 'mv_npu_top.u_vec_buffer'\n   23 |         rd_data[j*8 +: 8] = mem[rd_chunk_base + j];\n      |                                               ^\n                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.050\n                      ... Use \"/* verilator lint_off WIDTHEXPAND */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_vec_buffer.sv:22:26: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'rd_chunk_base' generates 8 bits.\n                                                                                                                   : ... note: In instance 'mv_npu_top.u_vec_buffer'\n   22 |       if ((rd_chunk_base + j) < MAX_N)\n      |                          ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_ctrl_fsm.sv:31:29: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'cfg_N' generates 16 bits.\n                                                                                                                 : ... note: In instance 'mv_npu_top.u_ctrl'\n   31 |     chunks_per_row = (cfg_N + LANES - 1) / LANES;\n      |                             ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_ctrl_fsm.sv:31:20: Operator ASSIGN expects 16 bits on the Assign RHS, but Assign RHS's DIV generates 32 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top.u_ctrl'\n   31 |     chunks_\n[TRUNCATED: full evidence retained in run artifacts]\nDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv:80:90: Operator LT expects 16 bits on the LHS, but LHS's VARREF 'vec_wr_addr' generates 8 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top'\n   80 |   assign vec_ready  = status_busy && (!status_error) && (cfg_N != 16'd0) && (vec_wr_addr < cfg_N) && (k_chunk_idx == 16'd0) && (row_idx == 16'd0);\n      |                                                                                          ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv:82:90: Operator EQ expects 16 bits on the LHS, but LHS's VARREF 'vec_wr_addr' generates 8 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top'\n   82 |   assign mat_ready  = status_busy && (!status_error) && (cfg_N != 16'd0) && (vec_wr_addr == cfg_N) && (!hold_row_valid);\n      |                                                                                          ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv:92:29: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'cfg_N' generates 16 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top'\n   92 |     chunks_per_row = (cfg_N + LANES - 1) / LANES;\n      |                             ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv:92:20: Operator ASSIGN expects 16 bits on the Assign RHS, but Assign RHS's DIV generates 32 bits.\n                                                                                                               : ... note: In instance 'mv_npu_top'\n   92 |     chunks_per_row = (cfg_N + LANES - 1) / LANES;\n      |                    ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_npu_top.sv:93:20: Operator ASSIGN expects 8 bits on the Assign RHS, but Assign RHS's MUL generates 32 bits.\n                                                                                                               : ... note: In instance 'mv_npu_top'\n   93 |     rd_chunk_base  = k_chunk_idx * LANES;\n      |                    ^\n%Warning-LATCH: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_mac16_core.sv:19:3: Latch inferred for signal 'mv_npu_top.u_mac.m_i' (not all control paths of combinational always assign a value)\n                                                                                                            : ... Suggest use of always_latch for intentional latches\n   19 |   always_comb begin\n      |   ^~~~~~~~~~~\n                ... For warning description see https://verilator.org/warn/LATCH?v=5.050\n                ... Use \"/* verilator lint_off LATCH */\" and lint_on around source to disable this message.\n%Warning-LATCH: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_mac16_core.sv:19:3: Latch inferred for signal 'mv_npu_top.u_mac.v_i' (not all control paths of combinational always assign a value)\n                                                                                                            : ... Suggest use of always_latch for intentional latches\n   19 |   always_comb begin\n      |   ^~~~~~~~~~~\n%Warning-LATCH: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-203614-cda812/rtl/mv_mac16_core.sv:19:3: Latch inferred for signal 'mv_npu_top.u_mac.p_i' (not all control paths of combinational always assign a value)\n                                                                                                            : ... Suggest use of always_latch for intentional latches\n   19 |   always_comb begin\n      |   ^~~~~~~~~~~\n"
+      },
+      "status": "SIMULATION_FAILURE",
+      "failure_class": "UNKNOWN"
+    },
+    "frozen_verifier": true
+  },
+  "needs_regression": true,
+  "history": [
+    {
+      "stage": "debugger",
+      "status": "REPAIR_PLAN_READY",
+      "failure_class": "UNKNOWN",
+      "repair_iteration_before": 4,
+      "repair_iteration_after": 5,
+      "affected_modules": [
+        "mv_npu_top"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "run_id": "run-20260911-201051-80ee78",
+  "request": "Design a small AI accelerator for fully connected neural-network layers. The accelerator should primarily operate as a tiled GEMM engine, multiplying INT8 activation matrices by INT8 weight matrices, accumulating in INT32, adding a bias vector, and applying ReLU. Use an 8\u00d78 compute array and support matrices larger than the array through tiling.",
+  "model": "gpt-6-astra",
+  "created": "2026-09-11T20:10:51.489679+00:00",
+  "status": "FAILED",
+  "exit_code": 2
+}

@@ -1,0 +1,24 @@
+{
+  "architecture": {
+    "acceptance_criteria.yaml": "57881d39a194cbd07600ec5b8735f14fb5ff3df8312c7af4b96078f59cc01756",
+    "architect_result.json": "54396ff4877cc23319afa21c35e017b472cbfbd226ea950adec16da1490f9346",
+    "architecture_contract.yaml": "992d4dc40923e551d75a7c419ea7c086b3ae3912df3a12fcd58678620d30192d",
+    "interface_contract.yaml": "ab7b803b0bb780013d41238d06d10b090a81e61842938db7cc2fb40529f9e761",
+    "module_manifest.json": "11fd0f731397fbefe1bbef80815066e3bb53468f2cac490e9847e0ab68077115"
+  },
+  "rtl": {
+    "ctrl_fsm.sv": "baa7457e96136cc315149e002ee03a2508ff9e776e59bd41dfe677a0b3828aa2",
+    "input_router.sv": "4003392bfbc72ad41daec825a2bbb929e92eb3199ad4513bf6c451966f22d3b3",
+    "mac16_core.sv": "5f279b35085b93c9b21aa670701f7b487f895f7dffa07e8d7400985c90974245",
+    "mv_npu_top.sv": "2b79038f78d1b35997d99f811b9558b8f59467a83650f1978b209691e202fcb7",
+    "output_if.sv": "7c6026f0f1698b60e4f2ad02a8d7558a3b1e1676bed6e35f9b09412120a8e040",
+    "postproc_unit.sv": "563f0428ca162496d0913d3a2fe61ec2185132684dc2779fea1a5d78775373eb",
+    "x_buffer_mem.sv": "fdc3b6a5f8898298045a13e2670f88d32e05e2c0bf56b95c2e37caa54b3f3412"
+  },
+  "tests": {
+    "test_mv_npu.py": "83ab9eae934174be82112fdb086aa465f7b8d03a8da904b7af931cb0e86f7c17"
+  },
+  "reference": {
+    "mv_npu_ref.py": "5e51a176113d1417307a05ecc8c5fb97d1f21f7904f14aa89a0360ea237e1f40"
+  }
+}

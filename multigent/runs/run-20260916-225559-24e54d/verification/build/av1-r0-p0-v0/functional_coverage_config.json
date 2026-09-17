@@ -1,0 +1,722 @@
+{
+  "schema_version": 3,
+  "source": "interface taxonomy + verifier operation coverage",
+  "monitor": {
+    "clock": "clk",
+    "reset": "rst_n",
+    "signals": [
+      "clk",
+      "rst_n",
+      "in_valid",
+      "in_ready",
+      "in_a",
+      "in_b",
+      "out_valid",
+      "out_ready",
+      "out_sum"
+    ]
+  },
+  "obligations": [
+    {
+      "id": "channel.input_pair.handshake_states",
+      "template": "handshake_states",
+      "scope": "channel",
+      "scope_name": "input_pair",
+      "description": "Cover all producer-valid and consumer-ready states.",
+      "bindings": {
+        "valid": "in_valid",
+        "ready": "in_ready"
+      },
+      "bins": [
+        {
+          "name": "idle",
+          "intent": "valid=0 and ready=0"
+        },
+        {
+          "name": "receiver_ready",
+          "intent": "valid=0 and ready=1"
+        },
+        {
+          "name": "backpressured",
+          "intent": "valid=1 and ready=0"
+        },
+        {
+          "name": "transfer",
+          "intent": "valid=1 and ready=1"
+        }
+      ]
+    },
+    {
+      "id": "channel.input_pair.stall_stability",
+      "template": "stall_stability",
+      "scope": "channel",
+      "scope_name": "input_pair",
+      "description": "Exercise a stalled transfer and hold all producer-owned content stable.",
+      "bindings": {
+        "valid": "in_valid",
+        "ready": "in_ready",
+        "payload": [
+          "in_a",
+          "in_b"
+        ]
+      },
+      "bins": [
+        {
+          "name": "one_cycle_stall",
+          "intent": "Observe exactly one stalled cycle."
+        },
+        {
+          "name": "short_stall",
+          "intent": "Observe two through four consecutive stalled cycles."
+        },
+        {
+          "name": "long_stall",
+          "intent": "Observe five or more consecutive stalled cycles."
+        }
+      ]
+    },
+    {
+      "id": "channel.output_sum.handshake_states",
+      "template": "handshake_states",
+      "scope": "channel",
+      "scope_name": "output_sum",
+      "description": "Cover all producer-valid and consumer-ready states.",
+      "bindings": {
+        "valid": "out_valid",
+        "ready": "out_ready"
+      },
+      "bins": [
+        {
+          "name": "idle",
+          "intent": "valid=0 and ready=0"
+        },
+        {
+          "name": "receiver_ready",
+          "intent": "valid=0 and ready=1"
+        },
+        {
+          "name": "backpressured",
+          "intent": "valid=1 and ready=0"
+        },
+        {
+          "name": "transfer",
+          "intent": "valid=1 and ready=1"
+        }
+      ]
+    },
+    {
+      "id": "channel.output_sum.stall_stability",
+      "template": "stall_stability",
+      "scope": "channel",
+      "scope_name": "output_sum",
+      "description": "Exercise a stalled transfer and hold all producer-owned content stable.",
+      "bindings": {
+        "valid": "out_valid",
+        "ready": "out_ready",
+        "payload": [
+          "out_sum"
+        ]
+      },
+      "bins": [
+        {
+          "name": "one_cycle_stall",
+          "intent": "Observe exactly one stalled cycle."
+        },
+        {
+          "name": "short_stall",
+          "intent": "Observe two through four consecutive stalled cycles."
+        },
+        {
+          "name": "long_stall",
+          "intent": "Observe five or more consecutive stalled cycles."
+        }
+      ]
+    },
+    {
+      "id": "operation.add.carry_boundary",
+      "template": "operation_coverpoint",
+      "scope": "operation",
+      "scope_name": "add",
+      "kind": "coverpoint",
+      "description": "Carry classification from both actually accepted operands.",
+      "bindings": {
+        "operation_name": "add",
+        "family": "scalar_unsigned_addition",
+        "field": "accepted_mathematical_sum",
+        "concept": "carry_boundary",
+        "source": "baseline",
+        "sampling": {
+          "template": "custom",
+          "event": "transfer",
+          "channel": {
+            "valid": "in_valid",
+            "ready": "in_ready"
+          },
+          "fields": {
+            "a": {
+              "signal": "in_a",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 8
+            },
+            "b": {
+              "signal": "in_b",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 8
+            }
+          },
+          "guards": [],
+          "field_binding_origin": "verifier_declared",
+          "observer": "observe_carry",
+          "field_types": {}
+        }
+      },
+      "bins": [
+        {
+          "name": "below_boundary",
+          "intent": "No carry, below the adjacent boundary.",
+          "predicate": {
+            "op": "lt",
+            "args": [
+              255
+            ]
+          }
+        },
+        {
+          "name": "boundary_minus_one",
+          "intent": "255 exact.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              255
+            ]
+          }
+        },
+        {
+          "name": "boundary",
+          "intent": "256 exact.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              256
+            ]
+          }
+        },
+        {
+          "name": "above_boundary",
+          "intent": "Carry with additional low bits.",
+          "predicate": {
+            "op": "gt",
+            "args": [
+              256
+            ]
+          }
+        }
+      ],
+      "checks": []
+    },
+    {
+      "id": "operation.add.exact_widened_sum",
+      "template": "operation_coverpoint",
+      "scope": "operation",
+      "scope_name": "add",
+      "kind": "coverpoint",
+      "description": "Transferred result magnitude; each result is independently checked against its accepted pair.",
+      "bindings": {
+        "operation_name": "add",
+        "family": "scalar_unsigned_addition",
+        "field": "transferred_sum",
+        "concept": "exact_widened_sum",
+        "source": "baseline",
+        "sampling": {
+          "template": "custom",
+          "event": "transfer",
+          "channel": {
+            "valid": "out_valid",
+            "ready": "out_ready"
+          },
+          "fields": {
+            "sum": {
+              "signal": "out_sum",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 9
+            }
+          },
+          "guards": [],
+          "field_binding_origin": "verifier_declared",
+          "observer": "observe_sum",
+          "field_types": {}
+        }
+      },
+      "bins": [
+        {
+          "name": "zero",
+          "intent": "Minimum exact result.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              0
+            ]
+          }
+        },
+        {
+          "name": "low_interior",
+          "intent": "Below the carry boundary.",
+          "predicate": {
+            "op": "between",
+            "args": [
+              1,
+              254
+            ]
+          }
+        },
+        {
+          "name": "last_eight_bit",
+          "intent": "Largest eight-bit result.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              255
+            ]
+          }
+        },
+        {
+          "name": "first_nine_bit",
+          "intent": "First result requiring bit eight.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              256
+            ]
+          }
+        },
+        {
+          "name": "high_interior",
+          "intent": "Widened nonmaximum result.",
+          "predicate": {
+            "op": "between",
+            "args": [
+              257,
+              509
+            ]
+          }
+        },
+        {
+          "name": "maximum",
+          "intent": "Maximum mathematical result.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              510
+            ]
+          }
+        }
+      ],
+      "checks": []
+    },
+    {
+      "id": "operation.add.operand_a",
+      "template": "operation_coverpoint",
+      "scope": "operation",
+      "scope_name": "add",
+      "kind": "coverpoint",
+      "description": "Actual accepted unsigned first operand.",
+      "bindings": {
+        "operation_name": "add",
+        "family": "scalar_unsigned_addition",
+        "field": "operand_a",
+        "concept": "operand_values",
+        "source": "baseline",
+        "sampling": {
+          "template": "integer_operand",
+          "event": "transfer",
+          "channel": {
+            "valid": "in_valid",
+            "ready": "in_ready"
+          },
+          "fields": {
+            "value": {
+              "signal": "in_a",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 8
+            }
+          },
+          "guards": [],
+          "field_binding_origin": "verifier_declared",
+          "dtype": {
+            "width": 8,
+            "signed": false,
+            "minimum": 0,
+            "maximum": 255
+          }
+        }
+      },
+      "bins": [
+        {
+          "name": "zero",
+          "intent": "Observe zero from runtime-sampled values.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              0
+            ]
+          }
+        },
+        {
+          "name": "positive",
+          "intent": "Observe positive from runtime-sampled values.",
+          "predicate": {
+            "op": "between",
+            "args": [
+              1,
+              255
+            ]
+          }
+        },
+        {
+          "name": "minimum",
+          "intent": "Observe minimum from runtime-sampled values.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              0
+            ]
+          }
+        },
+        {
+          "name": "maximum",
+          "intent": "Observe maximum from runtime-sampled values.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              255
+            ]
+          }
+        }
+      ],
+      "checks": []
+    },
+    {
+      "id": "operation.add.operand_b",
+      "template": "operation_coverpoint",
+      "scope": "operation",
+      "scope_name": "add",
+      "kind": "coverpoint",
+      "description": "Actual accepted unsigned second operand.",
+      "bindings": {
+        "operation_name": "add",
+        "family": "scalar_unsigned_addition",
+        "field": "operand_b",
+        "concept": "operand_values",
+        "source": "baseline",
+        "sampling": {
+          "template": "integer_operand",
+          "event": "transfer",
+          "channel": {
+            "valid": "in_valid",
+            "ready": "in_ready"
+          },
+          "fields": {
+            "value": {
+              "signal": "in_b",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 8
+            }
+          },
+          "guards": [],
+          "field_binding_origin": "verifier_declared",
+          "dtype": {
+            "width": 8,
+            "signed": false,
+            "minimum": 0,
+            "maximum": 255
+          }
+        }
+      },
+      "bins": [
+        {
+          "name": "zero",
+          "intent": "Observe zero from runtime-sampled values.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              0
+            ]
+          }
+        },
+        {
+          "name": "positive",
+          "intent": "Observe positive from runtime-sampled values.",
+          "predicate": {
+            "op": "between",
+            "args": [
+              1,
+              255
+            ]
+          }
+        },
+        {
+          "name": "minimum",
+          "intent": "Observe minimum from runtime-sampled values.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              0
+            ]
+          }
+        },
+        {
+          "name": "maximum",
+          "intent": "Observe maximum from runtime-sampled values.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              255
+            ]
+          }
+        }
+      ],
+      "checks": []
+    },
+    {
+      "id": "operation.add.reset_abort",
+      "template": "operation_coverpoint",
+      "scope": "operation",
+      "scope_name": "add",
+      "kind": "coverpoint",
+      "description": "Occupancy at an edge sampling asserted reset.",
+      "bindings": {
+        "operation_name": "add",
+        "family": "scalar_unsigned_addition",
+        "field": "pre_reset_occupancy",
+        "concept": "reset_abort",
+        "source": "architect_extension",
+        "sampling": {
+          "template": "custom",
+          "event": "clock",
+          "channel": {},
+          "fields": {
+            "reset": {
+              "signal": "rst_n",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "valid": {
+              "signal": "out_valid",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "sum": {
+              "signal": "out_sum",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 9
+            }
+          },
+          "guards": [],
+          "field_binding_origin": "verifier_declared",
+          "observer": "observe_reset",
+          "field_types": {}
+        }
+      },
+      "bins": [
+        {
+          "name": "empty_reset",
+          "intent": "Reset sampled with no pending result.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              0
+            ]
+          }
+        },
+        {
+          "name": "pending_abort",
+          "intent": "Reset sampled while a registered result is pending.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              1
+            ]
+          }
+        }
+      ],
+      "checks": []
+    },
+    {
+      "id": "operation.add.simultaneous_consume_replace",
+      "template": "operation_coverpoint",
+      "scope": "operation",
+      "scope_name": "add",
+      "kind": "coverpoint",
+      "description": "Input acceptance into empty versus simultaneous replacement.",
+      "bindings": {
+        "operation_name": "add",
+        "family": "scalar_unsigned_addition",
+        "field": "output_transfer_on_input_acceptance",
+        "concept": "simultaneous_consume_replace",
+        "source": "architect_extension",
+        "sampling": {
+          "template": "custom",
+          "event": "transfer",
+          "channel": {
+            "valid": "in_valid",
+            "ready": "in_ready"
+          },
+          "fields": {
+            "valid": {
+              "signal": "out_valid",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "ready": {
+              "signal": "out_ready",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            }
+          },
+          "guards": [],
+          "field_binding_origin": "verifier_declared",
+          "observer": "observe_replace",
+          "field_types": {}
+        }
+      },
+      "bins": [
+        {
+          "name": "fill",
+          "intent": "Accepted input without old output consumption.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              0
+            ]
+          }
+        },
+        {
+          "name": "replace",
+          "intent": "Accepted input and consumed old output on the same edge.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              1
+            ]
+          }
+        }
+      ],
+      "checks": []
+    },
+    {
+      "id": "operation.add.single_entry_elastic_output",
+      "template": "operation_coverpoint",
+      "scope": "operation",
+      "scope_name": "add",
+      "kind": "coverpoint",
+      "description": "Observed empty, blocked-full, and consumable-full states.",
+      "bindings": {
+        "operation_name": "add",
+        "family": "scalar_unsigned_addition",
+        "field": "observed_slot_action",
+        "concept": "single_entry_elastic_output",
+        "source": "architect_extension",
+        "sampling": {
+          "template": "custom",
+          "event": "clock",
+          "channel": {},
+          "fields": {
+            "reset": {
+              "signal": "rst_n",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "valid": {
+              "signal": "out_valid",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            },
+            "ready": {
+              "signal": "out_ready",
+              "lsb": 0,
+              "width": null,
+              "declared_width": 1
+            }
+          },
+          "guards": [],
+          "field_binding_origin": "verifier_declared",
+          "observer": "observe_slot",
+          "field_types": {}
+        }
+      },
+      "bins": [
+        {
+          "name": "empty",
+          "intent": "Empty slot.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              0
+            ]
+          }
+        },
+        {
+          "name": "full_stalled",
+          "intent": "Occupied slot with sink blocked.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              1
+            ]
+          }
+        },
+        {
+          "name": "full_consumed",
+          "intent": "Occupied slot with output transfer.",
+          "predicate": {
+            "op": "eq",
+            "args": [
+              2
+            ]
+          }
+        }
+      ],
+      "checks": []
+    },
+    {
+      "id": "signal.rst_n.reset_behavior",
+      "template": "reset_behavior",
+      "scope": "signal",
+      "scope_name": "rst_n",
+      "description": "Exercise reset assertion/deassertion and verify contract reset state.",
+      "bindings": {
+        "signal": "rst_n",
+        "active_value": 0
+      },
+      "bins": [
+        {
+          "name": "asserted",
+          "intent": "Observe reset in its asserted state."
+        },
+        {
+          "name": "deasserted",
+          "intent": "Observe reset in its deasserted state."
+        },
+        {
+          "name": "release",
+          "intent": "Observe the transition from reset into operation."
+        }
+      ]
+    }
+  ],
+  "requirements": {
+    "randomized_transactions_minimum": 100
+  }
+}

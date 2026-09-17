@@ -1,0 +1,77 @@
+{
+  "top": "unsigned_adder",
+  "modules": [
+    {
+      "name": "unsigned_adder",
+      "responsibility": "Implement unsigned addition, the single output data/valid register, elastic handshake logic, and synchronous reset. No memories or submodules.",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Rising-edge state and transfer clock."
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Active-low synchronous reset; on a sampled low edge clear output data and valid and suppress transfers."
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Shared validity of in_a and in_b."
+        },
+        {
+          "name": "in_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Combinational rst_n AND (NOT out_valid OR out_ready)."
+        },
+        {
+          "name": "in_a",
+          "direction": "input",
+          "width": "8",
+          "signed": false,
+          "semantics": "First unsigned operand, sampled only on input transfer."
+        },
+        {
+          "name": "in_b",
+          "direction": "input",
+          "width": "8",
+          "signed": false,
+          "semantics": "Second unsigned operand, sampled on the same transfer as in_a."
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Registered slot occupancy; reset clears, input transfer sets, output-only transfer clears, otherwise holds."
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Enables consumption and simultaneous replacement of a valid output on a non-reset edge."
+        },
+        {
+          "name": "out_sum",
+          "direction": "output",
+          "width": "9",
+          "signed": false,
+          "semantics": "Registered sum of zero-extended operands; write on input transfer, clear on sampled reset, otherwise hold. Old data transfers on a simultaneous replacement edge."
+        }
+      ]
+    }
+  ]
+}

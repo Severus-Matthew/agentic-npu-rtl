@@ -1,0 +1,112 @@
+protocol: AXI-stream-like ready/valid custom channels
+clock: clk
+reset: rst_n (active low synchronous)
+channels:
+- name: in_cmd_data
+  direction: input
+  purpose: job configuration and operand ingress
+  data_objects:
+  - job_config
+  - vector_x_stream
+  - matrix_a_stream
+  - bias_stream
+  metadata:
+  - in_type[1:0] section selector
+  - in_last end-of-section marker
+  framing: 'Sections in strict order: CFG(1 beat) -> X(N beats) -> A(M*N beats) ->
+    BIAS(M beats if enabled).'
+  ordering: 'Within A section row-major: A[0,0]..A[0,N-1], A[1,0]..'
+  backpressure: producer waits when in_ready=0
+- name: out_result
+  direction: output
+  purpose: result egress
+  data_objects:
+  - result_y_stream
+  metadata:
+  - out_last asserted on final row
+  framing: Exactly M beats per job, one int32 per beat
+  ordering: row order ascending
+  backpressure: consumer may stall with out_ready=0
+signals:
+- name: clk
+  direction: input
+  width: '1'
+  signed: false
+  semantic: clock
+  reset_value: '0'
+- name: rst_n
+  direction: input
+  width: '1'
+  signed: false
+  semantic: active-low synchronous reset
+  reset_value: '0'
+- name: in_valid
+  direction: input
+  width: '1'
+  signed: false
+  semantic: input payload valid
+  reset_value: '0'
+- name: in_ready
+  direction: output
+  width: '1'
+  signed: false
+  semantic: input accept ready
+  reset_value: '0'
+- name: in_data
+  direction: input
+  width: '32'
+  signed: false
+  semantic: 'payload: cfg packed on cfg beat; int8 value in bits[7:0] for X/A beats;
+    int32 bias for BIAS beats'
+  reset_value: '0'
+- name: in_type
+  direction: input
+  width: '2'
+  signed: false
+  semantic: 00=CFG,01=X,10=A,11=BIAS
+  reset_value: '0'
+- name: in_last
+  direction: input
+  width: '1'
+  signed: false
+  semantic: end of current section
+  reset_value: '0'
+- name: out_valid
+  direction: output
+  width: '1'
+  signed: false
+  semantic: output valid
+  reset_value: '0'
+- name: out_ready
+  direction: input
+  width: '1'
+  signed: false
+  semantic: output ready
+  reset_value: '0'
+- name: out_data
+  direction: output
+  width: '32'
+  signed: true
+  semantic: int32 result for one row
+  reset_value: '0'
+- name: out_last
+  direction: output
+  width: '1'
+  signed: false
+  semantic: asserted with last output row beat
+  reset_value: '0'
+- name: busy
+  direction: output
+  width: '1'
+  signed: false
+  semantic: job in progress
+  reset_value: '0'
+- name: status_err
+  direction: output
+  width: '1'
+  signed: false
+  semantic: latched high in ERROR state, cleared on legal cfg accept
+  reset_value: '0'
+global_handshake_rules:
+  transfer_condition: A beat transfers iff valid&&ready
+  stall_behavior: source must hold payload and metadata stable while valid=1 and ready=0

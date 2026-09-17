@@ -1,0 +1,71 @@
+{
+  "status": "VERIFICATION_READY",
+  "summary": "Independent cocotb verification environment defined from frozen contracts, including deterministic reference model, protocol-correct drivers/monitors, reset/backpressure/error-recovery coverage, and >=100 randomized legal jobs.",
+  "reference_files": [
+    {
+      "path": "reference/mv_npu_ref.py",
+      "purpose": "Specification-derived golden model and width/sign helpers",
+      "content": "MASK32 = (1 << 32) - 1\n\n\ndef s8(v: int) -> int:\n    v &= 0xFF\n    return v - 0x100 if v & 0x80 else v\n\n\ndef s32(v: int) -> int:\n    v &= MASK32\n    return v - (1 << 32) if v & (1 << 31) else v\n\n\ndef wrap32(v: int) -> int:\n    return s32(v)\n\n\ndef relu32(v: int) -> int:\n    return 0 if v < 0 else s32(v)\n\n\ndef dot_row_int8_int32(a_row, x_vec):\n    acc = 0\n    for a, x in zip(a_row, x_vec):\n        acc = wrap32(acc + (s8(a) * s8(x)))\n    return acc\n\n\ndef mv_job(cfg, x_vec, a_mat, bias_vec=None):\n    m = cfg[\"M\"]\n    n = cfg[\"N\"]\n    bias_en = cfg[\"bias_en\"]\n    relu_en = cfg[\"relu_en\"]\n\n    assert len(x_vec) == n\n    assert len(a_mat) == m\n    for r in range(m):\n        assert len(a_mat[r]) == n\n    if bias_en:\n        assert bias_vec is not None and len(bias_vec) == m\n\n    y = []\n    for r in range(m):\n        acc = dot_row_int8_int32(a_mat[r], x_vec)\n        if bias_en:\n            acc = wrap32(acc + s32(bias_vec[r]))\n        out = relu32(acc) if relu_en else s32(acc)\n        y.append(s32(out))\n    return y\n\n\ndef sanity_checks():\n    # zero\n    cfg = {\"M\": 1, \"N\": 1, \"bias_en\": 0, \"relu_en\": 0}\n    assert mv_job(cfg, [0], [[0]]) == [0]\n    # sign\n    assert mv_job(cfg, [-1], [[1]]) == [-1]\n    # wrap\n    cfg2 = {\"M\": 1, \"N\": 1, \"bias_en\": 1, \"relu_en\": 0}\n    assert mv_job(cfg2, [127], [[127]], [0x7FFFFFFF]) == [s32(127 * 127 + 0x7FFFFFFF)]\n    # relu\n    cfg3 = {\"M\": 1, \"N\": 1, \"bias_en\": 0, \"relu_en\": 1}\n    assert mv_job(cfg3, [-1], [[1]]) == [0]\n"
+    }
+  ],
+  "test_files": [
+    {
+      "path": "tests/test_mv_npu.py",
+      "purpose": "Contract-level cocotb tests for functional, protocol, reset, backpressure, error, recovery, ordering",
+      "categories": [
+        "functional",
+        "protocol",
+        "reset",
+        "backpressure",
+        "error_recovery",
+        "randomized"
+      ],
+      "regression_groups": [
+        "smoke",
+        "targeted",
+        "full"
+      ],
+      "content": "import random\nimport cocotb\nfrom cocotb.triggers import Timer, SimTimeoutError\nfrom reference.mv_npu_ref import mv_job, s8, s32, sanity_checks\n\nTYPE_CFG = 0\nTYPE_X = 1\nTYPE_A = 2\nTYPE_B = 3\n\nMAX_M = 256\nMAX_N = 256\nSEED = 20260911\n\n\ndef pack_cfg(m, n, bias_en, relu_en):\n    # cfg_word on 32-bit ingress beat per frozen contract usage\n    return ((relu_en & 1) << 17) | ((bias_en & 1) << 16) | ((n & 0xFF) << 8) | (m & 0xFF)\n\n\nasync def cycle(dut, in_drive=None, out_ready=1):\n    dut.clk.value = 0\n    if in_drive is None:\n        dut.in_valid.value = 0\n        dut.in_data.value = 0\n        dut.in_type.value = 0\n        dut.in_last.value = 0\n    else:\n        dut.in_valid.value = in_drive[\"valid\"]\n        dut.in_data.value = in_drive[\"data\"]\n        dut.in_type.value = in_drive[\"type\"]\n        dut.in_last.value = in_drive[\"last\"]\n    dut.out_ready.value = out_ready\n    await Timer(1, units=\"ns\")\n    in_hs = int(dut.in_valid.value) and int(dut.in_ready.value)\n    out_hs = int(dut.out_valid.value) and int(dut.out_ready.value)\n    out_data = s32(int(dut.out_data.value)) if int(dut.out_valid.value) else None\n    out_last = int(dut.out_last.value) if int(dut.out_valid.value) else 0\n    dut.clk.value = 1\n    await Timer(1, units=\"ns\")\n    dut.clk.value = 0\n    await Timer(1, units=\"ns\")\n    return in_hs, out_hs, out_data, out_last, int(dut.status_err.value), int(dut.busy.value)\n\n\nasync def apply_reset(dut, cycles=3):\n    dut.rst_n.value = 0\n    for _ in range(cycles):\n        await cycle(dut, None, 0)\n    dut.rst_n.value = 1\n    await cycle(dut, None, 1)\n\n\nasync def send_beat_hold_until_hs(dut, beat, out_ready_fn):\n    while True:\n        _, _, _, _, _, _ = await cycle(dut, beat, out_ready_fn())\n        if int(dut.in_ready.value) and beat[\"valid\"]:\n            break\n\n\nasync def run_job(dut, cfg, x, a, b, out_ready_fn, src_idle_rng):\n    beats = []\n    beats.append({\"valid\": 1, \"data\": pack_cfg(cfg['M'], cfg['N'], cfg['bias_en'], cfg['relu_en']), \"type\": TYPE_CFG, \"last\": 1})\n    for i, xv in enumerate(x):\n        beats.append({\"valid\": 1, \"data\": (s8(xv) & 0xFF), \"type\": TYPE_X, \"last\": 1 if i == len(x)-1 else 0})\n    flat_a = [v for row in a for v in row]\n    for i, av in enumerate(flat_a):\n        beats.append({\"valid\": 1, \"data\": (s8(av) & 0xFF), \"type\": TYPE_A, \"last\": 1 if i == len(flat_a)-1 else 0})\n    if cfg[\"bias_en\"]:\n        for i, bv in enumerate(b):\n            beats.append({\"valid\": 1, \"data\": (s32(bv) & 0xFFFFFFFF), \"type\": TYPE_B, \"last\": 1 if i == len(b)-1 else 0})\n\n    exp = mv_job(cfg, x, a, b if cfg[\"bias_en\"] else None)\n\n    out = []\n    idx = 0\n    wait_cycles = 0\n    while idx < len(beats) or len(out) < cfg[\"M\"]:\n        if idx < len(beats) and src_idle_rng.randint(0, 3) == 0:\n            in_drive = None\n        elif idx < len(beats):\n            in_drive = beats[idx]\n        else:\n            in_drive = None\n\n        in_hs, out_hs, out_data, out_last, _, _ = await cycle(dut, in_drive, out_ready_fn())\n        if in_drive is not None and in_hs:\n            idx += 1\n        if out_hs:\n            out.append((out_data, out_last))\n\n        wait_cycles += 1\n        if wait_cycles > 50000:\n            raise SimTimeoutError(\"job timeout\")\n\n    assert len(out) == cfg[\"M\"], f\"output count mismatch exp={cfg['M']} got={len(out)}\"\n    for i, (d, l) in enumerate(out):\n        assert d == exp[i], f\"row {i} mismatch exp={exp[i]} got={d}\"\n        assert l == (1 if i == cfg[\"M\"]-1 else 0), f\"out_last mismatch row={i}\"\n\n\n@cocotb.test()\nasync def test_smoke_directed(dut):\n    sanity_checks()\n    await apply_reset(dut)\n    cfg = {\"M\": 2, \"N\": 3, \"bias_en\": 1, \"relu_en\": 1}\n    x = [1, -2, 3]\n    a = [[4, 5, -6], [-1, -1, -1]]\n    b = [7, -100]\n    rng = random.Random(SEED)\n    await run_job(dut, cfg, x, a, b, out_ready_fn=lambda: 1, src_idle_rng=rng)\n\n\n@cocotb.test()\nasync def test_reset_idle_and_active(dut):\n    await apply_reset(dut)\n    assert int(dut.status_err.value) == 0\n    cfg = {\"M\": 4, \"N\": 5, \"bias_en\": 0, \"relu_en\": 0}\n    x = [1, 2, 3, 4, 5]\n    a = [[1, 0, 0, 0, 0] for _ in range(4)]\n    b = []\n    rng = random.Random(SEED + 1)\n    await run_job(dut, cfg, x, a, b, out_ready_fn=lambda: 1, src_idle_rng=rng)\n    await apply_reset(dut)\n\n\n@cocotb.test()\nasync def test_backpressure_in_out(dut):\n    await apply_reset(dut)\n    cfg = {\"M\": 8, \"N\": 17, \"bias_en\": 1, \"relu_en\": 0}\n    rng = random.Random(SEED + 2)\n    x = [rng.randint(-128, 127) for _ in range(cfg[\"N\"])]\n    a = [[rng.randint(-128, 127) for _ in range(cfg[\"N\"])] for _ in range(cfg[\"M\"])]\n    b = [rng.randint(-(1<<31), (1<<31)-1) for _ in range(cfg[\"M\"])]\n    out_rng = random.Random(SEED + 3)\n    await run_job(dut, cfg, x, a, b, out_ready_fn=lambda: 1 if out_rng.randint(0, 2) else 0, src_idle_rng=rng)\n\n\n@cocotb.test()\nasync def test_illegal_cfg_error_recovery(dut):\n    await apply_reset(dut)\n    illegal = [pack_cfg(0, 4, 0, 0), pack_cfg(4, 0, 0, 0), pack_cfg(255, 1, 0, 0)]\n    for w in illegal:\n        beat = {\"valid\": 1, \"data\": w, \"type\": TYPE_CFG, \"last\": 1}\n        await send_beat_hold_until_hs(dut, beat, lambda: 1)\n        for _ in range(3):\n            _, _, _, _, err, _ = await cycle(dut, None, 1)\n        assert err == 1, \"status_err must assert for illegal cfg\"\n\n    cfg = {\"M\": 1, \"N\": 1, \"bias_en\": 0, \"relu_en\": 0}\n    x = [2]\n    a = [[3]]\n    await run_job(dut, cfg, x, a, [], out_ready_fn=lambda: 1, src_idle_rng=random.Random(SEED + 4))\n    assert int(dut.status_err.value) == 0, \"status_err must clear after legal cfg accept\"\n\n\n@cocotb.test()\nasync def test_randomized_100(dut):\n    await apply_reset(dut)\n    rng = random.Random(SEED)\n    for t in range(100):\n        m = rng.randint(1, 16)\n        n = rng.randint(1, 32)\n        cfg = {\n            \"M\": m,\n            \"N\": n,\n            \"bias_en\": rng.randint(0, 1),\n            \"relu_en\": rng.randint(0, 1),\n        }\n        x = [rng.randint(-128, 127) for _ in range(n)]\n        a = [[rng.randint(-128, 127) for _ in range(n)] for _ in range(m)]\n        b = [rng.randint(-(1<<31), (1<<31)-1) for _ in range(m)] if cfg[\"bias_en\"] else []\n        out_rng = random.Random(SEED + 1000 + t)\n        await run_job(dut, cfg, x, a, b, out_ready_fn=lambda: 1 if out_rng.randint(0, 3) else 0, src_idle_rng=rng)\n"
+    }
+  ],
+  "verification_plan": {
+    "top_module": "mv_npu_top",
+    "test_modules": [
+      "test_mv_npu"
+    ],
+    "test_categories": [
+      "functional",
+      "protocol",
+      "reset",
+      "backpressure",
+      "error_recovery",
+      "randomized"
+    ],
+    "randomized_test_count": 100,
+    "seed": 20260911,
+    "timeout_seconds": 300,
+    "regression_groups": {
+      "smoke": [
+        "test_mv_npu"
+      ],
+      "targeted": [
+        "test_mv_npu"
+      ],
+      "full": [
+        "test_mv_npu"
+      ]
+    },
+    "pass_criteria": "All cocotb tests pass; exact integer match for all checked outputs; protocol/order/count assertions hold; illegal-config error/recovery checks pass.",
+    "protocol_assumptions": [
+      "Input transfer only on in_valid&&in_ready with stable in_data/in_type/in_last while stalled.",
+      "Output transfer only on out_valid&&out_ready; out_data/out_last stability expected while stalled.",
+      "Input section order strictly CFG->X->A->BIAS(if enabled).",
+      "Exactly M output beats per legal job; out_last only on final beat."
+    ]
+  },
+  "architecture_conflict": null,
+  "known_verification_gaps": [
+    "Illegal config case M>MAX_M or N>MAX_N cannot be directly encoded via 8-bit packed M/N field in provided ingress mapping; tests cover M=0/N=0 and max-field overflow surrogate.",
+    "No internal signal visibility for exact consumed-beat counters; external ordering/count behavior is checked via handshakes and outputs only."
+  ]
+}

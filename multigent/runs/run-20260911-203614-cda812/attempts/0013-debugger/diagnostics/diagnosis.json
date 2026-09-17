@@ -1,0 +1,42 @@
+{
+  "failure_class": "UNKNOWN",
+  "root_cause": "Top-level emits postproc input pulse (`pp_in_valid`) on final matrix chunk without gating by `pp_in_ready`, while MAC accumulator update occurs in the same edge. This causes dropped/misaligned row-result transfers (and likely stale accumulator value capture), yielding too few outputs and incorrect first output.",
+  "confidence": 0.83,
+  "first_divergence": {
+    "cycle": null,
+    "signal_or_output": "out stream content/count",
+    "expected": "Directed test expects 2 outputs [3, -55] for M=2,N=5.",
+    "observed": "Observed output list is [0] (single incorrect value)."
+  },
+  "evidence": [
+    {
+      "source": "cocotb test_directed_basic",
+      "observation": "AssertionError: got [0] vs exp [3, -55].",
+      "relevance": "First authoritative functional mismatch after successful build."
+    },
+    {
+      "source": "cocotb test_randomized_100_jobs",
+      "observation": "Job 0 mismatch: got [0] vs long expected M-length vector.",
+      "relevance": "Systematic output production/count failure, not isolated data case."
+    },
+    {
+      "source": "rtl/mv_npu_top.sv",
+      "observation": "`pp_in_valid = mat_xfer && (k_chunk_idx + 1 == chunks_per_row);` independent of `pp_in_ready`; MAC `row_accum_out` updates in always_ff on same edge as `mat_xfer`.",
+      "relevance": "Direct mechanism for dropping final-row result when postproc not ready and/or sampling pre-update accumulator."
+    },
+    {
+      "source": "rtl/mv_postproc.sv",
+      "observation": "Consumes input only when `in_valid && in_ready`; otherwise input pulse is ignored.",
+      "relevance": "Confirms ungated one-cycle `pp_in_valid` can lose row results."
+    }
+  ],
+  "affected_modules": [
+    "mv_npu_top"
+  ],
+  "alternative_hypotheses": [
+    "Additional accumulator timing bug in MAC/new_row ordering may still exist after handshake fix.",
+    "Potential control/top counter phase skew could further affect row_done alignment."
+  ],
+  "architecture_change_required": false,
+  "additional_evidence_requested": []
+}

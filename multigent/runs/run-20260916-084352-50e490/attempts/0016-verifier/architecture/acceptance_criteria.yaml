@@ -1,0 +1,29 @@
+functional:
+- For every accepted input transfer (in_valid&&in_ready on clk edge with rst_n=1),
+  exactly one output transfer eventually occurs with out_sum == zero_extend(in_op_a)+zero_extend(in_op_b).
+- No output transfer may occur without a corresponding prior accepted input after
+  most recent reset.
+- Output ordering equals input acceptance ordering.
+verification:
+- Randomized simulation with >=100 accepted transactions spanning full 8-bit operand
+  range and random backpressure on out_ready.
+- 'Reset tests required: assert rst_n low during idle, during pending output stall,
+  and coincident with potential handshake edges; verify pending work discarded and
+  out_valid deasserted.'
+- 'Backpressure tests required: when out_valid=1 and out_ready=0 for multiple cycles,
+  out_sum and out_valid remain stable.'
+- 'Handshake rule test: transfer only when ready&&valid&&rst_n==1; reset edge suppresses
+  transfer.'
+- 'One-cycle no-stall latency test: with out_ready held high and no prior occupancy,
+  output valid appears exactly 1 cycle after accepted input.'
+- 'Boundary arithmetic tests: (0,0)->0, (255,0)->255, (255,255)->510, random mid values
+  exact match integer model.'
+rtl:
+- RTL must be synthesizable SystemVerilog only; no forbidden constructs (real/shortreal/delay/force-release/classes).
+- Single top module implementation with single-entry output register and no optional/runtime-config
+  modes.
+- Deterministic synchronous active-low reset behavior implemented as specified.
+fpga_handoff:
+- Vivado synthesis handoff allowed only after verification criteria pass.
+- Report metrics only from deterministic Vivado tool reports per required schema;
+  no estimated/fabricated PPA numbers.

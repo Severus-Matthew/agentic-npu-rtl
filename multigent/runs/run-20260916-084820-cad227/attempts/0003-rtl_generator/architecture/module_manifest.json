@@ -1,0 +1,70 @@
+{
+  "top": "u8_registered_adder",
+  "modules": [
+    {
+      "name": "u8_registered_adder",
+      "responsibility": "Implement input/output handshakes, exact unsigned addition, single-entry result storage, backpressure, and synchronous reset.",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Rising-edge clock for all state."
+        },
+        {
+          "name": "rst_n",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Active-low synchronous reset with priority over all transfer and register enables."
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Input operand-pair valid."
+        },
+        {
+          "name": "in_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Combinational input readiness: rst_n && (!out_valid || out_ready)."
+        },
+        {
+          "name": "in_payload",
+          "direction": "input",
+          "width": "16",
+          "signed": false,
+          "semantics": "Packed operands: A=[7:0], B=[15:8]; sampled only on input transfer."
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "Registered output occupancy indication."
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "Output consumer readiness."
+        },
+        {
+          "name": "out_payload",
+          "direction": "output",
+          "width": "9",
+          "signed": false,
+          "semantics": "Registered sum; written with {1'b0,A}+{1'b0,B} on input transfer and held during stalls."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "failure_class": "UNKNOWN",
+  "root_cause": "mv_npu_top is effectively a stub with only parameter checks and no instantiated submodules or handshake/control logic. Therefore cmd_ready (and other interface outputs) are never driven per protocol/state, so no cmd transfer can occur and tests timeout waiting for cmd_ready.",
+  "confidence": 0.98,
+  "first_divergence": {
+    "cycle": null,
+    "signal_or_output": "cmd_ready",
+    "expected": "Asserted in IDLE to accept one command beat (subject to protocol/state)",
+    "observed": "Remains non-asserted/undriven from reset through test wait window; send_beat times out"
+  },
+  "evidence": [
+    {
+      "source": "cocotb test log (test_directed_basic)",
+      "observation": "SimTimeoutError at send_beat(... 'cmd_ready' ...) after max_wait; first failure at 1012ns.",
+      "relevance": "Authoritative first functional failure is command handshake deadlock."
+    },
+    {
+      "source": "cocotb test log (test_randomized_100_jobs)",
+      "observation": "Same SimTimeoutError waiting cmd_ready at job start.",
+      "relevance": "Confirms systematic inability to accept command, not random data mismatch."
+    },
+    {
+      "source": "rtl/mv_npu_top.sv",
+      "observation": "Top contains only initial parameter assertions; no FSM/datapath module instantiations, no assignments for cmd_ready/vec_ready/mat_ready/bias_ready/out_valid/out_data/status_*.",
+      "relevance": "Direct structural cause for missing protocol behavior and timeout."
+    },
+    {
+      "source": "frozen interface/architecture contract",
+      "observation": "Requires ready/valid streaming command ingress and phased control progression from IDLE.",
+      "relevance": "Establishes expected cmd_ready behavior and necessity of integrated control path."
+    }
+  ],
+  "affected_modules": [
+    "mv_npu_top"
+  ],
+  "alternative_hypotheses": [
+    "Reset sequencing bug in FSM",
+    "Testbench timing bug"
+  ],
+  "architecture_change_required": false,
+  "additional_evidence_requested": []
+}

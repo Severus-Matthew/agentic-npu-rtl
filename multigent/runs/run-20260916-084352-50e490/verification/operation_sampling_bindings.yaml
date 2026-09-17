@@ -1,0 +1,78 @@
+- operation: uadd_pair
+  point: operation.uadd_pair.opcode
+  template: custom
+  observer: observe_const_one
+  event: clock
+  fields:
+    v:
+      signal: in_valid
+- operation: uadd_pair
+  point: operation.uadd_pair.vector_length
+  template: custom
+  observer: observe_const_one
+  event: clock
+  fields:
+    v:
+      signal: in_valid
+- operation: uadd_pair
+  point: operation.uadd_pair.operand_classes
+  template: integer_operand
+  event: transfer
+  channel: in_chan
+  fields:
+    value:
+      signal: in_op_a
+  data_type: u8
+- operation: uadd_pair
+  point: operation.uadd_pair.numeric_behavior
+  template: custom
+  observer: observe_sum_class
+  event: transfer
+  channel: in_chan
+  fields:
+    a:
+      signal: in_op_a
+    b:
+      signal: in_op_b
+- operation: uadd_pair
+  point: operation.uadd_pair.predication
+  template: custom
+  observer: observe_const_one
+  event: clock
+  fields:
+    v:
+      signal: in_valid
+- operation: uadd_pair
+  point: operation.uadd_pair.fixed_opcode_add_only
+  template: custom
+  observer: observe_const_one
+  event: clock
+  fields:
+    v:
+      signal: in_valid
+- operation: uadd_pair
+  point: operation.uadd_pair.scalar_single_element_per_transaction
+  template: custom
+  observer: observe_const_one
+  event: clock
+  fields:
+    v:
+      signal: in_valid
+- operation: uadd_pair
+  point: operation.uadd_pair.no_predication_supported
+  template: custom
+  observer: observe_const_one
+  event: clock
+  fields:
+    v:
+      signal: in_valid
+- operation: uadd_pair
+  point: operation.uadd_pair.in_chan_stall
+  template: channel_stall
+  event: transfer
+  channel: in_chan
+- operation: uadd_pair
+  point: operation.uadd_pair.out_chan_stall
+  template: channel_stall
+  event: transfer
+  channel: out_chan

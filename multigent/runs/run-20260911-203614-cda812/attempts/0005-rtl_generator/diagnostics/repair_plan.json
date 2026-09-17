@@ -1,0 +1,46 @@
+{
+  "action": "PATCH",
+  "affected_modules": [
+    "mv_npu_top"
+  ],
+  "protected_modules": [
+    "mv_ctrl_fsm",
+    "mv_vec_buffer",
+    "mv_mac16_core",
+    "mv_postproc",
+    "mv_stream_if"
+  ],
+  "protected_interfaces": [
+    "clk",
+    "rst_n",
+    "cmd_valid",
+    "cmd_ready",
+    "cmd_data",
+    "vec_valid",
+    "vec_ready",
+    "vec_data",
+    "mat_valid",
+    "mat_ready",
+    "mat_data",
+    "bias_valid",
+    "bias_ready",
+    "bias_data",
+    "out_valid",
+    "out_ready",
+    "out_data",
+    "status_busy",
+    "status_error"
+  ],
+  "recommended_change": "Implement full top-level integration in mv_npu_top: instantiate mv_ctrl_fsm/mv_vec_buffer/mv_mac16_core/mv_postproc/mv_stream_if; generate all channel ready signals from FSM state and downstream readiness; generate xfer pulses strictly as ready&&valid; decode/store command via cmd_accept; route vector writes into buffer with proper address counter from FSM progress; unpack matrix beat to lanes and pair with vector lane chunk reads; drive compute/new_row sequencing and lane_valid_mask usage; connect row result into postproc with bias handshake and out backpressure support; expose status_busy/status_error from control. Ensure command ready is asserted in IDLE when able to accept a new job, and deasserted during active job per single-outstanding-job assumption.",
+  "do_not_change": [
+    "Do not alter module interfaces or parameter contracts.",
+    "Do not modify frozen tests/reference behavior.",
+    "Do not change arithmetic semantics (INT8 signed multiply, INT32 wrap, optional bias/ReLU).",
+    "Do not change single-job ordering/backpressure protocol requirements."
+  ],
+  "expected_side_effects": [
+    "Once integrated, failures may progress from handshake timeout to functional mismatches in compute/control sequencing if any submodule assumptions are inconsistent.",
+    "Ready/valid timing behavior becomes observable on all channels; regression may expose secondary protocol bugs."
+  ],
+  "regression_required": "FULL"
+}

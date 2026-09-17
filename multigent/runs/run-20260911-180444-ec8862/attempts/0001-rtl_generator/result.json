@@ -1,0 +1,58 @@
+{
+  "rtl_status": "ARCHITECTURE_CONFLICT",
+  "rtl_result": {
+    "status": "ARCHITECTURE_CONFLICT",
+    "task_type": "INITIAL_GENERATION",
+    "summary": "The controller manifest lacks concrete synthesizable port definitions, preventing exact implementation and top-level wiring.",
+    "files": [],
+    "contract_checks": [
+      {
+        "requirement": "Implement every manifest module with frozen explicit ports",
+        "satisfied": false,
+        "evidence": "fc_controller declares external_bus, store_write_bus, and store_read_address_bus using unspecified bundle widths and no field definitions or SystemVerilog interface types."
+      }
+    ],
+    "changed_modules": [],
+    "architecture_conflict": {
+      "category": "INCOMPLETE_INTERFACE_CONTRACT",
+      "affected_modules": [
+        "fc_controller",
+        "fc_accelerator"
+      ],
+      "issue": "Controller bundle ports cannot be declared or connected deterministically without inventing an interface or flattening signals.",
+      "evidence": "Widths are specified only as 'protocol signal bundle', 'control plus ARRAY_COLS*32', and 'parameter-derived'; bundle fields, directions, packing, and exact widths are absent.",
+      "requested_architect_decision": "Provide exact synthesizable declarations for all three controller buses, including every field, direction, width, and packing, or replace them with an explicit flattened port list."
+    },
+    "blocked_reason": "",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [],
+    "regression_required": "NONE"
+  },
+  "rtl_files": [],
+  "architecture_conflict": {
+    "category": "INCOMPLETE_INTERFACE_CONTRACT",
+    "affected_modules": [
+      "fc_controller",
+      "fc_accelerator"
+    ],
+    "issue": "Controller bundle ports cannot be declared or connected deterministically without inventing an interface or flattening signals.",
+    "evidence": "Widths are specified only as 'protocol signal bundle', 'control plus ARRAY_COLS*32', and 'parameter-derived'; bundle fields, directions, packing, and exact widths are absent.",
+    "requested_architect_decision": "Provide exact synthesizable declarations for all three controller buses, including every field, direction, width, and packing, or replace them with an explicit flattened port list."
+  },
+  "needs_regression": false,
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "history": [
+    {
+      "stage": "rtl_generator",
+      "status": "ARCHITECTURE_CONFLICT",
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "ppa_iteration": 0,
+      "files": []
+    }
+  ]
+}

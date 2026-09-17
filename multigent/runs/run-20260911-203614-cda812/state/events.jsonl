@@ -1,0 +1,43 @@
+{"stage": "architect", "phase": "started", "time": "2026-09-11T20:36:16.236132+00:00"}
+{"stage": "architect", "phase": "retrying", "time": "2026-09-11T20:37:00.190964+00:00", "attempt": 1, "error": "Architect returned a structurally valid but internally inconsistent READY contract: data object obj_job_config names consumer op_load_vector, but operation op_load_vector does not list obj_job_config as an input"}
+{"stage": "architect", "phase": "finished", "time": "2026-09-11T20:37:30.636146+00:00", "status": null, "history": [{"stage": "architect", "status": "READY", "architecture_version": 1, "revision": false}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T20:37:30.639262+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T20:37:50.006471+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 0, "ppa_iteration": 0, "files": ["mv_stream_if.sv", "mv_vec_buffer.sv", "mv_mac16_core.sv", "mv_postproc.sv", "mv_ctrl_fsm.sv", "mv_npu_top.sv"]}]}
+{"stage": "verifier", "phase": "started", "time": "2026-09-11T20:37:50.008978+00:00"}
+{"stage": "verifier", "phase": "finished", "time": "2026-09-11T20:38:06.043942+00:00", "status": null, "history": [{"stage": "verifier_generation", "status": "VERIFICATION_READY", "architecture_version": 1, "repair_iteration": 0, "semantic_retry": false}]}
+{"stage": "verification_tools", "phase": "started", "time": "2026-09-11T20:38:06.046217+00:00"}
+{"stage": "verification_tools", "phase": "finished", "time": "2026-09-11T20:38:11.561967+00:00", "status": "REPAIR_REQUIRED", "history": [{"stage": "deterministic_verification", "status": "SIMULATION_FAILURE", "failure_class": "UNKNOWN"}]}
+{"stage": "debugger", "phase": "started", "time": "2026-09-11T20:38:11.564547+00:00"}
+{"stage": "debugger", "phase": "finished", "time": "2026-09-11T20:38:19.575402+00:00", "status": null, "history": [{"stage": "debugger", "status": "REPAIR_PLAN_READY", "failure_class": "UNKNOWN", "repair_iteration_before": 0, "repair_iteration_after": 1, "affected_modules": ["mv_npu_top"]}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T20:38:19.577690+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T20:38:35.021710+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 1, "ppa_iteration": 0, "files": ["mv_npu_top.sv"]}]}
+{"stage": "verification_tools", "phase": "started", "time": "2026-09-11T20:38:35.024993+00:00"}
+{"stage": "verification_tools", "phase": "finished", "time": "2026-09-11T20:38:40.128475+00:00", "status": "REPAIR_REQUIRED", "history": [{"stage": "deterministic_verification", "status": "SIMULATION_FAILURE", "failure_class": "UNKNOWN"}]}
+{"stage": "debugger", "phase": "started", "time": "2026-09-11T20:38:40.130658+00:00"}
+{"stage": "debugger", "phase": "finished", "time": "2026-09-11T20:38:47.785097+00:00", "status": null, "history": [{"stage": "debugger", "status": "REPAIR_PLAN_READY", "failure_class": "UNKNOWN", "repair_iteration_before": 1, "repair_iteration_after": 2, "affected_modules": ["mv_npu_top"]}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T20:38:47.787452+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T20:39:01.394683+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 2, "ppa_iteration": 0, "files": ["mv_npu_top.sv"]}]}
+{"stage": "verification_tools", "phase": "started", "time": "2026-09-11T20:39:01.396830+00:00"}
+{"stage": "verification_tools", "phase": "finished", "time": "2026-09-11T20:39:07.219562+00:00", "status": "REPAIR_REQUIRED", "history": [{"stage": "deterministic_verification", "status": "SIMULATION_FAILURE", "failure_class": "UNKNOWN"}]}
+{"stage": "debugger", "phase": "started", "time": "2026-09-11T20:39:07.221971+00:00"}
+{"stage": "debugger", "phase": "finished", "time": "2026-09-11T20:39:15.534611+00:00", "status": null, "history": [{"stage": "debugger", "status": "REPAIR_PLAN_READY", "failure_class": "UNKNOWN", "repair_iteration_before": 2, "repair_iteration_after": 3, "affected_modules": ["mv_npu_top"]}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T20:39:15.536951+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T20:39:32.205806+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 3, "ppa_iteration": 0, "files": ["mv_npu_top.sv"]}]}
+{"stage": "verification_tools", "phase": "started", "time": "2026-09-11T20:39:32.208870+00:00"}
+{"stage": "verification_tools", "phase": "finished", "time": "2026-09-11T20:39:37.403232+00:00", "status": "REPAIR_REQUIRED", "history": [{"stage": "deterministic_verification", "status": "SIMULATION_FAILURE", "failure_class": "UNKNOWN"}]}
+{"stage": "debugger", "phase": "started", "time": "2026-09-11T20:39:37.405525+00:00"}
+{"stage": "debugger", "phase": "finished", "time": "2026-09-11T20:39:45.567408+00:00", "status": null, "history": [{"stage": "debugger", "status": "REPAIR_PLAN_READY", "failure_class": "UNKNOWN", "repair_iteration_before": 3, "repair_iteration_after": 4, "affected_modules": ["mv_npu_top"]}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T20:39:45.569837+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T20:40:02.245917+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 4, "ppa_iteration": 0, "files": ["mv_npu_top.sv"]}]}
+{"stage": "verification_tools", "phase": "started", "time": "2026-09-11T20:40:02.249621+00:00"}
+{"stage": "verification_tools", "phase": "finished", "time": "2026-09-11T20:40:07.621242+00:00", "status": "REPAIR_REQUIRED", "history": [{"stage": "deterministic_verification", "status": "SIMULATION_FAILURE", "failure_class": "UNKNOWN"}]}
+{"stage": "debugger", "phase": "started", "time": "2026-09-11T20:40:07.623395+00:00"}
+{"stage": "debugger", "phase": "finished", "time": "2026-09-11T20:40:16.533541+00:00", "status": null, "history": [{"stage": "debugger", "status": "REPAIR_PLAN_READY", "failure_class": "UNKNOWN", "repair_iteration_before": 4, "repair_iteration_after": 5, "affected_modules": ["mv_npu_top"]}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T20:40:16.536166+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T20:40:33.245728+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 5, "ppa_iteration": 0, "files": ["mv_npu_top.sv"]}]}
+{"stage": "verification_tools", "phase": "started", "time": "2026-09-11T20:40:33.248086+00:00"}
+{"stage": "verification_tools", "phase": "finished", "time": "2026-09-11T20:40:38.410829+00:00", "status": "REPAIR_REQUIRED", "history": [{"stage": "deterministic_verification", "status": "SIMULATION_FAILURE", "failure_class": "UNKNOWN"}]}
+{"stage": "repair_exhausted", "phase": "started", "time": "2026-09-11T20:40:38.413143+00:00"}
+{"stage": "repair_exhausted", "phase": "finished", "time": "2026-09-11T20:40:38.505154+00:00", "status": "REPAIR_BUDGET_EXHAUSTED", "history": [{"stage": "repair", "status": "BUDGET_EXHAUSTED", "repair_iteration": 5, "failure_class": "UNKNOWN"}]}
+{"stage": "final_report", "phase": "started", "time": "2026-09-11T20:40:38.507328+00:00"}
+{"stage": "final_report", "phase": "finished", "time": "2026-09-11T20:40:38.525099+00:00", "status": "REPAIR_BUDGET_EXHAUSTED"}

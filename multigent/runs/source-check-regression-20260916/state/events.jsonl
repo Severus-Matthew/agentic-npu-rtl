@@ -1,0 +1,15 @@
+{"stage": "verifier_review", "phase": "started", "time": "2026-09-16T22:47:01.186912+00:00"}
+{"stage": "verifier_review", "phase": "finished", "time": "2026-09-16T22:47:01.430251+00:00", "status": null, "history": [{"stage": "testbench_checks", "status": "APPROVED", "findings": [], "stimulus_reviewed": false}]}
+{"stage": "verification_tools", "phase": "started", "time": "2026-09-16T22:47:01.432034+00:00"}
+{"stage": "cocotb_regression", "phase": "pending", "time": "2026-09-16T22:47:01.499528+00:00", "status": "NOT_RUN"}
+{"stage": "protocol_checks", "phase": "pending", "time": "2026-09-16T22:47:01.501393+00:00", "status": "NOT_RUN"}
+{"stage": "coverage_checks", "phase": "pending", "time": "2026-09-16T22:47:01.503230+00:00", "status": "NOT_RUN"}
+{"stage": "verilator_lint", "phase": "started", "time": "2026-09-16T22:47:01.505019+00:00"}
+{"stage": "verilator_lint", "phase": "finished", "time": "2026-09-16T22:47:01.573353+00:00", "status": "PASS"}
+{"stage": "cocotb_regression", "phase": "started", "time": "2026-09-16T22:47:01.588210+00:00"}
+{"stage": "cocotb_regression", "phase": "finished", "time": "2026-09-16T22:47:07.980213+00:00", "status": "PASS", "tests": 1, "failures": 0}
+{"stage": "protocol_checks", "phase": "started", "time": "2026-09-16T22:47:07.982009+00:00"}
+{"stage": "protocol_checks", "phase": "finished", "time": "2026-09-16T22:47:07.983576+00:00", "status": "PASS", "failures": [], "scope": "Contract monitor observations from this simulation"}
+{"stage": "coverage_checks", "phase": "started", "time": "2026-09-16T22:47:07.985072+00:00"}
+{"stage": "coverage_checks", "phase": "finished", "time": "2026-09-16T22:47:07.986619+00:00", "status": "PASS", "hit_bins": 31, "required_bins": 31, "missing_bins": []}
+{"stage": "verification_tools", "phase": "finished", "time": "2026-09-16T22:47:08.029378+00:00", "status": "VERIFIED_RTL", "history": [{"stage": "deterministic_verification", "status": "PASS", "failure_class": null}]}

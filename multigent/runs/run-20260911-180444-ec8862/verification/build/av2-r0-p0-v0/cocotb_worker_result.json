@@ -1,0 +1,14 @@
+{
+  "stage": "cocotb_regression",
+  "status": "SIMULATION_FAILURE",
+  "failure_class": "UNKNOWN",
+  "tests": 4,
+  "failures": 1,
+  "seed": 1511506142,
+  "top_module": "fc_accelerator",
+  "test_modules": [
+    "test_fc_accelerator"
+  ],
+  "results_xml": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/verification/build/av2-r0-p0-v0/results.xml",
+  "worker_error": null
+}

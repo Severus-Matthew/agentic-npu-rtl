@@ -1,0 +1,901 @@
+{
+  "architecture_status": "READY",
+  "architecture_dir": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-205759-2ecda0/architecture",
+  "architecture_revision": 0,
+  "history": [
+    {
+      "stage": "architect",
+      "status": "READY",
+      "architecture_version": 1,
+      "revision": false
+    }
+  ],
+  "architecture_version": 1,
+  "architecture_artifacts": {
+    "architecture_contract": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-205759-2ecda0/architecture/architecture_contract.yaml",
+    "interface_contract": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-205759-2ecda0/architecture/interface_contract.yaml",
+    "module_manifest": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-205759-2ecda0/architecture/module_manifest.json",
+    "acceptance_criteria": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-205759-2ecda0/architecture/acceptance_criteria.yaml"
+  },
+  "architecture_conflict": null,
+  "rtl_context": {
+    "user_request": "Design an NPU for accelerating matrix-vector multiplication in neural-network inference. Use 16 parallel INT8 multiply-accumulate units, INT32 accumulators, optional bias addition, and selectable ReLU activation. The accelerator should accept input data and return results through ready/valid streaming interfaces.",
+    "fixed_rtl_constraints": {
+      "language": "SystemVerilog",
+      "synthesizable_only": true,
+      "forbidden_constructs": [
+        "real",
+        "shortreal",
+        "delay_statements",
+        "force_release",
+        "classes"
+      ]
+    },
+    "synthesis_policy": {
+      "provider": "vivado",
+      "requires_verified_rtl": true,
+      "result_schema": "multigent/schemas/synthesis_result.schema.json",
+      "authoritative_metrics_source": "deterministic_tool_report",
+      "prohibit_metric_estimation": true
+    },
+    "frozen_architecture": {
+      "architecture_contract": {
+        "design": {
+          "name": "stream_matvec_int8",
+          "version": "1.0.0",
+          "description": "Single-job matrix-vector accelerator with 16 row-parallel INT8 MAC lanes, wrapping INT32 arithmetic, optional INT32 bias, and selectable ReLU."
+        },
+        "operations": [
+          {
+            "name": "matvec",
+            "kind": "matrix_vector_product",
+            "semantics": "For each row r, initialize a signed INT32 accumulator to zero, then process columns c in increasing order: acc = wrap32(acc + signed(matrix[r,c]) * signed(vector[c])). Produce dot_products[r]. Mandatory for every legal command.",
+            "inputs": [
+              "matrix",
+              "vector",
+              "row_count",
+              "column_count"
+            ],
+            "outputs": [
+              "dot_products"
+            ]
+          },
+          {
+            "name": "add_bias",
+            "kind": "conditional_addition",
+            "semantics": "After each dot product is complete, produce biased_values[r] = wrap32(dot_products[r] + bias[r]) when bias_enable is one; otherwise copy dot_products[r]. No bias transfers occur when disabled.",
+            "inputs": [
+              "dot_products",
+              "bias",
+              "bias_enable"
+            ],
+            "outputs": [
+              "biased_values"
+            ]
+          },
+          {
+            "name": "activate",
+            "kind": "conditional_relu",
+            "semantics": "Produce results[r] = max_signed(0, biased_values[r]) when relu_enable is one; otherwise copy biased_values[r]. ReLU examines the signed result after wrapping bias addition.",
+            "inputs": [
+              "biased_values",
+              "relu_enable"
+            ],
+            "outputs": [
+              "results"
+            ]
+          },
+          {
+            "name": "job_control",
+            "kind": "transaction_control",
+            "semantics": "Validate accepted dimensions. For a legal command, issue completion_status=0 only after all result transfers are accepted. For an illegal command, consume no operand transfers, emit no results, and issue completion_status=1. Completion acceptance permits another command.",
+            "inputs": [
+              "row_count",
+              "column_count",
+              "results"
+            ],
+            "outputs": [
+              "completion_status"
+            ]
+          }
+        ],
+        "data_types": [
+          {
+            "name": "int8",
+            "role": "Matrix and vector elements",
+            "width_bits": 8,
+            "signed": true,
+            "representation": "Two's-complement integer",
+            "conversion_semantics": "Decode input data bits [7:0]; ignore bits [31:8]. Multiplication produces an exact signed 16-bit product, sign-extended to 32 bits.",
+            "overflow_semantics": "Every 8-bit pattern is legal; products are exact.",
+            "rounding_semantics": "None"
+          },
+          {
+            "name": "int32",
+            "role": "Bias, accumulators, intermediate values, and results",
+            "width_bits": 32,
+            "signed": true,
+            "representation": "Two's-complement integer",
+            "conversion_semantics": "Bias and result payloads preserve all 32 bits. Addition retains the low 32 bits.",
+            "overflow_semantics": "Modulo 2^32 wrapping for every accumulation and bias addition; no saturation.",
+            "rounding_semantics": "None"
+          },
+          {
+            "name": "dimension_count",
+            "role": "Runtime dimension counts",
+            "width_bits": 16,
+            "signed": false,
+            "representation": "Unsigned binary element count",
+            "conversion_semantics": "Counts are not minus-one encoded. Widen before internal index arithmetic.",
+            "overflow_semantics": "Out-of-range commands are rejected; counts never wrap.",
+            "rounding_semantics": "None"
+          },
+          {
+            "name": "boolean",
+            "role": "Feature selections and completion status",
+            "width_bits": 1,
+            "signed": false,
+            "representation": "Binary flag",
+            "conversion_semantics": "Zero is false; one is true. For completion status, one means invalid dimensions.",
+            "overflow_semantics": "Not applicable",
+            "rounding_semantics": "None"
+          }
+        ],
+        "data_objects": [
+          {
+            "name": "matrix",
+            "role": "Input matrix",
+            "data_type": "int8",
+            "dimensions": [
+              "Rows",
+              "Columns"
+            ],
+            "producer": "external",
+            "consumers": [
+              "matvec"
+            ],
+            "external": true
+          },
+          {
+            "name": "vector",
+            "role": "Input vector reused by every row tile",
+            "data_type": "int8",
+            "dimensions": [
+              "Columns"
+            ],
+            "producer": "external",
+            "consumers": [
+              "matvec"
+            ],
+            "external": true
+          },
+          {
+            "name": "bias",
+            "role": "Optional per-row bias; absent from transport when disabled",
+            "data_type": "int32",
+            "dimensions": [
+              "Rows"
+            ],
+            "producer": "external",
+            "consumers": [
+              "add_bias"
+            ],
+            "external": true
+          },
+          {
+            "name": "row_count",
+            "role": "Command value defining Rows",
+            "data_type": "dimension_count",
+            "dimensions": [],
+            "producer": "external",
+            "consumers": [
+              "matvec",
+              "job_control"
+            ],
+            "external": true
+          },
+          {
+            "name": "column_count",
+            "role": "Command value defining Columns",
+            "data_type": "dimension_count",
+            "dimensions": [],
+            "producer": "external",
+            "consumers": [
+              "matvec",
+              "job_control"
+            ],
+            "external": true
+          },
+          {
+            "name": "bias_enable",
+            "role": "Per-command bias selection",
+            "data_type": "boolean",
+            "dimensions": [],
+            "producer": "external",
+            "consumers": [
+              "add_bias"
+            ],
+            "external": true
+          },
+          {
+            "name": "relu_enable",
+            "role": "Per-command activation selection",
+            "data_type": "boolean",
+            "dimensions": [],
+            "producer": "external",
+            "consumers": [
+              "activate"
+            ],
+            "external": true
+          },
+          {
+            "name": "dot_products",
+            "role": "Logical dot-product vector; materialized one row tile at a time",
+            "data_type": "int32",
+            "dimensions": [
+              "Rows"
+            ],
+            "producer": "matvec",
+            "consumers": [
+              "add_bias"
+            ],
+            "external": false
+          },
+          {
+            "name": "biased_values",
+            "role": "Combinational finalized tile values before activation",
+            "data_type": "int32",
+            "dimensions": [
+              "Rows"
+            ],
+            "producer": "add_bias",
+            "consumers": [
+              "activate"
+            ],
+            "external": false
+          },
+          {
+            "name": "results",
+            "role": "Output vector, retained and emitted one tile at a time",
+            "data_type": "int32",
+            "dimensions": [
+              "Rows"
+            ],
+            "producer": "activate",
+            "consumers": [
+              "external",
+              "job_control"
+            ],
+            "external": true
+          },
+          {
+            "name": "completion_status",
+            "role": "Terminal job response",
+            "data_type": "boolean",
+            "dimensions": [],
+            "producer": "job_control",
+            "consumers": [
+              "external"
+            ],
+            "external": true
+          }
+        ],
+        "dimensions": [
+          {
+            "name": "Rows",
+            "semantic": "Output row count R. Minimum legal value: 1. Maximum at default parameters: 256. Runtime legality is 1 <= R <= MAX_ROWS, not a fixed maximum of 256.",
+            "minimum": 1,
+            "maximum": 256,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_ROWS"
+          },
+          {
+            "name": "Columns",
+            "semantic": "Reduction length C. Minimum legal value: 1. Maximum at default parameters: 256. Runtime legality is 1 <= C <= MAX_COLS, not a fixed maximum of 256.",
+            "minimum": 1,
+            "maximum": 256,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_COLS"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "MAX_ROWS",
+            "default_value": "256",
+            "legality_constraint": "Integer, 16 <= MAX_ROWS <= 65535",
+            "description": "Maximum accepted row count. Sixteen arithmetic lanes are fixed, not parameterized."
+          },
+          {
+            "name": "MAX_COLS",
+            "default_value": "256",
+            "legality_constraint": "Integer, 1 <= MAX_COLS <= 65535",
+            "description": "Maximum accepted column count and depth of retained vector storage."
+          }
+        ],
+        "compute": {
+          "organization": "Sixteen fixed row-parallel lanes, each containing one signed 8x8 multiplier and one wrapping INT32 accumulator. A scalar vector element broadcasts to all active lanes.",
+          "dataflow": "Retain the entire vector once per job. Process row tiles in ascending order. For tile t, base=16*t and h=min(16,R-base). Retain h biases and stage h matrix elements for each column.",
+          "parallelism": "One MAC per active row per MAC cycle; up to 16 MACs concurrently. Inactive tail lanes neither accumulate nor emit results.",
+          "scheduling": "LOAD_X for C transfers; then for every tile: TILE_INIT for one cycle, optional LOAD_BIAS for h transfers, then for each column h LOAD_W transfers followed by one MAC cycle; FINALIZE for one cycle; EMIT for h result transfers. No loading, computation, or tile egress overlap."
+        },
+        "storage": [
+          {
+            "name": "vector_store",
+            "stored_objects": [
+              "vector"
+            ],
+            "capacity_expression": "8 * MAX_COLS bits",
+            "capacity_at_default_parameters": 2048,
+            "access_pattern": "Write vector[c] on each LOAD_X handshake. Combinationally read vector[column_index] during MAC.",
+            "port_requirements": "One scalar write port and one asynchronous scalar read port; read and write phases do not overlap.",
+            "implementation_hint": "Register array or distributed RAM; synchronous-read block RAM is not compatible with the frozen schedule.",
+            "reuse_semantics": "Loaded exactly once and reread for every row tile; no host replay.",
+            "lifetime": "Accepted vector transfer until command completion or reset."
+          },
+          {
+            "name": "matrix_staging",
+            "stored_objects": [
+              "matrix"
+            ],
+            "capacity_expression": "16 * 8 bits",
+            "capacity_at_default_parameters": 128,
+            "access_pattern": "LOAD_W writes lane i on its scalar handshake; MAC reads all active lanes together.",
+            "port_requirements": "One indexed scalar write per cycle; sixteen parallel register reads.",
+            "implementation_hint": "Sixteen 8-bit registers.",
+            "reuse_semantics": "Each staged element participates in exactly one MAC and is then overwritten for the next column.",
+            "lifetime": "One column of one row tile."
+          },
+          {
+            "name": "bias_staging",
+            "stored_objects": [
+              "bias"
+            ],
+            "capacity_expression": "16 * 32 bits",
+            "capacity_at_default_parameters": 512,
+            "access_pattern": "LOAD_BIAS writes lane i on handshake; FINALIZE reads every active lane.",
+            "port_requirements": "One indexed scalar write per cycle; sixteen parallel register reads.",
+            "implementation_hint": "Sixteen 32-bit registers.",
+            "reuse_semantics": "Each bias is used once; disabled bias selection does not read stored bias values.",
+            "lifetime": "One row tile."
+          },
+          {
+            "name": "accumulator_result_bank",
+            "stored_objects": [
+              "dot_products",
+              "results"
+            ],
+            "capacity_expression": "16 * 32 bits",
+            "capacity_at_default_parameters": 512,
+            "access_pattern": "TILE_INIT clears all lanes. MAC updates active lanes together. FINALIZE overwrites active lanes with activated results. EMIT selects one lane per transfer.",
+            "port_requirements": "Sixteen parallel register reads and writes; one scalar output selection.",
+            "implementation_hint": "Sixteen 32-bit registers. biased_values are combinational and require no separate bank.",
+            "reuse_semantics": "The bank changes role from accumulator to output tile only after the final column.",
+            "lifetime": "TILE_INIT through acceptance of the tile's last output."
+          },
+          {
+            "name": "command_status_registers",
+            "stored_objects": [
+              "row_count",
+              "column_count",
+              "bias_enable",
+              "relu_enable",
+              "completion_status"
+            ],
+            "capacity_expression": "16 + 16 + 1 + 1 + 1 bits",
+            "capacity_at_default_parameters": 35,
+            "access_pattern": "Capture command fields on command handshake; capture status on validation; retain through completion handshake.",
+            "port_requirements": "Parallel register capture and read.",
+            "implementation_hint": "Flip-flops.",
+            "reuse_semantics": "Selections and dimensions remain fixed for the entire job.",
+            "lifetime": "Command handshake through completion handshake."
+          }
+        ],
+        "pipeline": [
+          {
+            "stage": "LOAD_X",
+            "responsibility": "Populate retained vector, one element per accepted operand transfer.",
+            "registered": true,
+            "valid_behavior": "Operand acceptance is enabled only in this state or another load state.",
+            "stall_behavior": "Without a transfer, vector storage, index, and state hold."
+          },
+          {
+            "stage": "TILE_INIT_AND_LOAD_BIAS",
+            "responsibility": "One unconditional TILE_INIT cycle clears accumulators and indices; if enabled, subsequent LOAD_BIAS cycles capture h biases.",
+            "registered": true,
+            "valid_behavior": "No operand acceptance during TILE_INIT. LOAD_BIAS accepts exactly h operands.",
+            "stall_behavior": "Bias loading holds without an operand handshake."
+          },
+          {
+            "stage": "LOAD_W",
+            "responsibility": "Capture h scalar matrix elements for the current column.",
+            "registered": true,
+            "valid_behavior": "Each handshake populates the next active lane. The h-th handshake schedules MAC for the next cycle.",
+            "stall_behavior": "Partially populated staging remains unchanged except on accepted transfers."
+          },
+          {
+            "stage": "MAC",
+            "responsibility": "Read retained vector asynchronously, multiply all active staged elements, and update accumulators at the ending edge.",
+            "registered": true,
+            "valid_behavior": "Exactly one cycle after each complete matrix staging group; operand ready is low.",
+            "stall_behavior": "Never stalls; operands are already retained."
+          },
+          {
+            "stage": "FINALIZE",
+            "responsibility": "Combinational wrapping bias addition followed by signed ReLU selection; register all active results at the ending edge.",
+            "registered": true,
+            "valid_behavior": "Exactly one cycle after the last MAC of each tile.",
+            "stall_behavior": "Never stalls; the result bank is reserved."
+          },
+          {
+            "stage": "EMIT",
+            "responsibility": "Expose one retained result lane and advance on output handshake.",
+            "registered": false,
+            "valid_behavior": "Output valid remains high throughout tile emission; payload comes from the registered result bank and registered emit index.",
+            "stall_behavior": "Hold bank, index, payload, and last flag while output is stalled."
+          },
+          {
+            "stage": "DONE",
+            "responsibility": "Expose the registered completion status.",
+            "registered": false,
+            "valid_behavior": "Completion valid remains high until accepted.",
+            "stall_behavior": "Hold completion payload and refuse new commands until completion acceptance."
+          }
+        ],
+        "control": {
+          "strategy": "Single synchronous FSM; at most one command is outstanding. State and counters determine transfer class; no operand packet tags are needed.",
+          "state_progression": "IDLE -> LOAD_X -> TILE_INIT -> optional LOAD_BIAS -> LOAD_W -> MAC. MAC returns to LOAD_W for the next column or advances to FINALIZE -> EMIT. EMIT advances to TILE_INIT for another tile or DONE for the final tile. DONE -> IDLE on completion handshake. Invalid command: IDLE -> DONE.",
+          "counters": [
+            "Captured R and C: unsigned 16-bit counts.",
+            "Vector write index and column index: max(1,$clog2(MAX_COLS)) bits; compare against C-1 and never increment beyond the last legal index.",
+            "Tile base row: max(1,$clog2(MAX_ROWS)) bits; compute base+16 and R-base using at least 17-bit unsigned arithmetic.",
+            "Tile active height h: 5 bits, values 1..16.",
+            "Bias-load, matrix-load, and emit lane index: shared 4-bit index, reset at each corresponding phase.",
+            "bias_enable, relu_enable, completion error bit, and FSM state."
+          ],
+          "error_behavior": "Reject R=0, C=0, R>MAX_ROWS, or C>MAX_COLS with completion error=1. Data presented outside load states is not accepted. Operand values have no illegal encodings. Missing operands stall indefinitely; extra operands cannot be distinguished from later untagged traffic. Source instability during a stalled transfer is a protocol violation, not a hardware-detected error.",
+          "error_recovery": "An invalid command recovers by completion handshake, then IDLE. Reset aborts any incomplete or protocol-violating transaction. No timeout, clear, retry, or acknowledgement signal beyond completion ready is defined."
+        },
+        "reset": {
+          "style": "Synchronous to the rising clock edge",
+          "polarity": "Active high",
+          "required_state": "A reset edge returns the FSM to IDLE and clears counters, command/status registers, and protocol state. Datapath arrays need not clear. While reset is asserted, all DUT ready and valid outputs and payload outputs are zero. Reset discards outstanding work without completion; the host must discard the aborted transaction."
+        },
+        "latency_model": "Let T=ceil(R/16), h_t=min(16,R-16*t), and b be bias_enable. Exact accepted operand count is C+b*R+C*R; accepted result count is R. Each column of tile t requires h_t loading cycles plus one MAC cycle. With all sources continuously valid and sinks continuously ready, command accepted at edge 0 completes at edge L=C+sum_t[1+b*h_t+C*(h_t+1)+1+h_t]+1, equivalently C+2*T+b*R+C*(R+T)+R+1. The final +1 is completion acceptance after the last result. Every unfulfilled load, result, or completion handshake adds one cycle in its corresponding state. Invalid commands can complete at edge 1. Following completion, the earliest next command acceptance is the next edge. No throughput overlap is claimed.",
+        "architectural_invariants": [
+          "Exactly sixteen fixed arithmetic lanes exist; tile height only masks inactive lanes.",
+          "No MAC occurs before all h operands for that column have been accepted.",
+          "Vector storage retains all C elements until every tile finishes.",
+          "Each matrix element and enabled bias is transmitted exactly once.",
+          "Only one tile of results is live, and it is completely drained before accumulator reuse.",
+          "Output traversal is ascending tile base followed by ascending lane, yielding global ascending row order.",
+          "All externally visible transaction progress occurs on the specified ready/valid handshake.",
+          "Arithmetic wraps before activation; no quantization, scaling, saturation, or alternative arithmetic mode exists."
+        ],
+        "open_assumptions": [
+          "Runtime row and column counts default to bounds of 256; these bounds were not supplied by the user.",
+          "Bias is signed INT32, and outputs retain signed INT32 precision.",
+          "A scalar 32-bit operand channel is chosen for simple transport; 16-way arithmetic parallelism does not imply 16 operands arrive per cycle.",
+          "Row-parallel tiling, whole-vector retention, and non-overlapped staging are chosen to minimize banking and buffering complexity.",
+          "Commands use separate ready/valid fields; results and terminal status use independent ready/valid channels.",
+          "Feature selections apply per job. The single-module implementation deliberately keeps the small sequencer and datapath together.",
+          "The explicit intake synthesis provider is Vivado. No synthesis or PPA metric is asserted by this contract."
+        ]
+      },
+      "interface_contract": {
+        "protocol": "Four independent synchronous ready/valid channels: command, operand, result, and completion. Single outstanding job; operands are accepted only after a legal command.",
+        "clock": "clk; all transfers and sequential updates occur on rising edges. No target clock period is assumed.",
+        "reset": "rst; synchronous active-high reset. Transfer acceptance is disabled while rst is high.",
+        "channels": [
+          {
+            "name": "command",
+            "direction": "input",
+            "purpose": "Submit dimensions and requested feature selections",
+            "data_objects": [
+              "row_count",
+              "column_count",
+              "bias_enable",
+              "relu_enable"
+            ],
+            "metadata": [],
+            "framing": "Exactly one transfer per job. Separate fields cmd_rows[15:0], cmd_cols[15:0], cmd_bias_enable, and cmd_relu_enable are accepted together; total payload is 34 physical bits, with no packed command bus.",
+            "ordering": "Accepted only in IDLE. A new command cannot be accepted until the preceding completion has been accepted.",
+            "backpressure": "Host holds all four fields and cmd_valid stable while cmd_valid && !cmd_ready."
+          },
+          {
+            "name": "operand",
+            "direction": "input",
+            "purpose": "Supply vector, optional tile biases, and tile matrix elements",
+            "data_objects": [
+              "vector",
+              "bias",
+              "matrix"
+            ],
+            "metadata": [],
+            "framing": "One scalar per 32-bit transfer, with no tags or last signal. INT8 transfers use data[7:0] and ignore data[31:8]; bias uses data[31:0]. Sequence: vector[c] for c=0..C-1; then for t=0..ceil(R/16)-1, let base=16*t and h=min(16,R-base), send bias[base+i] for i=0..h-1 only if enabled, then matrix[base+i,c] for c=0..C-1 outer and i=0..h-1 inner. Total C+b*R+C*R transfers. Partial tiles send h elements, never padding.",
+            "ordering": "Section boundaries are determined solely by accepted counts and the command. Internal MAC, initialization, finalization, and output phases insert ready-low gaps; the next operand may be held valid through those gaps.",
+            "backpressure": "Host holds in_valid and all in_data bits stable while stalled. DUT asserts in_ready only in LOAD_X, LOAD_BIAS, or LOAD_W."
+          },
+          {
+            "name": "result",
+            "direction": "output",
+            "purpose": "Return activated or unactivated INT32 results",
+            "data_objects": [
+              "results"
+            ],
+            "metadata": [
+              "out_last"
+            ],
+            "framing": "Exactly R transfers for a legal command and zero for an invalid command. out_data[31:0] is one signed result bit pattern. out_last is one only for row R-1.",
+            "ordering": "Rows 0 through R-1 in ascending order. Tile boundaries create gaps but do not change order.",
+            "backpressure": "DUT holds out_valid, out_data, and out_last while stalled; no subsequent tile starts until the current tile is drained."
+          },
+          {
+            "name": "completion",
+            "direction": "output",
+            "purpose": "Report terminal success or invalid command",
+            "data_objects": [
+              "completion_status"
+            ],
+            "metadata": [],
+            "framing": "Exactly one transfer per accepted command unless reset aborts it. done_error=0 means all R results were accepted; done_error=1 means invalid dimensions and no operands or results were accepted for that command.",
+            "ordering": "Success becomes valid in the cycle after the final result handshake. Invalid-command status becomes valid in the cycle after command acceptance.",
+            "backpressure": "DUT holds done_valid and done_error until done_ready; command ready remains low through the completion handshake cycle."
+          }
+        ],
+        "signals": [
+          {
+            "name": "clk",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Rising-edge clock",
+            "reset_value": "Not applicable"
+          },
+          {
+            "name": "rst",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Synchronous active-high reset",
+            "reset_value": "Environment drives"
+          },
+          {
+            "name": "cmd_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Command payload valid",
+            "reset_value": "Environment drives; ignored during reset"
+          },
+          {
+            "name": "cmd_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "High exactly when state is IDLE and rst is low",
+            "reset_value": "0 while rst is high"
+          },
+          {
+            "name": "cmd_rows",
+            "direction": "input",
+            "width": "16",
+            "signed": false,
+            "semantic": "Unsigned R; legal range 1..MAX_ROWS",
+            "reset_value": "Unconstrained"
+          },
+          {
+            "name": "cmd_cols",
+            "direction": "input",
+            "width": "16",
+            "signed": false,
+            "semantic": "Unsigned C; legal range 1..MAX_COLS",
+            "reset_value": "Unconstrained"
+          },
+          {
+            "name": "cmd_bias_enable",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "One enables bias transport and addition",
+            "reset_value": "Unconstrained"
+          },
+          {
+            "name": "cmd_relu_enable",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "One enables signed ReLU after bias selection",
+            "reset_value": "Unconstrained"
+          },
+          {
+            "name": "in_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Operand payload valid",
+            "reset_value": "Environment drives; ignored during reset"
+          },
+          {
+            "name": "in_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "High exactly in operand load states while rst is low",
+            "reset_value": "0"
+          },
+          {
+            "name": "in_data",
+            "direction": "input",
+            "width": "32",
+            "signed": false,
+            "semantic": "Raw scalar transport; low byte is signed INT8 except full-width signed INT32 bias sections",
+            "reset_value": "Unconstrained"
+          },
+          {
+            "name": "out_valid",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "High exactly in EMIT while rst is low",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_ready",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Result sink can accept a transfer",
+            "reset_value": "Unconstrained"
+          },
+          {
+            "name": "out_data",
+            "direction": "output",
+            "width": "32",
+            "signed": true,
+            "semantic": "Current signed INT32 result; zero when out_valid is zero",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_last",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "High iff out_valid and current result row equals R-1",
+            "reset_value": "0"
+          },
+          {
+            "name": "done_valid",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "High exactly in DONE while rst is low",
+            "reset_value": "0"
+          },
+          {
+            "name": "done_ready",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Completion sink can accept terminal status",
+            "reset_value": "Unconstrained"
+          },
+          {
+            "name": "done_error",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Invalid-dimension status when done_valid; zero otherwise",
+            "reset_value": "0"
+          }
+        ],
+        "global_handshake_rules": {
+          "transfer_condition": "At a rising edge, a channel transfers iff rst=0 and its ready && valid are both one.",
+          "stall_behavior": "A source must retain valid and its entire payload until handshake, except reset may cancel it. DUT ready is state-derived, not dependent on source valid. Independent channels cannot bypass the single-job phase ordering."
+        }
+      },
+      "module_manifest": {
+        "top": "stream_matvec_int8",
+        "modules": [
+          {
+            "name": "stream_matvec_int8",
+            "responsibility": "Implement the complete bounded matrix-vector transaction engine: command validation, retained vector, scalar operand staging, sixteen MAC lanes, bias/ReLU finalization, ordered output, completion, and reset. No submodules or internal start/done links. Array writes occur only on the corresponding load handshake; vector reads are combinational with zero registered latency; MAC and FINALIZE updates occur only in their named states.",
+            "dependencies": [],
+            "parameters": [
+              "MAX_ROWS",
+              "MAX_COLS"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Rising-edge clock for all state and transfers."
+              },
+              {
+                "name": "rst",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Synchronous active-high reset; suppress ready/valid and zero output payloads while high."
+              },
+              {
+                "name": "cmd_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Command valid; all command fields held through a stall."
+              },
+              {
+                "name": "cmd_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "IDLE && !rst; command capture and validation occur on handshake."
+              },
+              {
+                "name": "cmd_rows",
+                "direction": "input",
+                "width": "16",
+                "signed": false,
+                "semantics": "Unsigned row count captured with command; legal 1..MAX_ROWS."
+              },
+              {
+                "name": "cmd_cols",
+                "direction": "input",
+                "width": "16",
+                "signed": false,
+                "semantics": "Unsigned column count captured with command; legal 1..MAX_COLS."
+              },
+              {
+                "name": "cmd_bias_enable",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Captured command flag enabling bias input sections and addition."
+              },
+              {
+                "name": "cmd_relu_enable",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Captured command flag enabling ReLU after wrapping bias addition."
+              },
+              {
+                "name": "in_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Operand valid; held with payload until accepted."
+              },
+              {
+                "name": "in_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "!rst && state in {LOAD_X,LOAD_BIAS,LOAD_W}; each handshake writes precisely one indexed storage element."
+              },
+              {
+                "name": "in_data",
+                "direction": "input",
+                "width": "32",
+                "signed": false,
+                "semantics": "LOAD_X or LOAD_W captures signed bits [7:0], ignoring upper bits; LOAD_BIAS captures all 32 bits as signed bias. Ordering is fixed by the operand channel contract."
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "EMIT && !rst; remains asserted while current result is stalled."
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Result acceptance qualifier; advances emit index or exits EMIT only on handshake."
+              },
+              {
+                "name": "out_data",
+                "direction": "output",
+                "width": "32",
+                "signed": true,
+                "semantics": "Selected registered result lane; stable during stall; zero when out_valid=0."
+              },
+              {
+                "name": "out_last",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "out_valid && tile_base+emit_index==R-1, using widened index arithmetic; stable during stall."
+              },
+              {
+                "name": "done_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "DONE && !rst; level handshake, not a pulse. Asserted in the cycle following final output acceptance or invalid-command acceptance."
+              },
+              {
+                "name": "done_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Completion acceptance qualifier; handshake transitions DONE to IDLE."
+              },
+              {
+                "name": "done_error",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Registered invalid-dimension status gated by done_valid; held during completion stall; zero otherwise."
+              }
+            ]
+          }
+        ]
+      },
+      "acceptance_criteria": {
+        "functional": [
+          "Compare every result bit-exactly against signed INT8 multiplication, per-addition modulo-2^32 accumulation, optional wrapping INT32 bias, and optional signed ReLU in that order.",
+          "Exercise all four bias/ReLU flag combinations, INT8 endpoints -128 and 127, signed INT32 bias endpoints, zero, negative outputs, and bias overflow across the sign boundary.",
+          "Test legal R and C at 1 and their configured maxima, plus row counts 15,16,17,31,32,33 where legal. No padding operands or padded results are permitted.",
+          "For each legal job, observe exactly C+b*R+C*R operand handshakes in the specified section order, R ascending-row result handshakes, one final-row out_last, and one successful completion after the last result.",
+          "For invalid dimensions, observe zero operand/result handshakes attributable to the rejected job and one error completion; a subsequent legal command must execute correctly.",
+          "Under continuously available operands and ready sinks, measure completion against the exact frozen latency formula, including h staging cycles per column, initialization, finalization, and completion cycles."
+        ],
+        "verification": [
+          "Run at least 100 randomized complete transactions using recorded seeds, randomized dimensions and values, all feature combinations, source gaps, result stalls, and completion stalls. Configure regression wall timeout to at least 120 seconds.",
+          "Assert ready/valid payload stability, no state advancement without required handshakes, no duplicate or missing results, no command acceptance while busy, and no MAC before all active staging lanes are populated.",
+          "Use distinct row/column-dependent operand patterns to detect transpose, replay, tile-order, lane-order, and vector-retention errors.",
+          "Randomize ignored INT8 upper payload bits and confirm they do not affect arithmetic. Exercise arbitrary full-width bias patterns.",
+          "Reset in IDLE, partial vector loading, partial bias loading, partial matrix loading, MAC, FINALIZE, stalled EMIT, and stalled DONE. Verify cancellation, zero reset outputs, and correct execution after reset with no stale data leakage.",
+          "Stall each source and sink for multiple cycles, including across tile boundaries and on the final result. Verify completion remains held and the next command is not accepted on the completion handshake edge.",
+          "Verify default parameters and nondefault builds including MAX_ROWS=16/MAX_COLS=1 and a non-power-of-two configuration. Check maximum permitted parameter elaboration and guarded index widths.",
+          "Exercise invalid commands with zero and above-bound dimensions wherever representable. Protocol-violating stimulus must be diagnosed by testbench assertions; reset must restore a usable interface.",
+          "Use scoreboards with bounded liveness expectations only when the environment eventually supplies operands and accepts outputs; the hardware has no timeout."
+        ],
+        "rtl": [
+          "Generate synthesizable SystemVerilog only, with no real, shortreal, delays, force/release, classes, inferred latches, or multiple procedural drivers.",
+          "Elaborate with concrete legal defaults and reject illegal parameter values. Keep all index widths at least one bit and widen dimension/index arithmetic before additions or comparisons.",
+          "Provide exactly sixteen logical signed 8x8 MAC lanes with INT32 accumulator registers and explicit signed extension and wrapping behavior.",
+          "Implement the declared asynchronous vector read or equivalent combinational register selection without inserting an undeclared memory-read cycle.",
+          "No bulk array reset is required; prove every active operand or accumulator is initialized before use.",
+          "Top-level ports, signal signedness, reset behavior, transfer mapping, state schedule, and latency must match the frozen contracts."
+        ],
+        "fpga_handoff": [
+          "Vivado is the mandatory synthesis provider under the intake policy; synthesis requires a passing RTL verification regression.",
+          "Supply reproducible batch scripts, exact Vivado version, top name, source ordering, parameter overrides, FPGA part, clock constraints, and recorded invocation. Part and target period must be explicit handoff inputs, not fabricated architectural requirements.",
+          "Validate generated synthesis results against multigent/schemas/synthesis_result.schema.json and retain deterministic tool logs and reports.",
+          "Do not report estimated or inferred PPA metrics. Populate only metrics supported by the applicable deterministic report; distinguish synthesis results from implemented timing results.",
+          "Review synthesis diagnostics for latches, unresolved modules, unsupported constructs, and memory-inference changes that would violate the frozen read latency.",
+          "No compiler, simulator, synthesis, timing, power, or utilization result is claimed by this architecture deliverable."
+        ]
+      }
+    }
+  },
+  "rtl_task_type": "INITIAL_GENERATION",
+  "verification_context": {},
+  "verifier_status": "PENDING",
+  "verification_plan": {},
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "rtl_feedback": null,
+  "best_candidate": null,
+  "optimization_plan": null,
+  "ppa_status": "PENDING",
+  "frozen_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "90ee448130df4f014dbdd7ba7e02627c7fa72c611e9bb875aad2b2da343059bf",
+      "architect_result.json": "5bda8e3aeb9ad6e87d48b3d9306129e6b80d78338383873309a6d29b40ca33f4",
+      "architecture_contract.yaml": "a5d3d7685c7969d762fbe0a96db64adaecd2776012c75e2e36cedbfd024c2123",
+      "interface_contract.yaml": "98f6abe651532247f401704d9f2de6b1990a7988c9dfd0c9688f2d88e04046a6",
+      "module_manifest.json": "66f4d2d7c177743b01e690e0094d6b84cfcdbe83fe530a2da3016e02d2dd8db4"
+    },
+    "rtl": {},
+    "tests": {},
+    "reference": {}
+  }
+}

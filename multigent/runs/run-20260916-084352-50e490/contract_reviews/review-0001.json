@@ -1,0 +1,30 @@
+{
+  "review": {
+    "status": "REVISION_REQUIRED",
+    "summary": "Contract is close, but has reset/in_ready and latency semantics conflicts that can cause inconsistent implementations and verification expectations.",
+    "findings": [
+      {
+        "contract_path": "frozen_architecture.architecture_contract.reset.required_state",
+        "issue": "Spec says on rst_n=0 edge, in_ready=1 (since empty). Elsewhere, interface/module semantics state no transfer accepted on reset edge and in_ready high only when not in reset cycle, creating contradiction.",
+        "requested_change": "Make reset behavior consistent across artifacts: explicitly define in_ready during rst_n=0 cycles (recommended 0 to match module/interface text) and update reset.required_state accordingly."
+      },
+      {
+        "contract_path": "frozen_architecture.architecture_contract.module_manifest.modules[0].ports[in_ready].semantics vs frozen_architecture.architecture_contract.reset.required_state",
+        "issue": "Module manifest says in_ready high only when output register empty and not in reset cycle, conflicting with reset.required_state claiming in_ready=1 on reset cycle.",
+        "requested_change": "Align module manifest and reset sections to one rule for in_ready during reset; ensure same rule appears in interface/backpressure text."
+      },
+      {
+        "contract_path": "frozen_architecture.architecture_contract.control.state_progression",
+        "issue": "Text says simultaneous dequeue/enqueue replacement in FULL is 'not used here because one-cycle no-stall requires EMPTY at accept'. This is ambiguous and can be read as architectural prohibition or merely guidance.",
+        "requested_change": "State explicit legality: either forbid simultaneous dequeue/enqueue in FULL, or permit it while preserving defined observable latency/ordering; remove ambiguous rationale sentence."
+      }
+    ]
+  },
+  "architecture_hashes": {
+    "acceptance_criteria.yaml": "d424bfcdccace0f0d1761d476dfae2c7665064af5a45e39d603cec1447f63815",
+    "architect_result.json": "f23fc036f99ac8e4f3e2c8eeb5a3df285d3b02d133c6bc2820604b7c9338be00",
+    "architecture_contract.yaml": "8dcaf65cc353a87068d2ad8d334a3a486d06a044f692719c3f33831dca41880d",
+    "interface_contract.yaml": "27ac3a41786f640ce3104e3e3fa2921f38135416b4a96189f8ac7f8bc11dd8ca",
+    "module_manifest.json": "b578a990bd647824407df43ee3c0e6431b024b0afae11a1b6270ca6885e36f21"
+  }
+}

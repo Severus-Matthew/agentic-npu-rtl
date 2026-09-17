@@ -1,0 +1,16 @@
+{
+  "architecture": {
+    "acceptance_criteria.yaml": "d424bfcdccace0f0d1761d476dfae2c7665064af5a45e39d603cec1447f63815",
+    "architect_result.json": "3431492cc806f40231aa52ca0b624d65ca3f59dd541118f68eb4195658dbf0ee",
+    "architecture_contract.yaml": "224f2900910ed6e554fa879d7db4f4e22864db89974d328ccdadef9f6ee7ade4",
+    "interface_contract.yaml": "bb07902d17cce1fbd943e686b565336369d7032ad941f50e88a59a2d4b5b3ca2",
+    "module_manifest.json": "20bb63f2011897d7b474742faa2eddf774723bac5a88be355be73ac52365c893",
+    "rejected_contract_v3_r2.json": "4844181aaf1075f7ba74a160a79872ab1e1f9725cbe19c603d7817c0314faa85",
+    "revision_patch-run-20260916-084352-50e490-arch-v2-r1.json": "60783b7ab1304f2d04c8816831ccf696c4036a6eaa87034d4f5bad1b637be31b",
+    "revision_patch-run-20260916-084352-50e490-arch-v3-r2.json": "d952d7d7a3d9cf852e120dc9dbb77900e25f74647d4a438325ca0e0b8d178fd8",
+    "revision_patch-run-20260916-084352-50e490-arch-v3-r3.json": "7088a1af4a037859778b5b2dac9c47558a3ea790eb0daeed432102fdc0e1973c"
+  },
+  "rtl": {},
+  "tests": {},
+  "reference": {}
+}

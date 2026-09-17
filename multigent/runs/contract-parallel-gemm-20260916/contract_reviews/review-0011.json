@@ -1,0 +1,28 @@
+{
+  "review": {
+    "status": "REVISION_REQUIRED",
+    "summary": "Contract is strong overall, but has a critical ordering ambiguity for command handling during reset release and a minor inconsistency in phase naming around completion timing that can cause divergent implementations.",
+    "findings": [
+      {
+        "contract_path": "architecture/interface_contract/channels/cmd_ch/backpressure",
+        "issue": "Spec says cmd_ready is high only in IDLE when rst_n=1, while reset.required_state says all ready outputs low and does not explicitly define first-cycle behavior on reset deassertion. This can cause disagreement on whether a held cmd_valid/cmd_payload may handshake on the first cycle rst_n rises if FSM is already IDLE.",
+        "requested_change": "Add an explicit executable rule for reset-release handshake timing (e.g., whether cmd_ready may assert immediately on first rst_n=1 cycle in IDLE, and whether command can be accepted that same cycle)."
+      },
+      {
+        "contract_path": "architecture/architecture_contract/control/strategy + architecture/interface_contract/signals(busy,completion) + architecture/architecture_contract/latency_model",
+        "issue": "FSM sequence includes DONE->IDLE, while busy/completion semantics define completion pulse in the cycle after final output handshake and busy deassert in that same following cycle. The contract does not explicitly state whether DONE is exactly one cycle and whether any ready signal may assert during DONE. This can create implementation variance in command acceptance timing around completion.",
+        "requested_change": "Specify DONE state duration and readiness behavior explicitly (e.g., DONE is exactly one cycle, all input ready signals low in DONE, cmd_ready reasserts only upon entry to IDLE on next cycle)."
+      }
+    ]
+  },
+  "architecture_hashes": {
+    "acceptance_criteria.yaml": "ac22bb0ceb957b7d2e64f9701a2d8bbadd61599ea6211e1919731ae303151639",
+    "architect_result.json": "a9d8ae38c08833cbb6a93dae99e7a9df36b7efa5652a34a8d39eb3532eaab64c",
+    "architecture_contract.yaml": "ee4653a1a24dce1ab329772463e45353b3a58a18771d772d4bdf81770143e635",
+    "interface_contract.yaml": "465449d81f0240f63ed3aa2c81e34a9bd2b8baee5c4043a8c0e7e5f80898b6bd",
+    "module_manifest.json": "2d477588857f0f80a65088a51a5dba5cb508b00623bf5353d1b31479f0a33473",
+    "revision_patch-contract-parallel-gemm-20260916-arch-v2-r1.json": "90f76700bbde43ccb04efd7a6d2770c7515681006623e09d62bd85942b1a2396",
+    "revision_patch-contract-parallel-gemm-20260916-arch-v3-r2.json": "126eb483ccee57d03f6b67c180d5c03561f418f55de2ab0c5900a3c4bfc32a7b",
+    "revision_patch-contract-parallel-gemm-20260916-arch-v4-r3.json": "4c879a8f52a80fbe763d1e70a79ac02250a008c9e1540b907236694b7952b5c4"
+  }
+}

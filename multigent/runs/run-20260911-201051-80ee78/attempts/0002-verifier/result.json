@@ -1,0 +1,26 @@
+{
+  "verifier_status": "SEMANTIC_VALIDATION_FAILED",
+  "errors": [
+    "Verifier claims readiness without referencing required contract-visible completion/error signals: done, error"
+  ],
+  "history": [
+    {
+      "stage": "verifier_generation",
+      "status": "SEMANTIC_VALIDATION_FAILED"
+    }
+  ],
+  "frozen_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "15fe72ec2471d587b5bf191df5bd7a8f18ef9c650669544d6d5680340314394c",
+      "architect_result.json": "268dca1f6dd801e3b7ed6947d05c700007a482d019c4a5501552dfb0ccb2873e",
+      "architecture_contract.yaml": "417b3cb4ece91160713d343ab1bf7e121405e752505542ef0a11952dcd8aa52d",
+      "interface_contract.yaml": "fc3fcc81435598355e796b09c70064f1b2803ce2e4d37a4f945a62085d0a5418",
+      "module_manifest.json": "22d1dc20e037d5be34260b8f8276bdcf7be589f5b797b37789f3b3c6f6222c83"
+    },
+    "rtl": {
+      "tiled_int8_fc.sv": "68e7f414a7d5904695d7262d9e823dadb8a9c34b404ba64acd2e6bd047fc14bc"
+    },
+    "tests": {},
+    "reference": {}
+  }
+}

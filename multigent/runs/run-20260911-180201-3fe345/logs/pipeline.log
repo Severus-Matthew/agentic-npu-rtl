@@ -1,0 +1,30 @@
+{
+  "status": "FAILED",
+  "vivado_status": null,
+  "final_report": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180201-3fe345/reports/final.json",
+  "errors": [
+    "AgentRuntimeError: Architect returned a structurally valid but internally inconsistent READY contract: data object obj_tile_context crosses the external boundary but external=false; channel cmd_ch exposes internal data object obj_tile_context"
+  ],
+  "architecture_status": "READY",
+  "architecture_version": 1,
+  "architecture_revision": 0,
+  "rtl_status": "ARCHITECTURE_CONFLICT",
+  "rtl_files": [],
+  "verifier_status": "PENDING",
+  "verification_status": "PENDING",
+  "debugger_status": null,
+  "repair_iteration": 0,
+  "failure_class": null,
+  "architecture_conflict": {
+    "category": "Missing/underspecified interface contract",
+    "affected_modules": [
+      "fc_tiled_gemm_top",
+      "control_fsm",
+      "output_unit",
+      "pe_array_8x8"
+    ],
+    "issue": "Current frozen port contracts do not carry enough control/state information to implement the required tile loops, k-step handshakes, boundary masking, and stage progression while preserving architecture semantics.",
+    "evidence": "1) control_fsm lacks M/K/N inputs and datapath handshake inputs, yet must drive nested loops and stalls. 2) control_fsm exposes no control outputs (except counters) to drive pe_array step_en/clear_tile or post/emit phases. 3) output_unit lacks index/context inputs for boundary masking/order derivation. 4) pe_array requires step_en/clear_tile but their source/control timing is not representable via existing inter-module contracts.",
+    "requested_architect_decision": "Freeze additional interfaces/control ownership: (a) provide control_fsm inputs for M_reg/K_reg/N_reg and stage handshake/status, and outputs for step_en/clear_tile/post_valid sequencing; (b) define where tm_idx/tn_idx live and expose them; (c) provide output_unit with sufficient index/context (or move boundary/order control to top) to enforce tile-major masked emission deterministically."
+  }
+}

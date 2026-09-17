@@ -1,0 +1,42 @@
+{
+  "failure_class": "UNKNOWN",
+  "root_cause": "In mv_npu_top/mv_postproc integration, completed row results are presented with pp_in_valid from hold_row_valid, but mv_postproc only consumes when (!bias_en || bias_valid). For bias_en=0, acceptance can still be blocked because in_ready depends on out_valid/out_ready; if out_valid is held and out_ready toggles low, hold_row_valid may remain asserted, which directly deasserts mat_ready (gated by !hold_row_valid), causing matrix ingress timeout. This control coupling also perturbs row handoff timing and leads to arithmetic mismatch in directed case.",
+  "confidence": 0.86,
+  "first_divergence": {
+    "cycle": null,
+    "signal_or_output": "out_data (directed test)",
+    "expected": "[3, -55]",
+    "observed": "[3, -52]"
+  },
+  "evidence": [
+    {
+      "source": "cocotb test_directed_basic",
+      "observation": "Assertion failure at 34ns: got [3, -52] vs expected [3, -55].",
+      "relevance": "Earliest authoritative functional divergence before timeout symptoms."
+    },
+    {
+      "source": "cocotb test_randomized_100_jobs",
+      "observation": "SimTimeoutError timeout waiting mat_ready during matrix send.",
+      "relevance": "Confirms progress failure under runtime backpressure/handshake sequences."
+    },
+    {
+      "source": "rtl/mv_npu_top.sv",
+      "observation": "mat_ready is gated by !hold_row_valid; hold_row_valid is set on last chunk and cleared only when pp_in_ready.",
+      "relevance": "Direct mechanism for ingress stall when postproc acceptance is delayed."
+    },
+    {
+      "source": "rtl/mv_postproc.sv",
+      "observation": "Row consume/write requires in_valid && in_ready and conditional (!bias_en || bias_valid); in_ready depends on out_valid/out_ready.",
+      "relevance": "Explains coupling of row acceptance to output backpressure and possible retention of hold_row_valid."
+    }
+  ],
+  "affected_modules": [
+    "mv_npu_top"
+  ],
+  "alternative_hypotheses": [
+    "Latch warnings in mv_mac16_core combinational temporaries could cause value corruption, but current first causal control divergence is localized to top-level row/postproc handshake.",
+    "Width-truncation warnings may affect large-N addressing but do not explain immediate directed mismatch and mat_ready stall at small N."
+  ],
+  "architecture_change_required": false,
+  "additional_evidence_requested": []
+}

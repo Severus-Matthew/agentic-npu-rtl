@@ -1,0 +1,9 @@
+{
+  "run_id": "run-20260916-084352-50e490",
+  "request": "Design a small clocked unsigned adder. Each accepted input transaction carries two 8-bit operands and produces their exact 9-bit sum. Use one shared input valid/ready handshake and one output valid/ready handshake, a single-entry output register, active-low synchronous reset, and one-cycle latency without stalls. Hold output stable under backpressure. Reset discards pending work and deasserts output valid. Use one top module, no optional modes or runtime configuration.",
+  "model": "gpt-5.3-codex",
+  "created": "2026-09-16T08:43:52.888608+00:00",
+  "status": "FAILED",
+  "verification_only": true,
+  "exit_code": 2
+}

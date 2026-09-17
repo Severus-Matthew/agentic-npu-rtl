@@ -1,0 +1,16 @@
+{"stage": "architect", "phase": "started", "time": "2026-09-11T22:07:26.535538+00:00"}
+{"stage": "architect", "phase": "finished", "time": "2026-09-11T22:08:03.633269+00:00", "status": null, "history": [{"stage": "architect", "status": "READY", "architecture_version": 1, "revision": false}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T22:08:03.636220+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T22:08:28.029218+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "RTL_GENERATED", "architecture_version": 1, "repair_iteration": 0, "ppa_iteration": 0, "files": ["mv_npu_top.sv", "ctrl_fsm.sv", "input_router.sv", "x_buffer_mem.sv", "mac16_core.sv", "postproc_unit.sv", "output_if.sv"]}]}
+{"stage": "verifier", "phase": "started", "time": "2026-09-11T22:08:28.031871+00:00"}
+{"stage": "verifier", "phase": "finished", "time": "2026-09-11T22:08:49.861686+00:00", "status": null, "history": [{"stage": "verifier_generation", "status": "VERIFICATION_READY", "architecture_version": 1, "repair_iteration": 0, "semantic_retry": false}]}
+{"stage": "verification_tools", "phase": "started", "time": "2026-09-11T22:08:49.864218+00:00"}
+{"stage": "verification_tools", "phase": "finished", "time": "2026-09-11T22:09:00.650506+00:00", "status": "REPAIR_REQUIRED", "history": [{"stage": "deterministic_verification", "status": "SIMULATION_FAILURE", "failure_class": "UNKNOWN"}]}
+{"stage": "debugger", "phase": "started", "time": "2026-09-11T22:09:00.653210+00:00"}
+{"stage": "debugger", "phase": "finished", "time": "2026-09-11T22:09:09.905348+00:00", "status": null, "history": [{"stage": "debugger", "status": "REPAIR_PLAN_READY", "failure_class": "UNKNOWN", "repair_iteration_before": 0, "repair_iteration_after": 1, "affected_modules": ["mv_npu_top", "ctrl_fsm"]}]}
+{"stage": "rtl_generator", "phase": "started", "time": "2026-09-11T22:09:09.907690+00:00"}
+{"stage": "rtl_generator", "phase": "finished", "time": "2026-09-11T22:09:14.438231+00:00", "status": null, "history": [{"stage": "rtl_generator", "status": "REPAIR_BLOCKED", "architecture_version": 1, "repair_iteration": 1, "ppa_iteration": 0, "files": []}]}
+{"stage": "failed", "phase": "started", "time": "2026-09-11T22:09:14.441254+00:00"}
+{"stage": "failed", "phase": "finished", "time": "2026-09-11T22:09:14.538678+00:00", "status": "FAILED", "history": [{"stage": "orchestrator", "status": "FAILED", "reason": "REPAIR_PLAN_READY"}]}
+{"stage": "final_report", "phase": "started", "time": "2026-09-11T22:09:14.540918+00:00"}
+{"stage": "final_report", "phase": "finished", "time": "2026-09-11T22:09:14.558193+00:00", "status": "FAILED"}

@@ -1,0 +1,91 @@
+{
+  "debugger_status": "EVIDENCE_INSUFFICIENT",
+  "diagnosis": {
+    "failure_class": "SIMULATION_TIMEOUT",
+    "root_cause": "Undetermined: original termination timing and execution position remain unavailable. The 100 us diagnostic cap necessarily interrupts the exhaustive phase, which alone requires 655.36 us. No architecture change is required or requested.",
+    "root_cause_domain": "TESTBENCH_INFRASTRUCTURE",
+    "cause_ranking": [
+      {
+        "domain": "RTL_DESIGN",
+        "priority": 1,
+        "assessment": "UNRESOLVED",
+        "evidence": "RTL implements the frozen arithmetic, readiness, reset, and slot transitions. Probe snapshots show correct replacement near 100 us, but do not establish the original timeout's execution position."
+      },
+      {
+        "domain": "GOLDEN_MODEL",
+        "priority": 2,
+        "assessment": "ELIMINATED",
+        "evidence": "adder_model.add performs exact bounded Python integer addition with no blocking operations."
+      },
+      {
+        "domain": "LLM_OPERATION_ASSERTION",
+        "priority": 3,
+        "assessment": "ELIMINATED",
+        "evidence": "Visible assertions follow contracted slot accounting and pre/post-edge semantics. No operation assertion failure is reported; the probe traceback identifies its timeout wrapper."
+      },
+      {
+        "domain": "TESTBENCH_INFRASTRUCTURE",
+        "priority": 4,
+        "assessment": "UNRESOLVED",
+        "evidence": "Wall-time configuration, elapsed time, final original simulation timestamp, and recording-runtime costs are missing. This is a provisional investigation domain, not an established lower-priority root cause."
+      },
+      {
+        "domain": "CONTRACT_GENERATED_PROTOCOL_ASSERTION",
+        "priority": 5,
+        "assessment": "ELIMINATED",
+        "evidence": "Visible bound assertions enforce stall stability through release and suspend it on reset, consistent with the contract. No protocol assertion failure is reported."
+      }
+    ],
+    "confidence": 0.45,
+    "first_divergence": {
+      "cycle": null,
+      "signal_or_output": "Regression completion",
+      "expected": "Complete exhaustive_and_protocol within configured regression limits.",
+      "observed": "Original TIMEOUT with zero completed tests and no reported assertion failure; no functional divergence is visible."
+    },
+    "evidence": [
+      {
+        "source": "verification_evidence.verilator; verification_evidence.cocotb",
+        "observation": "Lint returned 0; simulation built and started exhaustive_and_protocol before reporting TIMEOUT.",
+        "relevance": "The first authoritative failure is regression timeout, not compilation or the Edge deprecation warning."
+      },
+      {
+        "source": "additional_diagnostics.result.stdout",
+        "observation": "At 99981 ns, operands 38 and 221 yield 259; at 99991 ns, 38 and 222 yield 260, with both channels valid and ready.",
+        "relevance": "The probe is progressing rather than handshake-deadlocked near its cap."
+      },
+      {
+        "source": "frozen_tests/test_unsigned_adder.py; additional_diagnostics.result.stdout",
+        "observation": "The exhaustive loop requires 65,536 cycles at 10 ns. The diagnostic wrapper raises SimTimeoutError at exactly 100000 ns; the frozen test permits 2 ms.",
+        "relevance": "Diagnostic cap expiration does not prove an RTL or verifier defect."
+      },
+      {
+        "source": "prior_diagnosis; history",
+        "observation": "Prior diagnosis requested original-run timing and runtime evidence; the supplied evidence still lacks these details.",
+        "relevance": "Another identically capped probe cannot resolve the original timeout."
+      }
+    ],
+    "affected_modules": [],
+    "alternative_hypotheses": [
+      "Original execution exhausted its wall-time budget while progressing.",
+      "Coverage or stimulus-ledger recording caused substantial execution overhead.",
+      "An original-run runtime or scheduler stall occurred outside the supplied observations."
+    ],
+    "additional_evidence_requested": [
+      "Provide original configured wall timeout, elapsed wall time, termination reason/return status, and last simulation timestamp.",
+      "Provide original final all-interface snapshots and latest oracle-checked stimulus records with timestamps.",
+      "Provide coverage/stimulus-recording runtime source and bounded wall-time stack/profile samples; identify instrumentation differences between original execution and the probe."
+    ]
+  },
+  "repair_plan": null,
+  "history": [
+    {
+      "stage": "debugger",
+      "status": "EVIDENCE_INSUFFICIENT",
+      "failure_class": "SIMULATION_TIMEOUT",
+      "repair_iteration_before": 0,
+      "repair_iteration_after": 0,
+      "affected_modules": []
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "orchestration_error": "debugger: AgentRuntimeError: Debugger diagnosed undeclared modules: ['test_fc_accelerator.py']",
+  "status": "FAILED",
+  "errors": [
+    "AgentRuntimeError: Debugger diagnosed undeclared modules: ['test_fc_accelerator.py']"
+  ],
+  "history": [
+    {
+      "stage": "debugger",
+      "status": "ERROR",
+      "error": "Debugger diagnosed undeclared modules: ['test_fc_accelerator.py']"
+    }
+  ]
+}

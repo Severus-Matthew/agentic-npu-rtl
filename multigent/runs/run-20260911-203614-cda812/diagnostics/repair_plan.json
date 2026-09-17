@@ -1,0 +1,47 @@
+{
+  "action": "PATCH",
+  "affected_modules": [
+    "mv_npu_top"
+  ],
+  "protected_modules": [
+    "mv_ctrl_fsm",
+    "mv_vec_buffer",
+    "mv_mac16_core",
+    "mv_postproc",
+    "mv_stream_if"
+  ],
+  "protected_interfaces": [
+    "clk",
+    "rst_n",
+    "cmd_valid",
+    "cmd_ready",
+    "cmd_data",
+    "vec_valid",
+    "vec_ready",
+    "vec_data",
+    "mat_valid",
+    "mat_ready",
+    "mat_data",
+    "bias_valid",
+    "bias_ready",
+    "bias_data",
+    "out_valid",
+    "out_ready",
+    "out_data",
+    "status_busy",
+    "status_error"
+  ],
+  "recommended_change": "In mv_npu_top, refactor row-completion handoff to a strict one-entry decoupling buffer between compute and postproc: (1) capture final_row_sum only on accepted last matrix chunk, (2) drive pp_in_valid solely from buffered-valid state, (3) clear buffered-valid only on confirmed postproc input acceptance event, and (4) make mat_ready depend on compute phase/resource availability without circular dependence that can permanently block matrix ingress. Ensure bias-disabled rows are accepted without requiring bias_valid, and preserve transfer-on-ready&&valid semantics on all channels.",
+  "do_not_change": [
+    "Do not modify frozen tests/reference artifacts.",
+    "Do not alter architecture behavior, arithmetic semantics, or lane packing conventions.",
+    "Do not change top-level port list, widths, or ready/valid protocol definitions.",
+    "Do not edit protected modules; localize fix to mv_npu_top integration/control logic."
+  ],
+  "expected_side_effects": [
+    "Eliminates mat_ready timeout in randomized matrix ingress.",
+    "Stabilizes row-to-postproc transfer timing under out_ready backpressure.",
+    "May expose any remaining arithmetic-only defects after handshake repair; requires full rerun."
+  ],
+  "regression_required": "FULL"
+}

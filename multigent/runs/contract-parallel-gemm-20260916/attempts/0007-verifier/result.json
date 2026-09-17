@@ -1,0 +1,1399 @@
+{
+  "verifier_status": "ARCHITECTURE_CONFLICT",
+  "verifier_result": {
+    "status": "ARCHITECTURE_CONFLICT",
+    "summary": "Frozen artifacts do not define a complete externally observable contract for illegal wrong-channel 'valid in non-owning phase' when ready=0 versus ready=1 gating needed to build a single deterministic oracle/checker for mandated illegal tests and phase-consumption assertions.",
+    "reference_files": [],
+    "test_files": [],
+    "operation_coverage": [],
+    "verification_plan": {
+      "top_module": "gemm8x8x32_top",
+      "test_modules": [],
+      "test_categories": [],
+      "randomized_test_count": 0,
+      "seed": 12345,
+      "timeout_seconds": 120,
+      "regression_groups": {
+        "smoke": [],
+        "targeted": [],
+        "full": []
+      },
+      "pass_criteria": "N/A until architecture conflict resolved",
+      "protocol_assumptions": []
+    },
+    "architecture_conflict": {
+      "category": "observable_illegal_transfer_semantics",
+      "affected_modules": [
+        "gemm8x8x32_top",
+        "gemm_ctrl_fsm"
+      ],
+      "issue": "Acceptance criteria require 'wrong input channel valid in non-owning phase each produce one-cycle error'. Architecture error_behavior says illegal phase error is evaluated only on attempted transfer events (ready&&valid), and when not in owning phase that channel ready is specified low. These statements imply valid-only while ready=0 should not error, conflicting with required illegal test expectation if interpreted as valid assertion alone.",
+      "evidence": "(1) architecture.control.error_behavior: error only on attempted transfer events (ready&&valid). (2) interface backpressure per channel: ready high only in owning phase, thus wrong-channel ready=0 outside phase. (3) acceptance_criteria.verification explicitly demands wrong-channel valid in non-owning phase produce error pulse.",
+      "requested_architect_decision": "Clarify whether illegal wrong-channel condition is (A) valid&&ready attempted transfer only, or (B) valid assertion in forbidden phase regardless of ready. If (A), define required stimulus form to make it representable; if (B), amend transfer-rule exception explicitly."
+    },
+    "known_verification_gaps": [
+      "Executable TB/oracle generation blocked pending single interpretation of illegal wrong-channel error trigger."
+    ]
+  },
+  "verification_plan": {
+    "top_module": "gemm8x8x32_top",
+    "test_modules": [],
+    "test_categories": [],
+    "randomized_test_count": 0,
+    "seed": 12345,
+    "timeout_seconds": 120,
+    "regression_groups": {
+      "smoke": [],
+      "targeted": [],
+      "full": []
+    },
+    "pass_criteria": "N/A until architecture conflict resolved",
+    "protocol_assumptions": []
+  },
+  "architecture_conflict": {
+    "category": "observable_illegal_transfer_semantics",
+    "affected_modules": [
+      "gemm8x8x32_top",
+      "gemm_ctrl_fsm"
+    ],
+    "issue": "Acceptance criteria require 'wrong input channel valid in non-owning phase each produce one-cycle error'. Architecture error_behavior says illegal phase error is evaluated only on attempted transfer events (ready&&valid), and when not in owning phase that channel ready is specified low. These statements imply valid-only while ready=0 should not error, conflicting with required illegal test expectation if interpreted as valid assertion alone.",
+    "evidence": "(1) architecture.control.error_behavior: error only on attempted transfer events (ready&&valid). (2) interface backpressure per channel: ready high only in owning phase, thus wrong-channel ready=0 outside phase. (3) acceptance_criteria.verification explicitly demands wrong-channel valid in non-owning phase produce error pulse.",
+    "requested_architect_decision": "Clarify whether illegal wrong-channel condition is (A) valid&&ready attempted transfer only, or (B) valid assertion in forbidden phase regardless of ready. If (A), define required stimulus form to make it representable; if (B), amend transfer-rule exception explicitly."
+  },
+  "verification_context": {
+    "user_request": "Design an 8 x 8 x 32 GEMM accelerator with signed int8 inputs, int32 wraparound accumulation, per-column int32 bias and ReLU. Use a simple sequential implementation with streaming inputs and outputs and explicit ready/valid handshakes. No optional modes. Fully specify reset and transaction ordering.",
+    "verification_policy": {
+      "exact_integer_match_when_applicable": true,
+      "randomized_transactions_minimum": 100,
+      "require_reset_tests": true,
+      "require_backpressure_tests_when_applicable": true,
+      "regression_wall_timeout_seconds_minimum": 120,
+      "require_completion_behavior_tests_when_defined": true,
+      "require_error_behavior_tests_when_defined": true
+    },
+    "frozen_architecture": {
+      "architecture_contract": {
+        "design": {
+          "name": "gemm8x8x32_seq_int8_relu_bias",
+          "version": "1.0",
+          "description": "Sequential fixed-shape GEMM accelerator for C=ReLU(AxB+bias) with int8 inputs and int32 wraparound accumulation."
+        },
+        "operations": [
+          {
+            "name": "gemm_core",
+            "kind": "matrix_multiply",
+            "coverage_family": "matrix_multiply",
+            "coverage_family_source": "catalog",
+            "features": [
+              "dimensions",
+              "operand_values",
+              "accumulation",
+              "post_processing"
+            ],
+            "feature_extensions": [
+              "bias",
+              "activation",
+              "overflow_policy"
+            ],
+            "semantics": "For one job, compute 8x8 output matrix C where C[i,j]=ReLU(sum_{k=0..31}(A[i,k]*B[k,j]) + bias[j]). A and B elements are signed int8, multiplication is signed, product is sign-extended to int32 before accumulation, accumulation is int32 two's-complement wraparound per add, bias add is int32 wraparound, ReLU outputs 0 when value<0 else value. Fixed dimensions, no optional modes.",
+            "inputs": [
+              "A_stream",
+              "B_stream",
+              "bias_stream"
+            ],
+            "outputs": [
+              "C_stream"
+            ]
+          }
+        ],
+        "data_types": [
+          {
+            "name": "int8_s",
+            "role": "A/B element",
+            "width_bits": 8,
+            "signed": true,
+            "representation": "two_complement",
+            "conversion_semantics": "No conversion on ingress payload; used directly as signed int8.",
+            "overflow_semantics": "N/A at storage type",
+            "rounding_semantics": "exact"
+          },
+          {
+            "name": "int32_s",
+            "role": "accumulator/bias/output element",
+            "width_bits": 32,
+            "signed": true,
+            "representation": "two_complement",
+            "conversion_semantics": "int8*int8 product sign-extended to int32 before add; ReLU compares signed int32.",
+            "overflow_semantics": "wraparound modulo 2^32 for accumulator and bias addition",
+            "rounding_semantics": "exact"
+          }
+        ],
+        "data_objects": [
+          {
+            "name": "A_stream",
+            "role": "matrix A elements in row-major order",
+            "data_type": "int8_s",
+            "dimensions": [
+              "M",
+              "K"
+            ],
+            "producer": "external",
+            "consumers": [
+              "gemm_core"
+            ],
+            "external": true
+          },
+          {
+            "name": "B_stream",
+            "role": "matrix B elements in row-major order over KxN",
+            "data_type": "int8_s",
+            "dimensions": [
+              "K",
+              "N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "gemm_core"
+            ],
+            "external": true
+          },
+          {
+            "name": "bias_stream",
+            "role": "per-column bias vector",
+            "data_type": "int32_s",
+            "dimensions": [
+              "N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "gemm_core"
+            ],
+            "external": true
+          },
+          {
+            "name": "C_stream",
+            "role": "result matrix elements in row-major order",
+            "data_type": "int32_s",
+            "dimensions": [
+              "M",
+              "N"
+            ],
+            "producer": "gemm_core",
+            "consumers": [
+              "external"
+            ],
+            "external": true
+          }
+        ],
+        "dimensions": [
+          {
+            "name": "M",
+            "semantic": "output rows; fixed runtime value 8",
+            "minimum": 8,
+            "maximum": 8,
+            "runtime_configurable": false,
+            "bound_parameter": "M_FIXED"
+          },
+          {
+            "name": "N",
+            "semantic": "output columns; fixed runtime value 8",
+            "minimum": 8,
+            "maximum": 8,
+            "runtime_configurable": false,
+            "bound_parameter": "N_FIXED"
+          },
+          {
+            "name": "K",
+            "semantic": "reduction dimension; fixed runtime value 32",
+            "minimum": 32,
+            "maximum": 32,
+            "runtime_configurable": false,
+            "bound_parameter": "K_FIXED"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "M_FIXED",
+            "default_value": "8",
+            "legality_constraint": "integer == 8",
+            "description": "Fixed GEMM M dimension"
+          },
+          {
+            "name": "N_FIXED",
+            "default_value": "8",
+            "legality_constraint": "integer == 8",
+            "description": "Fixed GEMM N dimension"
+          },
+          {
+            "name": "K_FIXED",
+            "default_value": "32",
+            "legality_constraint": "integer == 32",
+            "description": "Fixed GEMM K dimension"
+          }
+        ],
+        "compute": {
+          "organization": "single-MAC iterative datapath with nested counters",
+          "dataflow": "load A/B/bias to local buffers, then compute all outputs, then stream outputs",
+          "parallelism": "1 multiply-accumulate per cycle during compute phase",
+          "scheduling": "strictly sequential phased FSM"
+        },
+        "storage": [
+          {
+            "name": "a_buf",
+            "stored_objects": [
+              "A_stream"
+            ],
+            "capacity_expression": "M_FIXED*K_FIXED elements of int8",
+            "capacity_at_default_parameters": 256,
+            "access_pattern": "write sequential during A load; read by address i*K_FIXED+k during compute",
+            "port_requirements": "1R/1W logically (single-port time-multiplex acceptable by phase separation)",
+            "implementation_hint": "register file or inferred RAM",
+            "reuse_semantics": "each A element reused across all N outputs of its row during compute",
+            "lifetime": "from A load completion until compute completion"
+          },
+          {
+            "name": "b_buf",
+            "stored_objects": [
+              "B_stream"
+            ],
+            "capacity_expression": "K_FIXED*N_FIXED elements of int8",
+            "capacity_at_default_parameters": 256,
+            "access_pattern": "write sequential during B load; read by address k*N_FIXED+j during compute",
+            "port_requirements": "1R/1W logically (single-port time-multiplex acceptable by phase separation)",
+            "implementation_hint": "register file or inferred RAM",
+            "reuse_semantics": "each B element reused across all M outputs of its column during compute",
+            "lifetime": "from B load completion until compute completion"
+          },
+          {
+            "name": "bias_buf",
+            "stored_objects": [
+              "bias_stream"
+            ],
+            "capacity_expression": "N_FIXED elements of int32",
+            "capacity_at_default_parameters": 8,
+            "access_pattern": "write sequential during bias load; read by index j at start of each output dot-product",
+            "port_requirements": "1R/1W logically",
+            "implementation_hint": "register array",
+            "reuse_semantics": "each bias reused for every row output in its column",
+            "lifetime": "from bias load completion until compute completion"
+          },
+          {
+            "name": "c_buf",
+            "stored_objects": [
+              "C_stream"
+            ],
+            "capacity_expression": "M_FIXED*N_FIXED elements of int32",
+            "capacity_at_default_parameters": 64,
+            "access_pattern": "write sequential per computed output; read sequential for output streaming",
+            "port_requirements": "1R/1W logically; phase-separated",
+            "implementation_hint": "register file or inferred RAM",
+            "reuse_semantics": "temporary retention between compute and output phases",
+            "lifetime": "from first computed output until final output handshake"
+          }
+        ],
+        "pipeline": [
+          {
+            "stage": "ingress",
+            "responsibility": "accept command then A/B/bias streams via ready/valid into local buffers",
+            "registered": true,
+            "valid_behavior": "input transfers occur only on ready&&valid",
+            "stall_behavior": "when not ready, sender must hold valid/payload stable; DUT state unchanged"
+          },
+          {
+            "stage": "compute",
+            "responsibility": "iterative MAC, bias add, ReLU, store C element",
+            "registered": true,
+            "valid_behavior": "internal step each cycle when not reset",
+            "stall_behavior": "no external backpressure in compute; stage runs until done or reset"
+          },
+          {
+            "stage": "egress",
+            "responsibility": "stream C buffer via ready/valid",
+            "registered": true,
+            "valid_behavior": "output transfer occurs only on ready&&valid",
+            "stall_behavior": "hold out_valid and payload stable while out_ready=0"
+          }
+        ],
+        "control": {
+          "strategy": "single FSM controlling phase progression IDLE->LOAD_A->LOAD_B->LOAD_BIAS->COMPUTE->OUTPUT->DONE->IDLE",
+          "state_progression": "advance only when phase transfer/count complete; compute advances per cycle by counters i,j,k",
+          "counters": [
+            "a_load_count 0..M_FIXED*K_FIXED",
+            "b_load_count 0..K_FIXED*N_FIXED",
+            "bias_load_count 0..N_FIXED",
+            "i 0..M_FIXED-1",
+            "j 0..N_FIXED-1",
+            "k 0..K_FIXED-1",
+            "out_count 0..M_FIXED*N_FIXED"
+          ],
+          "error_behavior": "Protocol violation is evaluated only on attempted transfer events (ready&&valid), not on valid-only observation while ready=0. Error pulses for one cycle when: (a) cmd transfer occurs with cmd_payload!=1, or (b) any input transfer occurs on a channel whose phase is inactive, or (c) a command transfer occurs while not IDLE. In all cases the illegal transfer is ignored for state/count progression and FSM remains in current legal state.",
+          "error_recovery": "automatic recovery by remaining in current legal state; next legal handshake proceeds without reset"
+        },
+        "reset": {
+          "style": "synchronous",
+          "polarity": "active_low",
+          "required_state": "FSM=IDLE, busy=0, completion=0, error=0, all channel ready outputs low (cmd_ready=0, a_ready=0, b_ready=0, bias_ready=0), valid outputs=0, counters/pointers reset to 0, internal partial-job data treated invalid"
+        },
+        "latency_model": "Variable due to ready/valid stalls. Stall-free legal job timing uses cycle count from first cycle after accepted final bias beat to compute_done pulse inclusive with 1-cycle synchronous operand reads: per output element, 1 bias-read issue cycle + 1 bias-capture/init cycle + K_FIXED MAC iterations each with (1 address-issue cycle + 1 MAC-update cycle) + 1 finalize/write cycle = (2*K_FIXED + 3) cycles; total compute cycles = M_FIXED*N_FIXED*(2*K_FIXED + 3) = 4288 at defaults. Full stall-free job latency components: 1 cmd beat +256 A beats +256 B beats +8 bias beats +4288 compute cycles +64 output beats +1 completion pulse cycle. Reset aborts in-flight job and no completion for aborted job.",
+        "architectural_invariants": [
+          "Exactly one job in flight; no overlap or queueing.",
+          "Accepted command snapshots fixed dimensions implicitly (8,8,32).",
+          "No operand transfer accepted outside its designated phase.",
+          "Output order is strict row-major C[0,0]..C[7,7].",
+          "Each accepted legal job produces exactly 64 output transfers and one completion pulse.",
+          "ready/valid transfer rule is globally ready&&valid; payload stability required under stall."
+        ],
+        "open_assumptions": [
+          "Single clock domain.",
+          "Command payload is 1-bit start token with value 1 as only legal encoding.",
+          "Host presents A then B then bias sections; no interleaving.",
+          "Illegal transfers are physically representable and reported by one-cycle error pulse."
+        ]
+      },
+      "interface_contract": {
+        "protocol": "ready_valid",
+        "clock": "clk",
+        "reset": "rst_n",
+        "channels": [
+          {
+            "name": "cmd_ch",
+            "direction": "input",
+            "protocol_profile": "ready_valid",
+            "purpose": "start one fixed-shape GEMM job",
+            "data_objects": [],
+            "metadata": [],
+            "framing": "single-beat command",
+            "ordering": "accepted only in IDLE",
+            "backpressure": "cmd_ready is forced low whenever rst_n=0; when rst_n=1, cmd_ready is high only in IDLE."
+          },
+          {
+            "name": "a_ch",
+            "direction": "input",
+            "protocol_profile": "ready_valid",
+            "purpose": "stream A matrix elements",
+            "data_objects": [
+              "A_stream"
+            ],
+            "metadata": [],
+            "framing": "exactly 256 beats per job",
+            "ordering": "row-major A[i,k] with i outer, k inner",
+            "backpressure": "a_ready is forced low whenever rst_n=0; when rst_n=1, a_ready is high only in LOAD_A."
+          },
+          {
+            "name": "b_ch",
+            "direction": "input",
+            "protocol_profile": "ready_valid",
+            "purpose": "stream B matrix elements",
+            "data_objects": [
+              "B_stream"
+            ],
+            "metadata": [],
+            "framing": "exactly 256 beats per job",
+            "ordering": "row-major over KxN: B[k,j] with k outer, j inner",
+            "backpressure": "b_ready is forced low whenever rst_n=0; when rst_n=1, b_ready is high only in LOAD_B."
+          },
+          {
+            "name": "bias_ch",
+            "direction": "input",
+            "protocol_profile": "ready_valid",
+            "purpose": "stream per-column bias",
+            "data_objects": [
+              "bias_stream"
+            ],
+            "metadata": [],
+            "framing": "exactly 8 beats per job",
+            "ordering": "bias[0]..bias[7]",
+            "backpressure": "bias_ready is forced low whenever rst_n=0; when rst_n=1, bias_ready is high only in LOAD_BIAS."
+          },
+          {
+            "name": "out_ch",
+            "direction": "output",
+            "protocol_profile": "ready_valid",
+            "purpose": "stream output C matrix",
+            "data_objects": [
+              "C_stream"
+            ],
+            "metadata": [
+              "out_last marks final beat"
+            ],
+            "framing": "64 beats per job with out_last=1 only on final beat",
+            "ordering": "row-major C[i,j] with i outer, j inner",
+            "backpressure": "producer holds valid/payload/last stable until out_ready"
+          }
+        ],
+        "signals": [
+          {
+            "name": "clk",
+            "role": "clock",
+            "semantic_class": null,
+            "channel": null,
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "rising-edge clock",
+            "reset_value": "0"
+          },
+          {
+            "name": "rst_n",
+            "role": "reset",
+            "semantic_class": null,
+            "channel": null,
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "active-low synchronous reset; when low, no channel transfer is accepted or emitted",
+            "reset_value": "0"
+          },
+          {
+            "name": "cmd_valid",
+            "role": "valid",
+            "semantic_class": null,
+            "channel": "cmd_ch",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "command beat valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "cmd_ready",
+            "role": "ready",
+            "semantic_class": null,
+            "channel": "cmd_ch",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "high only in IDLE when rst_n=1 and ready for new command",
+            "reset_value": "0"
+          },
+          {
+            "name": "cmd_payload",
+            "role": "payload",
+            "semantic_class": "command",
+            "channel": "cmd_ch",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "must be 1 for legal start command",
+            "reset_value": "0"
+          },
+          {
+            "name": "a_valid",
+            "role": "valid",
+            "semantic_class": null,
+            "channel": "a_ch",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "A element valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "a_ready",
+            "role": "ready",
+            "semantic_class": null,
+            "channel": "a_ch",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "high only in LOAD_A",
+            "reset_value": "0"
+          },
+          {
+            "name": "a_payload",
+            "role": "payload",
+            "semantic_class": "data",
+            "channel": "a_ch",
+            "direction": "input",
+            "width": "8",
+            "signed": true,
+            "semantic": "signed int8 A element",
+            "reset_value": "0"
+          },
+          {
+            "name": "b_valid",
+            "role": "valid",
+            "semantic_class": null,
+            "channel": "b_ch",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "B element valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "b_ready",
+            "role": "ready",
+            "semantic_class": null,
+            "channel": "b_ch",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "high only in LOAD_B",
+            "reset_value": "0"
+          },
+          {
+            "name": "b_payload",
+            "role": "payload",
+            "semantic_class": "data",
+            "channel": "b_ch",
+            "direction": "input",
+            "width": "8",
+            "signed": true,
+            "semantic": "signed int8 B element",
+            "reset_value": "0"
+          },
+          {
+            "name": "bias_valid",
+            "role": "valid",
+            "semantic_class": null,
+            "channel": "bias_ch",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "bias element valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "bias_ready",
+            "role": "ready",
+            "semantic_class": null,
+            "channel": "bias_ch",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "high only in LOAD_BIAS",
+            "reset_value": "0"
+          },
+          {
+            "name": "bias_payload",
+            "role": "payload",
+            "semantic_class": "data",
+            "channel": "bias_ch",
+            "direction": "input",
+            "width": "32",
+            "signed": true,
+            "semantic": "signed int32 bias element",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_valid",
+            "role": "valid",
+            "semantic_class": null,
+            "channel": "out_ch",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "output element valid",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_ready",
+            "role": "ready",
+            "semantic_class": null,
+            "channel": "out_ch",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "consumer ready",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_payload",
+            "role": "payload",
+            "semantic_class": "data",
+            "channel": "out_ch",
+            "direction": "output",
+            "width": "32",
+            "signed": true,
+            "semantic": "signed int32 ReLU output element",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_last",
+            "role": "last",
+            "semantic_class": "framing",
+            "channel": "out_ch",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "1 only on 64th accepted output transfer",
+            "reset_value": "0"
+          },
+          {
+            "name": "busy",
+            "role": "busy",
+            "semantic_class": null,
+            "channel": null,
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "busy=1 from the cycle of accepted legal command transfer through and including the cycle of the final accepted output transfer (final out_hs, out_last=1). busy deasserts in the immediately following cycle. completion pulses high for exactly that same following cycle (one-cycle pulse), then returns low.",
+            "reset_value": "0"
+          },
+          {
+            "name": "completion",
+            "role": "completion",
+            "semantic_class": null,
+            "channel": null,
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "one-cycle pulse in DONE state after final output transfer handshake",
+            "reset_value": "0"
+          },
+          {
+            "name": "error",
+            "role": "error",
+            "semantic_class": null,
+            "channel": null,
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "one-cycle pulse on illegal command encoding or illegal phase transfer attempt",
+            "reset_value": "0"
+          }
+        ],
+        "global_handshake_rules": {
+          "transfer_condition": "A channel transfer occurs iff ready && valid sampled high on rising clk and rst_n=1.",
+          "stall_behavior": "For every ready/valid channel, in every cycle with valid=1 and ready=0 and rst_n=1, the producer shall hold payload/metadata/last stable. Producer may keep valid asserted across arbitrary stall duration and may deassert valid before transfer; if it remains asserted, associated payload/metadata/last must remain unchanged until a transfer occurs or valid is deasserted. When rst_n=0, DUT outputs may synchronously drop to reset values and any pending non-transferred beat is aborted."
+        }
+      },
+      "module_manifest": {
+        "top": "gemm8x8x32_top",
+        "modules": [
+          {
+            "name": "gemm8x8x32_top",
+            "responsibility": "external interface binding and integration of control, buffers, compute, and output stream",
+            "dependencies": [
+              "gemm_ctrl_fsm",
+              "operand_buffer_bank",
+              "mac_sequencer",
+              "output_streamer"
+            ],
+            "parameters": [
+              "M_FIXED",
+              "N_FIXED",
+              "K_FIXED"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst_n",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "active-low synchronous reset"
+              },
+              {
+                "name": "cmd_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "cmd valid"
+              },
+              {
+                "name": "cmd_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "cmd ready"
+              },
+              {
+                "name": "cmd_payload",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "start token"
+              },
+              {
+                "name": "a_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "A valid"
+              },
+              {
+                "name": "a_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "A ready"
+              },
+              {
+                "name": "a_payload",
+                "direction": "input",
+                "width": "8",
+                "signed": true,
+                "semantics": "A data"
+              },
+              {
+                "name": "b_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "B valid"
+              },
+              {
+                "name": "b_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "B ready"
+              },
+              {
+                "name": "b_payload",
+                "direction": "input",
+                "width": "8",
+                "signed": true,
+                "semantics": "B data"
+              },
+              {
+                "name": "bias_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "bias valid"
+              },
+              {
+                "name": "bias_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "bias ready"
+              },
+              {
+                "name": "bias_payload",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "bias data"
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "output valid"
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "output ready"
+              },
+              {
+                "name": "out_payload",
+                "direction": "output",
+                "width": "32",
+                "signed": true,
+                "semantics": "output data"
+              },
+              {
+                "name": "out_last",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "output last"
+              },
+              {
+                "name": "busy",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "busy flag"
+              },
+              {
+                "name": "completion",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "completion pulse"
+              },
+              {
+                "name": "error",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "error pulse"
+              }
+            ]
+          },
+          {
+            "name": "gemm_ctrl_fsm",
+            "responsibility": "phase FSM, counters, handshake qualification, busy/completion/error generation",
+            "dependencies": [],
+            "parameters": [
+              "M_FIXED",
+              "N_FIXED",
+              "K_FIXED"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst_n",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "cmd_hs",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "cmd transfer pulse"
+              },
+              {
+                "name": "cmd_payload",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "command bit legality check"
+              },
+              {
+                "name": "a_hs",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "accepted A beat"
+              },
+              {
+                "name": "b_hs",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "accepted B beat"
+              },
+              {
+                "name": "bias_hs",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "accepted bias beat"
+              },
+              {
+                "name": "compute_done",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "compute phase done pulse"
+              },
+              {
+                "name": "out_hs",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "accepted output beat"
+              },
+              {
+                "name": "state_load_a",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "enable A load phase"
+              },
+              {
+                "name": "state_load_b",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "enable B load phase"
+              },
+              {
+                "name": "state_load_bias",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "enable bias load phase"
+              },
+              {
+                "name": "state_compute",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "enable compute phase"
+              },
+              {
+                "name": "state_output",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "enable output phase"
+              },
+              {
+                "name": "cmd_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "cmd ready"
+              },
+              {
+                "name": "a_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "A ready"
+              },
+              {
+                "name": "b_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "B ready"
+              },
+              {
+                "name": "bias_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "bias ready"
+              },
+              {
+                "name": "busy",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "busy level"
+              },
+              {
+                "name": "completion",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "one-cycle done pulse"
+              },
+              {
+                "name": "error",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "one-cycle error pulse"
+              }
+            ]
+          },
+          {
+            "name": "operand_buffer_bank",
+            "responsibility": "store A/B/bias/C arrays; provide compute read ports and output read port",
+            "dependencies": [],
+            "parameters": [
+              "M_FIXED",
+              "N_FIXED",
+              "K_FIXED"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "we_a",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "write enable A"
+              },
+              {
+                "name": "waddr_a",
+                "direction": "input",
+                "width": "8",
+                "signed": false,
+                "semantics": "A write addr 0..255"
+              },
+              {
+                "name": "wdata_a",
+                "direction": "input",
+                "width": "8",
+                "signed": true,
+                "semantics": "A write data"
+              },
+              {
+                "name": "we_b",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "write enable B"
+              },
+              {
+                "name": "waddr_b",
+                "direction": "input",
+                "width": "8",
+                "signed": false,
+                "semantics": "B write addr 0..255"
+              },
+              {
+                "name": "wdata_b",
+                "direction": "input",
+                "width": "8",
+                "signed": true,
+                "semantics": "B write data"
+              },
+              {
+                "name": "we_bias",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "write enable bias"
+              },
+              {
+                "name": "waddr_bias",
+                "direction": "input",
+                "width": "3",
+                "signed": false,
+                "semantics": "bias write addr 0..7"
+              },
+              {
+                "name": "wdata_bias",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "bias write data"
+              },
+              {
+                "name": "raddr_a",
+                "direction": "input",
+                "width": "8",
+                "signed": false,
+                "semantics": "compute/read addr A"
+              },
+              {
+                "name": "rdata_a",
+                "direction": "output",
+                "width": "8",
+                "signed": true,
+                "semantics": "A read data, 1-cycle sync read latency"
+              },
+              {
+                "name": "raddr_b",
+                "direction": "input",
+                "width": "8",
+                "signed": false,
+                "semantics": "compute/read addr B"
+              },
+              {
+                "name": "rdata_b",
+                "direction": "output",
+                "width": "8",
+                "signed": true,
+                "semantics": "B read data, 1-cycle sync read latency"
+              },
+              {
+                "name": "raddr_bias",
+                "direction": "input",
+                "width": "3",
+                "signed": false,
+                "semantics": "bias read addr"
+              },
+              {
+                "name": "rdata_bias",
+                "direction": "output",
+                "width": "32",
+                "signed": true,
+                "semantics": "bias read data, 1-cycle sync read latency"
+              },
+              {
+                "name": "we_c",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "write enable C result"
+              },
+              {
+                "name": "waddr_c",
+                "direction": "input",
+                "width": "6",
+                "signed": false,
+                "semantics": "C write addr 0..63"
+              },
+              {
+                "name": "wdata_c",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "C write data"
+              },
+              {
+                "name": "raddr_c",
+                "direction": "input",
+                "width": "6",
+                "signed": false,
+                "semantics": "output read addr"
+              },
+              {
+                "name": "rdata_c",
+                "direction": "output",
+                "width": "32",
+                "signed": true,
+                "semantics": "C read data, 1-cycle sync read latency"
+              }
+            ]
+          },
+          {
+            "name": "mac_sequencer",
+            "responsibility": "generate i/j/k traversal, perform signed MAC with wrap, bias add, ReLU, and write C",
+            "dependencies": [
+              "operand_buffer_bank"
+            ],
+            "parameters": [
+              "M_FIXED",
+              "N_FIXED",
+              "K_FIXED"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst_n",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "enable_compute",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "active during compute phase"
+              },
+              {
+                "name": "raddr_a",
+                "direction": "output",
+                "width": "8",
+                "signed": false,
+                "semantics": "A read addr"
+              },
+              {
+                "name": "rdata_a",
+                "direction": "input",
+                "width": "8",
+                "signed": true,
+                "semantics": "A read data"
+              },
+              {
+                "name": "raddr_b",
+                "direction": "output",
+                "width": "8",
+                "signed": false,
+                "semantics": "B read addr"
+              },
+              {
+                "name": "rdata_b",
+                "direction": "input",
+                "width": "8",
+                "signed": true,
+                "semantics": "B read data"
+              },
+              {
+                "name": "raddr_bias",
+                "direction": "output",
+                "width": "3",
+                "signed": false,
+                "semantics": "bias read addr"
+              },
+              {
+                "name": "rdata_bias",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "bias read data"
+              },
+              {
+                "name": "we_c",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "C write enable pulse when one output finalized"
+              },
+              {
+                "name": "waddr_c",
+                "direction": "output",
+                "width": "6",
+                "signed": false,
+                "semantics": "C write addr row-major"
+              },
+              {
+                "name": "wdata_c",
+                "direction": "output",
+                "width": "32",
+                "signed": true,
+                "semantics": "C write data after ReLU"
+              },
+              {
+                "name": "compute_done",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "one-cycle pulse after C[63] written"
+              }
+            ]
+          },
+          {
+            "name": "output_streamer",
+            "responsibility": "read C buffer and emit out_valid/out_payload/out_last under backpressure",
+            "dependencies": [
+              "operand_buffer_bank"
+            ],
+            "parameters": [
+              "M_FIXED",
+              "N_FIXED",
+              "K_FIXED"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "clock"
+              },
+              {
+                "name": "rst_n",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "reset"
+              },
+              {
+                "name": "enable_output",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "active during output phase"
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "sink ready"
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "source valid"
+              },
+              {
+                "name": "out_payload",
+                "direction": "output",
+                "width": "32",
+                "signed": true,
+                "semantics": "C data"
+              },
+              {
+                "name": "out_last",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "final beat marker"
+              },
+              {
+                "name": "out_hs",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "accepted output beat pulse"
+              },
+              {
+                "name": "raddr_c",
+                "direction": "output",
+                "width": "6",
+                "signed": false,
+                "semantics": "C read addr"
+              },
+              {
+                "name": "rdata_c",
+                "direction": "input",
+                "width": "32",
+                "signed": true,
+                "semantics": "C read data"
+              }
+            ]
+          }
+        ]
+      },
+      "acceptance_criteria": {
+        "functional": [
+          "Given one legal command and exact required operand counts, output equals software oracle C=ReLU(AxB+bias) with int32 wraparound on accumulation and bias add.",
+          "A stream acceptance order must be exactly 256 row-major A beats, then 256 row-major B beats, then 8 bias beats; early/late wrong-channel valid causes error pulse and no phase advance.",
+          "Output stream emits exactly 64 beats row-major; out_last asserted only on beat 64.",
+          "K recurrence correctness: accumulator initialized to 0, updated exactly for k=0..31 once each; K=32 fixed case no double count.",
+          "Completion pulses exactly once after final output handshake of a legal job; no completion for reset-aborted job.",
+          "Mandatory stall-free latency check: for a legal job with no channel stalls (all required valids and readies asserted whenever applicable), total cycles from accepted cmd transfer cycle to completion pulse cycle inclusive shall equal 4874 at defaults (1 cmd + 256 A + 256 B + 8 bias + 4288 compute + 64 output + 1 completion), and compute phase cycles from first cycle after accepted final bias beat to compute_done pulse inclusive shall equal 4288."
+        ],
+        "verification": [
+          "Minimum 100 randomized legal jobs with random int8 A/B and int32 bias, randomized out_ready and randomized input valid stalls.",
+          "Reset tests: reset in IDLE, during each load phase, during compute, and during output; verify abort semantics and no ghost outputs.",
+          "Backpressure tests on all ready/valid channels: payload/last stability while stalled and correct resume edge.",
+          "Illegal behavior tests: cmd_payload=0 when cmd handshake, command valid while busy, and wrong input channel valid in non-owning phase each produce one-cycle error and recover to continue legal operation.",
+          "Ordering test for pending next command while busy: cmd_ready low; source may hold cmd_valid high; acceptance occurs on first cycle returning to IDLE with cmd_ready high and valid high."
+        ],
+        "rtl": [
+          "RTL must be synthesizable SystemVerilog only; no real/shortreal/delay/class/force-release constructs.",
+          "Single clock synchronous design with active-low synchronous reset behavior matching contract.",
+          "No combinational loops on ready/valid paths; registered control state and counters.",
+          "All declared top-level and inter-module ports implemented with matching widths/sign semantics and 1-cycle memory read latency assumptions honored."
+        ],
+        "fpga_handoff": [
+          "Provide Vivado synthesis/implementation reports only from deterministic tool runs after verification passes.",
+          "Do not estimate or fabricate Fmax/area/power/utilization; report only tool-produced metrics.",
+          "Deliver report artifacts conforming to multigent/schemas/synthesis_result.schema.json.",
+          "Handoff must include exact RTL commit hash and constraint files used for deterministic reproduction."
+        ]
+      }
+    },
+    "execution_configuration": {
+      "elaboration": "declared_defaults",
+      "parameter_overrides": {},
+      "declared_parameter_defaults": {
+        "M_FIXED": "8",
+        "N_FIXED": "8",
+        "K_FIXED": "32"
+      }
+    },
+    "provenance": {
+      "includes_generated_rtl": false,
+      "includes_rtl_generator_output": false
+    }
+  },
+  "verifier_review_status": "PENDING",
+  "verifier_review_result": null,
+  "verifier_review_hashes": {},
+  "history": [
+    {
+      "stage": "verifier_generation",
+      "status": "ARCHITECTURE_CONFLICT",
+      "architecture_version": 3,
+      "repair_iteration": 0,
+      "semantic_retry": false
+    }
+  ]
+}

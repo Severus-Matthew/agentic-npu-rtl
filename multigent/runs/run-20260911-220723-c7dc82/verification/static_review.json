@@ -1,0 +1,5 @@
+{
+  "status": "ADVISORY_ONLY",
+  "findings": [],
+  "limitation": "Static signal references do not prove executed coverage or DUT dataflow. Functional simulation is still required."
+}

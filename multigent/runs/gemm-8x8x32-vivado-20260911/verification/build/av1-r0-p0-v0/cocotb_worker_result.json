@@ -1,0 +1,14 @@
+{
+  "stage": "cocotb_regression",
+  "status": "SIMULATION_FAILURE",
+  "failure_class": "UNKNOWN",
+  "tests": 0,
+  "failures": 0,
+  "seed": 202611,
+  "top_module": "gemm8x8x32_bias_relu_top",
+  "test_modules": [
+    "test_gemm8x8x32_bias_relu"
+  ],
+  "results_xml": "/u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/verification/build/av1-r0-p0-v0/results.xml",
+  "worker_error": "results unavailable: ERROR: Simulation terminated abnormally. Results file /u/mjha1/agentic-npu-rtl/multigent/runs/gemm-8x8x32-vivado-20260911/verification/build/av1-r0-p0-v0/results.xml not found.; simulation="
+}

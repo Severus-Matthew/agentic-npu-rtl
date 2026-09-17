@@ -1,0 +1,296 @@
+design:
+  name: fc_tiled_gemm_relu
+  version: '1.1'
+  description: Buffered 8x8 tiled INT8 fully connected engine with INT32 accumulation,
+    bias addition, and ReLU.
+operations:
+- name: gemm
+  kind: tiled_matrix_multiplication
+  semantics: 'For m=0..M-1,n=0..N-1, accumulate k=0..K-1 in ascending order: acc=wrap32(acc+signed(A[m,k])*signed(W[k,n])).
+    Mandatory.'
+  inputs:
+  - activations
+  - weights
+  outputs:
+  - dot_accumulators
+- name: bias_add
+  kind: elementwise_add
+  semantics: biased[m,n]=wrap32(dot_accumulators[m,n]+bias[n]). Mandatory.
+  inputs:
+  - dot_accumulators
+  - bias
+  outputs:
+  - biased_results
+- name: relu
+  kind: elementwise_activation
+  semantics: results[m,n]=0 when biased_results[m,n]<0, otherwise biased_results[m,n].
+    Mandatory.
+  inputs:
+  - biased_results
+  outputs:
+  - results
+data_types:
+- name: int8_element
+  role: activation and weight element
+  width_bits: 8
+  signed: true
+  representation: Two's-complement integer.
+  conversion_semantics: Sign-extended before multiplication.
+  overflow_semantics: No input arithmetic.
+  rounding_semantics: Exact integer.
+- name: int32_element
+  role: accumulator, bias, and result element
+  width_bits: 32
+  signed: true
+  representation: Two's-complement integer.
+  conversion_semantics: INT8 products are sign-extended to 32 bits.
+  overflow_semantics: Addition wraps modulo 2^32.
+  rounding_semantics: Exact integer.
+data_objects:
+- name: activations
+  role: Matrix A
+  data_type: int8_element
+  dimensions:
+  - M
+  - K
+  producer: external
+  consumers:
+  - gemm
+  external: true
+- name: weights
+  role: Matrix W
+  data_type: int8_element
+  dimensions:
+  - K
+  - N
+  producer: external
+  consumers:
+  - gemm
+  external: true
+- name: bias
+  role: Per-output-column bias vector
+  data_type: int32_element
+  dimensions:
+  - N
+  producer: external
+  consumers:
+  - bias_add
+  external: true
+- name: dot_accumulators
+  role: GEMM result before bias
+  data_type: int32_element
+  dimensions:
+  - M
+  - N
+  producer: gemm
+  consumers:
+  - bias_add
+  external: false
+- name: biased_results
+  role: Result after bias
+  data_type: int32_element
+  dimensions:
+  - M
+  - N
+  producer: bias_add
+  consumers:
+  - relu
+  external: false
+- name: results
+  role: ReLU output matrix
+  data_type: int32_element
+  dimensions:
+  - M
+  - N
+  producer: relu
+  consumers:
+  - external
+  external: true
+dimensions:
+- name: M
+  semantic: Activation rows; runtime legal range 1..MAX_M, default-build maximum 64.
+  minimum: 1
+  maximum: 64
+  runtime_configurable: true
+  bound_parameter: MAX_M
+- name: N
+  semantic: Weight/output columns; runtime legal range 1..MAX_N, default-build maximum
+    64.
+  minimum: 1
+  maximum: 64
+  runtime_configurable: true
+  bound_parameter: MAX_N
+- name: K
+  semantic: Reduction length; runtime legal range 1..MAX_K, default-build maximum
+    64.
+  minimum: 1
+  maximum: 64
+  runtime_configurable: true
+  bound_parameter: MAX_K
+parameters:
+- name: ARRAY_ROWS
+  default_value: '8'
+  legality_constraint: Exactly 8.
+  description: Compute-array rows.
+- name: ARRAY_COLS
+  default_value: '8'
+  legality_constraint: Exactly 8.
+  description: Compute-array columns.
+- name: MAX_M
+  default_value: '64'
+  legality_constraint: Integer >=1 and MAX_M*MAX_K >=1.
+  description: Compile-time M bound.
+- name: MAX_N
+  default_value: '64'
+  legality_constraint: Integer >=1 and MAX_K*MAX_N >=1.
+  description: Compile-time N bound.
+- name: MAX_K
+  default_value: '64'
+  legality_constraint: Integer >=1.
+  description: Compile-time K bound.
+compute:
+  organization: 8x8 array of signed INT8 multipliers with 64 independent INT32 accumulator
+    registers.
+  dataflow: For each row-major output tile, activation values are broadcast across
+    columns and weight values across rows. One K slice updates all 64 accumulators
+    per compute cycle.
+  parallelism: Up to 64 products and 64 accumulator additions per compute-step cycle;
+    inactive edge-tile rows and columns are masked.
+  scheduling: Load complete A, W, and bias objects sequentially; compute tiles in
+    tile-row-major order; initialize one cycle, execute K compute cycles, finalize
+    32 element-pair cycles per tile; emit complete result afterward in global row-major
+    order. Loading and compute do not overlap.
+storage:
+- name: activation_store
+  stored_objects:
+  - activations
+  capacity_expression: MAX_M*MAX_K elements
+  capacity_at_default_parameters: 4096
+  access_pattern: Scalar row-major writes; each compute cycle reads A[(tile_m+r),k]
+    for eight rows.
+  port_requirements: One scalar write port while loading; eight concurrent asynchronous
+    read banks during compute; phases never overlap.
+  implementation_hint: Eight banks selected by row modulo ARRAY_ROWS; distributed
+    RAM or registers.
+  reuse_semantics: Each activation is loaded once per job and retained for all N tiles.
+  lifetime: From activation load through final compute tile.
+- name: weight_store
+  stored_objects:
+  - weights
+  capacity_expression: MAX_K*MAX_N elements
+  capacity_at_default_parameters: 4096
+  access_pattern: Scalar row-major writes; each compute cycle reads W[k,(tile_n+c)]
+    for eight columns.
+  port_requirements: One scalar write port while loading; eight concurrent asynchronous
+    read banks during compute.
+  implementation_hint: Eight banks selected by column modulo ARRAY_COLS.
+  reuse_semantics: Each weight is loaded once and retained for all M tiles.
+  lifetime: From weight load through final compute tile.
+- name: bias_store
+  stored_objects:
+  - bias
+  capacity_expression: MAX_N elements
+  capacity_at_default_parameters: 64
+  access_pattern: Two scalar writes per accepted bias beat and two reads per finalize
+    cycle.
+  port_requirements: Two write lanes while loading; two asynchronous reads while finalizing;
+    phases do not overlap.
+  implementation_hint: Even/odd banked registers or distributed RAM.
+  reuse_semantics: Bias values are retained and reused across all M tiles.
+  lifetime: From bias load through final tile finalization.
+- name: tile_accumulators
+  stored_objects:
+  - dot_accumulators
+  - biased_results
+  capacity_expression: ARRAY_ROWS*ARRAY_COLS elements
+  capacity_at_default_parameters: 64
+  access_pattern: All 64 entries initialized together and updated together; two entries
+    selected per finalize cycle.
+  port_requirements: 64 parallel read-modify-write accumulator lanes; two combinational
+    finalize reads.
+  implementation_hint: Registers.
+  reuse_semantics: Reused for each output tile.
+  lifetime: One output tile.
+- name: result_store
+  stored_objects:
+  - results
+  capacity_expression: MAX_M*MAX_N elements
+  capacity_at_default_parameters: 4096
+  access_pattern: Two row-major elements written per finalize cycle and read per output
+    transfer.
+  port_requirements: Two write lanes or even/odd banks; two read lanes; compute and
+    egress phases do not overlap.
+  implementation_hint: Two parity banks of 32-bit RAM or registers; combinational
+    read required by the frozen datapath interface.
+  reuse_semantics: No inter-job reuse.
+  lifetime: From tile finalization until output transfer.
+pipeline:
+- stage: load
+  responsibility: Accept and store all input elements in the prescribed sections.
+  registered: true
+  valid_behavior: Storage writes occur only on ready&&valid.
+  stall_behavior: Counters and memories hold while the active channel is stalled.
+- stage: tile_initialize
+  responsibility: Clear all 64 tile accumulators and establish edge masks.
+  registered: true
+  valid_behavior: Exactly one cycle per tile.
+  stall_behavior: Internal stage is not externally stallable.
+- stage: gemm_step
+  responsibility: Read eight activation and eight weight operands and update masked
+    accumulators.
+  registered: true
+  valid_behavior: Exactly K consecutive compute-step cycles per tile.
+  stall_behavior: Internal stage is not externally stallable.
+- stage: finalize
+  responsibility: For 32 fixed pairs, apply bias and ReLU and write valid edge-tile
+    elements to result storage.
+  registered: true
+  valid_behavior: Exactly 32 cycles per tile; invalid lanes are suppressed.
+  stall_behavior: Internal stage is not externally stallable.
+- stage: egress
+  responsibility: Read and emit two row-major INT32 results per transfer.
+  registered: false
+  valid_behavior: out_valid remains asserted with stable payload until accepted.
+  stall_behavior: Read index and payload remain stable while out_valid&&!out_ready.
+control:
+  strategy: Single-job FSM with flattened datapath controls.
+  state_progression: IDLE->LOAD_A->LOAD_W->LOAD_BIAS->TILE_INIT->COMPUTE->FINALIZE;
+    repeat tiles; then OUTPUT->STATUS->IDLE. Invalid accepted command goes IDLE->STATUS->IDLE
+    with error code.
+  counters:
+  - activation_beat
+  - weight_beat
+  - bias_beat
+  - tile_m_base
+  - tile_n_base
+  - compute_k
+  - finalize_pair
+  - output_beat
+  error_behavior: An accepted command with M, N, or K outside 1..bound produces status
+    code 1 and accepts no operand data. Data valid in an inactive phase is backpressured
+    and does not alter state.
+  error_recovery: After the error status transfer, all job counters and validity state
+    are cleared and the FSM returns to IDLE; reset also returns directly to IDLE.
+reset:
+  style: Synchronous
+  polarity: Active-low rst_n
+  required_state: FSM IDLE; all ready/valid outputs and counters cleared except cmd_ready
+    becomes asserted after the reset edge. Memory contents need not be cleared.
+latency_model: After command acceptance, required input transfers are ceil(M*K/8)+ceil(K*N/8)+ceil(N/2).
+  Compute cycles are ceil(M/8)*ceil(N/8)*(1+K+32). Output requires ceil(M*N/2) accepted
+  transfers followed by one status transfer. Input/output stalls add one cycle per
+  stalled transfer; phases do not overlap.
+architectural_invariants:
+- Only one job is active.
+- Tile bases are multiples of eight and traverse tile rows then tile columns.
+- Masked edge lanes never update accumulators or result storage.
+- Every valid result element is written exactly once and emitted once in global row-major
+  order.
+- State advances on external channels only when ready&&valid.
+open_assumptions:
+- Default maximum dimensions are 64 because no bounds were requested.
+- Complete matrices are buffered to avoid host replay.
+- INT32 overflow uses two's-complement wrap; no saturation or requantization is provided.
+- Separate 64-bit operand/result channels and a flattened command interface are architectural
+  choices.
+- Fixed 32-cycle tile finalization favors simple control over edge-tile latency optimization.

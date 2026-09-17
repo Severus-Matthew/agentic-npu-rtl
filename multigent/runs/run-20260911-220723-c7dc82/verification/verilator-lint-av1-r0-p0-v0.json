@@ -1,0 +1,34 @@
+{
+  "stage": "verilator_lint",
+  "status": "PASS",
+  "failure_class": null,
+  "return_code": 0,
+  "command": [
+    "/u/mjha1/.local/verilator-env/bin/verilator",
+    "--lint-only",
+    "--sv",
+    "-Wno-fatal",
+    "--top-module",
+    "mv_npu_top",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/ctrl_fsm.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/input_router.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mac16_core.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mv_npu_top.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/output_if.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/postproc_unit.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/x_buffer_mem.sv"
+  ],
+  "sources": [
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/ctrl_fsm.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/input_router.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mac16_core.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mv_npu_top.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/output_if.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/postproc_unit.sv",
+    "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/x_buffer_mem.sv"
+  ],
+  "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.178 MB sources in 8 modules, into 0.027 MB in 3 C++ files needing 0.000 MB\n- Verilator: Walltime 0.034 s (elab=0.005, cvt=0.010, bld=0.000); cpu 0.010 s on 1 threads; allocated 26.000 MB\n",
+  "stderr": "%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/ctrl_fsm.sv:33:52: Operator GT expects 32 bits on the LHS, but LHS's VARREF 'cfg_m' generates 9 bits.\n                                                                                                              : ... note: In instance 'mv_npu_top.u_ctrl'\n   33 |         if ((cfg_m == 0) || (cfg_n == 0) || (cfg_m > MAX_M) || (cfg_n > MAX_N)) begin\n      |                                                    ^\n                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.050\n                      ... Use \"/* verilator lint_off WIDTHEXPAND */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/ctrl_fsm.sv:33:71: Operator GT expects 32 bits on the LHS, but LHS's VARREF 'cfg_n' generates 9 bits.\n                                                                                                              : ... note: In instance 'mv_npu_top.u_ctrl'\n   33 |         if ((cfg_m == 0) || (cfg_n == 0) || (cfg_m > MAX_M) || (cfg_n > MAX_N)) begin\n      |                                                                       ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mv_npu_top.sv:69:22: Operator ASSIGNW expects 9 bits on the Assign RHS, but Assign RHS's SEL generates 8 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top'\n   69 |   assign cfg_m       = cfg_word[15:8];\n      |                      ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-220723-c7dc82/rtl/mv_npu_top.sv:70:22: Operator ASSIGNW expects 9 bits on the Assign RHS, but Assign RHS's SEL generates 8 bits.\n                                                                                                                : ... note: In instance 'mv_npu_top'\n   70 |   assign cfg_n       = cfg_word[23:16];\n      |                      ^\n",
+  "error_diagnostics": [],
+  "top_module": "mv_npu_top"
+}

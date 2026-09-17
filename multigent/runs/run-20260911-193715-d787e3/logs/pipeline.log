@@ -1,0 +1,22 @@
+{
+  "status": "FAILED",
+  "vivado_status": null,
+  "final_report": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-193715-d787e3/reports/final.json",
+  "errors": [
+    "Generated Python file __init__.py is empty"
+  ],
+  "architecture_status": "READY",
+  "architecture_version": 1,
+  "architecture_revision": 0,
+  "rtl_status": "RTL_GENERATED",
+  "rtl_files": [
+    "fc_int8_tile8.sv",
+    "mac_tile8x8.sv"
+  ],
+  "verifier_status": "SEMANTIC_VALIDATION_FAILED",
+  "verification_status": "PENDING",
+  "debugger_status": null,
+  "repair_iteration": 0,
+  "failure_class": null,
+  "architecture_conflict": null
+}

@@ -1,0 +1,27 @@
+top_module: u8_registered_adder
+test_modules:
+- test_u8_registered_adder
+test_categories:
+- oracle_sanity
+- boundary
+- latency
+- backpressure
+- reset
+- ordering
+- randomized
+randomized_test_count: 100
+seed: 180417
+timeout_seconds: 120
+regression_groups:
+  smoke:
+  - test_u8_registered_adder
+  targeted:
+  - test_u8_registered_adder
+  full:
+  - test_u8_registered_adder
+pass_criteria: All exact arithmetic, accounting, ordering, reset, latency, stability,
+  coverage, and watchdog checks pass with no unsolicited transfer.
+protocol_assumptions:
+- Transfers are sampled from stable pre-rising-edge ready/valid state.
+- Reset has synchronous priority and aborts pending work.
+- No exact ready schedule is assumed beyond the frozen combinational readiness rule.

@@ -1,0 +1,103 @@
+{
+  "rtl_status": "RTL_GENERATED",
+  "rtl_result": {
+    "status": "RTL_GENERATED",
+    "task_type": "INITIAL_GENERATION",
+    "summary": "Implemented the frozen three-module tiled INT8 GEMM accelerator.",
+    "files": [
+      {
+        "path": "fc_accelerator.sv",
+        "module": "fc_accelerator",
+        "purpose": "Frozen external-interface wrapper.",
+        "content": "module fc_accelerator #(\n  parameter integer ARRAY_ROWS = 8,\n  parameter integer ARRAY_COLS = 8,\n  parameter integer MAX_M = 64,\n  parameter integer MAX_N = 64,\n  parameter integer MAX_K = 64\n) (\n  input  logic clk,\n  input  logic rst_n,\n  input  logic cmd_valid,\n  output logic cmd_ready,\n  input  logic [(((MAX_M <= 1) ? 1 : $clog2(MAX_M+1)) +\n                ((MAX_N <= 1) ? 1 : $clog2(MAX_N+1)) +\n                ((MAX_K <= 1) ? 1 : $clog2(MAX_K+1)))-1:0] cmd_data,\n  input  logic a_valid,\n  output logic a_ready,\n  input  logic [63:0] a_data,\n  input  logic w_valid,\n  output logic w_ready,\n  input  logic [63:0] w_data,\n  input  logic bias_valid,\n  output logic bias_ready,\n  input  logic [63:0] bias_data,\n  output logic out_valid,\n  input  logic out_ready,\n  output logic [63:0] out_data,\n  output logic status_valid,\n  input  logic status_ready,\n  output logic [1:0] status_code\n);\n\n  fc_controller #(\n    .ARRAY_ROWS(ARRAY_ROWS), .ARRAY_COLS(ARRAY_COLS),\n    .MAX_M(MAX_M), .MAX_N(MAX_N), .MAX_K(MAX_K)\n  ) u_controller (\n    .clk(clk), .rst_n(rst_n),\n    .cmd_valid(cmd_valid), .cmd_ready(cmd_ready), .cmd_data(cmd_data),\n    .a_valid(a_valid), .a_ready(a_ready), .a_data(a_data),\n    .w_valid(w_valid), .w_ready(w_ready), .w_data(w_data),\n    .bias_valid(bias_valid), .bias_ready(bias_ready), .bias_data(bias_data),\n    .out_valid(out_valid), .out_ready(out_ready), .out_data(out_data),\n    .status_valid(status_valid), .status_ready(status_ready),\n    .status_code(status_code)\n  );\nendmodule\n"
+      },
+      {
+        "path": "fc_controller.sv",
+        "module": "fc_controller",
+        "purpose": "Command decoding, framing, tile sequencing, egress, and status control.",
+        "content": "module fc_controller #(\n  parameter integer ARRAY_ROWS = 8,\n  parameter integer ARRAY_COLS = 8,\n  parameter integer MAX_M = 64,\n  parameter integer MAX_N = 64,\n  parameter integer MAX_K = 64\n) (\n  input  logic clk,\n  input  logic rst_n,\n  input  logic cmd_valid,\n  output logic cmd_ready,\n  input  logic [(((MAX_M <= 1) ? 1 : $clog2(MAX_M+1)) +\n                ((MAX_N <= 1) ? 1 : $clog2(MAX_N+1)) +\n                ((MAX_K <= 1) ? 1 : $clog2(MAX_K+1)))-1:0] cmd_data,\n  input  logic a_valid,\n  output logic a_ready,\n  input  logic [63:0] a_data,\n  input  logic w_valid,\n  output logic w_ready,\n  input  logic [63:0] w_data,\n  input  logic bias_valid,\n  output logic bias_ready,\n  input  logic [63:0] bias_data,\n  output logic out_valid,\n  input  logic out_ready,\n  output logic [63:0] out_data,\n  output logic status_valid,\n  input  logic status_ready,\n  output logic [1:0] status_code\n);\n  localparam integer M_W = (MAX_M <= 1) ? 1 : $clog2(MAX_M+1);\n  localparam integer N_W = (MAX_N <= 1) ? 1 : $clog2(MAX_N+1);\n  localparam integer K_W = (MAX_K <= 1) ? 1 : $clog2(MAX_K+1);\n  localparam integer A_AW = (MAX_M*MAX_K <= 1) ? 1 : $clog2(MAX_M*MAX_K);\n  localparam integer W_AW = (MAX_K*MAX_N <= 1) ? 1 : $clog2(MAX_K*MAX_N);\n  localparam integer B_AW = (MAX_N <= 1) ? 1 : $clog2(MAX_N);\n  localparam integer TILE_PAIRS = (ARRAY_ROWS*ARRAY_COLS+1)/2;\n  localparam integer FP_W = (TILE_PAIRS <= 1) ? 1 : $clog2(TILE_PAIRS);\n  localparam integer RESULT_PAIRS = (MAX_M*MAX_N+1)/2;\n  localparam integer RP_W = (RESULT_PAIRS <= 1) ? 1 : $clog2(RESULT_PAIRS);\n\n  typedef enum logic [3:0] {\n    IDLE, LOAD_A, LOAD_W, LOAD_BIAS, TILE_INIT,\n    COMPUTE, FINALIZE, OUTPUT, STATUS\n  } state_t;\n\n  state_t state;\n  logic [M_W-1:0] cfg_m;\n  logic [N_W-1:0] cfg_n;\n  logic [K_W-1:0] cfg_k;\n  logic [M_W-1:0] tile_m_base;\n  logic [N_W-1:0] tile_n_base;\n  logic [K_W-1:0] compute_k;\n  logic [FP_W-1:0] finalize_pair;\n  logic [RP_W-1:0] result_rpair;\n  logic [1:0] status_code_reg;\n  integer unsigned activation_beat;\n  integer unsigned weight_beat;\n  integer unsigned bias_beat;\n  integer unsigned output_beat;\n  integer unsigned a_total;\n  integer unsigned w_total;\n  integer unsigned b_total;\n  integer unsigned out_total;\n  integer lane;\n\n  logic [7:0] a_we;\n  logic [A_AW-1:0] a_wbase;\n  logic [7:0] w_we;\n  logic [W_AW-1:0] w_wbase;\n  logic [1:0] bias_we;\n  logic [B_AW-1:0] bias_wbase;\n  logic tile_init;\n  logic compute_step;\n  logic finalize_we;\n  logic [63:0] result_rdata;\n\n  wire [M_W-1:0] cmd_m = cmd_data[M_W-1:0];\n  wire [N_W-1:0] cmd_n = cmd_data[M_W +: N_W];\n  wire [K_W-1:0] cmd_k = cmd_data[M_W+N_W +: K_W];\n\n  always_comb begin\n    a_total = cfg_m * cfg_k;\n    w_total = cfg_k * cfg_n;\n    b_total = cfg_n;\n    out_total = cfg_m * cfg_n;\n\n    cmd_ready = (state == IDLE);\n    a_ready = (state == LOAD_A);\n    w_ready = (state == LOAD_W);\n    bias_ready = (state == LOAD_BIAS);\n    out_valid = (state == OUTPUT);\n    status_valid = (state == STATUS);\n    status_code = status_code_reg;\n    out_data = (state == OUTPUT) ? result_rdata : 64'b0;\n\n    a_we = 8'b0;\n    w_we = 8'b0;\n    bias_we = 2'b0;\n    a_wbase = A_AW'(activation_beat * 8);\n    w_wbase = W_AW'(weight_beat * 8);\n    bias_wbase = B_AW'(bias_beat * 2);\n    tile_init = (state == TILE_INIT);\n    compute_step = (state == COMPUTE);\n    finalize_we = (state == FINALIZE);\n    result_rpair = RP_W'(output_beat);\n\n    if ((state == LOAD_A) && a_valid) begin\n      for (lane = 0; lane < 8; lane = lane + 1)\n        if ((activation_beat*8 + lane) < a_total)\n          a_we[lane] = 1'b1;\n    end\n    if ((state == LOAD_W) && w_valid) begin\n      for (lane = 0; lane < 8; lane = lane + 1)\n        if ((weight_beat*8 + lane) < w_total)\n          w_we[lane] = 1'b1;\n    end\n    if ((state == LOAD_BIAS) && bias_valid) begin\n      if ((bias_beat*2) < b_total) bias_we[0] = 1'b1;\n      if ((bias_beat*2 + 1) < b_total) bias_we[1] = 1'b1;\n    end\n  end\n\n  always_ff @(posedge clk) begin\n    if (!rst_n) begin\n      state <= IDLE;\n      cfg_m <= '0; cfg_n <= '0; cfg_k <= '0;\n      tile_m_base <= '0; tile_n_base <= '0; compute_k <= '0;\n      finalize_pair <= '0;\n      activation_beat <= 0; weight_beat <= 0; bias_beat <= 0;\n      output_beat <= 0;\n      status_code_reg <= 2'b00;\n    end else begin\n      case (state)\n        IDLE: begin\n          activation_beat <= 0; weight_beat <= 0; bias_beat <= 0;\n          output_beat <= 0; finalize_pair <= '0; compute_k <= '0;\n          tile_m_base <= '0; tile_n_base <= '0;\n          if (cmd_valid) begin\n            if ((cmd_m == 0) || (cmd_n == 0) || (cmd_k == 0) ||\n                (cmd_m > MAX_M) || (cmd_n > MAX_N) || (cmd_k > MAX_K)) begin\n              status_code_reg <= 2'b01;\n              state <= STATUS;\n            end else begin\n              cfg_m <= cmd_m; cfg_n <= cmd_n; cfg_k <= cmd_k;\n              status_code_reg <= 2'b00;\n              state <= LOAD_A;\n            end\n          end\n        end\n        LOAD_A: if (a_valid) begin\n          if (((activation_beat+1)*8) >= a_total) begin\n            weight_beat <= 0;\n            state <= LOAD_W;\n          end else activation_beat <= activation_beat + 1;\n        end\n        LOAD_W: if (w_valid) begin\n          if (((weight_beat+1)*8) >= w_total) begin\n            bias_beat <= 0;\n            state <= LOAD_BIAS;\n          end else weight_beat <= weight_beat + 1;\n        end\n        LOAD_BIAS: if (bias_valid) begin\n          if (((bias_beat+1)*2) >= b_total) begin\n            tile_m_base <= '0; tile_n_base <= '0;\n            state <= TILE_INIT;\n          end else bias_beat <= bias_beat + 1;\n        end\n        TILE_INIT: begin\n          compute_k <= '0;\n          state <= COMPUTE;\n        end\n        COMPUTE: begin\n          if ((compute_k + 1) >= cfg_k) begin\n            finalize_pair <= '0;\n            state <= FINALIZE;\n          end else compute_k <= compute_k + 1'b1;\n        end\n        FINALIZE: begin\n          if ((finalize_pair + 1) >= TILE_PAIRS) begin\n            finalize_pair <= '0;\n            if ((tile_n_base + ARRAY_COLS) < cfg_n) begin\n              tile_n_base <= tile_n_base + ARRAY_COLS;\n              state <= TILE_INIT;\n            end else if ((tile_m_base + ARRAY_ROWS) < cfg_m) begin\n              tile_m_base <= tile_m_base + ARRAY_ROWS;\n              tile_n_base <= '0;\n              state <= TILE_INIT;\n            end else begin\n              output_beat <= 0;\n              state <= OUTPUT;\n            end\n          end else finalize_pair <= finalize_pair + 1'b1;\n        end\n        OUTPUT: if (out_ready) begin\n          if (((output_beat+1)*2) >= out_total) begin\n            status_code_reg <= 2'b00;\n            state <= STATUS;\n          end else output_beat <= output_beat + 1;\n        end\n        STATUS: if (status_ready) begin\n          state <= IDLE;\n          status_code_reg <= 2'b00;\n        end\n        default: state <= IDLE;\n      endcase\n    end\n  end\n\n  fc_datapath #(\n    .ARRAY_ROWS(ARRAY_ROWS), .ARRAY_COLS(ARRAY_COLS),\n    .MAX_M(MAX_M), .MAX_N(MAX_N), .MAX_K(MAX_K)\n  ) u_datapath (\n    .clk(clk), .rst_n(rst_n),\n    .cfg_m(cfg_m), .cfg_n(cfg_n), .cfg_k(cfg_k),\n    .a_we(a_we), .a_wbase(a_wbase), .a_wdata(a_data),\n    .w_we(w_we), .w_wbase(w_wbase), .w_wdata(w_data),\n    .bias_we(bias_we), .bias_wbase(bias_wbase), .bias_wdata(bias_data),\n    .tile_m_base(tile_m_base), .tile_n_base(tile_n_base),\n    .tile_init(tile_init), .compute_step(compute_step), .compute_k(compute_k),\n    .finalize_we(finalize_we), .finalize_pair(finalize_pair),\n    .result_rpair(result_rpair), .result_rdata(result_rdata)\n  );\nendmodule\n"
+      },
+      {
+        "path": "fc_datapath.sv",
+        "module": "fc_datapath",
+        "purpose": "Operand/result storage and 8x8 wrapped signed arithmetic datapath.",
+        "content": "module fc_datapath #(\n  parameter integer ARRAY_ROWS = 8,\n  parameter integer ARRAY_COLS = 8,\n  parameter integer MAX_M = 64,\n  parameter integer MAX_N = 64,\n  parameter integer MAX_K = 64\n) (\n  input logic clk,\n  input logic rst_n,\n  input logic [((MAX_M <= 1) ? 1 : $clog2(MAX_M+1))-1:0] cfg_m,\n  input logic [((MAX_N <= 1) ? 1 : $clog2(MAX_N+1))-1:0] cfg_n,\n  input logic [((MAX_K <= 1) ? 1 : $clog2(MAX_K+1))-1:0] cfg_k,\n  input logic [7:0] a_we,\n  input logic [((MAX_M*MAX_K <= 1) ? 1 : $clog2(MAX_M*MAX_K))-1:0] a_wbase,\n  input logic [63:0] a_wdata,\n  input logic [7:0] w_we,\n  input logic [((MAX_K*MAX_N <= 1) ? 1 : $clog2(MAX_K*MAX_N))-1:0] w_wbase,\n  input logic [63:0] w_wdata,\n  input logic [1:0] bias_we,\n  input logic [((MAX_N <= 1) ? 1 : $clog2(MAX_N))-1:0] bias_wbase,\n  input logic [63:0] bias_wdata,\n  input logic [((MAX_M <= 1) ? 1 : $clog2(MAX_M+1))-1:0] tile_m_base,\n  input logic [((MAX_N <= 1) ? 1 : $clog2(MAX_N+1))-1:0] tile_n_base,\n  input logic tile_init,\n  input logic compute_step,\n  input logic [((MAX_K <= 1) ? 1 : $clog2(MAX_K+1))-1:0] compute_k,\n  input logic finalize_we,\n  input logic [((((ARRAY_ROWS*ARRAY_COLS+1)/2) <= 1) ? 1 :\n               $clog2((ARRAY_ROWS*ARRAY_COLS+1)/2))-1:0] finalize_pair,\n  input logic [((((MAX_M*MAX_N+1)/2) <= 1) ? 1 :\n               $clog2((MAX_M*MAX_N+1)/2))-1:0] result_rpair,\n  output logic [63:0] result_rdata\n);\n  localparam integer RESULT_CAP = MAX_M*MAX_N;\n  localparam integer RES_AW = (RESULT_CAP <= 1) ? 1 : $clog2(RESULT_CAP);\n\n  logic signed [7:0] activation_mem [0:MAX_M*MAX_K-1];\n  logic signed [7:0] weight_mem [0:MAX_K*MAX_N-1];\n  logic signed [31:0] bias_mem [0:MAX_N-1];\n  logic signed [31:0] accumulator [0:ARRAY_ROWS-1][0:ARRAY_COLS-1];\n  logic signed [31:0] result_mem [0:RESULT_CAP-1];\n\n  logic signed [7:0] active_a [0:ARRAY_ROWS-1];\n  logic signed [7:0] active_w [0:ARRAY_COLS-1];\n  logic signed [15:0] product [0:ARRAY_ROWS-1][0:ARRAY_COLS-1];\n  logic signed [31:0] product_ext [0:ARRAY_ROWS-1][0:ARRAY_COLS-1];\n  logic row_active [0:ARRAY_ROWS-1];\n  logic col_active [0:ARRAY_COLS-1];\n\n  logic [1:0] fin_valid;\n  logic [RES_AW-1:0] fin_addr [0:1];\n  logic signed [31:0] fin_sum [0:1];\n  logic signed [31:0] fin_data [0:1];\n\n  integer r, c, l;\n  integer ai, wi;\n  integer local_index, local_row, local_col;\n  integer global_row, global_col, global_index;\n  integer read_index, result_total;\n\n  always_comb begin\n    for (r = 0; r < ARRAY_ROWS; r = r + 1) begin\n      row_active[r] = ((tile_m_base + r) < cfg_m);\n      active_a[r] = 8'sd0;\n      ai = (tile_m_base + r) * cfg_k + compute_k;\n      if (row_active[r]) active_a[r] = activation_mem[ai];\n    end\n    for (c = 0; c < ARRAY_COLS; c = c + 1) begin\n      col_active[c] = ((tile_n_base + c) < cfg_n);\n      active_w[c] = 8'sd0;\n      wi = compute_k * cfg_n + tile_n_base + c;\n      if (col_active[c]) active_w[c] = weight_mem[wi];\n    end\n    for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      for (c = 0; c < ARRAY_COLS; c = c + 1) begin\n        product[r][c] = active_a[r] * active_w[c];\n        product_ext[r][c] = {{16{product[r][c][15]}}, product[r][c]};\n      end\n  end\n\n  always_comb begin\n    fin_valid = 2'b00;\n    for (l = 0; l < 2; l = l + 1) begin\n      fin_addr[l] = '0;\n      fin_sum[l] = 32'sd0;\n      fin_data[l] = 32'sd0;\n      local_index = finalize_pair*2 + l;\n      local_row = local_index / ARRAY_COLS;\n      local_col = local_index % ARRAY_COLS;\n      global_row = tile_m_base + local_row;\n      global_col = tile_n_base + local_col;\n      global_index = global_row * cfg_n + global_col;\n      if ((local_row < ARRAY_ROWS) && (local_col < ARRAY_COLS) &&\n          (global_row < cfg_m) && (global_col < cfg_n)) begin\n        fin_valid[l] = 1'b1;\n        fin_addr[l] = RES_AW'(global_index);\n        fin_sum[l] = accumulator[local_row][local_col] + bias_mem[global_col];\n        if (fin_sum[l][31]) fin_data[l] = 32'sd0;\n        else fin_data[l] = fin_sum[l];\n      end\n    end\n  end\n\n  always_comb begin\n    result_rdata = 64'b0;\n    read_index = result_rpair * 2;\n    result_total = cfg_m * cfg_n;\n    if (read_index < result_total)\n      result_rdata[31:0] = result_mem[read_index];\n    if ((read_index + 1) < result_total)\n      result_rdata[63:32] = result_mem[read_index+1];\n  end\n\n  always_ff @(posedge clk) begin\n    if (!rst_n) begin\n      for (r = 0; r < ARRAY_ROWS; r = r + 1)\n        for (c = 0; c < ARRAY_COLS; c = c + 1)\n          accumulator[r][c] <= 32'sd0;\n    end else begin\n      for (l = 0; l < 8; l = l + 1) begin\n        if (a_we[l]) activation_mem[a_wbase+l] <= a_wdata[8*l +: 8];\n        if (w_we[l]) weight_mem[w_wbase+l] <= w_wdata[8*l +: 8];\n      end\n      if (bias_we[0]) bias_mem[bias_wbase] <= bias_wdata[31:0];\n      if (bias_we[1]) bias_mem[bias_wbase+1] <= bias_wdata[63:32];\n\n      if (tile_init) begin\n        for (r = 0; r < ARRAY_ROWS; r = r + 1)\n          for (c = 0; c < ARRAY_COLS; c = c + 1)\n            accumulator[r][c] <= 32'sd0;\n      end else if (compute_step) begin\n        for (r = 0; r < ARRAY_ROWS; r = r + 1)\n          for (c = 0; c < ARRAY_COLS; c = c + 1)\n            if (row_active[r] && col_active[c])\n              accumulator[r][c] <= accumulator[r][c] + product_ext[r][c];\n      end\n\n      if (finalize_we) begin\n        if (fin_valid[0]) result_mem[fin_addr[0]] <= fin_data[0];\n        if (fin_valid[1]) result_mem[fin_addr[1]] <= fin_data[1];\n      end\n    end\n  end\nendmodule\n"
+      }
+    ],
+    "contract_checks": [
+      {
+        "requirement": "Exactly one file per manifest module",
+        "satisfied": true,
+        "evidence": "Emitted fc_accelerator, fc_controller, and fc_datapath only."
+      },
+      {
+        "requirement": "Wrapped signed INT8 GEMM, wrapped bias, and ReLU",
+        "satisfied": true,
+        "evidence": "Datapath explicitly sign-extends 16-bit products, uses 32-bit additions, then signed-negative clamping."
+      },
+      {
+        "requirement": "Frozen phase schedule and framing",
+        "satisfied": true,
+        "evidence": "FSM implements sequential loads, one init cycle, K compute cycles, 32 finalize cycles, paired egress, and status."
+      },
+      {
+        "requirement": "Ready/valid stall behavior",
+        "satisfied": true,
+        "evidence": "Load counters advance only on active-phase valid; output/status indices hold until consumer readiness."
+      },
+      {
+        "requirement": "Partial transfers and edge tiles",
+        "satisfied": true,
+        "evidence": "Per-lane load enables, tile row/column masks, finalize suppression, and zero absent output lane are implemented."
+      },
+      {
+        "requirement": "Synchronous active-low reset",
+        "satisfied": true,
+        "evidence": "Controller and datapath use posedge always_ff with synchronous !rst_n branches."
+      },
+      {
+        "requirement": "Forbidden constructs absent",
+        "satisfied": true,
+        "evidence": "RTL uses static arrays, bounded loops, always_comb, and always_ff only."
+      }
+    ],
+    "changed_modules": [
+      "fc_accelerator",
+      "fc_controller",
+      "fc_datapath"
+    ],
+    "architecture_conflict": null,
+    "blocked_reason": "",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [
+      "RTL has not been compiled or simulated by a deterministic tool in this task."
+    ],
+    "regression_required": "FULL"
+  },
+  "rtl_files": [
+    "fc_accelerator.sv",
+    "fc_controller.sv",
+    "fc_datapath.sv"
+  ],
+  "architecture_conflict": null,
+  "needs_regression": true,
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "history": [
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 2,
+      "repair_iteration": 0,
+      "ppa_iteration": 0,
+      "files": [
+        "fc_accelerator.sv",
+        "fc_controller.sv",
+        "fc_datapath.sv"
+      ]
+    }
+  ]
+}

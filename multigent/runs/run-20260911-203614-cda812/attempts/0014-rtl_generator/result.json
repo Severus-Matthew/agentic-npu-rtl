@@ -1,0 +1,76 @@
+{
+  "rtl_status": "RTL_GENERATED",
+  "rtl_result": {
+    "status": "RTL_GENERATED",
+    "task_type": "FUNCTIONAL_REPAIR",
+    "summary": "Patched mv_npu_top to remove mat_ready circular dependency on postproc readiness at final chunk. Added registered pending-row slot and decoupled matrix ingress from immediate pp_in_ready while preserving ready/valid behavior and interfaces.",
+    "files": [
+      {
+        "path": "mv_npu_top.sv",
+        "module": "mv_npu_top",
+        "purpose": "Functional repair: break matrix ingress deadlock by buffering completed row results and driving postproc input from pending register; mat_ready no longer gated by pp_in_ready on last chunk.",
+        "content": "module mv_npu_top #(\n  parameter int MAX_M = 256,\n  parameter int MAX_N = 256,\n  parameter int LANES = 16,\n  parameter int CMD_W = 64,\n  parameter int MAT_DATA_W = 128,\n  parameter int VEC_DATA_W = 8,\n  parameter int BIAS_DATA_W = 32,\n  parameter int OUT_DATA_W = 32\n) (\n  input  logic clk,\n  input  logic rst_n,\n  input  logic cmd_valid,\n  output logic cmd_ready,\n  input  logic [CMD_W-1:0] cmd_data,\n  input  logic vec_valid,\n  output logic vec_ready,\n  input  logic signed [VEC_DATA_W-1:0] vec_data,\n  input  logic mat_valid,\n  output logic mat_ready,\n  input  logic [MAT_DATA_W-1:0] mat_data,\n  input  logic bias_valid,\n  output logic bias_ready,\n  input  logic signed [BIAS_DATA_W-1:0] bias_data,\n  output logic out_valid,\n  input  logic out_ready,\n  output logic signed [OUT_DATA_W-1:0] out_data,\n  output logic status_busy,\n  output logic status_error\n);\n  localparam int AW = (MAX_N <= 1) ? 1 : $clog2(MAX_N);\n\n  initial begin\n    if (LANES != 16) $error(\"LANES must be 16\");\n    if (MAT_DATA_W != LANES*8) $error(\"MAT_DATA_W mismatch\");\n    if (VEC_DATA_W != 8) $error(\"VEC_DATA_W must be 8\");\n    if (BIAS_DATA_W != 32) $error(\"BIAS_DATA_W must be 32\");\n    if (OUT_DATA_W != 32) $error(\"OUT_DATA_W must be 32\");\n    if (CMD_W < 56) $error(\"CMD_W must be >=56\");\n  end\n\n  logic [15:0] cfg_M, cfg_N;\n  logic        cfg_bias_en, cfg_relu_en;\n  logic        state_compute_en;\n  logic [LANES-1:0] lane_valid_mask;\n\n  logic cmd_accept, vec_xfer, mat_xfer, bias_xfer, out_xfer;\n\n  logic [AW-1:0] vec_wr_addr;\n  logic [AW-1:0] rd_chunk_base;\n  logic [15:0]   row_idx;\n  logic [15:0]   k_chunk_idx;\n  logic [15:0]   chunks_per_row;\n\n  logic signed [LANES*8-1:0] mat_lanes;\n  logic signed [LANES*8-1:0] vec_lanes;\n\n  logic compute_en_core;\n  logic new_row_core;\n  logic signed [31:0] row_accum_out;\n  logic row_done_pulse;\n\n  logic pp_in_valid;\n  logic pp_in_ready;\n  logic pp_bias_valid;\n  logic pp_out_valid;\n  logic signed [31:0] pp_out_data;\n\n  logic hold_row_valid;\n  logic signed [31:0] hold_row_data;\n  logic mat_is_last_chunk;\n  logic signed [31:0] chunk_sum32;\n  logic signed [31:0] final_row_sum;\n\n  integer li;\n  logic signed [7:0] m_i, v_i;\n  logic signed [15:0] p_i;\n\n  assign cmd_ready  = (!status_busy) && (!status_error);\n  assign vec_ready  = status_busy && (!status_error) && (cfg_N != 16'd0) && (vec_wr_addr < cfg_N) && (k_chunk_idx == 16'd0) && (row_idx == 16'd0);\n  assign mat_is_last_chunk = (k_chunk_idx + 16'd1 == chunks_per_row);\n  assign mat_ready  = status_busy && (!status_error) && (cfg_N != 16'd0) && (vec_wr_addr == cfg_N) && (!hold_row_valid);\n  assign bias_ready = status_busy && (!status_error) && cfg_bias_en && pp_in_ready;\n\n  assign cmd_accept = cmd_valid && cmd_ready;\n  assign vec_xfer   = vec_valid && vec_ready;\n  assign mat_xfer   = mat_valid && mat_ready;\n  assign bias_xfer  = bias_valid && bias_ready;\n  assign out_xfer   = out_valid && out_ready;\n\n  always_comb begin\n    chunks_per_row = (cfg_N + LANES - 1) / LANES;\n    rd_chunk_base  = k_chunk_idx * LANES;\n    new_row_core   = mat_xfer && (k_chunk_idx == 16'd0);\n    compute_en_core = mat_xfer;\n\n    chunk_sum32 = 32'sd0;\n    m_i = 8'sd0;\n    v_i = 8'sd0;\n    p_i = 16'sd0;\n    for (li = 0; li < LANES; li++) begin\n      if (lane_valid_mask[li]) begin\n        m_i = mat_lanes[li*8 +: 8];\n        v_i = vec_lanes[li*8 +: 8];\n        p_i = m_i * v_i;\n        chunk_sum32 = chunk_sum32 + {{16{p_i[15]}}, p_i};\n      end\n    end\n    final_row_sum = row_accum_out + chunk_sum32;\n\n    pp_in_valid = hold_row_valid;\n    pp_bias_valid = bias_xfer;\n  end\n\n  always_ff @(posedge clk) begin\n    if (!rst_n) begin\n      vec_wr_addr   <= '0;\n      row_idx       <= 16'd0;\n      k_chunk_idx   <= 16'd0;\n      hold_row_valid <= 1'b0;\n      hold_row_data  <= 32'sd0;\n    end else begin\n      if (!status_busy) begin\n        vec_wr_addr <= '0;\n        row_idx <= 16'd0;\n        k_chunk_idx <= 16'd0;\n        hold_row_valid <= 1'b0;\n      end else begin\n        if (hold_row_valid && pp_in_ready) begin\n          hold_row_valid <= 1'b0;\n        end\n\n        if (vec_xfer) begin\n          vec_wr_addr <= vec_wr_addr + 1'b1;\n        end\n\n        if (mat_xfer) begin\n          if (mat_is_last_chunk) begin\n            hold_row_valid <= 1'b1;\n            hold_row_data  <= final_row_sum;\n            k_chunk_idx <= 16'd0;\n            if (row_idx + 16'd1 < cfg_M) row_idx <= row_idx + 16'd1;\n          end else begin\n            k_chunk_idx <= k_chunk_idx + 16'd1;\n          end\n        end\n      end\n    end\n  end\n\n  mv_ctrl_fsm #(\n    .MAX_M(MAX_M),\n    .MAX_N(MAX_N),\n    .LANES(LANES),\n    .CMD_W(CMD_W)\n  ) u_ctrl (\n    .clk(clk),\n    .rst_n(rst_n),\n    .cmd_accept(cmd_accept),\n    .cmd_data(cmd_data),\n    .vec_xfer(vec_xfer),\n    .mat_xfer(mat_xfer),\n    .bias_xfer(bias_xfer),\n    .out_xfer(out_xfer),\n    .cfg_M(cfg_M),\n    .cfg_N(cfg_N),\n    .cfg_bias_en(cfg_bias_en),\n    .cfg_relu_en(cfg_relu_en),\n    .state_compute_en(state_compute_en),\n    .lane_valid_mask(lane_valid_mask),\n    .status_busy(status_busy),\n    .status_error(status_error)\n  );\n\n  mv_stream_if #(\n    .LANES(LANES),\n    .MAT_DATA_W(MAT_DATA_W)\n  ) u_stream_if (\n    .mat_data_in(mat_data),\n    .mat_lanes_out(mat_lanes)\n  );\n\n  mv_vec_buffer #(\n    .MAX_N(MAX_N),\n    .LANES(LANES)\n  ) u_vec_buffer (\n    .clk(clk),\n    .rst_n(rst_n),\n    .wr_en(vec_xfer),\n    .wr_addr(vec_wr_addr),\n    .wr_data(vec_data),\n    .rd_chunk_base(rd_chunk_base[AW-1:0]),\n    .rd_data(vec_lanes)\n  );\n\n  mv_mac16_core #(\n    .LANES(LANES)\n  ) u_mac (\n    .clk(clk),\n    .rst_n(rst_n),\n    .compute_en(compute_en_core),\n    .new_row(new_row_core),\n    .lane_valid_mask(lane_valid_mask),\n    .mat_lane_data(mat_lanes),\n    .vec_lane_data(vec_lanes),\n    .row_accum_out(row_accum_out),\n    .row_done_pulse(row_done_pulse)\n  );\n\n  mv_postproc u_post (\n    .clk(clk),\n    .rst_n(rst_n),\n    .in_valid(pp_in_valid),\n    .in_data(hold_row_data),\n    .bias_en(cfg_bias_en),\n    .relu_en(cfg_relu_en),\n    .bias_valid(pp_bias_valid),\n    .bias_data(bias_data[31:0]),\n    .out_ready(out_ready),\n    .out_valid(pp_out_valid),\n    .out_data(pp_out_data),\n    .in_ready(pp_in_ready)\n  );\n\n  assign out_valid = pp_out_valid;\n  assign out_data  = pp_out_data;\n\nendmodule\n"
+      }
+    ],
+    "contract_checks": [
+      {
+        "requirement": "Fix only authorized module(s) from repair_plan",
+        "satisfied": true,
+        "evidence": "Only mv_npu_top.sv was modified; protected modules untouched."
+      },
+      {
+        "requirement": "mat_ready must not be circularly blocked by immediate postproc readiness on final chunk",
+        "satisfied": true,
+        "evidence": "Removed last-chunk gating via pp_in_ready/can_accept_last_chunk; mat_ready now depends on compute phase/vector-loaded/no-pending-row."
+      },
+      {
+        "requirement": "Lossless row-result handoff under backpressure",
+        "satisfied": true,
+        "evidence": "Completed row sum captured into hold_row_data with hold_row_valid; pp_in_valid driven from hold_row_valid until pp_in_ready handshake clears it."
+      },
+      {
+        "requirement": "Preserve frozen interfaces and arithmetic semantics",
+        "satisfied": true,
+        "evidence": "Top-level ports/widths unchanged; INT8 lane product and INT32 wrap accumulation path retained."
+      },
+      {
+        "requirement": "Avoid combinational latch behavior in modified control block",
+        "satisfied": true,
+        "evidence": "Added explicit default assignments for m_i/v_i/p_i and retained full combinational assignments for outputs in always_comb."
+      }
+    ],
+    "changed_modules": [
+      "mv_npu_top"
+    ],
+    "architecture_conflict": null,
+    "blocked_reason": "",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [
+      "bias_valid coupling to bias_xfer remains timing-sensitive versus row handoff and may expose additional issues once ingress deadlock is removed",
+      "Unrelated latch warnings in protected mv_mac16_core remain outside authorized module scope"
+    ],
+    "regression_required": "FULL"
+  },
+  "rtl_files": [
+    "mv_npu_top.sv"
+  ],
+  "architecture_conflict": null,
+  "needs_regression": true,
+  "verification_status": "PENDING",
+  "verification_evidence": null,
+  "synthesis_result": null,
+  "history": [
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 1,
+      "repair_iteration": 4,
+      "ppa_iteration": 0,
+      "files": [
+        "mv_npu_top.sv"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2663 @@
+{
+  "run_id": "run-20260911-180444-ec8862",
+  "model": "gpt-5.6-sol",
+  "user_request": "Design a small AI accelerator for fully connected neural-network layers. The accelerator should primarily operate as a tiled GEMM engine, multiplying INT8 activation matrices by INT8 weight matrices, accumulating in INT32, adding a bias vector, and applying ReLU. Use an 8\u00d78 compute array and support matrices larger than the array through tiling.",
+  "architecture_dir": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/architecture",
+  "architecture_version": 2,
+  "architecture_status": "READY",
+  "architecture_artifacts": {
+    "architecture_contract": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/architecture/architecture_contract.yaml",
+    "interface_contract": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/architecture/interface_contract.yaml",
+    "module_manifest": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/architecture/module_manifest.json",
+    "acceptance_criteria": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/architecture/acceptance_criteria.yaml"
+  },
+  "architecture_conflict": null,
+  "architecture_revision": 1,
+  "max_architecture_revisions": 2,
+  "rtl_context": {
+    "user_request": "Design a small AI accelerator for fully connected neural-network layers. The accelerator should primarily operate as a tiled GEMM engine, multiplying INT8 activation matrices by INT8 weight matrices, accumulating in INT32, adding a bias vector, and applying ReLU. Use an 8\u00d78 compute array and support matrices larger than the array through tiling.",
+    "fixed_rtl_constraints": {
+      "language": "SystemVerilog",
+      "synthesizable_only": true,
+      "forbidden_constructs": [
+        "real",
+        "shortreal",
+        "delay_statements",
+        "force_release",
+        "classes"
+      ]
+    },
+    "synthesis_policy": {
+      "provider": "vivado",
+      "requires_verified_rtl": true,
+      "result_schema": "multigent/schemas/synthesis_result.schema.json",
+      "authoritative_metrics_source": "deterministic_tool_report",
+      "prohibit_metric_estimation": true
+    },
+    "frozen_architecture": {
+      "architecture_contract": {
+        "design": {
+          "name": "fc_tiled_gemm_relu",
+          "version": "1.1",
+          "description": "Buffered 8x8 tiled INT8 fully connected engine with INT32 accumulation, bias addition, and ReLU."
+        },
+        "operations": [
+          {
+            "name": "gemm",
+            "kind": "tiled_matrix_multiplication",
+            "semantics": "For m=0..M-1,n=0..N-1, accumulate k=0..K-1 in ascending order: acc=wrap32(acc+signed(A[m,k])*signed(W[k,n])). Mandatory.",
+            "inputs": [
+              "activations",
+              "weights"
+            ],
+            "outputs": [
+              "dot_accumulators"
+            ]
+          },
+          {
+            "name": "bias_add",
+            "kind": "elementwise_add",
+            "semantics": "biased[m,n]=wrap32(dot_accumulators[m,n]+bias[n]). Mandatory.",
+            "inputs": [
+              "dot_accumulators",
+              "bias"
+            ],
+            "outputs": [
+              "biased_results"
+            ]
+          },
+          {
+            "name": "relu",
+            "kind": "elementwise_activation",
+            "semantics": "results[m,n]=0 when biased_results[m,n]<0, otherwise biased_results[m,n]. Mandatory.",
+            "inputs": [
+              "biased_results"
+            ],
+            "outputs": [
+              "results"
+            ]
+          }
+        ],
+        "data_types": [
+          {
+            "name": "int8_element",
+            "role": "activation and weight element",
+            "width_bits": 8,
+            "signed": true,
+            "representation": "Two's-complement integer.",
+            "conversion_semantics": "Sign-extended before multiplication.",
+            "overflow_semantics": "No input arithmetic.",
+            "rounding_semantics": "Exact integer."
+          },
+          {
+            "name": "int32_element",
+            "role": "accumulator, bias, and result element",
+            "width_bits": 32,
+            "signed": true,
+            "representation": "Two's-complement integer.",
+            "conversion_semantics": "INT8 products are sign-extended to 32 bits.",
+            "overflow_semantics": "Addition wraps modulo 2^32.",
+            "rounding_semantics": "Exact integer."
+          }
+        ],
+        "data_objects": [
+          {
+            "name": "activations",
+            "role": "Matrix A",
+            "data_type": "int8_element",
+            "dimensions": [
+              "M",
+              "K"
+            ],
+            "producer": "external",
+            "consumers": [
+              "gemm"
+            ],
+            "external": true
+          },
+          {
+            "name": "weights",
+            "role": "Matrix W",
+            "data_type": "int8_element",
+            "dimensions": [
+              "K",
+              "N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "gemm"
+            ],
+            "external": true
+          },
+          {
+            "name": "bias",
+            "role": "Per-output-column bias vector",
+            "data_type": "int32_element",
+            "dimensions": [
+              "N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "bias_add"
+            ],
+            "external": true
+          },
+          {
+            "name": "dot_accumulators",
+            "role": "GEMM result before bias",
+            "data_type": "int32_element",
+            "dimensions": [
+              "M",
+              "N"
+            ],
+            "producer": "gemm",
+            "consumers": [
+              "bias_add"
+            ],
+            "external": false
+          },
+          {
+            "name": "biased_results",
+            "role": "Result after bias",
+            "data_type": "int32_element",
+            "dimensions": [
+              "M",
+              "N"
+            ],
+            "producer": "bias_add",
+            "consumers": [
+              "relu"
+            ],
+            "external": false
+          },
+          {
+            "name": "results",
+            "role": "ReLU output matrix",
+            "data_type": "int32_element",
+            "dimensions": [
+              "M",
+              "N"
+            ],
+            "producer": "relu",
+            "consumers": [
+              "external"
+            ],
+            "external": true
+          }
+        ],
+        "dimensions": [
+          {
+            "name": "M",
+            "semantic": "Activation rows; runtime legal range 1..MAX_M, default-build maximum 64.",
+            "minimum": 1,
+            "maximum": 64,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_M"
+          },
+          {
+            "name": "N",
+            "semantic": "Weight/output columns; runtime legal range 1..MAX_N, default-build maximum 64.",
+            "minimum": 1,
+            "maximum": 64,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_N"
+          },
+          {
+            "name": "K",
+            "semantic": "Reduction length; runtime legal range 1..MAX_K, default-build maximum 64.",
+            "minimum": 1,
+            "maximum": 64,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_K"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ARRAY_ROWS",
+            "default_value": "8",
+            "legality_constraint": "Exactly 8.",
+            "description": "Compute-array rows."
+          },
+          {
+            "name": "ARRAY_COLS",
+            "default_value": "8",
+            "legality_constraint": "Exactly 8.",
+            "description": "Compute-array columns."
+          },
+          {
+            "name": "MAX_M",
+            "default_value": "64",
+            "legality_constraint": "Integer >=1 and MAX_M*MAX_K >=1.",
+            "description": "Compile-time M bound."
+          },
+          {
+            "name": "MAX_N",
+            "default_value": "64",
+            "legality_constraint": "Integer >=1 and MAX_K*MAX_N >=1.",
+            "description": "Compile-time N bound."
+          },
+          {
+            "name": "MAX_K",
+            "default_value": "64",
+            "legality_constraint": "Integer >=1.",
+            "description": "Compile-time K bound."
+          }
+        ],
+        "compute": {
+          "organization": "8x8 array of signed INT8 multipliers with 64 independent INT32 accumulator registers.",
+          "dataflow": "For each row-major output tile, activation values are broadcast across columns and weight values across rows. One K slice updates all 64 accumulators per compute cycle.",
+          "parallelism": "Up to 64 products and 64 accumulator additions per compute-step cycle; inactive edge-tile rows and columns are masked.",
+          "scheduling": "Load complete A, W, and bias objects sequentially; compute tiles in tile-row-major order; initialize one cycle, execute K compute cycles, finalize 32 element-pair cycles per tile; emit complete result afterward in global row-major order. Loading and compute do not overlap."
+        },
+        "storage": [
+          {
+            "name": "activation_store",
+            "stored_objects": [
+              "activations"
+            ],
+            "capacity_expression": "MAX_M*MAX_K elements",
+            "capacity_at_default_parameters": 4096,
+            "access_pattern": "Scalar row-major writes; each compute cycle reads A[(tile_m+r),k] for eight rows.",
+            "port_requirements": "One scalar write port while loading; eight concurrent asynchronous read banks during compute; phases never overlap.",
+            "implementation_hint": "Eight banks selected by row modulo ARRAY_ROWS; distributed RAM or registers.",
+            "reuse_semantics": "Each activation is loaded once per job and retained for all N tiles.",
+            "lifetime": "From activation load through final compute tile."
+          },
+          {
+            "name": "weight_store",
+            "stored_objects": [
+              "weights"
+            ],
+            "capacity_expression": "MAX_K*MAX_N elements",
+            "capacity_at_default_parameters": 4096,
+            "access_pattern": "Scalar row-major writes; each compute cycle reads W[k,(tile_n+c)] for eight columns.",
+            "port_requirements": "One scalar write port while loading; eight concurrent asynchronous read banks during compute.",
+            "implementation_hint": "Eight banks selected by column modulo ARRAY_COLS.",
+            "reuse_semantics": "Each weight is loaded once and retained for all M tiles.",
+            "lifetime": "From weight load through final compute tile."
+          },
+          {
+            "name": "bias_store",
+            "stored_objects": [
+              "bias"
+            ],
+            "capacity_expression": "MAX_N elements",
+            "capacity_at_default_parameters": 64,
+            "access_pattern": "Two scalar writes per accepted bias beat and two reads per finalize cycle.",
+            "port_requirements": "Two write lanes while loading; two asynchronous reads while finalizing; phases do not overlap.",
+            "implementation_hint": "Even/odd banked registers or distributed RAM.",
+            "reuse_semantics": "Bias values are retained and reused across all M tiles.",
+            "lifetime": "From bias load through final tile finalization."
+          },
+          {
+            "name": "tile_accumulators",
+            "stored_objects": [
+              "dot_accumulators",
+              "biased_results"
+            ],
+            "capacity_expression": "ARRAY_ROWS*ARRAY_COLS elements",
+            "capacity_at_default_parameters": 64,
+            "access_pattern": "All 64 entries initialized together and updated together; two entries selected per finalize cycle.",
+            "port_requirements": "64 parallel read-modify-write accumulator lanes; two combinational finalize reads.",
+            "implementation_hint": "Registers.",
+            "reuse_semantics": "Reused for each output tile.",
+            "lifetime": "One output tile."
+          },
+          {
+            "name": "result_store",
+            "stored_objects": [
+              "results"
+            ],
+            "capacity_expression": "MAX_M*MAX_N elements",
+            "capacity_at_default_parameters": 4096,
+            "access_pattern": "Two row-major elements written per finalize cycle and read per output transfer.",
+            "port_requirements": "Two write lanes or even/odd banks; two read lanes; compute and egress phases do not overlap.",
+            "implementation_hint": "Two parity banks of 32-bit RAM or registers; combinational read required by the frozen datapath interface.",
+            "reuse_semantics": "No inter-job reuse.",
+            "lifetime": "From tile finalization until output transfer."
+          }
+        ],
+        "pipeline": [
+          {
+            "stage": "load",
+            "responsibility": "Accept and store all input elements in the prescribed sections.",
+            "registered": true,
+            "valid_behavior": "Storage writes occur only on ready&&valid.",
+            "stall_behavior": "Counters and memories hold while the active channel is stalled."
+          },
+          {
+            "stage": "tile_initialize",
+            "responsibility": "Clear all 64 tile accumulators and establish edge masks.",
+            "registered": true,
+            "valid_behavior": "Exactly one cycle per tile.",
+            "stall_behavior": "Internal stage is not externally stallable."
+          },
+          {
+            "stage": "gemm_step",
+            "responsibility": "Read eight activation and eight weight operands and update masked accumulators.",
+            "registered": true,
+            "valid_behavior": "Exactly K consecutive compute-step cycles per tile.",
+            "stall_behavior": "Internal stage is not externally stallable."
+          },
+          {
+            "stage": "finalize",
+            "responsibility": "For 32 fixed pairs, apply bias and ReLU and write valid edge-tile elements to result storage.",
+            "registered": true,
+            "valid_behavior": "Exactly 32 cycles per tile; invalid lanes are suppressed.",
+            "stall_behavior": "Internal stage is not externally stallable."
+          },
+          {
+            "stage": "egress",
+            "responsibility": "Read and emit two row-major INT32 results per transfer.",
+            "registered": false,
+            "valid_behavior": "out_valid remains asserted with stable payload until accepted.",
+            "stall_behavior": "Read index and payload remain stable while out_valid&&!out_ready."
+          }
+        ],
+        "control": {
+          "strategy": "Single-job FSM with flattened datapath controls.",
+          "state_progression": "IDLE->LOAD_A->LOAD_W->LOAD_BIAS->TILE_INIT->COMPUTE->FINALIZE; repeat tiles; then OUTPUT->STATUS->IDLE. Invalid accepted command goes IDLE->STATUS->IDLE with error code.",
+          "counters": [
+            "activation_beat",
+            "weight_beat",
+            "bias_beat",
+            "tile_m_base",
+            "tile_n_base",
+            "compute_k",
+            "finalize_pair",
+            "output_beat"
+          ],
+          "error_behavior": "An accepted command with M, N, or K outside 1..bound produces status code 1 and accepts no operand data. Data valid in an inactive phase is backpressured and does not alter state.",
+          "error_recovery": "After the error status transfer, all job counters and validity state are cleared and the FSM returns to IDLE; reset also returns directly to IDLE."
+        },
+        "reset": {
+          "style": "Synchronous",
+          "polarity": "Active-low rst_n",
+          "required_state": "FSM IDLE; all ready/valid outputs and counters cleared except cmd_ready becomes asserted after the reset edge. Memory contents need not be cleared."
+        },
+        "latency_model": "After command acceptance, required input transfers are ceil(M*K/8)+ceil(K*N/8)+ceil(N/2). Compute cycles are ceil(M/8)*ceil(N/8)*(1+K+32). Output requires ceil(M*N/2) accepted transfers followed by one status transfer. Input/output stalls add one cycle per stalled transfer; phases do not overlap.",
+        "architectural_invariants": [
+          "Only one job is active.",
+          "Tile bases are multiples of eight and traverse tile rows then tile columns.",
+          "Masked edge lanes never update accumulators or result storage.",
+          "Every valid result element is written exactly once and emitted once in global row-major order.",
+          "State advances on external channels only when ready&&valid."
+        ],
+        "open_assumptions": [
+          "Default maximum dimensions are 64 because no bounds were requested.",
+          "Complete matrices are buffered to avoid host replay.",
+          "INT32 overflow uses two's-complement wrap; no saturation or requantization is provided.",
+          "Separate 64-bit operand/result channels and a flattened command interface are architectural choices.",
+          "Fixed 32-cycle tile finalization favors simple control over edge-tile latency optimization."
+        ]
+      },
+      "interface_contract": {
+        "protocol": "Independent synchronous ready/valid channels with phase-controlled acceptance.",
+        "clock": "All transfers and state updates occur on rising clk edges.",
+        "reset": "Synchronous active-low rst_n.",
+        "channels": [
+          {
+            "name": "command",
+            "direction": "input",
+            "purpose": "Start one job and supply dimensions.",
+            "data_objects": [],
+            "metadata": [
+              "M",
+              "N",
+              "K"
+            ],
+            "framing": "One transfer. cmd_data packs M at bits [M_W-1:0], N at [M_W+N_W-1:M_W], and K at [CMD_W-1:M_W+N_W], where M_W=max(1,$clog2(MAX_M+1)), N_W=max(1,$clog2(MAX_N+1)), K_W=max(1,$clog2(MAX_K+1)), CMD_W=M_W+N_W+K_W.",
+            "ordering": "Accepted only while idle.",
+            "backpressure": "cmd_ready is low while any job or status is active."
+          },
+          {
+            "name": "activation_input",
+            "direction": "input",
+            "purpose": "Load A.",
+            "data_objects": [
+              "activations"
+            ],
+            "metadata": [],
+            "framing": "Exactly ceil(M*K/8) transfers. Transfer b carries row-major linear elements 8*b+l in byte lane l at a_data[8*l +: 8]. Out-of-range lanes of the final transfer must be zero and are ignored.",
+            "ordering": "Immediately after the command and before weights.",
+            "backpressure": "a_ready only during LOAD_A; payload must remain stable while stalled."
+          },
+          {
+            "name": "weight_input",
+            "direction": "input",
+            "purpose": "Load W.",
+            "data_objects": [
+              "weights"
+            ],
+            "metadata": [],
+            "framing": "Exactly ceil(K*N/8) transfers. Transfer b carries row-major linear elements 8*b+l in byte lane l. Final out-of-range lanes must be zero and are ignored.",
+            "ordering": "After all activation transfers and before bias.",
+            "backpressure": "w_ready only during LOAD_W; payload must remain stable while stalled."
+          },
+          {
+            "name": "bias_input",
+            "direction": "input",
+            "purpose": "Load bias.",
+            "data_objects": [
+              "bias"
+            ],
+            "metadata": [],
+            "framing": "Exactly ceil(N/2) transfers. Transfer b carries bias[2*b] in bits [31:0] and bias[2*b+1] in bits [63:32]. The absent odd final lane must be zero and is ignored.",
+            "ordering": "After all weight transfers.",
+            "backpressure": "bias_ready only during LOAD_BIAS; payload must remain stable while stalled."
+          },
+          {
+            "name": "result_output",
+            "direction": "output",
+            "purpose": "Emit ReLU results.",
+            "data_objects": [
+              "results"
+            ],
+            "metadata": [],
+            "framing": "Exactly ceil(M*N/2) transfers. Transfer b carries row-major result elements 2*b and 2*b+1 in lower and upper 32-bit lanes. The absent odd final lane is zero.",
+            "ordering": "Global row-major order after all tiles finish.",
+            "backpressure": "out_data and out_valid remain stable until out_ready&&out_valid."
+          },
+          {
+            "name": "status",
+            "direction": "output",
+            "purpose": "Report completion or rejected command.",
+            "data_objects": [],
+            "metadata": [
+              "status code 0=successful completion, 1=illegal dimensions"
+            ],
+            "framing": "Exactly one transfer per accepted command; success follows final result transfer, error follows invalid command without operand or result transfers.",
+            "ordering": "Terminates the job.",
+            "backpressure": "status_code and status_valid remain stable until status_ready&&status_valid."
+          }
+        ],
+        "signals": [
+          {
+            "name": "clk",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Clock.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "rst_n",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Synchronous active-low reset.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "cmd_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Command valid.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "cmd_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Command ready.",
+            "reset_value": "0"
+          },
+          {
+            "name": "cmd_data",
+            "direction": "input",
+            "width": "M_W+N_W+K_W",
+            "signed": false,
+            "semantic": "Packed M, N, K command.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "a_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Activation payload valid.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "a_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Activation payload ready.",
+            "reset_value": "0"
+          },
+          {
+            "name": "a_data",
+            "direction": "input",
+            "width": "64",
+            "signed": false,
+            "semantic": "Eight packed INT8 activation lanes.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "w_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Weight payload valid.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "w_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Weight payload ready.",
+            "reset_value": "0"
+          },
+          {
+            "name": "w_data",
+            "direction": "input",
+            "width": "64",
+            "signed": false,
+            "semantic": "Eight packed INT8 weight lanes.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "bias_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Bias payload valid.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "bias_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Bias payload ready.",
+            "reset_value": "0"
+          },
+          {
+            "name": "bias_data",
+            "direction": "input",
+            "width": "64",
+            "signed": false,
+            "semantic": "Two packed INT32 bias lanes.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "out_valid",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Result payload valid.",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_ready",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Result payload ready.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "out_data",
+            "direction": "output",
+            "width": "64",
+            "signed": false,
+            "semantic": "Two packed INT32 result lanes.",
+            "reset_value": "0"
+          },
+          {
+            "name": "status_valid",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Status valid.",
+            "reset_value": "0"
+          },
+          {
+            "name": "status_ready",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Status ready.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "status_code",
+            "direction": "output",
+            "width": "2",
+            "signed": false,
+            "semantic": "0 success; 1 illegal dimensions; other values reserved and never generated.",
+            "reset_value": "0"
+          }
+        ],
+        "global_handshake_rules": {
+          "transfer_condition": "A channel transfer occurs only when its ready and valid are both 1 on a rising clock edge.",
+          "stall_behavior": "A producer must hold valid and payload stable while valid=1 and ready=0; no counter, write, or output index advances."
+        }
+      },
+      "module_manifest": {
+        "top": "fc_accelerator",
+        "modules": [
+          {
+            "name": "fc_accelerator",
+            "responsibility": "Top-level wrapper exposing the frozen external interface.",
+            "dependencies": [
+              "fc_controller"
+            ],
+            "parameters": [
+              "ARRAY_ROWS",
+              "ARRAY_COLS",
+              "MAX_M",
+              "MAX_N",
+              "MAX_K"
+            ],
+            "stateful": false,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Clock."
+              },
+              {
+                "name": "rst_n",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Synchronous active-low reset."
+              },
+              {
+                "name": "cmd_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Command valid."
+              },
+              {
+                "name": "cmd_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Command ready."
+              },
+              {
+                "name": "cmd_data",
+                "direction": "input",
+                "width": "M_W+N_W+K_W",
+                "signed": false,
+                "semantics": "Packed M,N,K."
+              },
+              {
+                "name": "a_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Activation valid."
+              },
+              {
+                "name": "a_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Activation ready."
+              },
+              {
+                "name": "a_data",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Eight activation lanes."
+              },
+              {
+                "name": "w_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Weight valid."
+              },
+              {
+                "name": "w_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Weight ready."
+              },
+              {
+                "name": "w_data",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Eight weight lanes."
+              },
+              {
+                "name": "bias_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Bias valid."
+              },
+              {
+                "name": "bias_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Bias ready."
+              },
+              {
+                "name": "bias_data",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Two bias lanes."
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Result valid."
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Result ready."
+              },
+              {
+                "name": "out_data",
+                "direction": "output",
+                "width": "64",
+                "signed": false,
+                "semantics": "Two result lanes."
+              },
+              {
+                "name": "status_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Status valid."
+              },
+              {
+                "name": "status_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Status ready."
+              },
+              {
+                "name": "status_code",
+                "direction": "output",
+                "width": "2",
+                "signed": false,
+                "semantics": "Completion/error code."
+              }
+            ]
+          },
+          {
+            "name": "fc_controller",
+            "responsibility": "Decode command, enforce framing, sequence loads/tiles/output/status, and instantiate the datapath.",
+            "dependencies": [
+              "fc_datapath"
+            ],
+            "parameters": [
+              "ARRAY_ROWS",
+              "ARRAY_COLS",
+              "MAX_M",
+              "MAX_N",
+              "MAX_K"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Clock."
+              },
+              {
+                "name": "rst_n",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Synchronous active-low reset."
+              },
+              {
+                "name": "cmd_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Command valid."
+              },
+              {
+                "name": "cmd_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "High only in IDLE."
+              },
+              {
+                "name": "cmd_data",
+                "direction": "input",
+                "width": "M_W+N_W+K_W",
+                "signed": false,
+                "semantics": "Packed M,N,K."
+              },
+              {
+                "name": "a_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Activation valid."
+              },
+              {
+                "name": "a_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "High only in LOAD_A."
+              },
+              {
+                "name": "a_data",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Eight activation lanes."
+              },
+              {
+                "name": "w_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Weight valid."
+              },
+              {
+                "name": "w_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "High only in LOAD_W."
+              },
+              {
+                "name": "w_data",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Eight weight lanes."
+              },
+              {
+                "name": "bias_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Bias valid."
+              },
+              {
+                "name": "bias_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "High only in LOAD_BIAS."
+              },
+              {
+                "name": "bias_data",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Two bias lanes."
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Held until result handshake."
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Result consumer readiness."
+              },
+              {
+                "name": "out_data",
+                "direction": "output",
+                "width": "64",
+                "signed": false,
+                "semantics": "Datapath result pair; held stable during stall."
+              },
+              {
+                "name": "status_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Held until status handshake."
+              },
+              {
+                "name": "status_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Status consumer readiness."
+              },
+              {
+                "name": "status_code",
+                "direction": "output",
+                "width": "2",
+                "signed": false,
+                "semantics": "Registered completion/error code."
+              }
+            ]
+          },
+          {
+            "name": "fc_datapath",
+            "responsibility": "Store operands, perform 8x8 tiled arithmetic, finalize results, and provide paired result reads.",
+            "dependencies": [],
+            "parameters": [
+              "ARRAY_ROWS",
+              "ARRAY_COLS",
+              "MAX_M",
+              "MAX_N",
+              "MAX_K"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Clock."
+              },
+              {
+                "name": "rst_n",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Clears accumulator validity; memories are not cleared."
+              },
+              {
+                "name": "cfg_m",
+                "direction": "input",
+                "width": "M_W",
+                "signed": false,
+                "semantics": "Registered runtime M."
+              },
+              {
+                "name": "cfg_n",
+                "direction": "input",
+                "width": "N_W",
+                "signed": false,
+                "semantics": "Registered runtime N."
+              },
+              {
+                "name": "cfg_k",
+                "direction": "input",
+                "width": "K_W",
+                "signed": false,
+                "semantics": "Registered runtime K."
+              },
+              {
+                "name": "a_we",
+                "direction": "input",
+                "width": "8",
+                "signed": false,
+                "semantics": "Per-lane synchronous activation write enables; each asserted lane writes on the rising edge."
+              },
+              {
+                "name": "a_wbase",
+                "direction": "input",
+                "width": "max(1,$clog2(MAX_M*MAX_K))",
+                "signed": false,
+                "semantics": "Linear row-major index for lane 0; lane l targets a_wbase+l."
+              },
+              {
+                "name": "a_wdata",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Eight activation write lanes."
+              },
+              {
+                "name": "w_we",
+                "direction": "input",
+                "width": "8",
+                "signed": false,
+                "semantics": "Per-lane synchronous weight write enables."
+              },
+              {
+                "name": "w_wbase",
+                "direction": "input",
+                "width": "max(1,$clog2(MAX_K*MAX_N))",
+                "signed": false,
+                "semantics": "Linear row-major index for lane 0."
+              },
+              {
+                "name": "w_wdata",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Eight weight write lanes."
+              },
+              {
+                "name": "bias_we",
+                "direction": "input",
+                "width": "2",
+                "signed": false,
+                "semantics": "Per-lane synchronous bias write enables."
+              },
+              {
+                "name": "bias_wbase",
+                "direction": "input",
+                "width": "max(1,$clog2(MAX_N))",
+                "signed": false,
+                "semantics": "Bias index for lower lane; upper lane targets bias_wbase+1."
+              },
+              {
+                "name": "bias_wdata",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Two bias write lanes."
+              },
+              {
+                "name": "tile_m_base",
+                "direction": "input",
+                "width": "M_W",
+                "signed": false,
+                "semantics": "Current tile row base, multiple of eight."
+              },
+              {
+                "name": "tile_n_base",
+                "direction": "input",
+                "width": "N_W",
+                "signed": false,
+                "semantics": "Current tile column base, multiple of eight."
+              },
+              {
+                "name": "tile_init",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "One-cycle pulse; clears all tile accumulators on the rising edge."
+              },
+              {
+                "name": "compute_step",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "One-cycle enable; on the rising edge updates all active accumulators using compute_k. Operand memories provide combinational reads before that edge."
+              },
+              {
+                "name": "compute_k",
+                "direction": "input",
+                "width": "K_W",
+                "signed": false,
+                "semantics": "Current reduction index."
+              },
+              {
+                "name": "finalize_we",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "One-cycle enable writing up to two valid ReLU results on the rising edge."
+              },
+              {
+                "name": "finalize_pair",
+                "direction": "input",
+                "width": "max(1,$clog2((ARRAY_ROWS*ARRAY_COLS+1)/2))",
+                "signed": false,
+                "semantics": "Tile-local pair index 0..31; maps to linear local elements 2*p and 2*p+1."
+              },
+              {
+                "name": "result_rpair",
+                "direction": "input",
+                "width": "max(1,$clog2((MAX_M*MAX_N+1)/2))",
+                "signed": false,
+                "semantics": "Global row-major result pair index; combinational-read address."
+              },
+              {
+                "name": "result_rdata",
+                "direction": "output",
+                "width": "64",
+                "signed": false,
+                "semantics": "Combinational pair read; lower-index element in bits 31:0, next in bits 63:32; nonexistent final lane is zero."
+              }
+            ]
+          }
+        ]
+      },
+      "acceptance_criteria": {
+        "functional": [
+          "For every legal M,N,K, output exactly matches the defined wrapped INT8xINT8-to-INT32 GEMM, wrapped bias addition, and signed ReLU.",
+          "Partial M/N tiles suppress invalid lanes; K is processed exactly once in ascending order.",
+          "Outputs contain exactly ceil(M*N/2) transfers in global row-major order."
+        ],
+        "verification": [
+          "Test minimum dimensions, default maximum dimensions, odd element counts, all tile-edge combinations, negative values, zero, and INT32 overflow.",
+          "Check exact packing and counts: ceil(M*K/8), ceil(K*N/8), ceil(N/2), and ceil(M*N/2).",
+          "Run at least 100 randomized legal transactions with exact integer comparison.",
+          "Test invalid zero and above-bound dimensions and verify status code 1 with no operand/result acceptance.",
+          "Test reset in every phase and randomized backpressure on every applicable channel.",
+          "Use a regression wall timeout of at least 120 seconds and test successful completion/status behavior."
+        ],
+        "rtl": [
+          "SystemVerilog RTL is synthesizable and uses no real, shortreal, delays, force/release, or classes.",
+          "All parameter-derived widths use max(1,...) or otherwise remain nonzero for every legal parameterization.",
+          "Controller and datapath ports exactly match the frozen flattened declarations; no implicit bundles are permitted.",
+          "No memory write, counter advance, or output duplication occurs without the corresponding enable or handshake."
+        ],
+        "fpga_handoff": [
+          "Run Vivado only after RTL verification passes.",
+          "Provide deterministic Vivado logs/reports and a synthesis result conforming to multigent/schemas/synthesis_result.schema.json.",
+          "Timing, utilization, power, area, and frequency claims must come only from deterministic tool reports; estimates are prohibited."
+        ]
+      }
+    }
+  },
+  "rtl_task_type": "INITIAL_GENERATION",
+  "rtl_feedback": null,
+  "rtl_status": "RTL_GENERATED",
+  "rtl_result": {
+    "status": "RTL_GENERATED",
+    "task_type": "INITIAL_GENERATION",
+    "summary": "Implemented the frozen three-module tiled INT8 GEMM accelerator.",
+    "files": [
+      {
+        "path": "fc_accelerator.sv",
+        "module": "fc_accelerator",
+        "purpose": "Frozen external-interface wrapper.",
+        "content": "module fc_accelerator #(\n  parameter integer ARRAY_ROWS = 8,\n  parameter integer ARRAY_COLS = 8,\n  parameter integer MAX_M = 64,\n  parameter integer MAX_N = 64,\n  parameter integer MAX_K = 64\n) (\n  input  logic clk,\n  input  logic rst_n,\n  input  logic cmd_valid,\n  output logic cmd_ready,\n  input  logic [(((MAX_M <= 1) ? 1 : $clog2(MAX_M+1)) +\n                ((MAX_N <= 1) ? 1 : $clog2(MAX_N+1)) +\n                ((MAX_K <= 1) ? 1 : $clog2(MAX_K+1)))-1:0] cmd_data,\n  input  logic a_valid,\n  output logic a_ready,\n  input  logic [63:0] a_data,\n  input  logic w_valid,\n  output logic w_ready,\n  input  logic [63:0] w_data,\n  input  logic bias_valid,\n  output logic bias_ready,\n  input  logic [63:0] bias_data,\n  output logic out_valid,\n  input  logic out_ready,\n  output logic [63:0] out_data,\n  output logic status_valid,\n  input  logic status_ready,\n  output logic [1:0] status_code\n);\n\n  fc_controller #(\n    .ARRAY_ROWS(ARRAY_ROWS), .ARRAY_COLS(ARRAY_COLS),\n    .MAX_M(MAX_M), .MAX_N(MAX_N), .MAX_K(MAX_K)\n  ) u_controller (\n    .clk(clk), .rst_n(rst_n),\n    .cmd_valid(cmd_valid), .cmd_ready(cmd_ready), .cmd_data(cmd_data),\n    .a_valid(a_valid), .a_ready(a_ready), .a_data(a_data),\n    .w_valid(w_valid), .w_ready(w_ready), .w_data(w_data),\n    .bias_valid(bias_valid), .bias_ready(bias_ready), .bias_data(bias_data),\n    .out_valid(out_valid), .out_ready(out_ready), .out_data(out_data),\n    .status_valid(status_valid), .status_ready(status_ready),\n    .status_code(status_code)\n  );\nendmodule\n"
+      },
+      {
+        "path": "fc_controller.sv",
+        "module": "fc_controller",
+        "purpose": "Command decoding, framing, tile sequencing, egress, and status control.",
+        "content": "module fc_controller #(\n  parameter integer ARRAY_ROWS = 8,\n  parameter integer ARRAY_COLS = 8,\n  parameter integer MAX_M = 64,\n  parameter integer MAX_N = 64,\n  parameter integer MAX_K = 64\n) (\n  input  logic clk,\n  input  logic rst_n,\n  input  logic cmd_valid,\n  output logic cmd_ready,\n  input  logic [(((MAX_M <= 1) ? 1 : $clog2(MAX_M+1)) +\n                ((MAX_N <= 1) ? 1 : $clog2(MAX_N+1)) +\n                ((MAX_K <= 1) ? 1 : $clog2(MAX_K+1)))-1:0] cmd_data,\n  input  logic a_valid,\n  output logic a_ready,\n  input  logic [63:0] a_data,\n  input  logic w_valid,\n  output logic w_ready,\n  input  logic [63:0] w_data,\n  input  logic bias_valid,\n  output logic bias_ready,\n  input  logic [63:0] bias_data,\n  output logic out_valid,\n  input  logic out_ready,\n  output logic [63:0] out_data,\n  output logic status_valid,\n  input  logic status_ready,\n  output logic [1:0] status_code\n);\n  localparam integer M_W = (MAX_M <= 1) ? 1 : $clog2(MAX_M+1);\n  localparam integer N_W = (MAX_N <= 1) ? 1 : $clog2(MAX_N+1);\n  localparam integer K_W = (MAX_K <= 1) ? 1 : $clog2(MAX_K+1);\n  localparam integer A_AW = (MAX_M*MAX_K <= 1) ? 1 : $clog2(MAX_M*MAX_K);\n  localparam integer W_AW = (MAX_K*MAX_N <= 1) ? 1 : $clog2(MAX_K*MAX_N);\n  localparam integer B_AW = (MAX_N <= 1) ? 1 : $clog2(MAX_N);\n  localparam integer TILE_PAIRS = (ARRAY_ROWS*ARRAY_COLS+1)/2;\n  localparam integer FP_W = (TILE_PAIRS <= 1) ? 1 : $clog2(TILE_PAIRS);\n  localparam integer RESULT_PAIRS = (MAX_M*MAX_N+1)/2;\n  localparam integer RP_W = (RESULT_PAIRS <= 1) ? 1 : $clog2(RESULT_PAIRS);\n\n  typedef enum logic [3:0] {\n    IDLE, LOAD_A, LOAD_W, LOAD_BIAS, TILE_INIT,\n    COMPUTE, FINALIZE, OUTPUT, STATUS\n  } state_t;\n\n  state_t state;\n  logic [M_W-1:0] cfg_m;\n  logic [N_W-1:0] cfg_n;\n  logic [K_W-1:0] cfg_k;\n  logic [M_W-1:0] tile_m_base;\n  logic [N_W-1:0] tile_n_base;\n  logic [K_W-1:0] compute_k;\n  logic [FP_W-1:0] finalize_pair;\n  logic [RP_W-1:0] result_rpair;\n  logic [1:0] status_code_reg;\n  integer unsigned activation_beat;\n  integer unsigned weight_beat;\n  integer unsigned bias_beat;\n  integer unsigned output_beat;\n  integer unsigned a_total;\n  integer unsigned w_total;\n  integer unsigned b_total;\n  integer unsigned out_total;\n  integer lane;\n\n  logic [7:0] a_we;\n  logic [A_AW-1:0] a_wbase;\n  logic [7:0] w_we;\n  logic [W_AW-1:0] w_wbase;\n  logic [1:0] bias_we;\n  logic [B_AW-1:0] bias_wbase;\n  logic tile_init;\n  logic compute_step;\n  logic finalize_we;\n  logic [63:0] result_rdata;\n\n  wire [M_W-1:0] cmd_m = cmd_data[M_W-1:0];\n  wire [N_W-1:0] cmd_n = cmd_data[M_W +: N_W];\n  wire [K_W-1:0] cmd_k = cmd_data[M_W+N_W +: K_W];\n\n  always_comb begin\n    a_total = cfg_m * cfg_k;\n    w_total = cfg_k * cfg_n;\n    b_total = cfg_n;\n    out_total = cfg_m * cfg_n;\n\n    cmd_ready = (state == IDLE);\n    a_ready = (state == LOAD_A);\n    w_ready = (state == LOAD_W);\n    bias_ready = (state == LOAD_BIAS);\n    out_valid = (state == OUTPUT);\n    status_valid = (state == STATUS);\n    status_code = status_code_reg;\n    out_data = (state == OUTPUT) ? result_rdata : 64'b0;\n\n    a_we = 8'b0;\n    w_we = 8'b0;\n    bias_we = 2'b0;\n    a_wbase = A_AW'(activation_beat * 8);\n    w_wbase = W_AW'(weight_beat * 8);\n    bias_wbase = B_AW'(bias_beat * 2);\n    tile_init = (state == TILE_INIT);\n    compute_step = (state == COMPUTE);\n    finalize_we = (state == FINALIZE);\n    result_rpair = RP_W'(output_beat);\n\n    if ((state == LOAD_A) && a_valid) begin\n      for (lane = 0; lane < 8; lane = lane + 1)\n        if ((activation_beat*8 + lane) < a_total)\n          a_we[lane] = 1'b1;\n    end\n    if ((state == LOAD_W) && w_valid) begin\n      for (lane = 0; lane < 8; lane = lane + 1)\n        if ((weight_beat*8 + lane) < w_total)\n          w_we[lane] = 1'b1;\n    end\n    if ((state == LOAD_BIAS) && bias_valid) begin\n      if ((bias_beat*2) < b_total) bias_we[0] = 1'b1;\n      if ((bias_beat*2 + 1) < b_total) bias_we[1] = 1'b1;\n    end\n  end\n\n  always_ff @(posedge clk) begin\n    if (!rst_n) begin\n      state <= IDLE;\n      cfg_m <= '0; cfg_n <= '0; cfg_k <= '0;\n      tile_m_base <= '0; tile_n_base <= '0; compute_k <= '0;\n      finalize_pair <= '0;\n      activation_beat <= 0; weight_beat <= 0; bias_beat <= 0;\n      output_beat <= 0;\n      status_code_reg <= 2'b00;\n    end else begin\n      case (state)\n        IDLE: begin\n          activation_beat <= 0; weight_beat <= 0; bias_beat <= 0;\n          output_beat <= 0; finalize_pair <= '0; compute_k <= '0;\n          tile_m_base <= '0; tile_n_base <= '0;\n          if (cmd_valid) begin\n            if ((cmd_m == 0) || (cmd_n == 0) || (cmd_k == 0) ||\n                (cmd_m > MAX_M) || (cmd_n > MAX_N) || (cmd_k > MAX_K)) begin\n              status_code_reg <= 2'b01;\n              state <= STATUS;\n            end else begin\n              cfg_m <= cmd_m; cfg_n <= cmd_n; cfg_k <= cmd_k;\n              status_code_reg <= 2'b00;\n              state <= LOAD_A;\n            end\n          end\n        end\n        LOAD_A: if (a_valid) begin\n          if (((activation_beat+1)*8) >= a_total) begin\n            weight_beat <= 0;\n            state <= LOAD_W;\n          end else activation_beat <= activation_beat + 1;\n        end\n        LOAD_W: if (w_valid) begin\n          if (((weight_beat+1)*8) >= w_total) begin\n            bias_beat <= 0;\n            state <= LOAD_BIAS;\n          end else weight_beat <= weight_beat + 1;\n        end\n        LOAD_BIAS: if (bias_valid) begin\n          if (((bias_beat+1)*2) >= b_total) begin\n            tile_m_base <= '0; tile_n_base <= '0;\n            state <= TILE_INIT;\n          end else bias_beat <= bias_beat + 1;\n        end\n        TILE_INIT: begin\n          compute_k <= '0;\n          state <= COMPUTE;\n        end\n        COMPUTE: begin\n          if ((compute_k + 1) >= cfg_k) begin\n            finalize_pair <= '0;\n            state <= FINALIZE;\n          end else compute_k <= compute_k + 1'b1;\n        end\n        FINALIZE: begin\n          if ((finalize_pair + 1) >= TILE_PAIRS) begin\n            finalize_pair <= '0;\n            if ((tile_n_base + ARRAY_COLS) < cfg_n) begin\n              tile_n_base <= tile_n_base + ARRAY_COLS;\n              state <= TILE_INIT;\n            end else if ((tile_m_base + ARRAY_ROWS) < cfg_m) begin\n              tile_m_base <= tile_m_base + ARRAY_ROWS;\n              tile_n_base <= '0;\n              state <= TILE_INIT;\n            end else begin\n              output_beat <= 0;\n              state <= OUTPUT;\n            end\n          end else finalize_pair <= finalize_pair + 1'b1;\n        end\n        OUTPUT: if (out_ready) begin\n          if (((output_beat+1)*2) >= out_total) begin\n            status_code_reg <= 2'b00;\n            state <= STATUS;\n          end else output_beat <= output_beat + 1;\n        end\n        STATUS: if (status_ready) begin\n          state <= IDLE;\n          status_code_reg <= 2'b00;\n        end\n        default: state <= IDLE;\n      endcase\n    end\n  end\n\n  fc_datapath #(\n    .ARRAY_ROWS(ARRAY_ROWS), .ARRAY_COLS(ARRAY_COLS),\n    .MAX_M(MAX_M), .MAX_N(MAX_N), .MAX_K(MAX_K)\n  ) u_datapath (\n    .clk(clk), .rst_n(rst_n),\n    .cfg_m(cfg_m), .cfg_n(cfg_n), .cfg_k(cfg_k),\n    .a_we(a_we), .a_wbase(a_wbase), .a_wdata(a_data),\n    .w_we(w_we), .w_wbase(w_wbase), .w_wdata(w_data),\n    .bias_we(bias_we), .bias_wbase(bias_wbase), .bias_wdata(bias_data),\n    .tile_m_base(tile_m_base), .tile_n_base(tile_n_base),\n    .tile_init(tile_init), .compute_step(compute_step), .compute_k(compute_k),\n    .finalize_we(finalize_we), .finalize_pair(finalize_pair),\n    .result_rpair(result_rpair), .result_rdata(result_rdata)\n  );\nendmodule\n"
+      },
+      {
+        "path": "fc_datapath.sv",
+        "module": "fc_datapath",
+        "purpose": "Operand/result storage and 8x8 wrapped signed arithmetic datapath.",
+        "content": "module fc_datapath #(\n  parameter integer ARRAY_ROWS = 8,\n  parameter integer ARRAY_COLS = 8,\n  parameter integer MAX_M = 64,\n  parameter integer MAX_N = 64,\n  parameter integer MAX_K = 64\n) (\n  input logic clk,\n  input logic rst_n,\n  input logic [((MAX_M <= 1) ? 1 : $clog2(MAX_M+1))-1:0] cfg_m,\n  input logic [((MAX_N <= 1) ? 1 : $clog2(MAX_N+1))-1:0] cfg_n,\n  input logic [((MAX_K <= 1) ? 1 : $clog2(MAX_K+1))-1:0] cfg_k,\n  input logic [7:0] a_we,\n  input logic [((MAX_M*MAX_K <= 1) ? 1 : $clog2(MAX_M*MAX_K))-1:0] a_wbase,\n  input logic [63:0] a_wdata,\n  input logic [7:0] w_we,\n  input logic [((MAX_K*MAX_N <= 1) ? 1 : $clog2(MAX_K*MAX_N))-1:0] w_wbase,\n  input logic [63:0] w_wdata,\n  input logic [1:0] bias_we,\n  input logic [((MAX_N <= 1) ? 1 : $clog2(MAX_N))-1:0] bias_wbase,\n  input logic [63:0] bias_wdata,\n  input logic [((MAX_M <= 1) ? 1 : $clog2(MAX_M+1))-1:0] tile_m_base,\n  input logic [((MAX_N <= 1) ? 1 : $clog2(MAX_N+1))-1:0] tile_n_base,\n  input logic tile_init,\n  input logic compute_step,\n  input logic [((MAX_K <= 1) ? 1 : $clog2(MAX_K+1))-1:0] compute_k,\n  input logic finalize_we,\n  input logic [((((ARRAY_ROWS*ARRAY_COLS+1)/2) <= 1) ? 1 :\n               $clog2((ARRAY_ROWS*ARRAY_COLS+1)/2))-1:0] finalize_pair,\n  input logic [((((MAX_M*MAX_N+1)/2) <= 1) ? 1 :\n               $clog2((MAX_M*MAX_N+1)/2))-1:0] result_rpair,\n  output logic [63:0] result_rdata\n);\n  localparam integer RESULT_CAP = MAX_M*MAX_N;\n  localparam integer RES_AW = (RESULT_CAP <= 1) ? 1 : $clog2(RESULT_CAP);\n\n  logic signed [7:0] activation_mem [0:MAX_M*MAX_K-1];\n  logic signed [7:0] weight_mem [0:MAX_K*MAX_N-1];\n  logic signed [31:0] bias_mem [0:MAX_N-1];\n  logic signed [31:0] accumulator [0:ARRAY_ROWS-1][0:ARRAY_COLS-1];\n  logic signed [31:0] result_mem [0:RESULT_CAP-1];\n\n  logic signed [7:0] active_a [0:ARRAY_ROWS-1];\n  logic signed [7:0] active_w [0:ARRAY_COLS-1];\n  logic signed [15:0] product [0:ARRAY_ROWS-1][0:ARRAY_COLS-1];\n  logic signed [31:0] product_ext [0:ARRAY_ROWS-1][0:ARRAY_COLS-1];\n  logic row_active [0:ARRAY_ROWS-1];\n  logic col_active [0:ARRAY_COLS-1];\n\n  logic [1:0] fin_valid;\n  logic [RES_AW-1:0] fin_addr [0:1];\n  logic signed [31:0] fin_sum [0:1];\n  logic signed [31:0] fin_data [0:1];\n\n  integer r, c, l;\n  integer ai, wi;\n  integer local_index, local_row, local_col;\n  integer global_row, global_col, global_index;\n  integer read_index, result_total;\n\n  always_comb begin\n    for (r = 0; r < ARRAY_ROWS; r = r + 1) begin\n      row_active[r] = ((tile_m_base + r) < cfg_m);\n      active_a[r] = 8'sd0;\n      ai = (tile_m_base + r) * cfg_k + compute_k;\n      if (row_active[r]) active_a[r] = activation_mem[ai];\n    end\n    for (c = 0; c < ARRAY_COLS; c = c + 1) begin\n      col_active[c] = ((tile_n_base + c) < cfg_n);\n      active_w[c] = 8'sd0;\n      wi = compute_k * cfg_n + tile_n_base + c;\n      if (col_active[c]) active_w[c] = weight_mem[wi];\n    end\n    for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      for (c = 0; c < ARRAY_COLS; c = c + 1) begin\n        product[r][c] = active_a[r] * active_w[c];\n        product_ext[r][c] = {{16{product[r][c][15]}}, product[r][c]};\n      end\n  end\n\n  always_comb begin\n    fin_valid = 2'b00;\n    for (l = 0; l < 2; l = l + 1) begin\n      fin_addr[l] = '0;\n      fin_sum[l] = 32'sd0;\n      fin_data[l] = 32'sd0;\n      local_index = finalize_pair*2 + l;\n      local_row = local_index / ARRAY_COLS;\n      local_col = local_index % ARRAY_COLS;\n      global_row = tile_m_base + local_row;\n      global_col = tile_n_base + local_col;\n      global_index = global_row * cfg_n + global_col;\n      if ((local_row < ARRAY_ROWS) && (local_col < ARRAY_COLS) &&\n          (global_row < cfg_m) && (global_col < cfg_n)) begin\n        fin_valid[l] = 1'b1;\n        fin_addr[l] = RES_AW'(global_index);\n        fin_sum[l] = accumulator[local_row][local_col] + bias_mem[global_col];\n        if (fin_sum[l][31]) fin_data[l] = 32'sd0;\n        else fin_data[l] = fin_sum[l];\n      end\n    end\n  end\n\n  always_comb begin\n    result_rdata = 64'b0;\n    read_index = result_rpair * 2;\n    result_total = cfg_m * cfg_n;\n    if (read_index < result_total)\n      result_rdata[31:0] = result_mem[read_index];\n    if ((read_index + 1) < result_total)\n      result_rdata[63:32] = result_mem[read_index+1];\n  end\n\n  always_ff @(posedge clk) begin\n    if (!rst_n) begin\n      for (r = 0; r < ARRAY_ROWS; r = r + 1)\n        for (c = 0; c < ARRAY_COLS; c = c + 1)\n          accumulator[r][c] <= 32'sd0;\n    end else begin\n      for (l = 0; l < 8; l = l + 1) begin\n        if (a_we[l]) activation_mem[a_wbase+l] <= a_wdata[8*l +: 8];\n        if (w_we[l]) weight_mem[w_wbase+l] <= w_wdata[8*l +: 8];\n      end\n      if (bias_we[0]) bias_mem[bias_wbase] <= bias_wdata[31:0];\n      if (bias_we[1]) bias_mem[bias_wbase+1] <= bias_wdata[63:32];\n\n      if (tile_init) begin\n        for (r = 0; r < ARRAY_ROWS; r = r + 1)\n          for (c = 0; c < ARRAY_COLS; c = c + 1)\n            accumulator[r][c] <= 32'sd0;\n      end else if (compute_step) begin\n        for (r = 0; r < ARRAY_ROWS; r = r + 1)\n          for (c = 0; c < ARRAY_COLS; c = c + 1)\n            if (row_active[r] && col_active[c])\n              accumulator[r][c] <= accumulator[r][c] + product_ext[r][c];\n      end\n\n      if (finalize_we) begin\n        if (fin_valid[0]) result_mem[fin_addr[0]] <= fin_data[0];\n        if (fin_valid[1]) result_mem[fin_addr[1]] <= fin_data[1];\n      end\n    end\n  end\nendmodule\n"
+      }
+    ],
+    "contract_checks": [
+      {
+        "requirement": "Exactly one file per manifest module",
+        "satisfied": true,
+        "evidence": "Emitted fc_accelerator, fc_controller, and fc_datapath only."
+      },
+      {
+        "requirement": "Wrapped signed INT8 GEMM, wrapped bias, and ReLU",
+        "satisfied": true,
+        "evidence": "Datapath explicitly sign-extends 16-bit products, uses 32-bit additions, then signed-negative clamping."
+      },
+      {
+        "requirement": "Frozen phase schedule and framing",
+        "satisfied": true,
+        "evidence": "FSM implements sequential loads, one init cycle, K compute cycles, 32 finalize cycles, paired egress, and status."
+      },
+      {
+        "requirement": "Ready/valid stall behavior",
+        "satisfied": true,
+        "evidence": "Load counters advance only on active-phase valid; output/status indices hold until consumer readiness."
+      },
+      {
+        "requirement": "Partial transfers and edge tiles",
+        "satisfied": true,
+        "evidence": "Per-lane load enables, tile row/column masks, finalize suppression, and zero absent output lane are implemented."
+      },
+      {
+        "requirement": "Synchronous active-low reset",
+        "satisfied": true,
+        "evidence": "Controller and datapath use posedge always_ff with synchronous !rst_n branches."
+      },
+      {
+        "requirement": "Forbidden constructs absent",
+        "satisfied": true,
+        "evidence": "RTL uses static arrays, bounded loops, always_comb, and always_ff only."
+      }
+    ],
+    "changed_modules": [
+      "fc_accelerator",
+      "fc_controller",
+      "fc_datapath"
+    ],
+    "architecture_conflict": null,
+    "blocked_reason": "",
+    "architecture_changed": false,
+    "interface_changed": false,
+    "latency_changed": false,
+    "known_risks": [
+      "RTL has not been compiled or simulated by a deterministic tool in this task."
+    ],
+    "regression_required": "FULL"
+  },
+  "rtl_files": [
+    "fc_accelerator.sv",
+    "fc_controller.sv",
+    "fc_datapath.sv"
+  ],
+  "verification_context": {
+    "user_request": "Design a small AI accelerator for fully connected neural-network layers. The accelerator should primarily operate as a tiled GEMM engine, multiplying INT8 activation matrices by INT8 weight matrices, accumulating in INT32, adding a bias vector, and applying ReLU. Use an 8\u00d78 compute array and support matrices larger than the array through tiling.",
+    "verification_policy": {
+      "exact_integer_match_when_applicable": true,
+      "randomized_transactions_minimum": 100,
+      "require_reset_tests": true,
+      "require_backpressure_tests_when_applicable": true,
+      "regression_wall_timeout_seconds_minimum": 120,
+      "require_completion_behavior_tests_when_defined": true,
+      "require_error_behavior_tests_when_defined": true
+    },
+    "frozen_architecture": {
+      "architecture_contract": {
+        "design": {
+          "name": "fc_tiled_gemm_relu",
+          "version": "1.1",
+          "description": "Buffered 8x8 tiled INT8 fully connected engine with INT32 accumulation, bias addition, and ReLU."
+        },
+        "operations": [
+          {
+            "name": "gemm",
+            "kind": "tiled_matrix_multiplication",
+            "semantics": "For m=0..M-1,n=0..N-1, accumulate k=0..K-1 in ascending order: acc=wrap32(acc+signed(A[m,k])*signed(W[k,n])). Mandatory.",
+            "inputs": [
+              "activations",
+              "weights"
+            ],
+            "outputs": [
+              "dot_accumulators"
+            ]
+          },
+          {
+            "name": "bias_add",
+            "kind": "elementwise_add",
+            "semantics": "biased[m,n]=wrap32(dot_accumulators[m,n]+bias[n]). Mandatory.",
+            "inputs": [
+              "dot_accumulators",
+              "bias"
+            ],
+            "outputs": [
+              "biased_results"
+            ]
+          },
+          {
+            "name": "relu",
+            "kind": "elementwise_activation",
+            "semantics": "results[m,n]=0 when biased_results[m,n]<0, otherwise biased_results[m,n]. Mandatory.",
+            "inputs": [
+              "biased_results"
+            ],
+            "outputs": [
+              "results"
+            ]
+          }
+        ],
+        "data_types": [
+          {
+            "name": "int8_element",
+            "role": "activation and weight element",
+            "width_bits": 8,
+            "signed": true,
+            "representation": "Two's-complement integer.",
+            "conversion_semantics": "Sign-extended before multiplication.",
+            "overflow_semantics": "No input arithmetic.",
+            "rounding_semantics": "Exact integer."
+          },
+          {
+            "name": "int32_element",
+            "role": "accumulator, bias, and result element",
+            "width_bits": 32,
+            "signed": true,
+            "representation": "Two's-complement integer.",
+            "conversion_semantics": "INT8 products are sign-extended to 32 bits.",
+            "overflow_semantics": "Addition wraps modulo 2^32.",
+            "rounding_semantics": "Exact integer."
+          }
+        ],
+        "data_objects": [
+          {
+            "name": "activations",
+            "role": "Matrix A",
+            "data_type": "int8_element",
+            "dimensions": [
+              "M",
+              "K"
+            ],
+            "producer": "external",
+            "consumers": [
+              "gemm"
+            ],
+            "external": true
+          },
+          {
+            "name": "weights",
+            "role": "Matrix W",
+            "data_type": "int8_element",
+            "dimensions": [
+              "K",
+              "N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "gemm"
+            ],
+            "external": true
+          },
+          {
+            "name": "bias",
+            "role": "Per-output-column bias vector",
+            "data_type": "int32_element",
+            "dimensions": [
+              "N"
+            ],
+            "producer": "external",
+            "consumers": [
+              "bias_add"
+            ],
+            "external": true
+          },
+          {
+            "name": "dot_accumulators",
+            "role": "GEMM result before bias",
+            "data_type": "int32_element",
+            "dimensions": [
+              "M",
+              "N"
+            ],
+            "producer": "gemm",
+            "consumers": [
+              "bias_add"
+            ],
+            "external": false
+          },
+          {
+            "name": "biased_results",
+            "role": "Result after bias",
+            "data_type": "int32_element",
+            "dimensions": [
+              "M",
+              "N"
+            ],
+            "producer": "bias_add",
+            "consumers": [
+              "relu"
+            ],
+            "external": false
+          },
+          {
+            "name": "results",
+            "role": "ReLU output matrix",
+            "data_type": "int32_element",
+            "dimensions": [
+              "M",
+              "N"
+            ],
+            "producer": "relu",
+            "consumers": [
+              "external"
+            ],
+            "external": true
+          }
+        ],
+        "dimensions": [
+          {
+            "name": "M",
+            "semantic": "Activation rows; runtime legal range 1..MAX_M, default-build maximum 64.",
+            "minimum": 1,
+            "maximum": 64,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_M"
+          },
+          {
+            "name": "N",
+            "semantic": "Weight/output columns; runtime legal range 1..MAX_N, default-build maximum 64.",
+            "minimum": 1,
+            "maximum": 64,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_N"
+          },
+          {
+            "name": "K",
+            "semantic": "Reduction length; runtime legal range 1..MAX_K, default-build maximum 64.",
+            "minimum": 1,
+            "maximum": 64,
+            "runtime_configurable": true,
+            "bound_parameter": "MAX_K"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ARRAY_ROWS",
+            "default_value": "8",
+            "legality_constraint": "Exactly 8.",
+            "description": "Compute-array rows."
+          },
+          {
+            "name": "ARRAY_COLS",
+            "default_value": "8",
+            "legality_constraint": "Exactly 8.",
+            "description": "Compute-array columns."
+          },
+          {
+            "name": "MAX_M",
+            "default_value": "64",
+            "legality_constraint": "Integer >=1 and MAX_M*MAX_K >=1.",
+            "description": "Compile-time M bound."
+          },
+          {
+            "name": "MAX_N",
+            "default_value": "64",
+            "legality_constraint": "Integer >=1 and MAX_K*MAX_N >=1.",
+            "description": "Compile-time N bound."
+          },
+          {
+            "name": "MAX_K",
+            "default_value": "64",
+            "legality_constraint": "Integer >=1.",
+            "description": "Compile-time K bound."
+          }
+        ],
+        "compute": {
+          "organization": "8x8 array of signed INT8 multipliers with 64 independent INT32 accumulator registers.",
+          "dataflow": "For each row-major output tile, activation values are broadcast across columns and weight values across rows. One K slice updates all 64 accumulators per compute cycle.",
+          "parallelism": "Up to 64 products and 64 accumulator additions per compute-step cycle; inactive edge-tile rows and columns are masked.",
+          "scheduling": "Load complete A, W, and bias objects sequentially; compute tiles in tile-row-major order; initialize one cycle, execute K compute cycles, finalize 32 element-pair cycles per tile; emit complete result afterward in global row-major order. Loading and compute do not overlap."
+        },
+        "storage": [
+          {
+            "name": "activation_store",
+            "stored_objects": [
+              "activations"
+            ],
+            "capacity_expression": "MAX_M*MAX_K elements",
+            "capacity_at_default_parameters": 4096,
+            "access_pattern": "Scalar row-major writes; each compute cycle reads A[(tile_m+r),k] for eight rows.",
+            "port_requirements": "One scalar write port while loading; eight concurrent asynchronous read banks during compute; phases never overlap.",
+            "implementation_hint": "Eight banks selected by row modulo ARRAY_ROWS; distributed RAM or registers.",
+            "reuse_semantics": "Each activation is loaded once per job and retained for all N tiles.",
+            "lifetime": "From activation load through final compute tile."
+          },
+          {
+            "name": "weight_store",
+            "stored_objects": [
+              "weights"
+            ],
+            "capacity_expression": "MAX_K*MAX_N elements",
+            "capacity_at_default_parameters": 4096,
+            "access_pattern": "Scalar row-major writes; each compute cycle reads W[k,(tile_n+c)] for eight columns.",
+            "port_requirements": "One scalar write port while loading; eight concurrent asynchronous read banks during compute.",
+            "implementation_hint": "Eight banks selected by column modulo ARRAY_COLS.",
+            "reuse_semantics": "Each weight is loaded once and retained for all M tiles.",
+            "lifetime": "From weight load through final compute tile."
+          },
+          {
+            "name": "bias_store",
+            "stored_objects": [
+              "bias"
+            ],
+            "capacity_expression": "MAX_N elements",
+            "capacity_at_default_parameters": 64,
+            "access_pattern": "Two scalar writes per accepted bias beat and two reads per finalize cycle.",
+            "port_requirements": "Two write lanes while loading; two asynchronous reads while finalizing; phases do not overlap.",
+            "implementation_hint": "Even/odd banked registers or distributed RAM.",
+            "reuse_semantics": "Bias values are retained and reused across all M tiles.",
+            "lifetime": "From bias load through final tile finalization."
+          },
+          {
+            "name": "tile_accumulators",
+            "stored_objects": [
+              "dot_accumulators",
+              "biased_results"
+            ],
+            "capacity_expression": "ARRAY_ROWS*ARRAY_COLS elements",
+            "capacity_at_default_parameters": 64,
+            "access_pattern": "All 64 entries initialized together and updated together; two entries selected per finalize cycle.",
+            "port_requirements": "64 parallel read-modify-write accumulator lanes; two combinational finalize reads.",
+            "implementation_hint": "Registers.",
+            "reuse_semantics": "Reused for each output tile.",
+            "lifetime": "One output tile."
+          },
+          {
+            "name": "result_store",
+            "stored_objects": [
+              "results"
+            ],
+            "capacity_expression": "MAX_M*MAX_N elements",
+            "capacity_at_default_parameters": 4096,
+            "access_pattern": "Two row-major elements written per finalize cycle and read per output transfer.",
+            "port_requirements": "Two write lanes or even/odd banks; two read lanes; compute and egress phases do not overlap.",
+            "implementation_hint": "Two parity banks of 32-bit RAM or registers; combinational read required by the frozen datapath interface.",
+            "reuse_semantics": "No inter-job reuse.",
+            "lifetime": "From tile finalization until output transfer."
+          }
+        ],
+        "pipeline": [
+          {
+            "stage": "load",
+            "responsibility": "Accept and store all input elements in the prescribed sections.",
+            "registered": true,
+            "valid_behavior": "Storage writes occur only on ready&&valid.",
+            "stall_behavior": "Counters and memories hold while the active channel is stalled."
+          },
+          {
+            "stage": "tile_initialize",
+            "responsibility": "Clear all 64 tile accumulators and establish edge masks.",
+            "registered": true,
+            "valid_behavior": "Exactly one cycle per tile.",
+            "stall_behavior": "Internal stage is not externally stallable."
+          },
+          {
+            "stage": "gemm_step",
+            "responsibility": "Read eight activation and eight weight operands and update masked accumulators.",
+            "registered": true,
+            "valid_behavior": "Exactly K consecutive compute-step cycles per tile.",
+            "stall_behavior": "Internal stage is not externally stallable."
+          },
+          {
+            "stage": "finalize",
+            "responsibility": "For 32 fixed pairs, apply bias and ReLU and write valid edge-tile elements to result storage.",
+            "registered": true,
+            "valid_behavior": "Exactly 32 cycles per tile; invalid lanes are suppressed.",
+            "stall_behavior": "Internal stage is not externally stallable."
+          },
+          {
+            "stage": "egress",
+            "responsibility": "Read and emit two row-major INT32 results per transfer.",
+            "registered": false,
+            "valid_behavior": "out_valid remains asserted with stable payload until accepted.",
+            "stall_behavior": "Read index and payload remain stable while out_valid&&!out_ready."
+          }
+        ],
+        "control": {
+          "strategy": "Single-job FSM with flattened datapath controls.",
+          "state_progression": "IDLE->LOAD_A->LOAD_W->LOAD_BIAS->TILE_INIT->COMPUTE->FINALIZE; repeat tiles; then OUTPUT->STATUS->IDLE. Invalid accepted command goes IDLE->STATUS->IDLE with error code.",
+          "counters": [
+            "activation_beat",
+            "weight_beat",
+            "bias_beat",
+            "tile_m_base",
+            "tile_n_base",
+            "compute_k",
+            "finalize_pair",
+            "output_beat"
+          ],
+          "error_behavior": "An accepted command with M, N, or K outside 1..bound produces status code 1 and accepts no operand data. Data valid in an inactive phase is backpressured and does not alter state.",
+          "error_recovery": "After the error status transfer, all job counters and validity state are cleared and the FSM returns to IDLE; reset also returns directly to IDLE."
+        },
+        "reset": {
+          "style": "Synchronous",
+          "polarity": "Active-low rst_n",
+          "required_state": "FSM IDLE; all ready/valid outputs and counters cleared except cmd_ready becomes asserted after the reset edge. Memory contents need not be cleared."
+        },
+        "latency_model": "After command acceptance, required input transfers are ceil(M*K/8)+ceil(K*N/8)+ceil(N/2). Compute cycles are ceil(M/8)*ceil(N/8)*(1+K+32). Output requires ceil(M*N/2) accepted transfers followed by one status transfer. Input/output stalls add one cycle per stalled transfer; phases do not overlap.",
+        "architectural_invariants": [
+          "Only one job is active.",
+          "Tile bases are multiples of eight and traverse tile rows then tile columns.",
+          "Masked edge lanes never update accumulators or result storage.",
+          "Every valid result element is written exactly once and emitted once in global row-major order.",
+          "State advances on external channels only when ready&&valid."
+        ],
+        "open_assumptions": [
+          "Default maximum dimensions are 64 because no bounds were requested.",
+          "Complete matrices are buffered to avoid host replay.",
+          "INT32 overflow uses two's-complement wrap; no saturation or requantization is provided.",
+          "Separate 64-bit operand/result channels and a flattened command interface are architectural choices.",
+          "Fixed 32-cycle tile finalization favors simple control over edge-tile latency optimization."
+        ]
+      },
+      "interface_contract": {
+        "protocol": "Independent synchronous ready/valid channels with phase-controlled acceptance.",
+        "clock": "All transfers and state updates occur on rising clk edges.",
+        "reset": "Synchronous active-low rst_n.",
+        "channels": [
+          {
+            "name": "command",
+            "direction": "input",
+            "purpose": "Start one job and supply dimensions.",
+            "data_objects": [],
+            "metadata": [
+              "M",
+              "N",
+              "K"
+            ],
+            "framing": "One transfer. cmd_data packs M at bits [M_W-1:0], N at [M_W+N_W-1:M_W], and K at [CMD_W-1:M_W+N_W], where M_W=max(1,$clog2(MAX_M+1)), N_W=max(1,$clog2(MAX_N+1)), K_W=max(1,$clog2(MAX_K+1)), CMD_W=M_W+N_W+K_W.",
+            "ordering": "Accepted only while idle.",
+            "backpressure": "cmd_ready is low while any job or status is active."
+          },
+          {
+            "name": "activation_input",
+            "direction": "input",
+            "purpose": "Load A.",
+            "data_objects": [
+              "activations"
+            ],
+            "metadata": [],
+            "framing": "Exactly ceil(M*K/8) transfers. Transfer b carries row-major linear elements 8*b+l in byte lane l at a_data[8*l +: 8]. Out-of-range lanes of the final transfer must be zero and are ignored.",
+            "ordering": "Immediately after the command and before weights.",
+            "backpressure": "a_ready only during LOAD_A; payload must remain stable while stalled."
+          },
+          {
+            "name": "weight_input",
+            "direction": "input",
+            "purpose": "Load W.",
+            "data_objects": [
+              "weights"
+            ],
+            "metadata": [],
+            "framing": "Exactly ceil(K*N/8) transfers. Transfer b carries row-major linear elements 8*b+l in byte lane l. Final out-of-range lanes must be zero and are ignored.",
+            "ordering": "After all activation transfers and before bias.",
+            "backpressure": "w_ready only during LOAD_W; payload must remain stable while stalled."
+          },
+          {
+            "name": "bias_input",
+            "direction": "input",
+            "purpose": "Load bias.",
+            "data_objects": [
+              "bias"
+            ],
+            "metadata": [],
+            "framing": "Exactly ceil(N/2) transfers. Transfer b carries bias[2*b] in bits [31:0] and bias[2*b+1] in bits [63:32]. The absent odd final lane must be zero and is ignored.",
+            "ordering": "After all weight transfers.",
+            "backpressure": "bias_ready only during LOAD_BIAS; payload must remain stable while stalled."
+          },
+          {
+            "name": "result_output",
+            "direction": "output",
+            "purpose": "Emit ReLU results.",
+            "data_objects": [
+              "results"
+            ],
+            "metadata": [],
+            "framing": "Exactly ceil(M*N/2) transfers. Transfer b carries row-major result elements 2*b and 2*b+1 in lower and upper 32-bit lanes. The absent odd final lane is zero.",
+            "ordering": "Global row-major order after all tiles finish.",
+            "backpressure": "out_data and out_valid remain stable until out_ready&&out_valid."
+          },
+          {
+            "name": "status",
+            "direction": "output",
+            "purpose": "Report completion or rejected command.",
+            "data_objects": [],
+            "metadata": [
+              "status code 0=successful completion, 1=illegal dimensions"
+            ],
+            "framing": "Exactly one transfer per accepted command; success follows final result transfer, error follows invalid command without operand or result transfers.",
+            "ordering": "Terminates the job.",
+            "backpressure": "status_code and status_valid remain stable until status_ready&&status_valid."
+          }
+        ],
+        "signals": [
+          {
+            "name": "clk",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Clock.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "rst_n",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Synchronous active-low reset.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "cmd_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Command valid.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "cmd_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Command ready.",
+            "reset_value": "0"
+          },
+          {
+            "name": "cmd_data",
+            "direction": "input",
+            "width": "M_W+N_W+K_W",
+            "signed": false,
+            "semantic": "Packed M, N, K command.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "a_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Activation payload valid.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "a_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Activation payload ready.",
+            "reset_value": "0"
+          },
+          {
+            "name": "a_data",
+            "direction": "input",
+            "width": "64",
+            "signed": false,
+            "semantic": "Eight packed INT8 activation lanes.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "w_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Weight payload valid.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "w_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Weight payload ready.",
+            "reset_value": "0"
+          },
+          {
+            "name": "w_data",
+            "direction": "input",
+            "width": "64",
+            "signed": false,
+            "semantic": "Eight packed INT8 weight lanes.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "bias_valid",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Bias payload valid.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "bias_ready",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Bias payload ready.",
+            "reset_value": "0"
+          },
+          {
+            "name": "bias_data",
+            "direction": "input",
+            "width": "64",
+            "signed": false,
+            "semantic": "Two packed INT32 bias lanes.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "out_valid",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Result payload valid.",
+            "reset_value": "0"
+          },
+          {
+            "name": "out_ready",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Result payload ready.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "out_data",
+            "direction": "output",
+            "width": "64",
+            "signed": false,
+            "semantic": "Two packed INT32 result lanes.",
+            "reset_value": "0"
+          },
+          {
+            "name": "status_valid",
+            "direction": "output",
+            "width": "1",
+            "signed": false,
+            "semantic": "Status valid.",
+            "reset_value": "0"
+          },
+          {
+            "name": "status_ready",
+            "direction": "input",
+            "width": "1",
+            "signed": false,
+            "semantic": "Status ready.",
+            "reset_value": "N/A"
+          },
+          {
+            "name": "status_code",
+            "direction": "output",
+            "width": "2",
+            "signed": false,
+            "semantic": "0 success; 1 illegal dimensions; other values reserved and never generated.",
+            "reset_value": "0"
+          }
+        ],
+        "global_handshake_rules": {
+          "transfer_condition": "A channel transfer occurs only when its ready and valid are both 1 on a rising clock edge.",
+          "stall_behavior": "A producer must hold valid and payload stable while valid=1 and ready=0; no counter, write, or output index advances."
+        }
+      },
+      "module_manifest": {
+        "top": "fc_accelerator",
+        "modules": [
+          {
+            "name": "fc_accelerator",
+            "responsibility": "Top-level wrapper exposing the frozen external interface.",
+            "dependencies": [
+              "fc_controller"
+            ],
+            "parameters": [
+              "ARRAY_ROWS",
+              "ARRAY_COLS",
+              "MAX_M",
+              "MAX_N",
+              "MAX_K"
+            ],
+            "stateful": false,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Clock."
+              },
+              {
+                "name": "rst_n",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Synchronous active-low reset."
+              },
+              {
+                "name": "cmd_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Command valid."
+              },
+              {
+                "name": "cmd_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Command ready."
+              },
+              {
+                "name": "cmd_data",
+                "direction": "input",
+                "width": "M_W+N_W+K_W",
+                "signed": false,
+                "semantics": "Packed M,N,K."
+              },
+              {
+                "name": "a_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Activation valid."
+              },
+              {
+                "name": "a_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Activation ready."
+              },
+              {
+                "name": "a_data",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Eight activation lanes."
+              },
+              {
+                "name": "w_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Weight valid."
+              },
+              {
+                "name": "w_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Weight ready."
+              },
+              {
+                "name": "w_data",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Eight weight lanes."
+              },
+              {
+                "name": "bias_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Bias valid."
+              },
+              {
+                "name": "bias_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Bias ready."
+              },
+              {
+                "name": "bias_data",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Two bias lanes."
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Result valid."
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Result ready."
+              },
+              {
+                "name": "out_data",
+                "direction": "output",
+                "width": "64",
+                "signed": false,
+                "semantics": "Two result lanes."
+              },
+              {
+                "name": "status_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Status valid."
+              },
+              {
+                "name": "status_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Status ready."
+              },
+              {
+                "name": "status_code",
+                "direction": "output",
+                "width": "2",
+                "signed": false,
+                "semantics": "Completion/error code."
+              }
+            ]
+          },
+          {
+            "name": "fc_controller",
+            "responsibility": "Decode command, enforce framing, sequence loads/tiles/output/status, and instantiate the datapath.",
+            "dependencies": [
+              "fc_datapath"
+            ],
+            "parameters": [
+              "ARRAY_ROWS",
+              "ARRAY_COLS",
+              "MAX_M",
+              "MAX_N",
+              "MAX_K"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Clock."
+              },
+              {
+                "name": "rst_n",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Synchronous active-low reset."
+              },
+              {
+                "name": "cmd_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Command valid."
+              },
+              {
+                "name": "cmd_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "High only in IDLE."
+              },
+              {
+                "name": "cmd_data",
+                "direction": "input",
+                "width": "M_W+N_W+K_W",
+                "signed": false,
+                "semantics": "Packed M,N,K."
+              },
+              {
+                "name": "a_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Activation valid."
+              },
+              {
+                "name": "a_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "High only in LOAD_A."
+              },
+              {
+                "name": "a_data",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Eight activation lanes."
+              },
+              {
+                "name": "w_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Weight valid."
+              },
+              {
+                "name": "w_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "High only in LOAD_W."
+              },
+              {
+                "name": "w_data",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Eight weight lanes."
+              },
+              {
+                "name": "bias_valid",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Bias valid."
+              },
+              {
+                "name": "bias_ready",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "High only in LOAD_BIAS."
+              },
+              {
+                "name": "bias_data",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Two bias lanes."
+              },
+              {
+                "name": "out_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Held until result handshake."
+              },
+              {
+                "name": "out_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Result consumer readiness."
+              },
+              {
+                "name": "out_data",
+                "direction": "output",
+                "width": "64",
+                "signed": false,
+                "semantics": "Datapath result pair; held stable during stall."
+              },
+              {
+                "name": "status_valid",
+                "direction": "output",
+                "width": "1",
+                "signed": false,
+                "semantics": "Held until status handshake."
+              },
+              {
+                "name": "status_ready",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Status consumer readiness."
+              },
+              {
+                "name": "status_code",
+                "direction": "output",
+                "width": "2",
+                "signed": false,
+                "semantics": "Registered completion/error code."
+              }
+            ]
+          },
+          {
+            "name": "fc_datapath",
+            "responsibility": "Store operands, perform 8x8 tiled arithmetic, finalize results, and provide paired result reads.",
+            "dependencies": [],
+            "parameters": [
+              "ARRAY_ROWS",
+              "ARRAY_COLS",
+              "MAX_M",
+              "MAX_N",
+              "MAX_K"
+            ],
+            "stateful": true,
+            "ports": [
+              {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Clock."
+              },
+              {
+                "name": "rst_n",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "Clears accumulator validity; memories are not cleared."
+              },
+              {
+                "name": "cfg_m",
+                "direction": "input",
+                "width": "M_W",
+                "signed": false,
+                "semantics": "Registered runtime M."
+              },
+              {
+                "name": "cfg_n",
+                "direction": "input",
+                "width": "N_W",
+                "signed": false,
+                "semantics": "Registered runtime N."
+              },
+              {
+                "name": "cfg_k",
+                "direction": "input",
+                "width": "K_W",
+                "signed": false,
+                "semantics": "Registered runtime K."
+              },
+              {
+                "name": "a_we",
+                "direction": "input",
+                "width": "8",
+                "signed": false,
+                "semantics": "Per-lane synchronous activation write enables; each asserted lane writes on the rising edge."
+              },
+              {
+                "name": "a_wbase",
+                "direction": "input",
+                "width": "max(1,$clog2(MAX_M*MAX_K))",
+                "signed": false,
+                "semantics": "Linear row-major index for lane 0; lane l targets a_wbase+l."
+              },
+              {
+                "name": "a_wdata",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Eight activation write lanes."
+              },
+              {
+                "name": "w_we",
+                "direction": "input",
+                "width": "8",
+                "signed": false,
+                "semantics": "Per-lane synchronous weight write enables."
+              },
+              {
+                "name": "w_wbase",
+                "direction": "input",
+                "width": "max(1,$clog2(MAX_K*MAX_N))",
+                "signed": false,
+                "semantics": "Linear row-major index for lane 0."
+              },
+              {
+                "name": "w_wdata",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Eight weight write lanes."
+              },
+              {
+                "name": "bias_we",
+                "direction": "input",
+                "width": "2",
+                "signed": false,
+                "semantics": "Per-lane synchronous bias write enables."
+              },
+              {
+                "name": "bias_wbase",
+                "direction": "input",
+                "width": "max(1,$clog2(MAX_N))",
+                "signed": false,
+                "semantics": "Bias index for lower lane; upper lane targets bias_wbase+1."
+              },
+              {
+                "name": "bias_wdata",
+                "direction": "input",
+                "width": "64",
+                "signed": false,
+                "semantics": "Two bias write lanes."
+              },
+              {
+                "name": "tile_m_base",
+                "direction": "input",
+                "width": "M_W",
+                "signed": false,
+                "semantics": "Current tile row base, multiple of eight."
+              },
+              {
+                "name": "tile_n_base",
+                "direction": "input",
+                "width": "N_W",
+                "signed": false,
+                "semantics": "Current tile column base, multiple of eight."
+              },
+              {
+                "name": "tile_init",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "One-cycle pulse; clears all tile accumulators on the rising edge."
+              },
+              {
+                "name": "compute_step",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "One-cycle enable; on the rising edge updates all active accumulators using compute_k. Operand memories provide combinational reads before that edge."
+              },
+              {
+                "name": "compute_k",
+                "direction": "input",
+                "width": "K_W",
+                "signed": false,
+                "semantics": "Current reduction index."
+              },
+              {
+                "name": "finalize_we",
+                "direction": "input",
+                "width": "1",
+                "signed": false,
+                "semantics": "One-cycle enable writing up to two valid ReLU results on the rising edge."
+              },
+              {
+                "name": "finalize_pair",
+                "direction": "input",
+                "width": "max(1,$clog2((ARRAY_ROWS*ARRAY_COLS+1)/2))",
+                "signed": false,
+                "semantics": "Tile-local pair index 0..31; maps to linear local elements 2*p and 2*p+1."
+              },
+              {
+                "name": "result_rpair",
+                "direction": "input",
+                "width": "max(1,$clog2((MAX_M*MAX_N+1)/2))",
+                "signed": false,
+                "semantics": "Global row-major result pair index; combinational-read address."
+              },
+              {
+                "name": "result_rdata",
+                "direction": "output",
+                "width": "64",
+                "signed": false,
+                "semantics": "Combinational pair read; lower-index element in bits 31:0, next in bits 63:32; nonexistent final lane is zero."
+              }
+            ]
+          }
+        ]
+      },
+      "acceptance_criteria": {
+        "functional": [
+          "For every legal M,N,K, output exactly matches the defined wrapped INT8xINT8-to-INT32 GEMM, wrapped bias addition, and signed ReLU.",
+          "Partial M/N tiles suppress invalid lanes; K is processed exactly once in ascending order.",
+          "Outputs contain exactly ceil(M*N/2) transfers in global row-major order."
+        ],
+        "verification": [
+          "Test minimum dimensions, default maximum dimensions, odd element counts, all tile-edge combinations, negative values, zero, and INT32 overflow.",
+          "Check exact packing and counts: ceil(M*K/8), ceil(K*N/8), ceil(N/2), and ceil(M*N/2).",
+          "Run at least 100 randomized legal transactions with exact integer comparison.",
+          "Test invalid zero and above-bound dimensions and verify status code 1 with no operand/result acceptance.",
+          "Test reset in every phase and randomized backpressure on every applicable channel.",
+          "Use a regression wall timeout of at least 120 seconds and test successful completion/status behavior."
+        ],
+        "rtl": [
+          "SystemVerilog RTL is synthesizable and uses no real, shortreal, delays, force/release, or classes.",
+          "All parameter-derived widths use max(1,...) or otherwise remain nonzero for every legal parameterization.",
+          "Controller and datapath ports exactly match the frozen flattened declarations; no implicit bundles are permitted.",
+          "No memory write, counter advance, or output duplication occurs without the corresponding enable or handshake."
+        ],
+        "fpga_handoff": [
+          "Run Vivado only after RTL verification passes.",
+          "Provide deterministic Vivado logs/reports and a synthesis result conforming to multigent/schemas/synthesis_result.schema.json.",
+          "Timing, utilization, power, area, and frequency claims must come only from deterministic tool reports; estimates are prohibited."
+        ]
+      }
+    },
+    "provenance": {
+      "includes_generated_rtl": false,
+      "includes_rtl_generator_output": false
+    },
+    "semantic_retry_feedback": {
+      "validator_error": "verification_plan.test_modules must reference exactly the generated test files",
+      "required_action": "Regenerate the complete verifier output and correct this semantic defect. Do not weaken the frozen contract, verification policy, oracle, coverage, or independence rules. Preserve all unaffected requirements.",
+      "attempt": 1
+    }
+  },
+  "verifier_status": "VERIFICATION_READY",
+  "verifier_result": {
+    "status": "VERIFICATION_READY",
+    "summary": "Independent INT8 GEMM, wrapped INT32 bias, ReLU oracle and bounded cocotb regression covering directed, randomized, protocol, error, completion, and phase-reset behavior.",
+    "reference_files": [
+      {
+        "path": "reference/fc_reference.py",
+        "purpose": "Specification-derived arithmetic and channel-packing oracle.",
+        "content": "def u32(value):\n    return value & 0xFFFFFFFF\n\n\ndef s32(value):\n    value &= 0xFFFFFFFF\n    return value - (1 << 32) if value & 0x80000000 else value\n\n\ndef s8(value):\n    value &= 0xFF\n    return value - 256 if value & 0x80 else value\n\n\ndef wrap32(value):\n    return s32(value)\n\n\ndef gemm_relu(m, n, k, activations, weights, bias):\n    assert len(activations) == m * k\n    assert len(weights) == k * n\n    assert len(bias) == n\n    result = []\n    for row in range(m):\n        for col in range(n):\n            acc = 0\n            for red in range(k):\n                a = s8(activations[row * k + red])\n                w = s8(weights[red * n + col])\n                acc = wrap32(acc + a * w)\n            biased = wrap32(acc + s32(bias[col]))\n            result.append(0 if biased < 0 else biased)\n    return result\n\n\ndef pack_int8(values):\n    beats = []\n    for base in range(0, len(values), 8):\n        word = 0\n        for lane in range(8):\n            index = base + lane\n            value = values[index] if index < len(values) else 0\n            word |= (value & 0xFF) << (8 * lane)\n        beats.append(word)\n    return beats\n\n\ndef pack_int32(values):\n    beats = []\n    for base in range(0, len(values), 2):\n        lower = values[base] if base < len(values) else 0\n        upper = values[base + 1] if base + 1 < len(values) else 0\n        beats.append(u32(lower) | (u32(upper) << 32))\n    return beats\n\n\ndef pack_command(m, n, k, m_width=7, n_width=7, k_width=7):\n    assert 0 <= m < (1 << m_width)\n    assert 0 <= n < (1 << n_width)\n    assert 0 <= k < (1 << k_width)\n    return m | (n << m_width) | (k << (m_width + n_width))\n\n\ndef reference_sanity_checks():\n    assert s8(0x80) == -128\n    assert s8(0x7F) == 127\n    assert wrap32(0x7FFFFFFF + 1) == -0x80000000\n    assert wrap32(-0x80000000 - 1) == 0x7FFFFFFF\n    assert gemm_relu(1, 1, 1, [0], [127], [5]) == [5]\n    assert gemm_relu(1, 1, 1, [1], [1], [0x7FFFFFFF]) == [0]\n    assert gemm_relu(1, 1, 2, [-128, 127], [127, -128], [0]) == [0]\n    assert pack_int8([1]) == [1]\n    assert pack_int32([3]) == [3]\n"
+      }
+    ],
+    "test_files": [
+      {
+        "path": "tests/test_fc_accelerator.py",
+        "purpose": "Protocol-aware cocotb verification of arithmetic, packing, randomized jobs, errors, backpressure, completion, and reset recovery.",
+        "categories": [
+          "reference-sanity",
+          "directed-arithmetic",
+          "tiling",
+          "packing",
+          "randomized",
+          "backpressure",
+          "completion",
+          "illegal-command",
+          "reset"
+        ],
+        "regression_groups": [
+          "smoke",
+          "targeted",
+          "full"
+        ],
+        "content": "import random\nimport cocotb\nfrom cocotb.triggers import Timer\n\nfrom reference.fc_reference import (\n    gemm_relu,\n    pack_command,\n    pack_int8,\n    pack_int32,\n    reference_sanity_checks,\n)\n\nSEED = 0x5A17C0DE\n\n\nclass Driver:\n    def __init__(self, dut):\n        self.dut = dut\n        self.cycles = 0\n\n    async def initialize(self):\n        d = self.dut\n        d.clk.value = 0\n        d.rst_n.value = 1\n        d.cmd_valid.value = 0\n        d.cmd_data.value = 0\n        d.a_valid.value = 0\n        d.a_data.value = 0\n        d.w_valid.value = 0\n        d.w_data.value = 0\n        d.bias_valid.value = 0\n        d.bias_data.value = 0\n        d.out_ready.value = 0\n        d.status_ready.value = 0\n        await Timer(1, unit=\"ns\")\n\n    async def cycle(self):\n        d = self.dut\n        await Timer(1, unit=\"ns\")\n        pre = {\n            \"cmd_ready\": int(d.cmd_ready.value),\n            \"a_ready\": int(d.a_ready.value),\n            \"w_ready\": int(d.w_ready.value),\n            \"bias_ready\": int(d.bias_ready.value),\n            \"out_valid\": int(d.out_valid.value),\n            \"out_data\": int(d.out_data.value),\n            \"status_valid\": int(d.status_valid.value),\n            \"status_code\": int(d.status_code.value),\n        }\n        d.clk.value = 1\n        await Timer(1, unit=\"ns\")\n        post = {\n            \"cmd_ready\": int(d.cmd_ready.value),\n            \"out_valid\": int(d.out_valid.value),\n            \"status_valid\": int(d.status_valid.value),\n        }\n        d.clk.value = 0\n        await Timer(1, unit=\"ns\")\n        self.cycles += 1\n        return pre, post\n\n    async def reset(self):\n        d = self.dut\n        d.rst_n.value = 0\n        pre, post = await self.cycle()\n        assert post[\"cmd_ready\"] == 1, \"cmd_ready not asserted after reset edge\"\n        assert post[\"out_valid\"] == 0, \"out_valid survived reset\"\n        assert post[\"status_valid\"] == 0, \"status_valid survived reset\"\n        d.rst_n.value = 1\n        await self.cycle()\n\n\nasync def idle_cycles(driver, count):\n    driver.dut.cmd_valid.value = 0\n    driver.dut.a_valid.value = 0\n    driver.dut.w_valid.value = 0\n    driver.dut.bias_valid.value = 0\n    for _ in range(count):\n        await driver.cycle()\n\n\nasync def send_beat(driver, valid_name, ready_name, data_name, data, rng=None, context=\"\"):\n    d = driver.dut\n    if rng is not None:\n        for _ in range(rng.randrange(4)):\n            setattr(d, valid_name, 0)\n            await driver.cycle()\n    getattr(d, data_name).value = data\n    getattr(d, valid_name).value = 1\n    for waited in range(1000):\n        pre, _ = await driver.cycle()\n        if pre[ready_name]:\n            getattr(d, valid_name).value = 0\n            return\n        assert int(getattr(d, valid_name).value) == 1, context + \": valid withdrawn\"\n        assert int(getattr(d, data_name).value) == data, context + \": payload changed\"\n    raise AssertionError(context + \": handshake timeout\")\n\n\nasync def send_command(driver, m, n, k, rng=None):\n    await send_beat(driver, \"cmd_valid\", \"cmd_ready\", \"cmd_data\",\n                    pack_command(m, n, k), rng, \"command\")\n\n\nasync def load_operands(driver, a, w, bias, rng=None):\n    for index, beat in enumerate(pack_int8(a)):\n        await send_beat(driver, \"a_valid\", \"a_ready\", \"a_data\", beat, rng,\n                        \"activation beat %d\" % index)\n    for index, beat in enumerate(pack_int8(w)):\n        await send_beat(driver, \"w_valid\", \"w_ready\", \"w_data\", beat, rng,\n                        \"weight beat %d\" % index)\n    for index, beat in enumerate(pack_int32(bias)):\n        await send_beat(driver, \"bias_valid\", \"bias_ready\", \"bias_data\", beat, rng,\n                        \"bias beat %d\" % index)\n\n\nasync def collect_result(driver, expected, rng=None, context=\"\"):\n    d = driver.dut\n    expected_beats = pack_int32(expected)\n    observed = []\n    status_seen = False\n    previous_out_stall = None\n    previous_status_stall = None\n\n    for cycle in range(40000):\n        d.out_ready.value = 1 if rng is None else rng.randrange(2)\n        d.status_ready.value = 1 if rng is None else rng.randrange(2)\n        pre, _ = await driver.cycle()\n\n        if previous_out_stall is not None:\n            assert pre[\"out_valid\"] == 1 and pre[\"out_data\"] == previous_out_stall, \\\n                context + \": result changed while stalled\"\n        previous_out_stall = pre[\"out_data\"] if pre[\"out_valid\"] and not int(d.out_ready.value) else None\n\n        if previous_status_stall is not None:\n            assert pre[\"status_valid\"] == 1 and pre[\"status_code\"] == previous_status_stall, \\\n                context + \": status changed while stalled\"\n        previous_status_stall = pre[\"status_code\"] if pre[\"status_valid\"] and not int(d.status_ready.value) else None\n\n        if pre[\"out_valid\"] and int(d.out_ready.value):\n            observed.append(pre[\"out_data\"])\n            index = len(observed) - 1\n            assert index < len(expected_beats), context + \": extra result transfer\"\n            assert observed[index] == expected_beats[index], \\\n                \"%s: beat %d expected 0x%016x observed 0x%016x\" % (\n                    context, index, expected_beats[index], observed[index])\n\n        if pre[\"status_valid\"] and int(d.status_ready.value):\n            assert pre[\"status_code\"] == 0, context + \": nonzero completion status\"\n            status_seen = True\n            break\n\n    assert status_seen, context + \": completion timeout\"\n    assert observed == expected_beats, \"%s: expected %d output beats, observed %d\" % (\n        context, len(expected_beats), len(observed))\n    d.out_ready.value = 0\n    d.status_ready.value = 0\n\n\nasync def run_job(driver, m, n, k, a, w, bias, rng=None, context=\"\"):\n    expected = gemm_relu(m, n, k, a, w, bias)\n    await send_command(driver, m, n, k, rng)\n    await load_operands(driver, a, w, bias, rng)\n    await collect_result(driver, expected, rng, context)\n\n\n@cocotb.test()\nasync def reference_and_directed(dut):\n    reference_sanity_checks()\n    driver = Driver(dut)\n    await driver.initialize()\n    await driver.reset()\n\n    cases = [\n        (1, 1, 1), (1, 8, 7), (8, 1, 8), (8, 8, 9),\n        (7, 9, 3), (9, 7, 11), (9, 9, 8), (16, 8, 1),\n        (8, 16, 5), (17, 15, 9), (64, 64, 64),\n    ]\n    rng = random.Random(SEED)\n    for case_index, (m, n, k) in enumerate(cases):\n        a = [rng.randrange(-128, 128) for _ in range(m * k)]\n        w = [rng.randrange(-128, 128) for _ in range(k * n)]\n        bias = [rng.randrange(-0x80000000, 0x80000000) for _ in range(n)]\n        if case_index == 0:\n            a, w, bias = [0], [0], [0]\n        await run_job(driver, m, n, k, a, w, bias, None,\n                      \"directed case %d dimensions %dx%dx%d\" % (case_index, m, n, k))\n\n    await run_job(driver, 1, 3, 1, [1], [1, -1, 0],\n                  [0x7FFFFFFF, -0x80000000, 7], None, \"bias overflow\")\n\n\n@cocotb.test()\nasync def randomized_backpressure(dut):\n    reference_sanity_checks()\n    driver = Driver(dut)\n    await driver.initialize()\n    await driver.reset()\n    rng = random.Random(SEED)\n\n    for transaction in range(100):\n        m = rng.randint(1, 12)\n        n = rng.randint(1, 12)\n        k = rng.randint(1, 12)\n        a = [rng.randrange(-128, 128) for _ in range(m * k)]\n        w = [rng.randrange(-128, 128) for _ in range(k * n)]\n        bias = [rng.randrange(-0x80000000, 0x80000000) for _ in range(n)]\n        await run_job(driver, m, n, k, a, w, bias, rng,\n                      \"seed 0x%x transaction %d dimensions %dx%dx%d\" % (\n                          SEED, transaction, m, n, k))\n\n\n@cocotb.test()\nasync def illegal_commands(dut):\n    driver = Driver(dut)\n    await driver.initialize()\n    await driver.reset()\n    cases = [(0, 1, 1), (1, 0, 1), (1, 1, 0),\n             (65, 1, 1), (1, 65, 1), (1, 1, 65)]\n\n    for m, n, k in cases:\n        await send_command(driver, m, n, k)\n        dut.a_valid.value = 1\n        dut.a_data.value = 0x0101010101010101\n        dut.w_valid.value = 1\n        dut.w_data.value = 0x0202020202020202\n        dut.bias_valid.value = 1\n        dut.bias_data.value = 3\n        dut.out_ready.value = 1\n        dut.status_ready.value = 0\n\n        found = False\n        for _ in range(20):\n            pre, _ = await driver.cycle()\n            assert not pre[\"a_ready\"] and not pre[\"w_ready\"] and not pre[\"bias_ready\"], \\\n                \"illegal command accepted operand data\"\n            assert not pre[\"out_valid\"], \"illegal command emitted result\"\n            if pre[\"status_valid\"]:\n                assert pre[\"status_code\"] == 1, \"illegal command status was not 1\"\n                held = pre[\"status_code\"]\n                for _ in range(3):\n                    nxt, _ = await driver.cycle()\n                    assert nxt[\"status_valid\"] and nxt[\"status_code\"] == held, \\\n                        \"error status not held under backpressure\"\n                dut.status_ready.value = 1\n                transfer, _ = await driver.cycle()\n                assert transfer[\"status_valid\"] and transfer[\"status_code\"] == 1\n                found = True\n                break\n        assert found, \"missing illegal-dimension status for %r\" % ((m, n, k),)\n        dut.a_valid.value = 0\n        dut.w_valid.value = 0\n        dut.bias_valid.value = 0\n        dut.out_ready.value = 0\n        dut.status_ready.value = 0\n\n\nasync def abort_and_check(driver, phase):\n    await driver.reset()\n    for _ in range(3):\n        pre, _ = await driver.cycle()\n        assert pre[\"cmd_ready\"] == 1, phase + \": did not recover to idle\"\n        assert pre[\"out_valid\"] == 0, phase + \": stale output after reset\"\n        assert pre[\"status_valid\"] == 0, phase + \": stale status after reset\"\n\n\nasync def launch_small(driver):\n    await send_command(driver, 1, 1, 4)\n    await load_operands(driver, [1, 2, 3, 4], [4, 3, 2, 1], [0])\n\n\n@cocotb.test()\nasync def reset_every_phase(dut):\n    driver = Driver(dut)\n    await driver.initialize()\n\n    await abort_and_check(driver, \"IDLE\")\n\n    await send_command(driver, 1, 1, 4)\n    await abort_and_check(driver, \"LOAD_A\")\n\n    await send_command(driver, 1, 1, 4)\n    await send_beat(driver, \"a_valid\", \"a_ready\", \"a_data\", pack_int8([1, 2, 3, 4])[0])\n    await abort_and_check(driver, \"LOAD_W\")\n\n    await send_command(driver, 1, 1, 4)\n    await send_beat(driver, \"a_valid\", \"a_ready\", \"a_data\", pack_int8([1, 2, 3, 4])[0])\n    await send_beat(driver, \"w_valid\", \"w_ready\", \"w_data\", pack_int8([4, 3, 2, 1])[0])\n    await abort_and_check(driver, \"LOAD_BIAS\")\n\n    await launch_small(driver)\n    await abort_and_check(driver, \"TILE_INIT\")\n\n    await launch_small(driver)\n    await driver.cycle()\n    await abort_and_check(driver, \"COMPUTE\")\n\n    await launch_small(driver)\n    for _ in range(1 + 4):\n        await driver.cycle()\n    await abort_and_check(driver, \"FINALIZE\")\n\n    await launch_small(driver)\n    dut.out_ready.value = 0\n    for _ in range(100):\n        pre, _ = await driver.cycle()\n        if pre[\"out_valid\"]:\n            break\n    else:\n        raise AssertionError(\"OUTPUT phase not reached\")\n    await abort_and_check(driver, \"OUTPUT\")\n\n    await launch_small(driver)\n    dut.out_ready.value = 1\n    dut.status_ready.value = 0\n    for _ in range(100):\n        pre, _ = await driver.cycle()\n        if pre[\"status_valid\"]:\n            assert pre[\"status_code\"] == 0\n            break\n    else:\n        raise AssertionError(\"STATUS phase not reached\")\n    await abort_and_check(driver, \"STATUS\")\n"
+      }
+    ],
+    "verification_plan": {
+      "top_module": "fc_accelerator",
+      "test_modules": [
+        "test_fc_accelerator"
+      ],
+      "test_categories": [
+        "reference-sanity",
+        "minimum-and-maximum-dimensions",
+        "tile-edges",
+        "signed-arithmetic",
+        "INT32-wrap",
+        "packing-and-counts",
+        "randomized-exact-match",
+        "source-stalls",
+        "result-and-status-backpressure",
+        "illegal-dimensions",
+        "completion",
+        "reset-every-phase"
+      ],
+      "randomized_test_count": 100,
+      "seed": 1511506142,
+      "timeout_seconds": 180,
+      "regression_groups": {
+        "smoke": [
+          "test_fc_accelerator"
+        ],
+        "targeted": [
+          "test_fc_accelerator"
+        ],
+        "full": [
+          "test_fc_accelerator"
+        ]
+      },
+      "pass_criteria": "All bounded cocotb assertions pass: exact packed results and transfer counts, legal ready/valid behavior, status semantics, illegal-command rejection, and reset recovery.",
+      "protocol_assumptions": [
+        "Default parameters MAX_M=MAX_N=MAX_K=64 produce 7-bit M, N, and K command fields.",
+        "Inputs are presented only in their prescribed phase and remain stable until handshake.",
+        "A synchronous low rst_n edge aborts any active job and returns the interface to idle."
+      ]
+    },
+    "architecture_conflict": null,
+    "known_verification_gaps": [
+      "Non-default compile-time MAX_M/MAX_N/MAX_K parameterizations are not exercised.",
+      "Internal datapath-only ports are not observed because acceptance is defined at the top-level interface."
+    ]
+  },
+  "verification_plan": {
+    "top_module": "fc_accelerator",
+    "test_modules": [
+      "test_fc_accelerator"
+    ],
+    "test_categories": [
+      "reference-sanity",
+      "minimum-and-maximum-dimensions",
+      "tile-edges",
+      "signed-arithmetic",
+      "INT32-wrap",
+      "packing-and-counts",
+      "randomized-exact-match",
+      "source-stalls",
+      "result-and-status-backpressure",
+      "illegal-dimensions",
+      "completion",
+      "reset-every-phase"
+    ],
+    "randomized_test_count": 100,
+    "seed": 1511506142,
+    "timeout_seconds": 180,
+    "regression_groups": {
+      "smoke": [
+        "test_fc_accelerator"
+      ],
+      "targeted": [
+        "test_fc_accelerator"
+      ],
+      "full": [
+        "test_fc_accelerator"
+      ]
+    },
+    "pass_criteria": "All bounded cocotb assertions pass: exact packed results and transfer counts, legal ready/valid behavior, status semantics, illegal-command rejection, and reset recovery.",
+    "protocol_assumptions": [
+      "Default parameters MAX_M=MAX_N=MAX_K=64 produce 7-bit M, N, and K command fields.",
+      "Inputs are presented only in their prescribed phase and remain stable until handshake.",
+      "A synchronous low rst_n edge aborts any active job and returns the interface to idle."
+    ]
+  },
+  "verification_status": "SIMULATION_FAILURE",
+  "verification_evidence": {
+    "architecture_version": 2,
+    "repair_iteration": 0,
+    "top_module": "fc_accelerator",
+    "regression_scope": "FULL",
+    "verilator": {
+      "stage": "verilator_lint",
+      "status": "PASS",
+      "failure_class": null,
+      "return_code": 0,
+      "command": [
+        "/u/mjha1/.local/verilator-env/bin/verilator",
+        "--lint-only",
+        "--sv",
+        "-Wno-fatal",
+        "--top-module",
+        "fc_accelerator",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_accelerator.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv"
+      ],
+      "sources": [
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_accelerator.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv",
+        "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv"
+      ],
+      "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.088 MB sources in 4 modules, into 0.348 MB in 3 C++ files needing 0.000 MB\n- Verilator: Walltime 0.037 s (elab=0.003, cvt=0.021, bld=0.000); cpu 0.032 s on 1 threads; allocated 29.125 MB\n",
+      "stderr": "%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:63:37: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_m_base' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   63 |       row_active[r] = ((tile_m_base + r) < cfg_m);\n      |                                     ^\n                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.050\n                      ... Use \"/* verilator lint_off WIDTHEXPAND */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:65:25: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_m_base' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   65 |       ai = (tile_m_base + r) * cfg_k + compute_k;\n      |                         ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:65:38: Operator ADD expects 32 bits on the RHS, but RHS's VARREF 'compute_k' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   65 |       ai = (tile_m_base + r) * cfg_k + compute_k;\n      |                                      ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:69:37: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_n_base' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   69 |       col_active[c] = ((tile_n_base + c) < cfg_n);\n      |                                     ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:71:30: Operator ADD expects 32 bits on the RHS, but RHS's VARREF 'tile_n_base' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   71 |       wi = compute_k * cfg_n + tile_n_base + c;\n      |                              ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:90:32: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_m_base' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   90 |       global_row = tile_m_base + local_row;\n      |                                ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:91:32: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_n_base' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   91 |       global_col = tile_n_base + local_col;\n      |                                ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:121:44: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'a_wbase' generates 12 bits.\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n  121 |         if (a_we[l]) activation_mem[a_wbase+l] <= a_wdata[8*l +: 8];\n      |                                            ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:122:40: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'w_wbase' generates 12 bits.\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n  122 |         if (w_we[l]) weight_mem[w_wbase+l] <= w_wdata[8*l +: 8];\n      |                                        ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:85:13: Operator ASSIGN expects 32 bits on the Assign RHS, but Assign RHS's VARREF 'cfg_n' generates 7 bits.\n                                                                                                                   : ... note: In instance 'fc_accelerator.u_controller'\n   85 |     b_total = cfg_n;\n      |             ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:141:24: Operator GT expects 32 bits on the LHS, but LHS's VARREF 'cmd_m' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  141 |                 (cmd_m > MAX_M) || (cmd_n > MAX_N) || (cmd_k > MAX_K)) begin\n      |                        ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:141:43: Operator GT expects 32 bits on the LHS, but LHS's VARREF 'cmd_n' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  141 |                 (cmd_m > MAX_M) || (cmd_n > MAX_N) || (cmd_k > MAX_K)) begin\n      |                                           ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:141:62: Operator GT expects 32 bits on the LHS, but LHS's VARREF 'cmd_k' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  141 |                 (cmd_m > MAX_M) || (cmd_n > MAX_N) || (cmd_k > MAX_K)) begin\n      |                                                              ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:183:42: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_n_base' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  183 |               tile_n_base <= tile_n_base + ARRAY_COLS;\n      |                                          ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:183:27: Operator ASSIGNDLY expects 7 bits on the Assign RHS, but Assign RHS's ADD generates 32 bits.\n                                                                                                                   : ... note: In instance 'fc_accelerator.u_controller'\n  183 |               tile_n_base <= tile_n_base + ARRAY_COLS;\n      |                           ^~\n                     ... For warning description see https://verilator.org/warn/WIDTHTRUNC?v=5.050\n                     ... Use \"/* verilator lint_off WIDTHTRUNC */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:186:42: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_m_base' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  186 |               tile_m_base <= tile_m_base + ARRAY_ROWS;\n      |                                          ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:186:27: Operator ASSIGNDLY expects 7 bits on the Assign RHS, but Assign RHS's ADD generates 32 bits.\n                                                                                                                   : ... note: In instance 'fc_accelerator.u_controller'\n  186 |               tile_m_base <= tile_m_base + ARRAY_ROWS;\n      |                           ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:185:39: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_m_base' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  185 |             end else if ((tile_m_base + ARRAY_ROWS) < cfg_m) begin\n      |                                       ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:182:30: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_n_base' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  182 |             if ((tile_n_base + ARRAY_COLS) < cfg_n) begin\n      |                              ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:180:30: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'finalize_pair' generates 5 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  180 |           if ((finalize_pair + 1) >= TILE_PAIRS) begin\n      |                              ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:12: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:12: \n  116 |       for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |            ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:74:33: ... Location of always_comb write\n   74 |     for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                 ^\n                      ... For warning description see https://verilator.org/warn/MULTIDRIVEN?v=5.050\n                      ... Use \"/* verilator lint_off MULTIDRIVEN */\" and lint_on around source to disable this message.\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:12: Variable written to in always_ff also written by other process (IEEE 1800-2023 9.2.2.4): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:12: \n  116 |       for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |            ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:74:33: ... Location of other write\n   74 |     for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                 ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:14: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:14: \n  117 |         for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |              ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:75:35: ... Location of always_comb write\n   75 |       for (c = 0; c < ARRAY_COLS; c = c + 1) begin\n      |                                   ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:14: Variable written to in always_ff also written by other process (IEEE 1800-2023 9.2.2.4): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:14: \n  117 |         for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |              ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:75:35: ... Location of other write\n   75 |       for (c = 0; c < ARRAY_COLS; c = c + 1) begin\n      |                                   ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:37: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:37: \n  117 |         for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                                     ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:14: ... Location of always_comb write\n  117 |         for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |              ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:35: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:35: \n  116 |       for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                   ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:12: ... Location of always_comb write\n  116 |       for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |            ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:12: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'l'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:12: \n  120 |       for (l = 0; l < 8; l = l + 1) begin\n      |            ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:83:24: ... Location of always_comb write\n   83 |     for (l = 0; l < 2; l = l + 1) begin\n      |                        ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:12: Variable written to in always_ff also written by other process (IEEE 1800-2023 9.2.2.4): 'l'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:12: \n  120 |       for (l = 0; l < 8; l = l + 1) begin\n      |            ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:83:24: ... Location of other write\n   83 |     for (l = 0; l < 2; l = l + 1) begin\n      |                        ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:26: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'l'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:26: \n  120 |       for (l = 0; l < 8; l = l + 1) begin\n      |                          ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:12: ... Location of always_comb write\n  120 |       for (l = 0; l < 8; l = l + 1) begin\n      |            ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:128:14: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:128:14: \n  128 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |              ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:35: ... Location of always_comb write\n  116 |       for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                   ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:129:16: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:129:16: \n  129 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:37: ... Location of always_comb write\n  117 |         for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                                     ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:129:39: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:129:39: \n  129 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                                       ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:129:16: ... Location of always_comb write\n  129 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:128:37: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:128:37: \n  128 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                     ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:128:14: ... Location of always_comb write\n  128 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |              ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:132:14: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:132:14: \n  132 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |              ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:128:37: ... Location of always_comb write\n  128 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                     ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:133:16: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:133:16: \n  133 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:129:39: ... Location of always_comb write\n  129 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                                       ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:133:39: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:133:39: \n  133 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                                       ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:133:16: ... Location of always_comb write\n  133 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:132:37: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:132:37: \n  132 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                     ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:132:14: ... Location of always_comb write\n  132 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |              ^\n",
+      "error_diagnostics": [],
+      "top_module": "fc_accelerator"
+    },
+    "cocotb": {
+      "stage": "cocotb_regression",
+      "status": "SIMULATION_FAILURE",
+      "failure_class": "UNKNOWN",
+      "tests": 4,
+      "failures": 1,
+      "seed": 1511506142,
+      "top_module": "fc_accelerator",
+      "test_modules": [
+        "test_fc_accelerator"
+      ],
+      "results_xml": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/verification/build/av2-r0-p0-v0/results.xml",
+      "worker_error": null,
+      "worker_return_code": 1,
+      "stdout": "- V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev conda-forge build \n- Verilator: Built from 0.084 MB sources in 4 modules, into 0.177 MB in 6 C++ files needing 0.000 MB\n- Verilator: Walltime 0.077 s (elab=0.002, cvt=0.033, bld=0.000); cpu 0.022 s on 1 threads; allocated 26.812 MB\nmake: Entering directory '/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/verification/build/av2-r0-p0-v0'\ng++  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -Os  -c -o verilator.o /u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/share/lib/verilator/verilator.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated_dpi.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated_dpi.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated_vpi.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated_vpi.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o verilated_threads.o /u/mjha1/.local/verilator-env/share/verilator/include/verilated_threads.cpp\npython3 /u/mjha1/.local/verilator-env/share/verilator/bin/verilator_includer -DVL_INCLUDE_OPT=include Vtop.cpp Vtop___024root__0.cpp Vtop__Dpi.cpp Vtop___024root__Slow.cpp Vtop___024root__0__Slow.cpp Vtop__Syms__Slow.cpp > Vtop__ALL.cpp\ng++ -Os  -I.  -MMD -I/u/mjha1/.local/verilator-env/share/verilator/include -I/u/mjha1/.local/verilator-env/share/verilator/include/vltstd -DVERILATOR=1 -DVM_COVERAGE=0 -DVM_SC=0 -DVM_TIMING=0 -DVM_TRACE=0 -DVM_TRACE_FST=0 -DVM_TRACE_VCD=0 -DVM_TRACE_SAIF=0 -DVM_VPI=1 -faligned-new -fcf-protection=none -Wno-bool-operation -Wno-int-in-bool-context -Wno-shadow -Wno-sign-compare -Wno-subobject-linkage -Wno-tautological-compare -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-variable      -c -o Vtop__ALL.o Vtop__ALL.cpp\ng++    -rdynamic verilator.o verilated.o verilated_dpi.o verilated_vpi.o verilated_threads.o Vtop__ALL.a   -Wl,-rpath,/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/libs -L/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/libs -lcocotbvpi_verilator  -pthread -lpthread -latomic -ldl   -o fc_accelerator\nrm Vtop__ALL.verilator_deplist.tmp\nmake: Leaving directory '/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/verification/build/av2-r0-p0-v0'\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:242  in gpi_load_users                  Loaded entry library: '/sw/user/python/miniforge3-pytorch-2.10.0/lib/libpython3.12.so.1.0'\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:233  in gpi_load_users                  Running entry func 'initialize' from loaded library '/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/simulator.cpython-312-aarch64-linux-gnu.so'\n     -.--ns INFO     pygpi                              ..ib/pygpi/embed.cpp:114  in initialize                      Using Python 3.12.9 interpreter at /u/mjha1/agentic-npu-rtl/.venv/bin/python\n     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:74   in gpi_print_registered_impl       GPI: VPI support registered\n     0.00ns INFO     cocotb.initialize                  Seeding Python random module with 1511506142\n     0.00ns INFO     cocotb.initialize                  Initialized cocotb v2.1.0 from /u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb\n     0.00ns INFO     cocotb.initialize                  Running on Verilator version 5.050 2026-07-01\n     0.00ns INFO     cocotb.regression                  Running tests\n     0.00ns INFO     cocotb.regression                  running test_fc_accelerator.reference_and_directed (1/4)\n 32524.00ns INFO     cocotb.regression                  test_fc_accelerator.reference_and_directed passed\n 32524.00ns INFO     cocotb.regression                  running test_fc_accelerator.randomized_backpressure (2/4)\n 32537.00ns WARNING  cocotb.regression                  test_fc_accelerator.randomized_backpressure failed\n                                                        Traceback (most recent call last):\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/tests/test_fc_accelerator.py\", line 208, in randomized_backpressure\n                                                            await run_job(driver, m, n, k, a, w, bias, rng,\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/tests/test_fc_accelerator.py\", line 163, in run_job\n                                                            await load_operands(driver, a, w, bias, rng)\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/tests/test_fc_accelerator.py\", line 107, in load_operands\n                                                            await send_beat(driver, \"a_valid\", \"a_ready\", \"a_data\", beat, rng,\n                                                          File \"/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/tests/test_fc_accelerator.py\", line 86, in send_beat\n                                                            setattr(d, valid_name, 0)\n                                                          File \"/u/mjha1/agentic-npu-rtl/.venv/lib/python3.12/site-packages/cocotb/handle.py\", line 451, in __setattr__\n                                                            raise AttributeError(\n                                                        AttributeError: Cannot set attribute 'a_valid' on simulation object fc_accelerator. Did you forget to add `.value`?\n 32537.00ns INFO     cocotb.regression                  running test_fc_accelerator.illegal_commands (3/4)\n 32652.00ns INFO     cocotb.regression                  test_fc_accelerator.illegal_commands passed\n 32652.00ns INFO     cocotb.regression                  running test_fc_accelerator.reset_every_phase (4/4)\n 33115.00ns INFO     cocotb.regression                  test_fc_accelerator.reset_every_phase passed\n 33115.00ns INFO     cocotb.regression                  *****************************************************************************************************\n                                                        ** TEST                                         STATUS  SIM TIME (ns)  REAL TIME (s)  RATIO (ns/s) **\n                                                        *****************************************************************************************************\n                                                        ** test_fc_accelerator.reference_and_directed    PASS       32524.00           0.44      74544.13  **\n                                                        ** test_fc_accelerator.randomized_backpressure   FAIL          13.00           0.00      26549.58  **\n                                                        ** test_fc_accelerator.illegal_commands          PASS         115.00           0.00      83062.30  **\n                                                        ** test_fc_accelerator.reset_every_phase         PASS         463.00           0.00     102391.77  **\n                                                        *****************************************************************************************************\n                                                        ** TESTS=4 PASS=3 FAIL=1 SKIP=0                             33115.00           0.45      74020.11  **\n                                                        *****************************************************************************************************\n- :0: Verilog $finish\n",
+      "stderr": "%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:63:37: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_m_base' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   63 |       row_active[r] = ((tile_m_base + r) < cfg_m);\n      |                                     ^\n                      ... For warning description see https://verilator.org/warn/WIDTHEXPAND?v=5.050\n                      ... Use \"/* verilator lint_off WIDTHEXPAND */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:65:25: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_m_base' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   65 |       ai = (tile_m_base + r) * cfg_k + compute_k;\n      |                         ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:65:38: Operator ADD expects 32 bits on the RHS, but RHS's VARREF 'compute_k' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   65 |       ai = (tile_m_base + r) * cfg_k + compute_k;\n      |                                      ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:69:37: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_n_base' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   69 |       col_active[c] = ((tile_n_base + c) < cfg_n);\n      |                                     ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:71:30: Operator ADD expects 32 bits on the RHS, but RHS's VARREF 'tile_n_base' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   71 |       wi = compute_k * cfg_n + tile_n_base + c;\n      |                              ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:90:32: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_m_base' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   90 |       global_row = tile_m_base + local_row;\n      |                                ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:91:32: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_n_base' generates 7 bits.\n                                                                                                                 : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n   91 |       global_col = tile_n_base + local_col;\n      |                                ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:121:44: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'a_wbase' generates 12 bits.\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n  121 |         if (a_we[l]) activation_mem[a_wbase+l] <= a_wdata[8*l +: 8];\n      |                                            ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:122:40: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'w_wbase' generates 12 bits.\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n  122 |         if (w_we[l]) weight_mem[w_wbase+l] <= w_wdata[8*l +: 8];\n      |                                        ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:85:13: Operator ASSIGN expects 32 bits on the Assign RHS, but Assign RHS's VARREF 'cfg_n' generates 7 bits.\n                                                                                                                   : ... note: In instance 'fc_accelerator.u_controller'\n   85 |     b_total = cfg_n;\n      |             ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:141:24: Operator GT expects 32 bits on the LHS, but LHS's VARREF 'cmd_m' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  141 |                 (cmd_m > MAX_M) || (cmd_n > MAX_N) || (cmd_k > MAX_K)) begin\n      |                        ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:141:43: Operator GT expects 32 bits on the LHS, but LHS's VARREF 'cmd_n' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  141 |                 (cmd_m > MAX_M) || (cmd_n > MAX_N) || (cmd_k > MAX_K)) begin\n      |                                           ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:141:62: Operator GT expects 32 bits on the LHS, but LHS's VARREF 'cmd_k' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  141 |                 (cmd_m > MAX_M) || (cmd_n > MAX_N) || (cmd_k > MAX_K)) begin\n      |                                                              ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:183:42: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_n_base' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  183 |               tile_n_base <= tile_n_base + ARRAY_COLS;\n      |                                          ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:183:27: Operator ASSIGNDLY expects 7 bits on the Assign RHS, but Assign RHS's ADD generates 32 bits.\n                                                                                                                   : ... note: In instance 'fc_accelerator.u_controller'\n  183 |               tile_n_base <= tile_n_base + ARRAY_COLS;\n      |                           ^~\n                     ... For warning description see https://verilator.org/warn/WIDTHTRUNC?v=5.050\n                     ... Use \"/* verilator lint_off WIDTHTRUNC */\" and lint_on around source to disable this message.\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:186:42: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_m_base' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  186 |               tile_m_base <= tile_m_base + ARRAY_ROWS;\n      |                                          ^\n%Warning-WIDTHTRUNC: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:186:27: Operator ASSIGNDLY expects 7 bits on the Assign RHS, but Assign RHS's ADD generates 32 bits.\n                                                                                                                   : ... note: In instance 'fc_accelerator.u_controller'\n  186 |               tile_m_base <= tile_m_base + ARRAY_ROWS;\n      |                           ^~\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:185:39: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_m_base' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  185 |             end else if ((tile_m_base + ARRAY_ROWS) < cfg_m) begin\n      |                                       ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:182:30: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'tile_n_base' generates 7 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  182 |             if ((tile_n_base + ARRAY_COLS) < cfg_n) begin\n      |                              ^\n%Warning-WIDTHEXPAND: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_controller.sv:180:30: Operator ADD expects 32 bits on the LHS, but LHS's VARREF 'finalize_pair' generates 5 bits.\n                                                                                                                    : ... note: In instance 'fc_accelerator.u_controller'\n  180 |           if ((finalize_pair + 1) >= TILE_PAIRS) begin\n      |                              ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:12: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:12: \n  116 |       for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |            ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:74:33: ... Location of always_comb write\n   74 |     for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                 ^\n                      ... For warning description see https://verilator.org/warn/MULTIDRIVEN?v=5.050\n                      ... Use \"/* verilator lint_off MULTIDRIVEN */\" and lint_on around source to disable this message.\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:12: Variable written to in always_ff also written by other process (IEEE 1800-2023 9.2.2.4): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:12: \n  116 |       for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |            ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:74:33: ... Location of other write\n   74 |     for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                 ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:14: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:14: \n  117 |         for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |              ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:75:35: ... Location of always_comb write\n   75 |       for (c = 0; c < ARRAY_COLS; c = c + 1) begin\n      |                                   ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:14: Variable written to in always_ff also written by other process (IEEE 1800-2023 9.2.2.4): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:14: \n  117 |         for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |              ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:75:35: ... Location of other write\n   75 |       for (c = 0; c < ARRAY_COLS; c = c + 1) begin\n      |                                   ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:37: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:37: \n  117 |         for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                                     ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:14: ... Location of always_comb write\n  117 |         for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |              ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:35: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:35: \n  116 |       for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                   ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:12: ... Location of always_comb write\n  116 |       for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |            ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:12: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'l'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:12: \n  120 |       for (l = 0; l < 8; l = l + 1) begin\n      |            ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:83:24: ... Location of always_comb write\n   83 |     for (l = 0; l < 2; l = l + 1) begin\n      |                        ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:12: Variable written to in always_ff also written by other process (IEEE 1800-2023 9.2.2.4): 'l'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:12: \n  120 |       for (l = 0; l < 8; l = l + 1) begin\n      |            ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:83:24: ... Location of other write\n   83 |     for (l = 0; l < 2; l = l + 1) begin\n      |                        ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:26: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'l'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:26: \n  120 |       for (l = 0; l < 8; l = l + 1) begin\n      |                          ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:120:12: ... Location of always_comb write\n  120 |       for (l = 0; l < 8; l = l + 1) begin\n      |            ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:128:14: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:128:14: \n  128 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |              ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:116:35: ... Location of always_comb write\n  116 |       for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                   ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:129:16: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:129:16: \n  129 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:117:37: ... Location of always_comb write\n  117 |         for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                                     ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:129:39: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:129:39: \n  129 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                                       ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:129:16: ... Location of always_comb write\n  129 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:128:37: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:128:37: \n  128 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                     ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:128:14: ... Location of always_comb write\n  128 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |              ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:132:14: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:132:14: \n  132 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |              ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:128:37: ... Location of always_comb write\n  128 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                     ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:133:16: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:133:16: \n  133 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:129:39: ... Location of always_comb write\n  129 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                                       ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:133:39: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'c'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:133:39: \n  133 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                                       ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:133:16: ... Location of always_comb write\n  133 |           for (c = 0; c < ARRAY_COLS; c = c + 1)\n      |                ^\n%Warning-MULTIDRIVEN: /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:132:37: Variable also written to in always_comb (IEEE 1800-2023 9.2.2.2): 'r'\n                                                                                                                  : ... note: In instance 'fc_accelerator.u_controller.u_datapath'\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:132:37: \n  132 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |                                     ^\n                      /u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862/rtl/fc_datapath.sv:132:14: ... Location of always_comb write\n  132 |         for (r = 0; r < ARRAY_ROWS; r = r + 1)\n      |              ^\n"
+    },
+    "status": "SIMULATION_FAILURE",
+    "failure_class": "UNKNOWN"
+  },
+  "synthesis_result": null,
+  "optimization_plan": null,
+  "repair_iteration": 0,
+  "max_repair_iterations": 5,
+  "ppa_iteration": 0,
+  "max_ppa_iterations": 3,
+  "needs_regression": true,
+  "failure_class": "UNKNOWN",
+  "status": "FAILED",
+  "history": [
+    {
+      "stage": "architect",
+      "status": "READY",
+      "architecture_version": 1,
+      "revision": false
+    },
+    {
+      "stage": "rtl_generator",
+      "status": "ARCHITECTURE_CONFLICT",
+      "architecture_version": 1,
+      "repair_iteration": 0,
+      "ppa_iteration": 0,
+      "files": []
+    },
+    {
+      "stage": "architect",
+      "status": "READY",
+      "architecture_version": 2,
+      "revision": true
+    },
+    {
+      "stage": "rtl_generator",
+      "status": "RTL_GENERATED",
+      "architecture_version": 2,
+      "repair_iteration": 0,
+      "ppa_iteration": 0,
+      "files": [
+        "fc_accelerator.sv",
+        "fc_controller.sv",
+        "fc_datapath.sv"
+      ]
+    },
+    {
+      "stage": "verifier_generation",
+      "status": "VERIFICATION_READY",
+      "architecture_version": 2,
+      "repair_iteration": 0,
+      "semantic_retry": true,
+      "semantic_retry_error": "verification_plan.test_modules must reference exactly the generated test files"
+    },
+    {
+      "stage": "deterministic_verification",
+      "status": "SIMULATION_FAILURE",
+      "failure_class": "UNKNOWN"
+    },
+    {
+      "stage": "debugger",
+      "status": "ERROR",
+      "error": "Debugger diagnosed undeclared modules: ['test_fc_accelerator.py']"
+    }
+  ],
+  "errors": [
+    "AgentRuntimeError: Debugger diagnosed undeclared modules: ['test_fc_accelerator.py']"
+  ],
+  "vivado_config": {},
+  "vivado_executable": "vivado",
+  "vivado_timeout": 3600,
+  "ppa_objective": "lut",
+  "ppa_status": "PENDING",
+  "best_candidate": null,
+  "verifier_revision": 0,
+  "max_verifier_revisions": 2,
+  "frozen_hashes": {
+    "architecture": {
+      "acceptance_criteria.yaml": "9067f4a48439f3b86d8288c1524c3c0fd9874fab83b0ca6fb1c34518e51c552e",
+      "architect_result.json": "84da7e301e684f5a2e8ba6a7bb6d386b649a6a297874d6d655340a63db78644b",
+      "architecture_contract.yaml": "bc9d8ddc85d7207aad3e4611237497cd5a7ca8749248eb6860131b29973ee7da",
+      "interface_contract.yaml": "d228d432f6f5ea0aac778753d35e22989c748493fb13de73e9b3d03468e30584",
+      "module_manifest.json": "86f8055602da2de018590dd6e6ff5b760920c7e07a3478b0f543a419506a1e70"
+    },
+    "rtl": {
+      "fc_accelerator.sv": "d2208c1dd40df976961d03311f141e70012fc16e06581421b2775b23008c0103",
+      "fc_controller.sv": "91bd399bed46049af1fb2c2cccc8adb377493da6e84ea1572b35f0055fe9e3f8",
+      "fc_datapath.sv": "ad9504cb28aef506e20026ba4dbc5b1ff3ab8d097771196461834d7a532dce5e"
+    },
+    "tests": {
+      "test_fc_accelerator.py": "f1bb2559b46815e2fe5f55c63131e3ba07e79715d5045562723644d6c4680b05"
+    },
+    "reference": {
+      "fc_reference.py": "b73aee37ba7870b24cb453c9c4985bdbc42fe13d180924927a2a4616ac91699e"
+    }
+  },
+  "diagnostic_iteration": 0,
+  "max_diagnostic_iterations": 2,
+  "workspace_root": "/u/mjha1/agentic-npu-rtl/multigent/runs/run-20260911-180444-ec8862",
+  "orchestration_error": "debugger: AgentRuntimeError: Debugger diagnosed undeclared modules: ['test_fc_accelerator.py']"
+}

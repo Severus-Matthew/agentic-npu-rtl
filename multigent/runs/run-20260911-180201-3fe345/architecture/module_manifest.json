@@ -1,0 +1,545 @@
+{
+  "top": "fc_tiled_gemm_top",
+  "modules": [
+    {
+      "name": "fc_tiled_gemm_top",
+      "responsibility": "top integration and external interface",
+      "dependencies": [
+        "cfg_unit",
+        "control_fsm",
+        "pe_array_8x8",
+        "bias_relu_unit",
+        "output_unit"
+      ],
+      "parameters": [
+        "ARRAY_M",
+        "ARRAY_N",
+        "MAX_M",
+        "MAX_K",
+        "MAX_N"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "sync reset"
+        },
+        {
+          "name": "cfg_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "cfg valid"
+        },
+        {
+          "name": "cfg_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "cfg ready"
+        },
+        {
+          "name": "cfg_data",
+          "direction": "input",
+          "width": "128",
+          "signed": false,
+          "semantics": "config payload"
+        },
+        {
+          "name": "act_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "activation valid"
+        },
+        {
+          "name": "act_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "activation ready"
+        },
+        {
+          "name": "act_data",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "activation data"
+        },
+        {
+          "name": "wgt_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "weight valid"
+        },
+        {
+          "name": "wgt_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "weight ready"
+        },
+        {
+          "name": "wgt_data",
+          "direction": "input",
+          "width": "8",
+          "signed": true,
+          "semantics": "weight data"
+        },
+        {
+          "name": "bias_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "bias valid"
+        },
+        {
+          "name": "bias_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "bias ready"
+        },
+        {
+          "name": "bias_data",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "bias data"
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "output valid"
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "output ready"
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "output data"
+        },
+        {
+          "name": "busy",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "busy flag"
+        },
+        {
+          "name": "done",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "done pulse"
+        },
+        {
+          "name": "error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "error flag"
+        }
+      ]
+    },
+    {
+      "name": "cfg_unit",
+      "responsibility": "decode/validate cfg packet and hold runtime dims",
+      "dependencies": [],
+      "parameters": [
+        "MAX_M",
+        "MAX_K",
+        "MAX_N"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "cfg_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "input valid"
+        },
+        {
+          "name": "cfg_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "input ready"
+        },
+        {
+          "name": "cfg_data",
+          "direction": "input",
+          "width": "128",
+          "signed": false,
+          "semantics": "packed M,K,N"
+        },
+        {
+          "name": "cfg_latched",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "pulse on successful latch"
+        },
+        {
+          "name": "cfg_error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "invalid bounds detected"
+        },
+        {
+          "name": "M_reg",
+          "direction": "output",
+          "width": "32",
+          "signed": false,
+          "semantics": "latched M"
+        },
+        {
+          "name": "K_reg",
+          "direction": "output",
+          "width": "32",
+          "signed": false,
+          "semantics": "latched K"
+        },
+        {
+          "name": "N_reg",
+          "direction": "output",
+          "width": "32",
+          "signed": false,
+          "semantics": "latched N"
+        }
+      ]
+    },
+    {
+      "name": "control_fsm",
+      "responsibility": "tile/k counters and handshakes orchestration",
+      "dependencies": [],
+      "parameters": [
+        "ARRAY_M",
+        "ARRAY_N"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "cfg_latched",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "start event"
+        },
+        {
+          "name": "cfg_error",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "config error"
+        },
+        {
+          "name": "busy",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "busy"
+        },
+        {
+          "name": "done",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "done pulse"
+        },
+        {
+          "name": "error",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "latched error"
+        },
+        {
+          "name": "m0",
+          "direction": "output",
+          "width": "32",
+          "signed": false,
+          "semantics": "tile row base"
+        },
+        {
+          "name": "n0",
+          "direction": "output",
+          "width": "32",
+          "signed": false,
+          "semantics": "tile col base"
+        },
+        {
+          "name": "k_idx",
+          "direction": "output",
+          "width": "32",
+          "signed": false,
+          "semantics": "reduction index"
+        }
+      ]
+    },
+    {
+      "name": "pe_array_8x8",
+      "responsibility": "64-lane MAC accumulation for one tile",
+      "dependencies": [],
+      "parameters": [
+        "ARRAY_M",
+        "ARRAY_N"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "step_en",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "advance one k step"
+        },
+        {
+          "name": "clear_tile",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "zero accumulators for new tile"
+        },
+        {
+          "name": "a_vec",
+          "direction": "input",
+          "width": "ARRAY_M*8",
+          "signed": true,
+          "semantics": "packed 8 activation elements"
+        },
+        {
+          "name": "w_vec",
+          "direction": "input",
+          "width": "ARRAY_N*8",
+          "signed": true,
+          "semantics": "packed 8 weight elements"
+        },
+        {
+          "name": "acc_read_idx",
+          "direction": "input",
+          "width": "6",
+          "signed": false,
+          "semantics": "select accumulator element for post stage"
+        },
+        {
+          "name": "acc_read_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "selected accumulator value"
+        }
+      ]
+    },
+    {
+      "name": "bias_relu_unit",
+      "responsibility": "add bias and apply relu on streamed tile elements",
+      "dependencies": [],
+      "parameters": [
+        "ARRAY_N"
+      ],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "acc input valid"
+        },
+        {
+          "name": "in_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "acc input ready"
+        },
+        {
+          "name": "acc_in",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "accumulator input"
+        },
+        {
+          "name": "bias_in",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "bias for column"
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "post output valid"
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "post output ready"
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "relu output"
+        }
+      ]
+    },
+    {
+      "name": "output_unit",
+      "responsibility": "boundary mask check and external out channel driving",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true,
+      "ports": [
+        {
+          "name": "clk",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "clock"
+        },
+        {
+          "name": "rst",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "reset"
+        },
+        {
+          "name": "in_valid",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "input valid"
+        },
+        {
+          "name": "in_ready",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "input ready"
+        },
+        {
+          "name": "in_data",
+          "direction": "input",
+          "width": "32",
+          "signed": true,
+          "semantics": "input data"
+        },
+        {
+          "name": "emit_enable",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "1 if index in MxN bound"
+        },
+        {
+          "name": "out_valid",
+          "direction": "output",
+          "width": "1",
+          "signed": false,
+          "semantics": "out valid"
+        },
+        {
+          "name": "out_ready",
+          "direction": "input",
+          "width": "1",
+          "signed": false,
+          "semantics": "out ready"
+        },
+        {
+          "name": "out_data",
+          "direction": "output",
+          "width": "32",
+          "signed": true,
+          "semantics": "out data"
+        }
+      ]
+    }
+  ]
+}

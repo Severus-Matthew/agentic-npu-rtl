@@ -1,0 +1,72 @@
+functional:
+- For every accepted legal job, compare all M*N outputs exactly against an independent
+  signed-integer model performing per-add wrap32, bias wrap32, then ReLU.
+- Exercise INT8 values -128,-127,-1,0,1,126,127; INT32 biases 0,1,-1,INT32_MIN,INT32_MAX;
+  positive and negative bias-add overflow; and ReLU values below, at, and above zero.
+- Unit-test mac_tile8x8 through enough repeated enabled steps to cause positive and
+  negative accumulator wrap, even though legal bounded jobs may not reach accumulator
+  overflow.
+- Cover M,N,K=1, default maxima, and legal sizes around tile boundaries 7,8,9,15,16,17;
+  include partial final row and column tiles and K values not divisible by eight.
+- Check precisely M*K A, K*N B, and N bias input transfers, with the declared section
+  order and no padding. Randomize ignored upper INT8 payload bits and confirm identical
+  results.
+- Check exact tile-major coordinates, M*N output count, no padded outputs, and one
+  out_last on the final result.
+- Demonstrate operand reuse across multiple row and column tiles using only one transmission
+  of each input object.
+- Under continuously available input and output readiness, check final output edge
+  L+ceil(M/8)*ceil(N/8)*(K+1)+M*N relative to command edge zero.
+verification:
+- Run at least 100 completed randomized legal transactions with recorded deterministic
+  seeds; randomize dimensions, operand bits, input bubbles, command stalls, and output
+  backpressure.
+- Set the regression wall timeout to at least 120 seconds; timeout is failure, not
+  a pass or skipped test.
+- Assert payload/metadata stability during stalls, no state advancement without required
+  transfers, no writes outside accepted input edges, and exactly K array steps per
+  initialized tile.
+- Hold out_ready low for extended intervals, including the first and final output
+  beats; verify no loss, duplication, accumulator overwrite, premature done, or cmd_ready
+  assertion.
+- Test reset in IDLE, every load section, INIT, MAC, and stalled EMIT; verify immediate
+  handshake suppression, reset-edge abortion, no stale output/done, and correct subsequent
+  jobs without memory clearing.
+- Check done is caused only by final output acceptance and appears for exactly one
+  cycle. Check busy and earliest next-command acceptance against the contract.
+- Test zero dimensions and every representable above-bound dimension class. Each rejected
+  command must produce error, accept no operand data, and permit a following valid
+  command without reset.
+- Test incomplete loading followed by reset recovery; test valid asserted during not-ready
+  phases without unintended transfers.
+- Elaborate and functionally test parameter sets (MAX_M,MAX_N,MAX_K)=(1,1,1),(9,17,3),(64,64,64),(256,256,256);
+  check non-power-of-two bank strides and absence of zero-width declarations.
+- Use reset and protocol assertions to ensure no uninitialized memory or accumulator
+  bits influence a valid output.
+rtl:
+- Generate synthesizable SystemVerilog only; prohibit real, shortreal, delay statements,
+  force/release, and classes in design RTL.
+- Top and internal module ports, signed lane interpretation, reset priority, memory
+  latency, and enable timing must match the frozen manifest.
+- Require clean elaboration for every tested legal parameter set, no inferred latches,
+  no multiple drivers, and no out-of-range memory access.
+- Use explicitly signed 8-bit multiplier operands, exact 16-bit products, signed extension,
+  and explicit 32-bit truncation; do not rely on ambiguous expression sizing.
+- Implement sixteen simultaneous operand-bank reads per MAC cycle and 64 independent
+  enabled accumulator updates; no undocumented serialization or pipeline stages.
+- No bulk memory reset is required; phase validity and per-tile clear must prevent
+  stale-data observation.
+fpga_handoff:
+- Use the intake project policy's Vivado provider only after the frozen RTL passes
+  required verification.
+- Provide deterministic build scripts, ordered source list, top name, parameter overrides,
+  explicit FPGA part, clock constraint, tool version, and run seed/settings. Part
+  and clock target are handoff inputs, not claimed architectural performance.
+- Archive synthesis/implementation logs, checkpoints, utilization and timing reports,
+  and any generated power report with source and constraint hashes.
+- Validate the resulting machine-readable artifact against multigent/schemas/synthesis_result.schema.json.
+- Report metrics only when supported by deterministic authoritative tool reports;
+  do not estimate or fabricate timing, frequency, power, area, or utilization.
+- Fail the handoff on synthesis errors, unsupported constructs, unresolved modules,
+  unconstrained clocks, or missing required evidence. No synthesis or PPA result is
+  claimed by this contract.

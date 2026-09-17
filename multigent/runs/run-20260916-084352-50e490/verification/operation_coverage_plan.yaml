@@ -1,0 +1,414 @@
+schema_version: 1
+source: verifier operation coverage
+obligations:
+- id: operation.uadd_pair.fixed_opcode_add_only
+  template: operation_coverpoint
+  scope: operation
+  scope_name: uadd_pair
+  kind: coverpoint
+  description: 'Architect extension: fixed add only.'
+  bindings:
+    operation_name: uadd_pair
+    family: vector_alu
+    field: accepted_op
+    concept: fixed_opcode_add_only
+    source: architect_extension
+    sampling:
+      template: custom
+      event: clock
+      channel: {}
+      fields:
+        v:
+          signal: in_valid
+          lsb: 0
+          width: null
+          declared_width: 1
+      guards: []
+      field_binding_origin: verifier_declared
+      observer: observe_const_one
+      field_types: {}
+  bins:
+  - name: add
+    intent: only add op accepted
+    predicate:
+      op: eq
+      args:
+      - 1
+  checks: []
+- id: operation.uadd_pair.in_chan_stall
+  template: operation_coverpoint
+  scope: operation
+  scope_name: uadd_pair
+  kind: coverpoint
+  description: Input channel stall durations via released stall length.
+  bindings:
+    operation_name: uadd_pair
+    family: vector_alu
+    field: stall_len
+    concept: input_channel_stall_duration
+    source: llm_extension
+    sampling:
+      template: channel_stall
+      event: transfer
+      channel:
+        valid: in_valid
+        ready: in_ready
+      fields: {}
+      guards: []
+      field_binding_origin: verifier_declared
+  bins:
+  - name: none
+    intent: An actual transfer with no preceding stall.
+    predicate:
+      op: eq
+      args:
+      - 0
+  - name: one_cycle
+    intent: An actual transfer after exactly one stalled observation.
+    predicate:
+      op: eq
+      args:
+      - 1
+  - name: short
+    intent: An actual transfer after two through four stalled observations.
+    predicate:
+      op: between
+      args:
+      - 2
+      - 4
+  - name: long
+    intent: An actual transfer after five or more stalled observations.
+    predicate:
+      op: gte
+      args:
+      - 5
+  checks: []
+- id: operation.uadd_pair.no_predication_supported
+  template: operation_coverpoint
+  scope: operation
+  scope_name: uadd_pair
+  kind: coverpoint
+  description: 'Architect extension: no predication modes.'
+  bindings:
+    operation_name: uadd_pair
+    family: vector_alu
+    field: predication_mode
+    concept: no_predication_supported
+    source: architect_extension
+    sampling:
+      template: custom
+      event: clock
+      channel: {}
+      fields:
+        v:
+          signal: in_valid
+          lsb: 0
+          width: null
+          declared_width: 1
+      guards: []
+      field_binding_origin: verifier_declared
+      observer: observe_const_one
+      field_types: {}
+  bins:
+  - name: always_enabled
+    intent: single always-enabled mode
+    predicate:
+      op: eq
+      args:
+      - 1
+  checks: []
+- id: operation.uadd_pair.numeric_behavior
+  template: operation_coverpoint
+  scope: operation
+  scope_name: uadd_pair
+  kind: coverpoint
+  description: Normal and carry-boundary input classes.
+  bindings:
+    operation_name: uadd_pair
+    family: vector_alu
+    field: add_input_class
+    concept: numeric_behavior
+    source: baseline
+    sampling:
+      template: custom
+      event: transfer
+      channel:
+        valid: in_valid
+        ready: in_ready
+      fields:
+        a:
+          signal: in_op_a
+          lsb: 0
+          width: null
+          declared_width: 8
+        b:
+          signal: in_op_b
+          lsb: 0
+          width: null
+          declared_width: 8
+      guards: []
+      field_binding_origin: verifier_declared
+      observer: observe_sum_class
+      field_types: {}
+  bins:
+  - name: normal
+    intent: sum <= 255
+    predicate:
+      op: lte
+      args:
+      - 255
+  - name: carry_or_borrow
+    intent: sum >= 256
+    predicate:
+      op: gte
+      args:
+      - 256
+  - name: overflow_boundary
+    intent: max sum 510 reachable
+    predicate:
+      op: eq
+      args:
+      - 510
+  checks: []
+- id: operation.uadd_pair.opcode
+  template: operation_coverpoint
+  scope: operation
+  scope_name: uadd_pair
+  kind: coverpoint
+  description: Only add operation is supported.
+  bindings:
+    operation_name: uadd_pair
+    family: vector_alu
+    field: accepted_op
+    concept: opcode
+    source: baseline
+    sampling:
+      template: custom
+      event: clock
+      channel: {}
+      fields:
+        v:
+          signal: in_valid
+          lsb: 0
+          width: null
+          declared_width: 1
+      guards: []
+      field_binding_origin: verifier_declared
+      observer: observe_const_one
+      field_types: {}
+  bins:
+  - name: add_only
+    intent: fixed add opcode behavior
+    predicate:
+      op: eq
+      args:
+      - 1
+  checks: []
+- id: operation.uadd_pair.operand_classes
+  template: operation_coverpoint
+  scope: operation
+  scope_name: uadd_pair
+  kind: coverpoint
+  description: Unsigned operand value classes.
+  bindings:
+    operation_name: uadd_pair
+    family: vector_alu
+    field: operand_value
+    concept: operand_classes
+    source: baseline
+    sampling:
+      template: integer_operand
+      event: transfer
+      channel:
+        valid: in_valid
+        ready: in_ready
+      fields:
+        value:
+          signal: in_op_a
+          lsb: 0
+          width: null
+          declared_width: 8
+      guards: []
+      field_binding_origin: verifier_declared
+      dtype:
+        width: 8
+        signed: false
+        minimum: 0
+        maximum: 255
+  bins:
+  - name: zero
+    intent: Observe zero from runtime-sampled values.
+    predicate:
+      op: eq
+      args:
+      - 0
+  - name: positive
+    intent: Observe positive from runtime-sampled values.
+    predicate:
+      op: between
+      args:
+      - 1
+      - 255
+  - name: minimum
+    intent: Observe minimum from runtime-sampled values.
+    predicate:
+      op: eq
+      args:
+      - 0
+  - name: maximum
+    intent: Observe maximum from runtime-sampled values.
+    predicate:
+      op: eq
+      args:
+      - 255
+  checks: []
+- id: operation.uadd_pair.out_chan_stall
+  template: operation_coverpoint
+  scope: operation
+  scope_name: uadd_pair
+  kind: coverpoint
+  description: Output channel stall durations via released stall length.
+  bindings:
+    operation_name: uadd_pair
+    family: vector_alu
+    field: stall_len
+    concept: output_channel_stall_duration
+    source: llm_extension
+    sampling:
+      template: channel_stall
+      event: transfer
+      channel:
+        valid: out_valid
+        ready: out_ready
+      fields: {}
+      guards: []
+      field_binding_origin: verifier_declared
+  bins:
+  - name: none
+    intent: An actual transfer with no preceding stall.
+    predicate:
+      op: eq
+      args:
+      - 0
+  - name: one_cycle
+    intent: An actual transfer after exactly one stalled observation.
+    predicate:
+      op: eq
+      args:
+      - 1
+  - name: short
+    intent: An actual transfer after two through four stalled observations.
+    predicate:
+      op: between
+      args:
+      - 2
+      - 4
+  - name: long
+    intent: An actual transfer after five or more stalled observations.
+    predicate:
+      op: gte
+      args:
+      - 5
+  checks: []
+- id: operation.uadd_pair.predication
+  template: operation_coverpoint
+  scope: operation
+  scope_name: uadd_pair
+  kind: coverpoint
+  description: No predication control; always active.
+  bindings:
+    operation_name: uadd_pair
+    family: vector_alu
+    field: predication_mode
+    concept: predication
+    source: baseline
+    sampling:
+      template: custom
+      event: clock
+      channel: {}
+      fields:
+        v:
+          signal: in_valid
+          lsb: 0
+          width: null
+          declared_width: 1
+      guards: []
+      field_binding_origin: verifier_declared
+      observer: observe_const_one
+      field_types: {}
+  bins:
+  - name: all_active
+    intent: always active lane
+    predicate:
+      op: eq
+      args:
+      - 1
+  checks: []
+- id: operation.uadd_pair.scalar_single_element_per_transaction
+  template: operation_coverpoint
+  scope: operation
+  scope_name: uadd_pair
+  kind: coverpoint
+  description: 'Architect extension: one element per transaction.'
+  bindings:
+    operation_name: uadd_pair
+    family: vector_alu
+    field: tx_elems
+    concept: scalar_single_element_per_transaction
+    source: architect_extension
+    sampling:
+      template: custom
+      event: clock
+      channel: {}
+      fields:
+        v:
+          signal: in_valid
+          lsb: 0
+          width: null
+          declared_width: 1
+      guards: []
+      field_binding_origin: verifier_declared
+      observer: observe_const_one
+      field_types: {}
+  bins:
+  - name: scalar_one
+    intent: exactly one element
+    predicate:
+      op: eq
+      args:
+      - 1
+  checks: []
+- id: operation.uadd_pair.vector_length
+  template: operation_coverpoint
+  scope: operation
+  scope_name: uadd_pair
+  kind: coverpoint
+  description: Single element per accepted transaction.
+  bindings:
+    operation_name: uadd_pair
+    family: vector_alu
+    field: tx_elems
+    concept: vector_length
+    source: baseline
+    sampling:
+      template: custom
+      event: clock
+      channel: {}
+      fields:
+        v:
+          signal: in_valid
+          lsb: 0
+          width: null
+          declared_width: 1
+      guards: []
+      field_binding_origin: verifier_declared
+      observer: observe_const_one
+      field_types: {}
+  bins:
+  - name: minimum
+    intent: single scalar element
+    predicate:
+      op: eq
+      args:
+      - 1
+  checks: []
