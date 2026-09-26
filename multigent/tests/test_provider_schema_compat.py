@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from multigent.agents.architect import ARCHITECT_OUTPUT_SCHEMA
+from multigent.agents.architect import ARCHITECT_OUTPUT_SCHEMA, ArchitectAgent
 from multigent.agents.debugger import DEBUGGER_OUTPUT_SCHEMA
 from multigent.agents.rtl_generator import RTL_GENERATOR_OUTPUT_SCHEMA
 from multigent.agents.verifier import VERIFIER_OUTPUT_SCHEMA
@@ -35,7 +35,11 @@ def _find_keyword(value: object, keyword: str, path: str = "$") -> list[str]:
 
 @pytest.mark.parametrize("schema_path", PROVIDER_STRUCTURED_SCHEMAS)
 def test_provider_structured_schema_does_not_use_oneof(schema_path: Path) -> None:
-    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    schema = (
+        ArchitectAgent().load_output_schema(schema_path)
+        if schema_path == ARCHITECT_OUTPUT_SCHEMA
+        else json.loads(schema_path.read_text(encoding="utf-8"))
+    )
     hits = _find_keyword(schema, "oneOf")
     assert not hits, (
         f"{schema_path} uses provider-incompatible oneOf at {hits}; "

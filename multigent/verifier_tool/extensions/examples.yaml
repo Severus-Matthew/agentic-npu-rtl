@@ -1,0 +1,26 @@
+schema_version: 1
+examples:
+  - id: protocol.stall_stability
+    lesson: Reuse a generic temporal checker and channel_schedule; bind only real DUT signals.
+    scope: channel
+    match: {required_roles: [valid, ready]}
+    bindings: {valid: m_axi_wvalid, ready: m_axi_wready, content: [m_axi_wdata, m_axi_wstrb]}
+    assertion: {implementation: stall_stability}
+    coverage: {sampler: completed_stall_length, bins: [one_cycle, short, long]}
+    stimulus: {strategy: channel_schedule, parameters: {stall_cycles: [1, 3, 6]}}
+
+  - id: lifecycle.error_behavior
+    lesson: Lifecycle semantics need an event trigger, temporal expectation, observed bins, and a recovery scenario.
+    scope: operation
+    bindings: {trigger: accepted_illegal_command, signal: error}
+    assertion: {implementation: illegal_command_errors_without_start}
+    coverage: {sampler: lifecycle_runtime, bins: [inactive, asserted, recovered]}
+    stimulus: {strategy: illegal_then_legal_recovery}
+
+  - id: operation.accumulation
+    lesson: Reuse the canonical accepted-job adapter and central golden walk; do not write a second GEMM oracle.
+    scope: operation
+    bindings: {concept: accumulation, golden: integer_matrix_multiply_events}
+    assertion: {implementation: central_golden_equivalence}
+    coverage: {sampler: canonical_classifier, bins: [ordinary, positive_boundary, negative_boundary, positive_overflow, negative_overflow]}
+    stimulus: {strategy: canonical_discriminating_stimuli}

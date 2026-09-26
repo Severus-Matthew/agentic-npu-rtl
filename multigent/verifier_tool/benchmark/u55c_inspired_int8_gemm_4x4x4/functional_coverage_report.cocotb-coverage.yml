@@ -1,0 +1,807 @@
+contract_runtime_0:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 145
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 103
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.cmd_chan:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 16
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.cmd_chan.command_legality:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.cmd_chan.command_legality.coverpoint:
+  at_least: 1
+  bins:_hits:
+    illegal: 0
+    legal: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.cmd_chan.handshake_arrival_order:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.cmd_chan.handshake_arrival_order.coverpoint:
+  at_least: 1
+  bins:_hits:
+    ready_before_valid: 0
+    simultaneous: 0
+    valid_before_ready: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.cmd_chan.handshake_states:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 8
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.cmd_chan.handshake_states.ready:
+  at_least: 1
+  bins:_hits:
+    high: 0
+    low: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.cmd_chan.handshake_states.valid:
+  at_least: 1
+  bins:_hits:
+    high: 0
+    low: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.cmd_chan.handshake_states.valid_x_ready:
+  at_least: 1
+  bins:_hits:
+    ('high', 'high'): 0
+    ('high', 'low'): 0
+    ('low', 'high'): 0
+    ('low', 'low'): 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverCross'>
+  weight: 1
+contract_runtime_0.channel.cmd_chan.stall_stability:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.cmd_chan.stall_stability.coverpoint:
+  at_least: 1
+  bins:_hits:
+    long_stall: 0
+    one_cycle_stall: 0
+    short_stall: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_ar:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 18
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_ar.axi_lite_address_partition:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_ar.axi_lite_address_partition.coverpoint:
+  at_least: 1
+  bins:_hits:
+    aligned: 0
+    page_edge: 0
+    unaligned: 0
+    zero: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_ar.handshake_arrival_order:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_ar.handshake_arrival_order.coverpoint:
+  at_least: 1
+  bins:_hits:
+    ready_before_valid: 0
+    simultaneous: 0
+    valid_before_ready: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_ar.handshake_states:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 8
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_ar.handshake_states.ready:
+  at_least: 1
+  bins:_hits:
+    high: 0
+    low: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_ar.handshake_states.valid:
+  at_least: 1
+  bins:_hits:
+    high: 0
+    low: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_ar.handshake_states.valid_x_ready:
+  at_least: 1
+  bins:_hits:
+    ('high', 'high'): 0
+    ('high', 'low'): 0
+    ('low', 'high'): 0
+    ('low', 'low'): 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverCross'>
+  weight: 1
+contract_runtime_0.channel.m_axi_ar.stall_stability:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_ar.stall_stability.coverpoint:
+  at_least: 1
+  bins:_hits:
+    long_stall: 0
+    one_cycle_stall: 0
+    short_stall: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_aw:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 18
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_aw.axi_lite_address_partition:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_aw.axi_lite_address_partition.coverpoint:
+  at_least: 1
+  bins:_hits:
+    aligned: 0
+    page_edge: 0
+    unaligned: 0
+    zero: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_aw.handshake_arrival_order:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_aw.handshake_arrival_order.coverpoint:
+  at_least: 1
+  bins:_hits:
+    ready_before_valid: 0
+    simultaneous: 0
+    valid_before_ready: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_aw.handshake_states:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 8
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_aw.handshake_states.ready:
+  at_least: 1
+  bins:_hits:
+    high: 0
+    low: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_aw.handshake_states.valid:
+  at_least: 1
+  bins:_hits:
+    high: 0
+    low: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_aw.handshake_states.valid_x_ready:
+  at_least: 1
+  bins:_hits:
+    ('high', 'high'): 0
+    ('high', 'low'): 0
+    ('low', 'high'): 0
+    ('low', 'low'): 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverCross'>
+  weight: 1
+contract_runtime_0.channel.m_axi_aw.stall_stability:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_aw.stall_stability.coverpoint:
+  at_least: 1
+  bins:_hits:
+    long_stall: 0
+    one_cycle_stall: 0
+    short_stall: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_b:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 17
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_b.axi_lite_response_code:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_b.axi_lite_response_code.coverpoint:
+  at_least: 1
+  bins:_hits:
+    decerr: 0
+    okay: 0
+    slverr: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_b.handshake_arrival_order:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_b.handshake_arrival_order.coverpoint:
+  at_least: 1
+  bins:_hits:
+    ready_before_valid: 0
+    simultaneous: 0
+    valid_before_ready: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_b.handshake_states:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 8
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_b.handshake_states.ready:
+  at_least: 1
+  bins:_hits:
+    high: 0
+    low: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_b.handshake_states.valid:
+  at_least: 1
+  bins:_hits:
+    high: 0
+    low: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_b.handshake_states.valid_x_ready:
+  at_least: 1
+  bins:_hits:
+    ('high', 'high'): 0
+    ('high', 'low'): 0
+    ('low', 'high'): 0
+    ('low', 'low'): 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverCross'>
+  weight: 1
+contract_runtime_0.channel.m_axi_b.stall_stability:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_b.stall_stability.coverpoint:
+  at_least: 1
+  bins:_hits:
+    long_stall: 0
+    one_cycle_stall: 0
+    short_stall: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_r:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 17
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_r.axi_lite_response_code:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_r.axi_lite_response_code.coverpoint:
+  at_least: 1
+  bins:_hits:
+    decerr: 0
+    okay: 0
+    slverr: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_r.handshake_arrival_order:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_r.handshake_arrival_order.coverpoint:
+  at_least: 1
+  bins:_hits:
+    ready_before_valid: 0
+    simultaneous: 0
+    valid_before_ready: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_r.handshake_states:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 8
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_r.handshake_states.ready:
+  at_least: 1
+  bins:_hits:
+    high: 0
+    low: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_r.handshake_states.valid:
+  at_least: 1
+  bins:_hits:
+    high: 0
+    low: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_r.handshake_states.valid_x_ready:
+  at_least: 1
+  bins:_hits:
+    ('high', 'high'): 0
+    ('high', 'low'): 0
+    ('low', 'high'): 0
+    ('low', 'low'): 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverCross'>
+  weight: 1
+contract_runtime_0.channel.m_axi_r.stall_stability:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_r.stall_stability.coverpoint:
+  at_least: 1
+  bins:_hits:
+    long_stall: 0
+    one_cycle_stall: 0
+    short_stall: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_w:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 17
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_w.axi_lite_write_strobe:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_w.axi_lite_write_strobe.coverpoint:
+  at_least: 1
+  bins:_hits:
+    all_zero: 0
+    full: 0
+    sparse: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_w.handshake_arrival_order:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_w.handshake_arrival_order.coverpoint:
+  at_least: 1
+  bins:_hits:
+    ready_before_valid: 0
+    simultaneous: 0
+    valid_before_ready: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_w.handshake_states:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 8
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_w.handshake_states.ready:
+  at_least: 1
+  bins:_hits:
+    high: 0
+    low: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_w.handshake_states.valid:
+  at_least: 1
+  bins:_hits:
+    high: 0
+    low: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.channel.m_axi_w.handshake_states.valid_x_ready:
+  at_least: 1
+  bins:_hits:
+    ('high', 'high'): 0
+    ('high', 'low'): 0
+    ('low', 'high'): 0
+    ('low', 'low'): 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverCross'>
+  weight: 1
+contract_runtime_0.channel.m_axi_w.stall_stability:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.channel.m_axi_w.stall_stability.coverpoint:
+  at_least: 1
+  bins:_hits:
+    long_stall: 0
+    one_cycle_stall: 0
+    short_stall: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.operation:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 23
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.gemm:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 23
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.gemm.accumulation:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 5
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.gemm.accumulation.coverpoint:
+  at_least: 1
+  bins:_hits:
+    negative_boundary: 0
+    negative_overflow: 0
+    ordinary: 0
+    positive_boundary: 0
+    positive_overflow: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 5
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.operation.gemm.dimensions:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 1
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.gemm.dimensions.coverpoint:
+  at_least: 1
+  bins:_hits:
+    fixed_shape: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 1
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.operation.gemm.job_lifecycle:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.gemm.job_lifecycle.coverpoint:
+  at_least: 1
+  bins:_hits:
+    aborted: 0
+    accepted: 0
+    active: 0
+    retired: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 4
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.operation.gemm.operand_values:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 5
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.gemm.operand_values.coverpoint:
+  at_least: 1
+  bins:_hits:
+    maximum: 0
+    minimum: 0
+    negative: 0
+    positive: 0
+    zero: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 5
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.operation.gemm.post_reset_purity:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.gemm.post_reset_purity.coverpoint:
+  at_least: 1
+  bins:_hits:
+    clean_recovery_job: 0
+    no_ghost_completion: 0
+    no_ghost_output: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.operation.gemm.reset_abort_phase:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 5
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.operation.gemm.reset_abort_phase.coverpoint:
+  at_least: 1
+  bins:_hits:
+    compute: 0
+    idle: 0
+    input_a_matrix: 0
+    input_b_matrix: 0
+    output: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 5
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.protocol_group:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 8
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.protocol_group.m_axi:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 8
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.protocol_group.m_axi.axi_lite_outstanding_depth:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.protocol_group.m_axi.axi_lite_outstanding_depth.coverpoint:
+  at_least: 1
+  bins:_hits:
+    multiple: 0
+    one: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.protocol_group.m_axi.axi_lite_read_write_concurrency:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.protocol_group.m_axi.axi_lite_read_write_concurrency.coverpoint:
+  at_least: 1
+  bins:_hits:
+    read_only_cycle: 0
+    simultaneous: 0
+    write_only_cycle: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.protocol_group.m_axi.axi_lite_write_channel_order:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.protocol_group.m_axi.axi_lite_write_channel_order.coverpoint:
+  at_least: 1
+  bins:_hits:
+    address_first: 0
+    data_first: 0
+    same_cycle: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.signal:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 11
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.signal.busy:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.signal.busy.busy_behavior:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.signal.busy.busy_behavior.coverpoint:
+  at_least: 1
+  bins:_hits:
+    active: 0
+    idle: 0
+    retired: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.signal.completion:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.signal.completion.completion_behavior:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.signal.completion.completion_behavior.coverpoint:
+  at_least: 1
+  bins:_hits:
+    back_to_back: 0
+    observed: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 2
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.signal.error:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.signal.error.error_behavior:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.signal.error.error_behavior.coverpoint:
+  at_least: 1
+  bins:_hits:
+    asserted: 0
+    inactive: 0
+    recovered: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1
+contract_runtime_0.signal.rst_n:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.signal.rst_n.reset_behavior:
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverItem'>
+contract_runtime_0.signal.rst_n.reset_behavior.coverpoint:
+  at_least: 1
+  bins:_hits:
+    asserted: 0
+    deasserted: 0
+    release: 0
+  cover_percentage: 0.0
+  coverage: 0
+  size: 3
+  type: <class 'cocotb_coverage.coverage.CoverPoint'>
+  weight: 1

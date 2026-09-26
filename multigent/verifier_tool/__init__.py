@@ -1,1 +1,351 @@
-"""Deterministic, code-owned verification infrastructure used by the agents."""
+"""Single public API for deterministic, code-owned verification infrastructure.
+
+Implementation modules remain separated by responsibility. Public callers should
+import from this package only so internal folders can move without API churn.
+Exports are resolved lazily to keep the package free of circular imports.
+"""
+
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
+
+
+def _module(path: str, *names: str) -> dict[str, tuple[str, str]]:
+    return {name: (path, name) for name in names}
+
+
+_EXPORTS: dict[str, tuple[str, str]] = {
+    **_module(
+        "multigent.verifier_tool.contract_review",
+        "resolve_extension_reuse",
+        "review_contract_deterministically",
+    ),
+    **_module(
+        "multigent.verifier_tool.pool.tag_pool",
+        "TAG_POOL_PATH",
+        "contract_vocabulary_extensions",
+        "load_verification_tag_pool",
+        "validate_builtin_tag_references",
+        "validate_contract_vocabulary",
+        "verification_vocabulary_schema",
+    ),
+    **_module(
+        "multigent.verifier_tool.extensions",
+        "BUNDLE_SCHEMA_PATH",
+        "EXAMPLES_PATH",
+        "FeatureExtensionError",
+        "REQUEST_SCHEMA_PATH",
+        "build_feature_extension_manifest",
+        "extension_bundle_schema",
+        "extension_request_schema",
+        "extension_requests",
+        "interface_vocabulary_extensions",
+        "render_architect_extension_request_guide",
+        "render_extension_authoring_guide",
+        "render_requested_extension_worklist",
+        "validate_architect_extension_requests",
+        "validate_verifier_extension_bundles",
+        "with_architect_extension_request_schema",
+        "with_verifier_extension_bundle_schema",
+    ),
+    **_module(
+        "multigent.verifier_tool.pool.lifecycle_policy_pool",
+        "LIFECYCLE_POLICY_POOL_PATH",
+        "LifecyclePolicyError",
+        "lifecycle_policy_schema",
+        "load_lifecycle_policy_pool",
+        "policy_extension_request",
+        "render_lifecycle_policy_pool",
+        "resolve_lifecycle_policy",
+        "validate_lifecycle_policy",
+        "validate_architecture_lifecycle_policies",
+        "with_lifecycle_policy_schema",
+    ),
+    **_module(
+        "multigent.verifier_tool.feature_plan",
+        "build_lifecycle_feature_plan",
+        "build_operation_feature_plan",
+        "build_protocol_feature_plan",
+    ),
+    **_module(
+        "multigent.verifier_tool.pool.feature_plans",
+        "LIFECYCLE_FEATURES_PATH",
+        "OPERATION_FEATURES_PATH",
+        "PROTOCOL_FEATURES_PATH",
+        "load_lifecycle_feature_catalog",
+        "load_operation_feature_catalog",
+        "load_protocol_feature_catalog",
+        "operation_feature_groups",
+        "operation_feature_selections",
+        "operation_optional_concepts",
+        "RESOLVED_FEATURE_PLAN_SCHEMA_PATH",
+        "load_resolved_feature_plan_schema",
+        "validate_resolved_feature_plan",
+        "compile_assertion_feature_plan",
+        "compile_coverage_feature_plan",
+        "compile_feature_branch",
+        "compile_stimulus_feature_plan",
+    ),
+    **_module(
+        "multigent.verifier_tool.feedback_to_debugger",
+        "DebuggerFeedbackError",
+        "bound_debugger_evidence",
+        "build_failed_run_artifacts",
+        "build_verifier_debugger_feedback",
+        "validate_verifier_debugger_feedback",
+    ),
+    **_module(
+        "multigent.verifier_tool.qualification",
+        "QUALIFICATION_CATALOG_PATH",
+        "build_qualification_evidence",
+        "load_qualification_catalog",
+        "qualification_catalog_hash",
+        "qualification_pytest_nodeids",
+        "qualification_source_hash",
+        "validate_qualification_evidence",
+    ),
+    **_module(
+        "multigent.verifier_tool.manifest",
+        "QUALIFICATION_CATALOG_VERSION",
+        "TAXONOMY_VERSION",
+        "TaxonomyReleaseError",
+        "build_trial_manifest",
+        "compile_verification_manifest",
+        "manifest_hash",
+        "require_release_ready",
+        "validate_release_gate",
+    ),
+    **_module(
+        "multigent.verifier_tool.pool.diagnostics",
+        "ARCHITECT_BLOCKING_REASON_CODES",
+        "feature_automation",
+        "is_code_owned",
+    ),
+    # Contract metadata and canonical operation jobs.
+    **_module(
+        "multigent.verifier_tool.pool.operation_metadata",
+        "CanonicalOperationError",
+        "ProtocolAdapterError",
+        "ReadyValidCaptureAdapter",
+        "assemble_canonical_job",
+        "build_architect_operation_metadata",
+        "canonical_bins_for_concept",
+        "classify_checked_operations",
+        "classify_operation_job",
+        "render_architect_metadata_format",
+        "supported_code_owned_concepts",
+        "validate_architect_operation_metadata",
+        "validate_operation_compilation",
+        "blocking_compilation_errors",
+        "compilation_capability_notes",
+        "OPERATION_ARITHMETIC_SCHEMA_PATH",
+        "ArithmeticMetadataError",
+        "compile_operation_arithmetic",
+        "operation_arithmetic_schema",
+        "validate_architecture_operation_arithmetic",
+        "with_operation_arithmetic_schema",
+    ),
+    # Canonical operation stimulus and golden evaluation.
+    **_module(
+        "multigent.verifier_tool.operation.stimulus",
+        "CanonicalStimulusGenerationError",
+        "canonical_bin_dispositions",
+        "evaluate_canonical_operation",
+        "generate_canonical_discriminating_stimuli",
+        "generate_canonical_stimulus_for_bin",
+        "generate_canonical_stimulus_suite",
+        "generate_random_canonical_stimuli",
+        "reachable_canonical_bins_for_concept",
+    ),
+    **_module(
+        "multigent.verifier_tool.protocol.stimulus",
+        "ProtocolDriveError",
+        "ProtocolStimulusGenerationError",
+        "AxiLiteMemoryDriveError",
+        "build_protocol_stimulus_plan",
+        "collect_protocol_field_values",
+        "collect_protocol_transfers",
+        "default_axi_lite_memory_bases",
+        "drive_protocol_field_values",
+        "drive_protocol_reset",
+        "drive_protocol_transfers",
+        "execute_axi_lite_memory_job",
+        "generate_random_protocol_scenarios",
+    ),
+    **_module(
+        "multigent.verifier_tool.lifecycle.stimulus",
+        "LifecycleDriveError",
+        "LifecycleStimulusGenerationError",
+        "assert_lifecycle_status",
+        "build_lifecycle_stimulus_plan",
+        "drive_accepted_command",
+        "drive_accepted_command_on_reset_release",
+        "drive_control_plane_sequence",
+        "wait_clock_cycles",
+    ),
+    **_module(
+        "multigent.verifier_tool.orchestration.campaign",
+        "AutomaticCampaignError",
+        "automatic_campaign_support",
+        "code_owned_obligations_for_supported_operations",
+        "initialize_testbench_owned_signals",
+        "run_code_owned_axi_lite_operation_case",
+        "run_code_owned_operation_case",
+        "run_code_owned_verification_campaign",
+    ),
+    # Coverage planning and runtime.
+    **_module(
+        "multigent.verifier_tool.protocol.coverage.plan",
+        "build_interface_coverage_plan",
+        "load_interface_coverage_templates",
+    ),
+    **_module(
+        "multigent.verifier_tool.lifecycle.coverage",
+        "LifecycleCoverageMonitor",
+        "build_lifecycle_coverage_plan",
+        "lifecycle_template_names",
+        "load_lifecycle_coverage_templates",
+    ),
+    **_module(
+        "multigent.verifier_tool.operation.coverage.plan",
+        "build_operation_coverage_plan",
+        "canonical_operation_obligation_id",
+        "canonicalize_operation_obligation_claim",
+        "load_operation_coverage_families",
+        "merge_coverage_plans",
+        "operation_family",
+        "operation_plan_for_tests",
+        "render_operation_coverage_catalog",
+        "synthesize_code_owned_operation_coverage",
+        "validate_architecture_operation_features",
+        "validate_frozen_operation_scope",
+        "validate_operation_coverage",
+    ),
+    **_module(
+        "multigent.verifier_tool.operation.coverage.sampling",
+        "OperationSamplingError",
+        "effective_operation_coverage",
+        "extract_operation_sampling_bindings",
+        "normalize_operation_sampling_bindings",
+        "operation_observer_views",
+        "render_operation_sampling_catalog",
+    ),
+    **_module(
+        "multigent.verifier_tool.orchestration.runtime",
+        "ContractSnapshot",
+        "CoverageRuntimeError",
+        "InterfaceCoverageTracker",
+        "capture_contract_snapshot",
+        "contract_coverage",
+        "get_coverage_tracker",
+        "normalize_verification_value",
+        "observe_contract_reset_snapshot",
+        "record_stimulus",
+        "sample_contract_snapshot",
+        "sample_operation",
+    ),
+    **_module(
+        "multigent.verifier_tool.orchestration.history",
+        "HISTORY_FILE",
+        "LEDGER_GLOB",
+        "rebuild_stimulus_history",
+        "verifier_stimulus_history_view",
+    ),
+    # Assertion catalogs, generators, and generated-block instrumentation.
+    **_module(
+        "multigent.verifier_tool.operation.assertion",
+        "known_operation_features",
+        "load_operation_assertion_catalog",
+        "render_operation_assertion_catalog",
+        "render_operation_assertion_lines",
+    ),
+    **_module(
+        "multigent.verifier_tool.protocol.assertion",
+        "build_protocol_assertion_plan",
+        "check_protocol_assertions",
+        "finalize_protocol_assertions",
+        "protocol_assertion_metadata",
+        "render_protocol_assertion_lines",
+        "render_protocol_monitor_lines",
+    ),
+    **_module(
+        "multigent.verifier_tool.lifecycle.assertion",
+        "build_lifecycle_assertion_plan",
+        "check_lifecycle_assertions",
+        "finalize_lifecycle_assertions",
+        "lifecycle_assertion_metadata",
+        "render_lifecycle_assertion_lines",
+    ),
+    **_module(
+        "multigent.verifier_tool.orchestration.instrumentation",
+        "AUDIT_BEGIN_MARKER",
+        "AUDIT_END_MARKER",
+        "BEGIN_MARKER",
+        "END_MARKER",
+        "extract_stimulus_coverage_intents",
+        "install_contract_generated_block",
+        "install_pipeline_generated_annotations",
+        "render_contract_generated_block",
+        "validate_contract_generated_block",
+        "validate_verifier_authored_structure",
+    ),
+    # Interface taxonomy and role binding.
+    **_module(
+        "multigent.verifier_tool.pool.role_pool.interface_semantics",
+        "derive_interface_coverage_seed",
+        "render_interface_semantic_catalog",
+        "validate_interface_semantics",
+    ),
+    **_module(
+        "multigent.verifier_tool.pool.role_pool.standard_protocols",
+        "STANDARD_PROFILES",
+        "STANDARD_PROTOCOL_CATALOG_PATH",
+        "compile_standard_protocol_plan",
+        "enrich_standard_protocol_metadata",
+        "load_standard_protocol_catalog",
+        "render_standard_protocol_metadata_format",
+        "validate_standard_protocol_bindings",
+    ),
+    **_module(
+        "multigent.verifier_tool.pool.role_pool.signal_roles",
+        "render_signal_role_catalog",
+        "signals_with_coverage_tags",
+        "signals_with_roles",
+        "validate_interface_signal_roles",
+    ),
+    # Deterministic validation and local-patch helpers.
+    **_module(
+        "multigent.verifier_tool.deterministic.review",
+        "coverage_obligation_mapping_diff",
+        "DeterministicArtifactError",
+        "extract_literal_coverage_obligations",
+        "findings_from_coverage",
+        "findings_from_validation_error",
+        "review_verifier_artifacts",
+        "synchronize_test_coverage_metadata",
+    ),
+    **_module(
+        "multigent.verifier_tool.deterministic.patch",
+        "ReviewPatchPartialFailure",
+        "VerifierMetadataPatchError",
+        "apply_operation_coverage_metadata_edits",
+        "finding_scope",
+    ),
+}
+
+__all__ = sorted(_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    try:
+        module_name, attribute_name = _EXPORTS[name]
+    except KeyError as exc:
+        raise AttributeError(name) from exc
+    value = getattr(import_module(module_name), attribute_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted({*globals(), *__all__})

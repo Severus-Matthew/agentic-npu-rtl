@@ -6,9 +6,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from multigent.verifier_tool.coverage.protocol.plan import build_interface_coverage_plan
-from multigent.verifier_tool.coverage.operation.plan import merge_coverage_plans, operation_plan_for_tests
-from multigent.verifier_tool.coverage.stimulus import HISTORY_FILE, rebuild_stimulus_history
+from multigent.verifier_tool import (
+    HISTORY_FILE,
+    build_interface_coverage_plan,
+    merge_coverage_plans,
+    operation_plan_for_tests,
+    rebuild_stimulus_history,
+)
 from multigent.agents.base import AgentRuntimeError
 from multigent.intake.request_builder import WORKSPACE_ROOT
 from multigent.tools.cocotb_runner import run_cocotb_regression

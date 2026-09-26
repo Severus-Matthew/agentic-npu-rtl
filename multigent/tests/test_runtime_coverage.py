@@ -5,18 +5,14 @@ import shutil
 
 import pytest
 
-from multigent.verifier_tool.coverage.protocol.plan import build_interface_coverage_plan
-from multigent.verifier_tool.coverage.runtime import (
+from multigent.verifier_tool import (
     CoverageRuntimeError,
     InterfaceCoverageTracker,
+    build_interface_coverage_plan,
     capture_contract_snapshot,
-)
-from multigent.verifier_tool.predefined_assertion.instrumentation import (
     install_contract_generated_block,
-    render_contract_generated_block,
-)
-from multigent.verifier_tool.coverage.stimulus import (
     rebuild_stimulus_history,
+    render_contract_generated_block,
     verifier_stimulus_history_view,
 )
 from multigent.tools.cocotb_runner import evaluate_functional_coverage_report
@@ -91,6 +87,8 @@ def test_runtime_tracker_closes_required_interface_bins(tmp_path) -> None:
     _sample(tracker, dut, rst=1, v=0, r=0, p=3, done=0, err=0)
     _sample(tracker, dut, rst=0, v=0, r=1)
     _sample(tracker, dut, v=1, r=1)
+    _sample(tracker, dut, v=0, r=0)
+    _sample(tracker, dut, v=1, r=1)
 
     for stall_length in (1, 2, 5):
         for _ in range(stall_length):
@@ -125,6 +123,13 @@ def test_runtime_tracker_closes_required_interface_bins(tmp_path) -> None:
     assert evaluated["coverage_percent"] == 100.0
     assert set(evaluated["covered_bins"]) == set(evaluated["bin_hits"])
     assert evaluated["missing_bins"] == []
+
+
+def test_runtime_tracker_rejects_inactive_monitor_at_finite_end() -> None:
+    tracker = InterfaceCoverageTracker({"monitor": {}, "obligations": []})
+    tracker.begin_test("inactive_monitor")
+    with pytest.raises(CoverageRuntimeError, match="runtime.monitor_activity"):
+        tracker.end_test()
 
 
 def test_runtime_tracker_asserts_stalled_payload_stability() -> None:
@@ -191,6 +196,8 @@ def test_address_coverage_uses_elaborated_width_for_symbolic_contract_width() ->
                 "bindings": {
                     "signal": "addr",
                     "width": "((DEPTH <= 1) ? 1 : $clog2(DEPTH))",
+                    "valid": "v",
+                    "ready": "r",
                 },
                 "bins": [
                     {"name": name}
@@ -207,11 +214,44 @@ def test_address_coverage_uses_elaborated_width_for_symbolic_contract_width() ->
     tracker = InterfaceCoverageTracker(plan)
     dut = _Dut()
     dut.addr = _Signal(3, width=2)
+    dut.v.value = 1
+    dut.r.value = 1
 
     _sample(tracker, dut)
 
     report = tracker.report()
     assert "signal.addr.address_alignment.maximum" in report["covered_bins"]
+
+
+def test_address_coverage_ignores_unaccepted_and_reset_values() -> None:
+    plan = {
+        "monitor": {"reset": "rst", "signals": ["rst", "v", "r", "addr"]},
+        "obligations": [{
+            "id": "signal.rst.reset_behavior",
+            "template": "reset_behavior",
+            "bindings": {"signal": "rst", "active_value": 1},
+            "bins": [{"name": "asserted"}, {"name": "deasserted"}, {"name": "release"}],
+        }, {
+            "id": "signal.addr.address_alignment",
+            "template": "address_alignment",
+            "bindings": {"signal": "addr", "width": "8", "valid": "v", "ready": "r"},
+            "bins": [{"name": name} for name in (
+                "minimum", "aligned_interior", "maximum", "boundary_neighbor"
+            )],
+        }],
+    }
+    tracker = InterfaceCoverageTracker(plan)
+    dut = _Dut()
+    dut.addr = _Signal(255, width=8)
+    _sample(tracker, dut, rst=1, v=1, r=1)
+    _sample(tracker, dut, rst=0, v=0, r=1)
+    _sample(tracker, dut, v=1, r=0)
+    assert not any(
+        item.startswith("signal.addr.address_alignment.")
+        for item in tracker.report()["covered_bins"]
+    )
+    _sample(tracker, dut, v=1, r=1)
+    assert "signal.addr.address_alignment.maximum" in tracker.report()["covered_bins"]
 
 
 def test_reset_at_active_edge_cancels_stall_even_if_half_cycle_misses_it() -> None:
@@ -367,7 +407,7 @@ def test_cocotb_decorator_emits_and_enforces_runtime_coverage(tmp_path, monkeypa
         """import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
-from multigent.verifier_tool.coverage.runtime import contract_coverage, record_stimulus, sample_operation
+from multigent.verifier_tool import contract_coverage, sample_operation
 
 OPERATION_SAMPLING_BINDINGS = [{"operation": "smoke_op", "point": "mode", "template": "custom"}]
 def observe_mode(values, state):
@@ -383,8 +423,13 @@ async def test_reset_bins(dut):
     dut.rst.value = 0
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
-    stimulus_id = record_stimulus(
-        "directed", {"rst_sequence": [1, 0]}, {"rst": 0}, label="reset_release"
+    stimulus_id = _contract_record_checked_stimulus(
+        "directed",
+        {"rst_sequence": [1, 0]},
+        {"rst": 0},
+        {"rst": int(dut.rst.value)},
+        operations=[],
+        label="reset_release",
     )
     sample_operation("smoke_op", {"mode": "normal"}, "directed", stimulus_id)
 """,
@@ -500,7 +545,7 @@ endmodule
     raw_test = """import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
-from multigent.verifier_tool.coverage.runtime import contract_coverage
+from multigent.verifier_tool import contract_coverage
 
 @cocotb.test(timeout_time=1, timeout_unit="us")
 @contract_coverage()

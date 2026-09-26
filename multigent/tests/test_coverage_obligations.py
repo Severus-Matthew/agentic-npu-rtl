@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from multigent.verifier_tool.coverage.protocol.plan import build_interface_coverage_plan
+from multigent.verifier_tool.protocol.coverage.plan import build_interface_coverage_plan
 
 
 def _ids(plan: dict) -> set[str]:
@@ -46,19 +46,16 @@ def test_axi_boundary_template_requires_address_length_and_size() -> None:
             {"name": "c", "role": "metadata", "semantic_class": "size", "channel": "aw"},
         ],
     }
-    plan = build_interface_coverage_plan(interface)
-    assert "channel.aw.axi4_4k_boundary" in _ids(plan)
+    import pytest
 
-    interface["signals"] = interface["signals"][:-1]
-    assert "channel.aw.axi4_4k_boundary" not in _ids(
+    with pytest.raises(ValueError, match="requires protocol_group"):
         build_interface_coverage_plan(interface)
-    )
 
 
 def test_signal_templates_bind_roles_and_semantic_classes() -> None:
     interface = {
         "channels": [
-            {"name": "unused", "direction": "input", "protocol_profile": "axi4_lite"}
+            {"name": "unused", "direction": "input", "protocol_profile": "ready_valid"}
         ],
         "signals": [
             {"name": "r7", "role": "reset", "semantic_class": None, "semantic": "active-high reset", "channel": None},
@@ -69,7 +66,6 @@ def test_signal_templates_bind_roles_and_semantic_classes() -> None:
     assert _ids(build_interface_coverage_plan(interface)) == {
         "signal.r7.reset_behavior",
         "signal.z9.completion_behavior",
-        "signal.looks_like_done.address_alignment",
     }
 
 

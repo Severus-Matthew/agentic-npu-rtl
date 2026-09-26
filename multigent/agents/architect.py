@@ -16,22 +16,26 @@ from typing import Any, Mapping
 
 import yaml
 
-from multigent.verifier_tool.coverage.operation.plan import (
+from multigent.verifier_tool import (
     render_operation_coverage_catalog,
-    validate_architecture_operation_features,
-)
-from multigent.verifier_tool.predefined_assertion.operation import (
     render_operation_assertion_catalog,
+    render_interface_semantic_catalog,
+    interface_vocabulary_extensions,
+    render_signal_role_catalog,
+    render_architect_metadata_format,
+    render_architect_extension_request_guide,
+    validate_architecture_operation_features,
+    validate_interface_semantics,
+    validate_interface_signal_roles,
+    validate_architecture_lifecycle_policies,
+    with_lifecycle_policy_schema,
+    validate_architecture_operation_arithmetic,
+    with_operation_arithmetic_schema,
+    validate_architect_extension_requests,
+    validate_operation_compilation,
+    with_architect_extension_request_schema,
 )
 from multigent.intake.request_builder import build_architect_intake, persist_intake
-from multigent.verifier_tool.role_pool.interface_semantics import (
-    render_interface_semantic_catalog,
-    validate_interface_semantics,
-)
-from multigent.verifier_tool.role_pool.signal_roles import (
-    render_signal_role_catalog,
-    validate_interface_signal_roles,
-)
 
 from .base import APIAgent, AgentConfig, AgentRuntimeError, SCHEMA_ROOT, WORKSPACE_ROOT
 
@@ -67,6 +71,14 @@ class ArchitectAgent(APIAgent):
             raise FileNotFoundError(self.role_skill_path)
         role_skill = self.role_skill_path.read_text(encoding="utf-8")
         return f"# ARCHITECT TECHNICAL SKILL\n\n{role_skill}\n"
+
+    def load_output_schema(self, schema_path: Path) -> dict[str, Any]:
+        schema = super().load_output_schema(schema_path)
+        if schema_path.resolve() == ARCHITECT_OUTPUT_SCHEMA.resolve():
+            return with_architect_extension_request_schema(
+                with_operation_arithmetic_schema(with_lifecycle_policy_schema(schema))
+            )
+        return schema
 
     def run(
         self,
@@ -110,7 +122,9 @@ class ArchitectAgent(APIAgent):
                 "Architect returned READY while also reporting specification conflicts."
             )
 
-        self._validate_contract_references(result)
+        self._validate_contract_references(
+            result, require_lifecycle_policy=True, require_operation_arithmetic=True,
+        )
 
         self._write_yaml(
             target / "architecture_contract.yaml",
@@ -132,7 +146,10 @@ class ArchitectAgent(APIAgent):
         return result
 
     @staticmethod
-    def _validate_contract_references(result: Mapping[str, Any]) -> None:
+    def _validate_contract_references(
+        result: Mapping[str, Any], *, require_lifecycle_policy: bool = True,
+        require_operation_arithmetic: bool = True,
+    ) -> None:
         """Deterministically reject broken relational invariants in READY output.
 
         JSON Schema validates structure and primitive types. This second layer checks
@@ -160,9 +177,36 @@ class ArchitectAgent(APIAgent):
         storage_names = unique_names(arch["storage"], "storage")
         channel_names = unique_names(interface["channels"], "channel")
         del storage_names, channel_names  # uniqueness side effect is the required check
-        errors.extend(validate_interface_signal_roles(interface))
-        errors.extend(validate_interface_semantics(interface))
+        extension_errors = validate_architect_extension_requests(arch, interface)
+        try:
+            role_extensions, semantic_extensions = interface_vocabulary_extensions(arch)
+        except ValueError:
+            role_extensions, semantic_extensions = {}, {}
+        errors.extend(
+            validate_interface_signal_roles(
+                interface, role_extensions=role_extensions
+            )
+        )
+        errors.extend(
+            validate_interface_semantics(
+                interface,
+                role_extensions=role_extensions,
+                semantic_class_extensions=semantic_extensions,
+            )
+        )
         errors.extend(validate_architecture_operation_features(arch))
+        errors.extend(validate_architecture_lifecycle_policies(
+            arch, require_policy=require_lifecycle_policy
+        ))
+        errors.extend(validate_architecture_operation_arithmetic(
+            arch, require_arithmetic=require_operation_arithmetic,
+        ))
+        # Defects only the Architect can resolve that surface when the operation
+        # I/O, lifecycle and control-plane fields are compiled together (an object
+        # on two channels, a control_plane_sequence policy with no declaration).
+        # Valid contracts the tool merely cannot automate are not errors here.
+        errors.extend(validate_operation_compilation(arch, interface))
+        errors.extend(extension_errors)
 
         operations = {str(item["name"]): item for item in arch["operations"]}
         objects = {str(item["name"]): item for item in arch["data_objects"]}
@@ -345,6 +389,8 @@ class ArchitectAgent(APIAgent):
             + "\n"
             + render_operation_assertion_catalog()
         )
+        operation_metadata_format = render_architect_metadata_format()
+        extension_authoring = render_architect_extension_request_guide()
         return f"""Design and freeze a synthesizable RTL microarchitecture from the intake envelope below.
 
 INPUT AUTHORITY
@@ -448,6 +494,11 @@ Required design work:
     in particular, do not attach output status/error metadata to an input command
     or configuration channel. Put such metadata on an output/status channel or use
     an appropriate standalone role.
+    The verifier_tool compiles these existing fields into the machine-readable
+    operation metadata format shown below. Make every operation data-object role,
+    object dimension order, object-to-channel mapping, channel protocol profile,
+    and channel signal role exact enough that this compilation is unambiguous.
+    Do not encode a second hidden mapping in prose or infer semantics from names.
 11. Define module decomposition with explicit responsibilities, dependencies,
     parameters, and statefulness. All dependencies and parameters must resolve.
     Every state transition or output decision must be implementable from the
@@ -511,6 +562,43 @@ Novel operations may extend this vocabulary explicitly in the frozen contract.
 Starter bins guide the later Verifier but are not Architect fields.
 
 {operation_coverage}
+
+VERIFIER_TOOL ARCHITECT METADATA FORMAT
+---------------------------------------
+This is the merge-facing metadata shape compiled from your contract today. It is
+shown so the required machine-readable fields are explicit; do not add fields not
+present in the response schema.
+The initial response schema also requires ``operations[].arithmetic``. Declare
+the exact calculation using the tool-owned arithmetic schema below. Reuse existing
+data type, data object, and dimension names; do not infer an accumulator from the
+output type or assume that the activation feature means ReLU. If the requested
+arithmetic is not implemented by a code-owned profile, select ``llm_extension``
+with a precise reason and preserve its exact specification in ``semantics``.
+Never change the requested mathematics merely to fit an implemented profile.
+Every data object must declare ``serialization`` (kind, index_order, description)
+separately from its logical dimensions. Do not assume dimensions imply transfer
+order. For unsupported packing, use serialization.kind=llm_extension and specify
+the exact layout in description; the code-owned adapter will not guess it.
+The initial response schema requires ``operations[].lifecycle_policy``. Select
+every value from the tool-owned Lifecycle Policy Pool below and keep the declared
+command, busy, completion, error, and reset behavior consistent with those choices.
+Do not invent signals merely to satisfy metadata. Policies for optional status
+signals apply only when those signals are present. Do not silently change an
+explicit user requirement to fit the pool. If the requirement is internally
+consistent but verifier_tool has no matching feature/policy, keep the hardware
+semantics exact and add one ``architecture_contract.verification_extensions``
+request using the format below. The request declares meaning and observable facts
+only; never invent its checker, coverage sampler, or stimulus implementation --
+those are Verifier-owned. Use SPEC_CONFLICT only for a real contradiction that
+still needs an Architect decision. In a local revision, preserve existing policy
+fields. Missing declarations in old frozen contracts are errors, not permission
+to infer defaults or reinterpret natural-language descriptions.
+
+{operation_metadata_format}
+
+CONTRACT-LOCAL VERIFICATION EXTENSIONS
+--------------------------------------
+{extension_authoring}
 
 ARCHITECT INTAKE ENVELOPE
 -------------------------

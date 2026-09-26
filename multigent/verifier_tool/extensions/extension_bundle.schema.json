@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-npu-rtl.local/schemas/verifier-feature-extension-bundle.schema.json",
+  "title": "Verifier-authored Feature Extension Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "request_id",
+    "id",
+    "domain",
+    "feature_name",
+    "target",
+    "description",
+    "bindings",
+    "reuse",
+    "assertion",
+    "coverage",
+    "stimulus"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+    },
+    "domain": {
+      "type": "string",
+      "enum": ["protocol", "lifecycle", "operation"]
+    },
+    "feature_name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "name"],
+      "properties": {
+        "scope": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1}
+      }
+    },
+    "description": {"type": "string", "minLength": 1},
+    "bindings": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": ["string", "integer", "number", "boolean", "array", "object", "null"]
+      }
+    },
+    "reuse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["based_on_features", "helpers"],
+      "properties": {
+        "based_on_features": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "helpers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "assertion": {"$ref": "#/$defs/assertion_branch"},
+    "coverage": {
+      "allOf": [
+        {"$ref": "#/$defs/coverage_branch"},
+        {
+          "type": "object",
+          "required": ["bins"],
+          "properties": {
+            "bins": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "intent", "predicate"],
+                "properties": {
+                  "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+                  "intent": {"type": "string", "minLength": 1},
+                  "predicate": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "stimulus": {
+      "allOf": [
+        {"$ref": "#/$defs/stimulus_branch"},
+        {
+          "type": "object",
+          "required": ["scenarios"],
+          "properties": {
+            "scenarios": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "intent", "parameters"],
+                "properties": {
+                  "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+                  "intent": {"type": "string", "minLength": 1},
+                  "parameters": {"type": "object", "additionalProperties": true}
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "implementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": {"type": "string"},
+        "name": {"type": "string", "minLength": 1},
+        "file": {"type": "string", "pattern": "^(reference|tests)/[^/]+\\.py$"},
+        "symbol": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}
+      }
+    },
+    "assertion_branch": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["implementation", "parameters"],
+      "properties": {
+        "implementation": {
+          "allOf": [
+            {"$ref": "#/$defs/implementation"},
+            {"properties": {"kind": {"enum": ["existing_primitive", "verifier_python"]}}}
+          ]
+        },
+        "parameters": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "coverage_branch": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["implementation", "parameters"],
+      "properties": {
+        "implementation": {
+          "allOf": [
+            {"$ref": "#/$defs/implementation"},
+            {"properties": {"kind": {"enum": ["existing_primitive", "verifier_python"]}}}
+          ]
+        },
+        "parameters": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "stimulus_branch": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["implementation", "parameters"],
+      "properties": {
+        "implementation": {
+          "allOf": [
+            {"$ref": "#/$defs/implementation"},
+            {"properties": {"kind": {"enum": ["existing_primitive", "verifier_python", "protocol_driver"]}}}
+          ]
+        },
+        "parameters": {"type": "object", "additionalProperties": true}
+      }
+    }
+  }
+}

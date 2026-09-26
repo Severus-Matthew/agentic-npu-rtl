@@ -1,0 +1,337 @@
+protocol: custom_command_plus_axi4_lite_memory
+clock: clk
+reset: rst_n
+channels:
+- name: cmd_chan
+  direction: input
+  protocol_profile: ready_valid
+  purpose: 'Accept one GEMM job: opcode plus A/B/Y base pointers.'
+  data_objects: []
+  metadata: []
+  framing: single_beat
+  ordering: in_order
+  backpressure: true
+- name: m_axi_ar
+  direction: output
+  protocol_profile: axi4_lite
+  purpose: m_axi read_address
+  data_objects: []
+  metadata:
+  - protocol_group=m_axi
+  - protocol_channel=read_address
+  - protocol_capability.max_outstanding=1
+  - protocol_capability.read_write_concurrency=false
+  - protocol_capability.address_bins=aligned
+  - protocol_capability.write_strobe_bins=full
+  - protocol_capability.protection_bins=none
+  - protocol_capability.write_order_bins=address_first
+  framing: single_beat_per_transfer
+  ordering: in_order
+  backpressure: true
+- name: m_axi_r
+  direction: input
+  protocol_profile: axi4_lite
+  purpose: m_axi read_data
+  data_objects:
+  - A_matrix
+  - B_matrix
+  metadata:
+  - protocol_group=m_axi
+  - protocol_channel=read_data
+  framing: single_beat_per_transfer
+  ordering: in_order
+  backpressure: true
+- name: m_axi_aw
+  direction: output
+  protocol_profile: axi4_lite
+  purpose: m_axi write_address
+  data_objects: []
+  metadata:
+  - protocol_group=m_axi
+  - protocol_channel=write_address
+  framing: single_beat_per_transfer
+  ordering: in_order
+  backpressure: true
+- name: m_axi_w
+  direction: output
+  protocol_profile: axi4_lite
+  purpose: m_axi write_data
+  data_objects:
+  - Y_matrix
+  metadata:
+  - protocol_group=m_axi
+  - protocol_channel=write_data
+  framing: single_beat_per_transfer
+  ordering: in_order
+  backpressure: true
+- name: m_axi_b
+  direction: input
+  protocol_profile: axi4_lite
+  purpose: m_axi write_response
+  data_objects: []
+  metadata:
+  - protocol_group=m_axi
+  - protocol_channel=write_response
+  framing: single_beat_per_transfer
+  ordering: in_order
+  backpressure: true
+signals:
+- name: clk
+  role: clock
+  semantic_class: null
+  channel: null
+  direction: input
+  width: 1
+  signed: false
+  semantic: Free-running clock.
+  reset_value: '0'
+- name: rst_n
+  role: reset
+  semantic_class: null
+  channel: null
+  direction: input
+  width: 1
+  signed: false
+  semantic: Synchronous active-low reset.
+  reset_value: '0'
+- name: cmd_valid
+  role: valid
+  semantic_class: null
+  channel: cmd_chan
+  direction: input
+  width: 1
+  signed: false
+  semantic: Command channel valid.
+  reset_value: '0'
+- name: cmd_ready
+  role: ready
+  semantic_class: null
+  channel: cmd_chan
+  direction: output
+  width: 1
+  signed: false
+  semantic: Command channel ready.
+  reset_value: '0'
+- name: cmd_opcode
+  role: payload
+  semantic_class: command
+  channel: cmd_chan
+  direction: input
+  width: 8
+  signed: false
+  semantic: Legal only 8'h01. Selects the single supported GEMM job.
+  reset_value: '0'
+- name: a_base
+  role: metadata
+  semantic_class: address
+  channel: cmd_chan
+  direction: input
+  width: 32
+  signed: false
+  semantic: data_object=A_matrix address_role=base byte_order=little address_sequence=contiguous
+    word_stride_bytes=4
+  reset_value: '0'
+- name: b_base
+  role: metadata
+  semantic_class: address
+  channel: cmd_chan
+  direction: input
+  width: 32
+  signed: false
+  semantic: data_object=B_matrix address_role=base byte_order=little address_sequence=contiguous
+    word_stride_bytes=4
+  reset_value: '0'
+- name: c_base
+  role: metadata
+  semantic_class: address
+  channel: cmd_chan
+  direction: input
+  width: 32
+  signed: false
+  semantic: data_object=Y_matrix address_role=base byte_order=little address_sequence=contiguous
+    word_stride_bytes=4
+  reset_value: '0'
+- name: busy
+  role: busy
+  semantic_class: null
+  channel: null
+  direction: output
+  width: 1
+  signed: false
+  semantic: High while a GEMM job is in progress.
+  reset_value: '0'
+- name: completion
+  role: completion
+  semantic_class: null
+  channel: null
+  direction: output
+  width: 1
+  signed: false
+  semantic: One-cycle pulse on job completion.
+  reset_value: '0'
+- name: error
+  role: error
+  semantic_class: null
+  channel: null
+  direction: output
+  width: 1
+  signed: false
+  semantic: One-cycle pulse on any non-OKAY AXI4-Lite response on the shared manager
+    port.
+  reset_value: '0'
+- name: m_axi_araddr
+  role: payload
+  semantic_class: address
+  channel: m_axi_ar
+  direction: output
+  width: 32
+  signed: false
+  semantic: protocol_field=addr
+  reset_value: '0'
+- name: m_axi_arvalid
+  role: valid
+  semantic_class: null
+  channel: m_axi_ar
+  direction: output
+  width: 1
+  signed: false
+  semantic: AR channel valid.
+  reset_value: '0'
+- name: m_axi_arready
+  role: ready
+  semantic_class: null
+  channel: m_axi_ar
+  direction: input
+  width: 1
+  signed: false
+  semantic: AR channel ready.
+  reset_value: '0'
+- name: m_axi_rdata
+  role: payload
+  semantic_class: data
+  channel: m_axi_r
+  direction: input
+  width: 32
+  signed: false
+  semantic: protocol_field=data
+  reset_value: '0'
+- name: m_axi_rresp
+  role: metadata
+  semantic_class: response_code
+  channel: m_axi_r
+  direction: input
+  width: 2
+  signed: false
+  semantic: protocol_field=resp
+  reset_value: '0'
+- name: m_axi_rvalid
+  role: valid
+  semantic_class: null
+  channel: m_axi_r
+  direction: input
+  width: 1
+  signed: false
+  semantic: R channel valid.
+  reset_value: '0'
+- name: m_axi_rready
+  role: ready
+  semantic_class: null
+  channel: m_axi_r
+  direction: output
+  width: 1
+  signed: false
+  semantic: R channel ready.
+  reset_value: '0'
+- name: m_axi_awaddr
+  role: payload
+  semantic_class: address
+  channel: m_axi_aw
+  direction: output
+  width: 32
+  signed: false
+  semantic: protocol_field=addr
+  reset_value: '0'
+- name: m_axi_awvalid
+  role: valid
+  semantic_class: null
+  channel: m_axi_aw
+  direction: output
+  width: 1
+  signed: false
+  semantic: AW channel valid.
+  reset_value: '0'
+- name: m_axi_awready
+  role: ready
+  semantic_class: null
+  channel: m_axi_aw
+  direction: input
+  width: 1
+  signed: false
+  semantic: AW channel ready.
+  reset_value: '0'
+- name: m_axi_wdata
+  role: payload
+  semantic_class: data
+  channel: m_axi_w
+  direction: output
+  width: 32
+  signed: false
+  semantic: protocol_field=data
+  reset_value: '0'
+- name: m_axi_wstrb
+  role: metadata
+  semantic_class: byte_enable
+  channel: m_axi_w
+  direction: output
+  width: 4
+  signed: false
+  semantic: protocol_field=strb
+  reset_value: '0'
+- name: m_axi_wvalid
+  role: valid
+  semantic_class: null
+  channel: m_axi_w
+  direction: output
+  width: 1
+  signed: false
+  semantic: W channel valid.
+  reset_value: '0'
+- name: m_axi_wready
+  role: ready
+  semantic_class: null
+  channel: m_axi_w
+  direction: input
+  width: 1
+  signed: false
+  semantic: W channel ready.
+  reset_value: '0'
+- name: m_axi_bresp
+  role: metadata
+  semantic_class: response_code
+  channel: m_axi_b
+  direction: input
+  width: 2
+  signed: false
+  semantic: protocol_field=resp
+  reset_value: '0'
+- name: m_axi_bvalid
+  role: valid
+  semantic_class: null
+  channel: m_axi_b
+  direction: input
+  width: 1
+  signed: false
+  semantic: B channel valid.
+  reset_value: '0'
+- name: m_axi_bready
+  role: ready
+  semantic_class: null
+  channel: m_axi_b
+  direction: output
+  width: 1
+  signed: false
+  semantic: B channel ready.
+  reset_value: '0'
+global_handshake_rules: 'Every VALID/READY pair follows standard AMBA stability: once
+  asserted, VALID and its payload/address/data hold stable until the paired READY
+  active edge. All producer VALIDs are held low throughout active reset.'

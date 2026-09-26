@@ -1,4 +1,4 @@
-"""One explicit, read-only Verifier review attempt before simulation."""
+"""Thin graph adapter for deterministic Verifier-artifact validation."""
 
 from __future__ import annotations
 
@@ -7,16 +7,22 @@ from pathlib import Path
 from typing import Any
 
 from multigent.agents.base import AgentRuntimeError
-from multigent.agents.verifier_review import VerifierReviewAgent
 from multigent.agents.verifier import VerifierAgent
 from multigent.intake.request_builder import WORKSPACE_ROOT, build_verification_context
 from multigent.tools.vivado import write_json
+from multigent.verifier_tool import review_verifier_artifacts
 
 from .artifacts import review_definition_hashes
 
 
-def make_verifier_review_node(agent: VerifierReviewAgent | None = None):
-    runtime = agent or VerifierReviewAgent()
+def make_verifier_review_node(agent: Any | None = None, *, validator=review_verifier_artifacts):
+    """Keep the legacy node API while making no LLM reviewer call.
+
+    ``agent`` is accepted only so existing graph constructors and downstream callers
+    do not need a conflicting signature change.  It is deliberately never invoked.
+    """
+
+    del agent
 
     def review_node(state: Mapping[str, Any]) -> dict[str, Any]:
         candidate = state.get("verifier_result")
@@ -35,15 +41,11 @@ def make_verifier_review_node(agent: VerifierReviewAgent | None = None):
         definition_hashes = review_definition_hashes(state)
         version, revision = state.get("architecture_version", 0), state.get("verifier_revision", 0)
         architecture_revision = state.get("architecture_revision", 0)
-        tag = (
-            f"{state.get('run_id', 'manual')}-av{version}-ar{architecture_revision}"
-            f"-r{state.get('repair_iteration', 0)}-v{revision}"
-        )
-        result = runtime.review(context, candidate, run_id=tag)
-        VerifierReviewAgent.validate_result(result, context)
+        result = validator(context, candidate)
         report = {"review": result, "definition_hashes": definition_hashes,
                   "scope": "COVERAGE_ASSERTIONS_AND_STIMULUS_INTENT",
-                  "simulation_pass": False, "stimulus_reviewed": True}
+                  "simulation_pass": False, "stimulus_reviewed": True,
+                  "review_mode": "DETERMINISTIC"}
         write_json(
             WORKSPACE_ROOT / "verification" /
             f"verifier-review-av{version}-ar{architecture_revision}-r{state.get('repair_iteration', 0)}-v{revision}.json",
@@ -53,6 +55,7 @@ def make_verifier_review_node(agent: VerifierReviewAgent | None = None):
                 "verifier_review_hashes": definition_hashes,
                 "verification_status": "PENDING",
                 "history": [{"stage": "verifier_review", "status": result["status"],
+                             "review_mode": "DETERMINISTIC",
                              "findings": result["findings"], "stimulus_reviewed": True}]}
 
     return review_node

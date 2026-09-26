@@ -249,9 +249,50 @@ def test_representable_dimension_conflict_with_no_conflict_actually_exists_is_re
         VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
 
 
+def test_truncated_previous_content_is_not_an_architecture_conflict() -> None:
+    from multigent.tests.test_verifier import generic_fir_context, verification_ready_result
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT", "reference_files": [], "test_files": [],
+        "architecture_conflict": {
+            "category": "missing_previous_content_for_required_correction",
+            "affected_modules": ["filter_top"],
+            "issue": "Counted correction requires byte-for-byte reproduction of full "
+                     "prior file bodies with only validator_error-targeted edits, but "
+                     "provided previous_content for tests/test_filter.py is truncated "
+                     "and not a complete executable source.",
+            "evidence": "The supplied previous_content ends mid-function.",
+            "requested_architect_decision": "Provide the full prior file content.",
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="own prior generated output"):
+        VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
+def test_missing_operation_sampling_bindings_is_not_an_architecture_conflict() -> None:
+    from multigent.tests.test_verifier import generic_fir_context, verification_ready_result
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT", "reference_files": [], "test_files": [],
+        "architecture_conflict": {
+            "category": "missing_or_incomplete_frozen_operation_coverage_contract",
+            "affected_modules": ["filter_top"],
+            "issue": "Runtime rules require literal OPERATION_SAMPLING_BINDINGS for "
+                     "every operation concept, but frozen artifacts contain no "
+                     "operation_sampling_bindings section.",
+            "evidence": "No amendable field exists in previous_contract for "
+                        "operation_sampling_bindings.",
+            "requested_architect_decision": "Provide the frozen operation_sampling_bindings "
+                                             "contract artifact.",
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="never a frozen architecture artifact"):
+        VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
 def test_cocotb_tests_require_individual_timeout() -> None:
     code = """import cocotb
-from multigent.verifier_tool.coverage.runtime import contract_coverage
+from multigent.verifier_tool import contract_coverage
 @cocotb.test()
 @contract_coverage()
 async def test_status(dut):
@@ -265,7 +306,7 @@ def test_direct_writes_to_monitored_clock_are_rejected() -> None:
     context = _context()
     context["frozen_architecture"]["interface_contract"]["clock"] = "clk"
     code = """import cocotb
-from multigent.verifier_tool.coverage.runtime import contract_coverage
+from multigent.verifier_tool import contract_coverage
 @cocotb.test(timeout_time=1, timeout_unit="ms")
 @contract_coverage()
 async def test_status(dut):

@@ -1,0 +1,275 @@
+catalog:
+  name: taxonomy_checker_qualification
+  version: "v2.15"
+  owner: verifier_tool
+  rule: >-
+    Every listed pytest node is a bounded, predetermined acceptance or rejection
+    case. A release gate accepts evidence only when every catalog case passed
+    against the same taxonomy source tree.
+
+cases:
+  - id: Q-LIFE-001
+    polarity: positive_and_negative
+    requirement: C03/G02/V03
+    expected_rule: machine_resolved_command_legality
+    nodeid: multigent/tests/test_lifecycle_automation.py::test_command_legality_is_machine_resolved_without_signal_name_guessing
+  - id: Q-LIFE-002
+    polarity: positive
+    requirement: C03/C04/G11
+    expected_rule: lifecycle_taxonomy_owns_reset_command_status_abort_and_purity
+    nodeid: multigent/tests/test_lifecycle_automation.py::test_lifecycle_owns_reset_command_status_abort_and_purity_coverage
+  - id: Q-LIFE-003
+    polarity: positive
+    requirement: C03/C04/G11
+    expected_rule: every_external_job_phase_has_reset_abort_stimulus
+    nodeid: multigent/tests/test_lifecycle_automation.py::test_lifecycle_stimulus_plan_covers_every_external_phase
+  - id: Q-LIFE-004
+    polarity: positive
+    requirement: G01/G02/V02/V03
+    expected_rule: executable_code_owned_campaign_is_tamper_evident
+    nodeid: multigent/tests/test_lifecycle_automation.py::test_generated_block_contains_one_executable_code_owned_campaign_when_enabled
+  - id: Q-LIFE-005
+    polarity: positive_and_negative
+    requirement: C03/C04/G11
+    expected_rule: legal_illegal_busy_completion_error_temporal_assertions
+    nodeid: multigent/tests/test_lifecycle_automation.py::test_lifecycle_assertions_track_legal_job_retirement_and_illegal_recovery
+  - id: Q-LIFE-006
+    polarity: positive
+    requirement: G01/G03/V02
+    expected_rule: known_operation_coverage_is_synthesized_by_verifier_tool
+    nodeid: multigent/tests/test_lifecycle_automation.py::test_known_operation_coverage_is_synthesized_without_llm_decisions
+  - id: Q-LIFE-007
+    polarity: negative
+    requirement: C01/G10/V06
+    expected_rule: unknown_architect_feature_disables_whole_automatic_campaign
+    nodeid: multigent/tests/test_lifecycle_automation.py::test_unknown_architect_feature_disables_whole_automatic_campaign
+  - id: Q-LIFE-008
+    polarity: positive
+    requirement: G01/G02/V02/V03
+    expected_rule: minimal_llm_host_becomes_complete_deterministic_tb
+    nodeid: multigent/tests/test_lifecycle_automation.py::test_minimal_llm_host_becomes_a_complete_deterministic_tb
+  - id: Q-LIFE-009
+    polarity: positive
+    requirement: G01/G02/R03/V03
+    expected_rule: command_stall_job_is_golden_checked_before_next_acceptance
+    nodeid: multigent/tests/test_lifecycle_automation.py::test_command_stall_probe_golden_checks_the_perturbed_job_before_next_acceptance
+  - id: Q-LIFE-010
+    polarity: positive
+    requirement: R03/G02/V04
+    expected_rule: simultaneous_command_arrival_is_executable_and_golden_checked
+    nodeid: multigent/tests/test_lifecycle_automation.py::test_automatic_campaign_executes_a_golden_checked_simultaneous_command_job
+  - id: Q-BIND-001
+    polarity: positive
+    requirement: A01/R01
+    expected_rule: exact_standard_metadata_binding
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_standard_metadata_is_exact_and_name_independent
+  - id: Q-BIND-002
+    polarity: positive
+    requirement: R01/G02
+    expected_rule: contract_ready_valid_role_bound_driver
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_custom_ready_valid_channels_are_exposed_to_tool_owned_drivers
+  - id: Q-BIND-003
+    polarity: positive
+    requirement: R01/G02/V02
+    expected_rule: awaited_tool_driver_satisfies_static_channel_provenance
+    nodeid: multigent/tests/test_tb_instrumentation.py::test_awaited_tool_owned_driver_counts_as_real_claimed_channel_drive
+  - id: Q-BIND-004
+    polarity: negative
+    requirement: R01/G02/V02
+    expected_rule: tool_transfer_exact_signature_and_await
+    nodeid: multigent/tests/test_tb_instrumentation.py::test_tool_owned_transfer_call_requires_exact_signature_and_await
+  - id: Q-BIND-005
+    polarity: negative
+    requirement: G02/G11/V02
+    expected_rule: each_checked_job_owns_complete_logical_transfers
+    nodeid: multigent/tests/test_tb_instrumentation.py::test_each_looped_operation_record_requires_its_own_complete_transfers
+  - id: Q-BIND-006
+    polarity: positive
+    requirement: G01/G02/V03
+    expected_rule: logical_field_transfer_packing_and_unpacking
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_logical_field_transfer_wrappers_own_beat_packing_and_unpacking
+  - id: Q-BIND-007
+    polarity: negative
+    requirement: G02/G11/V04
+    expected_rule: zero_transfer_calls_receive_no_operation_credit
+    nodeid: multigent/tests/test_tb_instrumentation.py::test_empty_tool_owned_transfers_receive_no_operation_credit
+  - id: Q-BIND-008
+    polarity: positive_and_negative
+    requirement: R01/G02/V02
+    expected_rule: current_architect_schema_tags_compile_without_name_inference
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_current_architect_schema_tags_compile_without_name_inference
+  - id: Q-JOB-002
+    polarity: negative
+    requirement: G02/G11/V04
+    expected_rule: completed_job_requires_declared_accept_event
+    nodeid: multigent/tests/test_tb_instrumentation.py::test_completed_operation_record_requires_declared_job_start_channel
+  - id: Q-AXI-001
+    polarity: positive
+    requirement: A02
+    expected_rule: protocol.bus.write_address_and_data_are_independent
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_axi4_accepts_w_burst_before_write_address
+  - id: Q-AXI-002
+    polarity: positive_and_negative
+    requirement: A03/A04
+    expected_rule: protocol.bus.write_strobe_within_active_lanes
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_axi_unaligned_first_window_uses_only_descriptor_legal_lanes
+  - id: Q-AXI-003
+    polarity: negative
+    requirement: A02/A04/A07
+    expected_rule: protocol.bus.response_after_request
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_axi4_assertions_enforce_dependencies_bursts_last_and_strobes
+  - id: Q-AXI-004
+    polarity: negative
+    requirement: A05/A07
+    expected_rule: protocol.bus.read_last_matches_length
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_axi4_read_response_requires_address_and_exact_rlast
+  - id: Q-LITE-001
+    polarity: positive
+    requirement: L02
+    expected_rule: protocol.bus.write_address_and_data_are_independent
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_axi4_lite_accepts_multiple_independent_pending_writes
+  - id: Q-LITE-002
+    polarity: negative
+    requirement: L01/L02
+    expected_rule: protocol.bus.legal_lite_response_encoding
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_axi4_lite_asserts_pairing_and_forbids_exokay
+  - id: Q-LITE-003
+    polarity: positive_and_negative
+    requirement: L01/L02/V04
+    expected_rule: unreachable_axi_lite_bins_are_explicitly_inapplicable
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_axi_lite_capability_tags_make_unreachable_bins_inapplicable
+  - id: Q-LITE-004
+    polarity: positive_and_negative
+    requirement: G02/G11/L01
+    expected_rule: accepted_axi_addresses_reconstruct_canonical_objects
+    nodeid: multigent/tests/test_canonical_operation.py::test_axi_lite_adapter_reconstructs_objects_from_accepted_addresses
+  - id: Q-LITE-005
+    polarity: positive
+    requirement: G01/G02/L01/V03
+    expected_rule: mapped_axi_lite_memory_operation_enables_code_owned_campaign
+    nodeid: multigent/tests/test_canonical_operation.py::test_axi_lite_memory_metadata_enables_the_code_owned_campaign
+  - id: Q-LITE-006
+    polarity: positive_and_negative
+    requirement: C03/C04/L01/G11
+    expected_rule: axi_lite_retirement_and_sticky_defined_errors
+    nodeid: multigent/tests/test_canonical_operation.py::test_axi_lite_lifecycle_retires_on_bresp_and_accepts_sticky_defined_errors
+  - id: Q-AXIS-001
+    polarity: positive_and_negative
+    requirement: T01/T02/T03
+    expected_rule: protocol.bus.strobe_is_subset_of_keep
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_axi_stream_asserts_stability_mask_subset_and_packet_sidebands
+  - id: Q-AXIS-002
+    polarity: positive
+    requirement: T01
+    expected_rule: axis_optional_ready_and_non_power_of_two_width
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_axi_stream_accepts_24_bit_data_and_absent_tready
+  - id: Q-AXIS-003
+    polarity: positive_and_negative
+    requirement: T02
+    expected_rule: protocol.bus.continuous_packet_constraints_when_declared
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_axi_stream_continuous_packet_constraints_are_capability_gated
+  - id: Q-RV-001
+    polarity: negative
+    requirement: R02
+    expected_rule: channel.req.stall_stability
+    nodeid: multigent/tests/test_runtime_coverage.py::test_runtime_tracker_asserts_stalled_payload_stability
+  - id: Q-FINAL-001
+    polarity: negative
+    requirement: R04/V04
+    expected_rule: runtime.protocol_finalization
+    nodeid: multigent/tests/test_standard_axi_protocols.py::test_protocol_finalizer_rejects_truncated_pending_work
+  - id: Q-MON-001
+    polarity: negative
+    requirement: V03
+    expected_rule: runtime.monitor_activity
+    nodeid: multigent/tests/test_runtime_coverage.py::test_runtime_tracker_rejects_inactive_monitor_at_finite_end
+  - id: Q-GOLD-001
+    polarity: positive
+    requirement: G01/G03/G05/G08/G09
+    expected_rule: central_golden_equivalence
+    nodeid: multigent/tests/test_canonical_operation.py::test_integer_gemm_known_answers_cover_sign_wrap_bias_and_relu_order
+  - id: Q-JOB-001
+    polarity: negative
+    requirement: G02/G11/V04
+    expected_rule: runtime.operation_finalization
+    nodeid: multigent/tests/test_canonical_operation.py::test_canonical_job_rejects_partial_tensor_instead_of_crediting_coverage
+  - id: Q-PROV-001
+    polarity: positive
+    requirement: G01/V03
+    expected_rule: trusted_role_bound_accepted_payloads
+    nodeid: multigent/tests/test_canonical_operation.py::test_runtime_classifier_uses_role_bound_accepted_payloads
+  - id: Q-FAKE-001
+    polarity: negative
+    requirement: V02/V05
+    expected_rule: tb.checked_stimulus_observed_provenance
+    nodeid: multigent/tests/test_tb_instrumentation.py::test_checked_stimulus_rejects_copied_expected_literal_as_observation
+  - id: Q-FAKE-002
+    polarity: negative
+    requirement: V02/V05
+    expected_rule: tb.checked_stimulus_observed_expected_alias
+    nodeid: multigent/tests/test_tb_instrumentation.py::test_checked_stimulus_rejects_observed_alias_of_computed_expected
+  - id: Q-FAKE-003
+    polarity: negative
+    requirement: G01/G02/V03
+    expected_rule: tb.known_operation_requires_tool_owned_io
+    nodeid: multigent/tests/test_tb_instrumentation.py::test_known_operation_requires_tool_owned_logical_io_primitives
+  - id: Q-FAKE-004
+    polarity: negative
+    requirement: C04/G01/G11
+    expected_rule: protocol_only_scenario_cannot_enter_operation_ledger
+    nodeid: multigent/tests/test_tb_instrumentation.py::test_protocol_only_intent_cannot_enter_known_operation_ledger
+  - id: Q-TAMPER-001
+    polarity: negative
+    requirement: V02
+    expected_rule: generated_block_integrity
+    nodeid: multigent/tests/test_tb_instrumentation.py::test_generated_tb_block_is_visible_final_and_tamper_evident
+  - id: Q-OWNER-001
+    polarity: negative
+    requirement: V06
+    expected_rule: deterministic_local_repair_surface
+    nodeid: multigent/tests/test_deterministic_review.py::test_aggregated_validator_errors_become_multiple_findings
+  - id: Q-OWNER-002
+    polarity: positive
+    requirement: V06
+    expected_rule: exact_artifact_source_obligation_difference
+    nodeid: multigent/tests/test_deterministic_review.py::test_coverage_obligation_mapping_diff_reports_both_exact_sides
+  - id: Q-OWNER-003
+    polarity: positive
+    requirement: V02/V04/V06
+    expected_rule: source_repair_rebuilds_obligation_metadata
+    nodeid: multigent/tests/test_verifier_source_repair.py::test_source_completion_rebuilds_test_metadata_from_literal_constant
+  - id: Q-OWNER-004
+    polarity: positive
+    requirement: V02/V04/V06
+    expected_rule: all_persist_paths_rebuild_redundant_obligation_metadata
+    nodeid: multigent/tests/test_verifier_source_repair.py::test_persist_rebuilds_stale_obligation_metadata_for_local_patch_paths
+  - id: Q-HANDOFF-001
+    polarity: positive
+    requirement: V03/V06
+    expected_rule: debugger_receives_selected_deterministic_failure_evidence
+    nodeid: multigent/tests/test_debugger_feedback_builder.py::test_debugger_feedback_selects_exact_deterministic_failure_evidence
+  - id: Q-HANDOFF-002
+    polarity: positive_and_negative
+    requirement: V03/V06
+    expected_rule: debugger_handoff_contains_only_frozen_verifier_owned_inputs
+    nodeid: multigent/tests/test_debugger_feedback_builder.py::test_debugger_feedback_contains_only_frozen_verifier_owned_inputs
+  - id: Q-HANDOFF-003
+    polarity: negative
+    requirement: V03/V06
+    expected_rule: debugger_rejects_foreign_or_non_authoritative_verifier_handoff
+    nodeid: multigent/tests/test_debugger_feedback_builder.py::test_debugger_feedback_rejects_non_verifier_or_non_authoritative_fields
+  - id: Q-HANDOFF-004
+    polarity: positive
+    requirement: V03/V06
+    expected_rule: debugger_prompt_evidence_is_bounded_without_mutation
+    nodeid: multigent/tests/test_debugger_feedback_builder.py::test_debugger_evidence_bounding_is_non_mutating_and_keeps_endpoints
+  - id: Q-CLOSURE-001
+    polarity: negative
+    requirement: C01/C02/G13
+    expected_rule: unresolved_known_obligation_blocks
+    nodeid: multigent/tests/test_canonical_operation.py::test_generator_reports_metadata_and_extension_failures_separately
+  - id: Q-CLOSURE-002
+    polarity: negative
+    requirement: V04/C01
+    expected_rule: frozen_operation_denominator_rejects_post_freeze_extensions
+    nodeid: multigent/tests/test_operation_coverage.py::test_release_scope_rejects_post_freeze_llm_operation_obligations

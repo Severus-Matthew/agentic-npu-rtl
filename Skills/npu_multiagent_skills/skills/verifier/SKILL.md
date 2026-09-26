@@ -83,7 +83,7 @@ A legal randomized source pattern is: optionally idle before a beat -> assert va
 Derive directed cases from actual operations, datatypes, runtime bounds, parameters, partial-vector/tile behavior, and error rules.
 
 The runtime supplies a deterministic interface coverage plan instantiated from
-`multigent/taxonomy/interface_coverage_templates.yaml`. Every generated test file
+the protocol and lifecycle feature catalogs (`multigent/verifier_tool/pool/feature_plans/protocol_features.yaml` and `lifecycle_features.yaml`, merged by `load_interface_coverage_templates()`). Every generated test file
 must declare the obligation IDs it implements in its structured
 `coverage_obligations` field and in one module-level literal collection:
 
@@ -97,6 +97,15 @@ COVERAGE_OBLIGATIONS = {
 Across all generated test modules, cover every supplied obligation ID and invent no
 additional ID. Implement the listed bins and checks in executable cocotb behavior;
 the declaration provides traceability but does not replace the test logic.
+
+If the task lists operations that could not be compiled into deterministic metadata,
+their contract-required lifecycle obligations (`operation.<name>.*`) are still part of
+the required plan, and the tool cannot drive, check, or sample those operations. Each
+listed operation names its reason code, category, and owner: a `contract_error` can
+only be corrected by the Architect and a `tool_capability` only by tool support; do
+not work around either, invent coverage for them, or edit tool-owned code. Author the
+rest of that operation's verification by hand and record the unmet obligations in
+`known_verification_gaps`.
 
 When applicable include:
 - smallest legal jobs

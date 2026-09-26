@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-npu-rtl.local/schemas/resolved_feature_plan.schema.json",
+  "title": "Resolved Verification Feature Plan",
+  "type": "object",
+  "required": ["schema_version", "domain", "source", "features"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "domain": {"enum": ["protocol", "lifecycle", "operation"]},
+    "source": {"type": "string", "minLength": 1},
+    "bindings": {"type": "object"},
+    "coverage_obligations": {
+      "type": "array",
+      "items": {"type": "object"}
+    },
+    "features": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/feature"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "feature": {
+      "type": "object",
+      "required": [
+        "id",
+        "domain",
+        "kind",
+        "scope",
+        "scope_name",
+        "bindings",
+        "tags",
+        "assertion",
+        "coverage",
+        "stimulus"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "domain": {"enum": ["protocol", "lifecycle", "operation"]},
+        "kind": {"type": "string", "minLength": 1},
+        "scope": {"type": "string", "minLength": 1},
+        "scope_name": {"type": "string"},
+        "bindings": {"type": "object"},
+        "tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "assertion": {
+          "type": "object",
+          "required": ["checker"],
+          "properties": {
+            "checker": {"type": ["string", "null"]}
+          },
+          "additionalProperties": true
+        },
+        "coverage": {
+          "type": "object",
+          "required": ["sampler"],
+          "properties": {
+            "sampler": {"type": ["string", "null"]},
+            "bins": {"type": "array", "items": {"type": "object"}},
+            "obligation_ids": {"type": "array", "items": {"type": "string"}},
+            "observed_bin_names": {"type": "object"}
+          },
+          "additionalProperties": true
+        },
+        "stimulus": {
+          "type": "object",
+          "required": ["strategy"],
+          "properties": {
+            "strategy": {"type": "string", "minLength": 1},
+            "scenarios": {"type": "array", "items": {"type": "object"}}
+          },
+          "additionalProperties": true
+        },
+        "automation": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": {
+              "enum": [
+                "code_owned",
+                "verifier_extension_required",
+                "tool_capability_required",
+                "contract_error"
+              ]
+            },
+            "owner": {"type": "string"},
+            "reason_code": {"type": "string"},
+            "blocked_by": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

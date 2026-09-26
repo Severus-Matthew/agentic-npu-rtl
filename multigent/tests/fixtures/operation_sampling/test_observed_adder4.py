@@ -2,7 +2,7 @@
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import FallingEdge, RisingEdge, Timer
-from multigent.verifier_tool.coverage.runtime import contract_coverage, record_stimulus, sample_operation
+from multigent.verifier_tool import contract_coverage, sample_operation
 
 OPERATION_SAMPLING_BINDINGS = [{
     "operation": "compute", "point": "sum_boundary", "template": "custom",
@@ -27,6 +27,13 @@ async def observed_inputs_not_claimed_fields(dut):
         await Timer(1, unit="ns")
         expected = (a + b) & 15
         assert int(dut.result.value) == expected
-        stimulus_id = record_stimulus("directed", {"a": a, "b": b}, {"result": expected})
+        stimulus_id = _contract_record_checked_stimulus(
+            "directed",
+            {"a": a, "b": b},
+            {"result": expected},
+            {"result": int(dut.result.value)},
+            operations=[],
+            label="adder4",
+        )
         # Intentionally false claims: these fields cannot feed runtime-owned points.
         sample_operation("compute", {"left_values": 999, "right_values": 999, "overflow": True, "sum_boundary": True}, "directed", stimulus_id)

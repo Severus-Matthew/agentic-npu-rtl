@@ -36,6 +36,44 @@ class RevisionPatchError(ValueError):
     """An Architect revision tried to replace unrelated frozen design structure."""
 
 
+def _is_bounded_module_port_addition(
+    parts: list[str], op: str, new_value: Any, feedback: Mapping[str, Any]
+) -> bool:
+    """Allow the one structural leaf needed to repair frozen interconnect gaps."""
+
+    if not (
+        op == "add"
+        and len(parts) == 5
+        and parts[0] == "module_manifest"
+        and parts[1] == "modules"
+        and parts[2].startswith("name=")
+        and parts[3:] == ["ports", "-"]
+        and isinstance(new_value, Mapping)
+    ):
+        return False
+    if set(new_value) != {"name", "direction", "width", "signed", "semantics"}:
+        raise RevisionPatchError(
+            "A module port addition needs exactly name, direction, width, signed, semantics"
+        )
+    if (
+        not isinstance(new_value["name"], str)
+        or not new_value["name"].strip()
+        or new_value["direction"] not in {"input", "output", "inout"}
+        or not isinstance(new_value["width"], str)
+        or not isinstance(new_value["signed"], bool)
+        or not isinstance(new_value["semantics"], str)
+        or not new_value["semantics"].strip()
+    ):
+        raise RevisionPatchError("A module port addition contains invalid field values")
+    module_name = parts[2][len("name="):]
+    evidence = json.dumps(dict(feedback), sort_keys=True).lower()
+    if module_name.lower() not in evidence:
+        raise RevisionPatchError(
+            f"Module {module_name!r} is not named in revision feedback"
+        )
+    return True
+
+
 def _parts(path: str) -> list[str]:
     if not path.startswith("/"):
         raise RevisionPatchError(f"Patch path must be a JSON pointer: {path!r}")
@@ -92,6 +130,9 @@ def _parent(document: Any, parts: list[str]) -> Any:
 
 def _check_scope(parts: list[str], op: str, prior: Any, new_value: Any,
                  feedback: Mapping[str, Any]) -> None:
+    bounded_port_addition = _is_bounded_module_port_addition(
+        parts, op, new_value, feedback
+    )
     if tuple(parts) in PROTECTED_SUFFIXES:
         raise RevisionPatchError("Design identity/top module cannot change in a local revision")
     if parts[1] in IDENTITY_FIELDS and len(parts) == 3:
@@ -109,7 +150,7 @@ def _check_scope(parts: list[str], op: str, prior: Any, new_value: Any,
                 raise RevisionPatchError(f"Frozen {segment} identity field cannot change")
     if op in {"replace", "remove"} and isinstance(prior, (dict, list)):
         raise RevisionPatchError("Composite contract sections cannot be replaced or removed")
-    if op == "add" and isinstance(new_value, (dict, list)):
+    if op == "add" and isinstance(new_value, (dict, list)) and not bounded_port_addition:
         raise RevisionPatchError("New whole sections/list items cannot be added in a local revision")
     if "features" in parts and op != "remove":
         feature = str(new_value)
@@ -140,10 +181,18 @@ def apply_architect_revision_patch(
         path = edit.get("path")
         if op not in {"add", "replace", "remove"} or not isinstance(path, str):
             raise RevisionPatchError("Invalid patch operation/path")
-        if path in changed:
+        parts = _parts(path)
+        repeated_port_append = (
+            op == "add"
+            and len(parts) == 5
+            and parts[0] == "module_manifest"
+            and parts[1] == "modules"
+            and parts[2].startswith("name=")
+            and parts[3:] == ["ports", "-"]
+        )
+        if path in changed and not repeated_port_append:
             raise RevisionPatchError(f"Duplicate patch path {path!r}")
         changed.add(path)
-        parts = _parts(path)
         parent = _parent(candidate, parts)
         key = parts[-1]
         try:
@@ -167,6 +216,13 @@ def apply_architect_revision_patch(
         else:
             raise RevisionPatchError(f"Patch parent is not a collection at {path!r}")
         _check_scope(parts, op, prior, new_value, feedback)
+        if repeated_port_append and any(
+            isinstance(item, Mapping) and item.get("name") == new_value.get("name")
+            for item in parent
+        ):
+            raise RevisionPatchError(
+                f"Module port {new_value.get('name')!r} already exists at {path!r}"
+            )
         if op == "replace" and prior == new_value:
             raise RevisionPatchError(f"No-op replacement at {path!r}")
         if isinstance(parent, dict):

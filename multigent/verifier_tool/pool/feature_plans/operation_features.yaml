@@ -1,0 +1,41 @@
+taxonomy:
+  name: accelerator_operation_features
+  version: "0.4"
+  scope: code-owned functional-coverage concepts for integer matrix multiplication
+  rules:
+    - A recognized operation kind must implement every baseline concept for its family.
+    - Baseline concepts may not be removed or renamed by the Verifier.
+    - Optional concepts are selected only when their behavior exists in the frozen contract.
+    - Family verification properties guide the independent golden checker, not synthetic coverage hits.
+    - Unsupported operations or concepts use a contract-local Verifier extension; they are not advertised as code-owned catalog features.
+    - Operation samples represent transactions actually submitted to and checked against the DUT.
+    - Feature groups organize selectable leaf concepts and never create their own assertions, coverage bins, or stimulus targets.
+    - Select applicable group children in feature_extensions using their stable leaf names; arithmetic.post_operations defines execution order.
+
+feature_defaults:
+  assertion: {checker: central_golden_equivalence}
+  coverage: {sampler: canonical_classifier}
+  stimulus: {strategy: canonical_discriminating_stimuli}
+
+families:
+  matrix_multiply:
+    aliases: [gemm, matmul, matrix_multiply, matrix_multiplication, tensor_gemm]
+    optional_concepts: {}
+    baseline_concepts: [dimensions, operand_values, accumulation]
+    starter_bins:
+      dimensions: [fixed_shape]
+      operand_values: [zero, positive, negative, minimum, maximum]
+      accumulation: [ordinary, positive_boundary, negative_boundary, positive_overflow, negative_overflow]
+    feature_groups:
+      post_processing:
+        description: Code-owned post-reduction GEMM stages selected individually when present in the contract.
+        optional_concepts:
+          bias:
+            applies_when: Exactly one per-output-column integer bias vector is added.
+            starter_bins: [zero_bias, positive_bias, negative_bias, minimum_bias, maximum_bias]
+          activation:
+            applies_when: A ReLU post-operation is declared in the arithmetic DAG.
+            starter_bins: [negative_region, zero_region, positive_region]
+          quantization:
+            applies_when: One per-tensor fixed-point affine requantization stage is declared in the arithmetic DAG.
+            starter_bins: [exact, rounded, nonzero_zero_point, negative_saturation, positive_saturation]

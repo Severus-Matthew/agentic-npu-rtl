@@ -1,0 +1,285 @@
+format:
+  name: architect_operation_verification_metadata
+  schema_version: 2
+  owner: verifier_tool
+  purpose: >-
+    Machine-readable bridge from frozen Architect contracts to code-owned protocol
+    adapters, canonical jobs, golden comparison, and known-feature classifiers.
+
+standard_protocol_extension:
+  owner: verifier_tool
+  merge_status: staged_here_for_later_architect_schema_merge
+  channel_fields:
+    protocol_group: Groups the complete AXI interface without interpreting channel names.
+    protocol_channel: One of write_address, write_data, write_response, read_address, read_data, stream.
+  signal_fields:
+    protocol_field: >-
+      Exact standardized field within its channel. AXI4 uses addr, len, size,
+      burst, data, strb, last, resp, id, lock, cache, prot, qos, region, user;
+      AXI4-Stream additionally uses keep and dest. valid/ready remain signal roles.
+  profiles: [axi4, axi4_lite, axi4_stream]
+  no_name_inference: true
+
+operation_arithmetic_extension:
+  owner: verifier_tool
+  merge_status: integrated_in_effective_architect_output_schema
+  schema: operation/arithmetic_metadata.schema.json
+  schema_composer: multigent.verifier_tool.with_operation_arithmetic_schema
+  compact_contract_field: operations[].arithmetic
+  rule: >-
+    Every operation explicitly declares its supported arithmetic profile and
+    all numeric and ordered post-operation rules. Named data types, data objects,
+    and dimensions reference existing architecture fields, rather than duplicate
+    them. The compiler only resolves those references; it does not guess activation,
+    accumulator type, or conversions. The operation_arithmetic_schema below is the
+    authoritative field/choice list. Unimplemented arithmetic must use llm_extension
+    with a reason and should name its exact operation-domain verification extension
+    through extension_request; its exact semantics remain in operations[].semantics
+    and are not claimed as code-owned verification. Prose must agree with explicit
+    arithmetic; the structured declaration governs code-owned execution. The link is
+    optional only for compatibility with older coarse llm_extension contracts.
+  compatibility: >-
+    Old frozen operations without arithmetic are rejected, not automatically
+    migrated. Explicit declarations are never partially defaulted and cannot
+    be erased during revisions. Do not emit both compact arithmetic and full
+    verification_metadata. Existing interface bindings and object/type/shape fields
+    remain authoritative and are not redeclared here.
+
+object_serialization_extension:
+  owner: verifier_tool
+  compact_contract_field: data_objects[].serialization
+  required_fields: [kind, index_order, description]
+  optional_fields: [extension_request]
+  rule: >-
+    Logical dimensions do not define transfer order. Architect must explicitly
+    declare scalar, dense_tensor, or llm_extension serialization, outermost-to-
+    innermost index_order, and its exact layout description. Current code-owned
+    wire adapters support scalar or dense logical-axis-order data only; a different
+    layout is preserved but blocks the automatic campaign and capture adapter.
+    It is never silently treated as canonical-order data. New llm_extension
+    declarations should link the exact operation-domain request targeting this data
+    object through extension_request; the link is optional only for legacy coarse
+    extension contracts and is invalid on supported serialization kinds.
+
+lifecycle_policy_extension:
+  owner: verifier_tool
+  merge_status: integrated_in_effective_architect_output_schema
+  pool: lifecycle_policy_pool/lifecycle_policies.yaml
+  schema_function: multigent.verifier_tool.lifecycle_policy_schema
+  schema_composer: multigent.verifier_tool.with_lifecycle_policy_schema
+  compact_contract_field: operations[].lifecycle_policy
+  canonical_metadata_field: operations[].verification_metadata.lifecycle.policy
+  rule: >-
+    Select one supported value for every policy. These two paths are alternative
+    input forms; do not emit both. The tool resolves either form into lifecycle.policy.
+    Unknown values, partial policies, and conflicting declarations are errors.
+    The effective Architect response schema now requires operations[].lifecycle_policy
+    for initial generation. Emit that compact field; the full verification_metadata
+    path is for external callers that provide canonical metadata directly.
+  compatibility: >-
+    Old frozen contracts without the field are rejected and must be explicitly
+    updated by Architect. There is no legacy policy/default inference. Local
+    revisions cannot remove declarations. This does not expand revision permissions.
+
+lifecycle_control_plane_sequence_extension:
+  owner: verifier_tool
+  merge_status: integrated_in_effective_architect_output_schema
+  schema_function: multigent.verifier_tool.control_plane_sequence_schema
+  schema_composer: multigent.verifier_tool.with_lifecycle_policy_schema
+  compact_contract_field: operations[].lifecycle_control_plane_sequence
+  rule: >-
+    Declare it if and only if lifecycle_policy.job_acceptance or
+    lifecycle_policy.completion_style is the value control_plane_sequence (an
+    {extension_request: ...} reference does not count), i.e. a job is
+    started and completed only through register accesses on an AXI4-Lite
+    subordinate (control) channel group (for example a Vitis HLS ap_ctrl_chain
+    block whose ap_start/ap_done are internal wires, not top-level pins). Omit it
+    otherwise; a declaration that no policy selects is an error, and so is a
+    control_plane_sequence policy without the declaration. The interface must
+    contain that AXI4-Lite subordinate group. Shape: registers (name -> address and
+    optional named bit fields; addresses unique, bits unique per register),
+    job_start.actions (ordered write_reg / write_field / read_reg / poll_field,
+    ending in a write_reg or write_field), job_complete.actions (exactly one
+    poll_field, as the last action). Every register and field an action names must
+    be declared; write_reg.value_from.data_object must be one of this operation's
+    own inputs/outputs, and each memory-mapped object's base pointer comes from a
+    write_reg with address_role=base. There is no opcode or legal_values concept
+    for this source. Completion is confirmed only at register-poll granularity, so
+    select completion_timing=observed_via_poll.
+
+# Canonical compiled metadata (also accepted from external callers as full
+# operation.verification_metadata). Architect emits compact arithmetic and
+# lifecycle_policy; the tool resolves existing I/O, type, shape, and signal fields.
+required_operation_fields:
+  - operation_name
+  - family
+  - inputs
+  - outputs
+  - dimensions
+  - arithmetic
+  - lifecycle
+
+input_output_binding:
+  required_fields:
+    - data_object
+    - object_role
+    - direction
+    - data_type
+    - dimensions
+    - channel
+    - protocol_profile
+    - signals
+    - serialization
+  signals:
+    required_roles_for_ready_valid: [valid, ready, payload]
+    optional_roles: [last, keep, strb, id, destination, user]
+  serialization:
+    required_fields: [kind, index_order, description]
+    optional_fields: [extension_request]
+    kinds: [dense_tensor, scalar, llm_extension]
+    rule: >-
+      index_order is expressed with exact architecture dimension names. The TB
+      passes accepted values under the exact data_object name in that order.
+
+arithmetic:
+  required_fields:
+    - classifier_profile
+    - accumulator_data_type
+    - accumulator_type
+    - reduction_dimensions
+    - post_operations
+    - product_data_type
+    - accumulator_initialization
+    - reduction_order
+    - reduction_conversion
+    - bias_conversion
+    - result_data_type
+    - result_conversion
+    - stage_order
+    - support_status
+    - metadata_origin
+  classifier_profiles:
+    integer_matrix_multiply:
+      required_object_roles:
+        - left_operand_matrix
+        - right_operand_matrix
+        - result_matrix
+      supported_post_operations:
+        - bias_add
+        - relu
+        - wrap
+        - affine_quantize
+
+lifecycle:
+  owner: verifier_tool
+  required_fields:
+    - job_accept_channels
+    - job_key
+    - configuration_snapshot
+    - result_retirement
+    - reset_disposition
+    - status_bindings
+    - policy
+  policy:
+    vocabulary: lifecycle_policy_pool
+    selection_rule: Every key in the pool's policies map must have one supported value.
+    status_applicability: Policies for busy, completion, or error apply when the corresponding status signal is bound.
+  job_accept_channel:
+    required_fields:
+      - channel
+      - signals
+      - acceptance
+      - payload_width
+      - legal_values
+      - illegal_value
+      - legality_resolution
+    required_signal_roles: [valid, ready, payload]
+    legality_rule: >-
+      legal_values must be explicit machine-readable integers. The binding
+      compiler may parse only an explicit contract legal-value clause; it never
+      infers an opcode from a channel or signal name. Missing legality blocks the
+      automatic lifecycle campaign.
+    metadata_fields:
+      rule: >-
+        Every command metadata signal is preserved independently. A memory base
+        pointer uses exact semantic tags data_object=<architecture data object>
+        address_role=base byte_order=little address_sequence=contiguous and
+        word_stride_bytes=<positive integer>. Signal spelling and prose are never
+        used to infer which object a pointer addresses.
+  status_bindings:
+    roles: [busy, completion, error]
+  ownership: >-
+    busy is global job lifecycle state, not a per-beat READY substitute. Cross
+    invariants may relate busy to command READY while protocol still owns the
+    channel transfer rule.
+
+# Illustrative canonical fragment; not a complete operation (B/bias bindings omitted).
+example_fragment:
+  schema_version: 2
+  operation_name: gemm_core
+  family: matrix_multiply
+  dimensions: {M: 8, N: 8, K: 32}
+  inputs:
+    - data_object: A_matrix
+      object_role: left_operand_matrix
+      direction: input
+      data_type: {name: s8, width_bits: 8, signed: true}
+      dimensions: [M, K]
+      channel: a_chan
+      protocol_profile: ready_valid
+      signals: {valid: a_valid, ready: a_ready, payload: a_payload}
+      serialization: {kind: dense_tensor, index_order: [M, K], description: M-major then K elements}
+  outputs:
+    - data_object: Y_matrix
+      object_role: result_matrix
+      direction: output
+      data_type: {name: s32, width_bits: 32, signed: true}
+      dimensions: [M, N]
+      channel: y_chan
+      protocol_profile: ready_valid
+      signals: {valid: y_valid, ready: y_ready, payload: y_payload, last: y_last}
+      serialization: {kind: dense_tensor, index_order: [M, N], description: M-major then N elements}
+  arithmetic:
+    classifier_profile: integer_matrix_multiply
+    accumulator_data_type: s32
+    accumulator_type: {name: s32, width_bits: 32, signed: true}
+    reduction_dimensions: [K]
+    post_operations:
+      - {kind: bias_add, data_object: bias_vector, broadcast_dimensions: [N]}
+      - {kind: wrap, data_type: s32}
+      - {kind: relu}
+    integer_evaluation: unbounded_between_explicit_conversions
+    product_data_type: {name: s16, width_bits: 16, signed: true, conversion: exact}
+    accumulator_initialization: 0
+    reduction_order: increasing_declared_reduction_coordinate
+    reduction_conversion: wrap_twos_complement_after_each_add
+    bias_conversion: wrap_twos_complement_after_add
+    result_data_type: {name: s32, width_bits: 32, signed: true, conversion: wrap_twos_complement}
+    result_conversion: wrap_twos_complement
+    stage_order: [operand_decode, exact_product, ordered_reduction_with_explicit_conversion, bias_add_with_explicit_conversion, wrap_accumulator, relu_threshold_zero, result_conversion]
+    support_status: supported_restricted_integer_gemm
+    metadata_origin: explicit_contract
+  lifecycle:
+    policy:
+      job_acceptance: valid_ready_handshake
+      job_overlap: single_inflight
+      busy_behavior: tracks_active_job
+      completion_style: pulse
+      completion_timing: next_cycle_after_retirement
+      illegal_command_behavior: error_without_start
+      error_style: pulse
+      error_timing: next_cycle_after_error_event
+      reset_behavior: abort_inflight
+    job_accept_channels:
+      - channel: cmd_chan
+        signals: {valid: cmd_valid, ready: cmd_ready, payload: cmd_payload}
+        acceptance: valid_and_ready_on_receiving_active_edge
+        payload_width: 8
+        legal_values: [1]
+        illegal_value: 0
+        legality_resolution: explicit_architect_metadata
+    job_key: [reset_epoch, accepted_command_sequence]
+    configuration_snapshot: accepted_command_event
+    result_retirement: all_declared_output_elements_accepted
+    reset_disposition: new_epoch_pending_work_requires_explicit_abort
+    status_bindings: {busy: [busy], completion: [completion], error: [error]}

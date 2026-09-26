@@ -80,6 +80,66 @@ def test_named_contract_collections_reject_fragile_numeric_indices(previous):
         )
 
 
+def test_structural_feedback_can_append_bounded_module_ports(previous):
+    previous["module_manifest"]["modules"][0]["ports"] = []
+    feedback = {
+        "affected_modules": ["example"],
+        "issue": "No frozen signal path exists between modules",
+    }
+    port = {
+        "name": "data_in", "direction": "input", "width": "8",
+        "signed": True, "semantics": "Explicit shared-buffer read data",
+    }
+    result = apply_architect_revision_patch(
+        previous, feedback,
+        _patch(("add", "/module_manifest/modules/name=example/ports/-", port)),
+    )
+    assert result["module_manifest"]["modules"][0]["ports"] == [port]
+
+
+def test_structural_feedback_can_append_multiple_distinct_ports_at_same_path(previous):
+    previous["module_manifest"]["modules"][0]["ports"] = []
+    feedback = {"affected_modules": ["example"], "issue": "missing inter-module data ports"}
+    data_port = {
+        "name": "data_in", "direction": "input", "width": "8",
+        "signed": True, "semantics": "Operand data",
+    }
+    valid_port = {
+        "name": "data_valid", "direction": "input", "width": "1",
+        "signed": False, "semantics": "Operand data valid",
+    }
+    path = "/module_manifest/modules/name=example/ports/-"
+    result = apply_architect_revision_patch(
+        previous, feedback,
+        _patch(("add", path, data_port), ("add", path, valid_port)),
+    )
+    assert result["module_manifest"]["modules"][0]["ports"] == [data_port, valid_port]
+
+
+def test_structural_feedback_rejects_duplicate_port_name(previous):
+    previous["module_manifest"]["modules"][0]["ports"] = []
+    feedback = {"affected_modules": ["example"], "issue": "missing inter-module data ports"}
+    port = {
+        "name": "data_in", "direction": "input", "width": "8",
+        "signed": True, "semantics": "Operand data",
+    }
+    path = "/module_manifest/modules/name=example/ports/-"
+    with pytest.raises(RevisionPatchError, match="already exists"):
+        apply_architect_revision_patch(
+            previous, feedback,
+            _patch(("add", path, port), ("add", path, port)),
+        )
+
+
+def test_module_port_exception_does_not_allow_other_composite_additions(previous):
+    previous["module_manifest"]["modules"][0]["ports"] = []
+    with pytest.raises(RevisionPatchError, match="New whole sections"):
+        apply_architect_revision_patch(
+            previous, {"affected_modules": ["example"]},
+            _patch(("add", "/architecture_contract/new_section", {"x": 1})),
+        )
+
+
 def test_pipeline_stage_selector_locally_repairs_existing_stage(previous):
     previous["architecture_contract"]["pipeline"] = [
         {"stage": "FINALIZE", "responsibility": "write serializer"},
@@ -128,6 +188,40 @@ def test_revision_prompt_contains_previous_contract_and_uses_patch_schema(tmp_pa
     assert agent.schema_path.name == "architect_revision_patch.schema.json"
     assert "previous_contract" in agent.task
     assert "Return ONLY a local patch" in agent.task
+
+
+def test_revision_reconstructs_previous_contract_from_frozen_artifacts(
+    tmp_path, previous,
+):
+    output_dir = tmp_path / "architecture"
+    output_dir.mkdir()
+    import yaml
+    for name in ("architecture_contract", "interface_contract", "acceptance_criteria"):
+        (output_dir / f"{name}.yaml").write_text(
+            yaml.safe_dump(previous[name]), encoding="utf-8"
+        )
+    (output_dir / "module_manifest.json").write_text(
+        json.dumps(previous["module_manifest"]), encoding="utf-8"
+    )
+
+    class FakePatchArchitect:
+        def _build_architecture_task(self, intake):
+            assert intake["previous_contract"]["architecture_contract"] == previous["architecture_contract"]
+            assert intake["previous_contract"]["status"] == "READY"
+            return "task"
+
+        def run_structured(self, *, task, schema_path, log_name):
+            return {"status": "SPEC_CONFLICT", "edits": [], "issue": "not local"}
+
+        def _write_json(self, path, value):
+            path.write_text(json.dumps(value), encoding="utf-8")
+
+    result = _run_architect_revision(
+        FakePatchArchitect(), user_request="GEMM NPU",
+        feedback={"issue": "reset precedence"}, output_dir=output_dir,
+        run_id="frozen-r1",
+    )
+    assert result["status"] == "SPEC_CONFLICT"
 
 
 @pytest.mark.parametrize("patch_result", [

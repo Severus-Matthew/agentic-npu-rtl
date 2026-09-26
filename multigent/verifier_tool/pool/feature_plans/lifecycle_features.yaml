@@ -1,0 +1,146 @@
+taxonomy:
+  name: accelerator_lifecycle_features
+  version: "1.0"
+  scope: deterministic command, reset, job, status, abort, and recovery coverage
+
+feature_defaults:
+  assertion: {checker: null}
+  coverage: {sampler: lifecycle_runtime}
+  stimulus: {strategy: directed_lifecycle_coverage}
+
+features:
+  reset_behavior:
+    category: lifecycle
+    scope: signal
+    match: {role: reset}
+    description: Exercise reset assertion, release, and the contract reset state.
+    assertion: {checker: outputs_match_declared_reset_values}
+    coverage:
+      bins:
+        - {name: asserted, intent: Observe reset in its asserted state.}
+        - {name: deasserted, intent: Observe reset in its deasserted state.}
+        - {name: release, intent: Observe the transition from reset into operation.}
+    stimulus: {strategy: reset_assert_release}
+
+  busy_behavior:
+    category: lifecycle
+    scope: signal
+    match: {role: busy}
+    description: Observe the global job-active indication in idle and active states.
+    assertion: {checker: busy_tracks_active_job}
+    coverage:
+      bins:
+        - {name: idle, intent: Observe busy low with no active legal job.}
+        - {name: active, intent: Observe busy high after an accepted legal job.}
+        - {name: retired, intent: Observe busy return low after legal retirement.}
+    stimulus: {strategy: legal_job_status}
+
+  completion_behavior:
+    category: lifecycle
+    scope: signal
+    match: {role: completion}
+    description: Observe contract-defined completion and its relation to accepted work.
+    assertion: {checker: completion_matches_final_output}
+    coverage:
+      bins:
+        - {name: observed, intent: Observe completion after a legal operation.}
+        - {name: back_to_back, intent: Observe completion for consecutive legal operations.}
+    stimulus: {strategy: back_to_back_legal_jobs}
+
+  error_behavior:
+    category: lifecycle
+    scope: signal
+    match: {role: error}
+    description: Exercise the contract-defined error indication and recovery path.
+    assertion: {checker: illegal_command_errors_without_start}
+    coverage:
+      bins:
+        - {name: inactive, intent: Observe no error during legal operation.}
+        - {name: asserted, intent: Trigger and observe a defined illegal condition.}
+        - {name: recovered, intent: Observe the specified recovery behavior.}
+    stimulus: {strategy: illegal_then_legal_recovery}
+
+  command_legality:
+    category: lifecycle
+    scope: channel
+    match:
+      protocol_profile: ready_valid
+      required_roles: [valid, ready, payload]
+      required_semantic_classes: [command]
+    description: Classify accepted commands against a machine-resolved legal encoding set.
+    assertion: {checker: legal_and_illegal_command_classification}
+    coverage:
+      bins:
+        - {name: legal, intent: Accept a declared legal command.}
+        - {name: illegal, intent: Accept an encoding outside the declared legal set.}
+    stimulus: {strategy: legal_illegal_commands}
+
+operation_features:
+  legal_command_starts_one_job:
+    scope: operation
+    assertion: {checker: legal_command_starts_one_job}
+    coverage: {obligations: [job_lifecycle]}
+    stimulus: {strategy: legal_command}
+  illegal_command_errors_without_start:
+    scope: operation
+    assertion: {checker: illegal_command_errors_without_start}
+    coverage: {obligations: [job_lifecycle]}
+    stimulus: {strategy: illegal_then_legal_recovery}
+  response_error_follows_nonokay:
+    scope: operation
+    assertion: {checker: response_error_follows_nonokay}
+    coverage: {obligations: [job_lifecycle]}
+    stimulus: {strategy: injected_error_response}
+  no_output_without_active_job:
+    scope: operation
+    assertion: {checker: no_output_without_active_job}
+    coverage: {obligations: [job_lifecycle, post_reset_purity]}
+    stimulus: {strategy: legal_job_output}
+  busy_tracks_active_job:
+    scope: operation
+    assertion: {checker: busy_tracks_active_job}
+    coverage: {obligations: [job_lifecycle]}
+    stimulus: {strategy: legal_job_status}
+  completion_matches_final_output:
+    scope: operation
+    assertion: {checker: completion_matches_final_output}
+    coverage: {obligations: [job_lifecycle]}
+    stimulus: {strategy: legal_job_retirement}
+  reset_aborts_pending_job:
+    scope: operation
+    assertion: {checker: reset_aborts_pending_job}
+    coverage: {obligations: [reset_abort_phase, post_reset_purity]}
+    stimulus: {strategy: reset_abort_each_phase}
+  status_pulses_are_one_cycle:
+    scope: operation
+    assertion: {checker: status_pulses_are_one_cycle}
+    coverage: {obligations: [job_lifecycle]}
+    stimulus: {strategy: back_to_back_legal_jobs}
+
+operation_coverage:
+  job_lifecycle:
+    description: Track every legal job from acceptance to exactly one terminal disposition.
+    sample_unit: job_event
+    controllability: resolved_from_endpoint_roles
+    bins:
+      - {name: accepted, intent: A legal command starts a job.}
+      - {name: active, intent: Accepted work reaches an active busy state.}
+      - {name: retired, intent: A legal job retires with its declared completion.}
+      - {name: aborted, intent: Reset gives in-flight work an explicit abort disposition.}
+  reset_abort_phase:
+    description: Assert reset at every externally distinguishable job phase.
+    sample_unit: reset_edge
+    controllability: generated_job_schedule
+    dynamic_bins: input_phases
+    bins:
+      - {name: idle, intent: Reset with no accepted job.}
+      - {name: compute, intent: Reset after all inputs and before first output.}
+      - {name: output, intent: Reset after at least one accepted result beat.}
+  post_reset_purity:
+    description: Prove reset-discarded work cannot complete or contaminate a later legal job.
+    sample_unit: reset_recovery_job
+    controllability: generated_abort_then_clean_job
+    bins:
+      - {name: no_ghost_completion, intent: Aborted work emits no completion.}
+      - {name: no_ghost_output, intent: Aborted work emits no accepted result.}
+      - {name: clean_recovery_job, intent: The next legal job matches only post-reset accepted inputs.}

@@ -1,0 +1,427 @@
+design:
+  name: int8_gemm_hls_golden
+  description: 'Real Vitis HLS v2023.2-generated 32x128x64 signed-int8 GEMM kernel
+    (gemm_hls/int8_gemm.cpp, packed_gemm_contract), hand-authored contract (no Architect
+    LLM call) matching gemm_golden/int8_gemm.v exactly: three independent full-AXI4
+    gmem_a/b/c manager ports plus a genuine ap_ctrl_chain AXI4-Lite control interface
+    (ap_start/ap_done are internal wires, never top-level pins -- job control is entirely
+    register-mapped).'
+operations:
+- name: gemm
+  kind: arithmetic
+  coverage_family: matrix_multiply
+  coverage_family_source: catalog
+  features:
+  - dimensions
+  - operand_values
+  - accumulation
+  feature_extensions: []
+  semantics: Y[m,n] = sum_k A[m,k] * B[k,n], exact signed 32-bit accumulation, no
+    bias, no activation.
+  inputs:
+  - A_matrix
+  - B_matrix
+  outputs:
+  - Y_matrix
+  arithmetic:
+    classifier_profile: integer_matrix_multiply
+    product_data_type: s16
+    accumulator_data_type: s32
+    accumulator_initialization: 0
+    reduction_dimensions:
+    - K
+    reduction_order: increasing_declared_reduction_coordinate
+    reduction_conversion: exact
+    post_operations: {}
+    post_output: accumulator
+    bias_conversion: exact
+    result_data_type: s32
+    result_conversion: exact
+  lifecycle_policy:
+    job_acceptance: control_plane_sequence
+    job_overlap: single_inflight
+    busy_behavior: tracks_active_job
+    completion_style: control_plane_sequence
+    completion_timing: observed_via_poll
+    illegal_command_behavior: error_without_start
+    error_style: pulse
+    error_timing: next_cycle_after_error_event
+    reset_behavior: abort_inflight
+  lifecycle_control_plane_sequence:
+    registers:
+      control:
+        address: 0
+        fields:
+          ap_start:
+            bit: 0
+          ap_done:
+            bit: 1
+          ap_idle:
+            bit: 2
+          ap_continue:
+            bit: 4
+      a_low:
+        address: 16
+      a_high:
+        address: 20
+      b_low:
+        address: 28
+      b_high:
+        address: 32
+      c_low:
+        address: 40
+      c_high:
+        address: 44
+    job_start:
+      actions:
+      - op: write_field
+        register: control
+        field: ap_continue
+        value: 1
+      - op: write_reg
+        register: a_low
+        value_from:
+          data_object: A_matrix
+          address_role: base
+          half: low
+      - op: write_reg
+        register: a_high
+        value_from:
+          data_object: A_matrix
+          address_role: base
+          half: high
+      - op: write_reg
+        register: b_low
+        value_from:
+          data_object: B_matrix
+          address_role: base
+          half: low
+      - op: write_reg
+        register: b_high
+        value_from:
+          data_object: B_matrix
+          address_role: base
+          half: high
+      - op: write_reg
+        register: c_low
+        value_from:
+          data_object: Y_matrix
+          address_role: base
+          half: low
+      - op: write_reg
+        register: c_high
+        value_from:
+          data_object: Y_matrix
+          address_role: base
+          half: high
+      - op: write_field
+        register: control
+        field: ap_start
+        value: 1
+    job_complete:
+      actions:
+      - op: poll_field
+        register: control
+        field: ap_done
+        expected: 1
+data_types:
+- name: s8
+  role: signed 8-bit GEMM operand
+  width_bits: 8
+  signed: true
+  representation: twos_complement
+  conversion_semantics: n/a
+  overflow_semantics: n/a
+  rounding_semantics: n/a
+- name: s16
+  role: signed 16-bit exact intermediate product
+  width_bits: 16
+  signed: true
+  representation: twos_complement
+  conversion_semantics: n/a
+  overflow_semantics: n/a
+  rounding_semantics: n/a
+- name: s32
+  role: signed 32-bit accumulator and result
+  width_bits: 32
+  signed: true
+  representation: twos_complement
+  conversion_semantics: n/a
+  overflow_semantics: n/a
+  rounding_semantics: n/a
+data_objects:
+- name: A_matrix
+  role: left_operand_matrix
+  data_type: s8
+  dimensions:
+  - M
+  - K
+  producer: external
+  consumers:
+  - gemm
+  external: true
+  serialization:
+    kind: packed_encoding
+    description: Word = K (64 words total). Whole 512-bit word is one container. field[m]
+      = A[m][k], raw unsigned 8-bit pattern at bit m*8. Bits 256-511 are zero-padded,
+      never read by the RTL.
+    traversal:
+      word_axes:
+      - K
+      containers_per_word: 1
+      container_axis: null
+      field_axis: M
+    packed_encoding:
+      physical_container_width: 512
+      used_width: 256
+      used_bit_range:
+      - 0
+      - 255
+      padding_value: zero
+      container_bit_layout: contiguous_ascending
+      group_size: 32
+      fields:
+      - logical_offset: 0
+        source_width: 8
+        interpretation: unsigned
+        shift: 0
+      - logical_offset: 1
+        source_width: 8
+        interpretation: unsigned
+        shift: 8
+      - logical_offset: 2
+        source_width: 8
+        interpretation: unsigned
+        shift: 16
+      - logical_offset: 3
+        source_width: 8
+        interpretation: unsigned
+        shift: 24
+      - logical_offset: 4
+        source_width: 8
+        interpretation: unsigned
+        shift: 32
+      - logical_offset: 5
+        source_width: 8
+        interpretation: unsigned
+        shift: 40
+      - logical_offset: 6
+        source_width: 8
+        interpretation: unsigned
+        shift: 48
+      - logical_offset: 7
+        source_width: 8
+        interpretation: unsigned
+        shift: 56
+      - logical_offset: 8
+        source_width: 8
+        interpretation: unsigned
+        shift: 64
+      - logical_offset: 9
+        source_width: 8
+        interpretation: unsigned
+        shift: 72
+      - logical_offset: 10
+        source_width: 8
+        interpretation: unsigned
+        shift: 80
+      - logical_offset: 11
+        source_width: 8
+        interpretation: unsigned
+        shift: 88
+      - logical_offset: 12
+        source_width: 8
+        interpretation: unsigned
+        shift: 96
+      - logical_offset: 13
+        source_width: 8
+        interpretation: unsigned
+        shift: 104
+      - logical_offset: 14
+        source_width: 8
+        interpretation: unsigned
+        shift: 112
+      - logical_offset: 15
+        source_width: 8
+        interpretation: unsigned
+        shift: 120
+      - logical_offset: 16
+        source_width: 8
+        interpretation: unsigned
+        shift: 128
+      - logical_offset: 17
+        source_width: 8
+        interpretation: unsigned
+        shift: 136
+      - logical_offset: 18
+        source_width: 8
+        interpretation: unsigned
+        shift: 144
+      - logical_offset: 19
+        source_width: 8
+        interpretation: unsigned
+        shift: 152
+      - logical_offset: 20
+        source_width: 8
+        interpretation: unsigned
+        shift: 160
+      - logical_offset: 21
+        source_width: 8
+        interpretation: unsigned
+        shift: 168
+      - logical_offset: 22
+        source_width: 8
+        interpretation: unsigned
+        shift: 176
+      - logical_offset: 23
+        source_width: 8
+        interpretation: unsigned
+        shift: 184
+      - logical_offset: 24
+        source_width: 8
+        interpretation: unsigned
+        shift: 192
+      - logical_offset: 25
+        source_width: 8
+        interpretation: unsigned
+        shift: 200
+      - logical_offset: 26
+        source_width: 8
+        interpretation: unsigned
+        shift: 208
+      - logical_offset: 27
+        source_width: 8
+        interpretation: unsigned
+        shift: 216
+      - logical_offset: 28
+        source_width: 8
+        interpretation: unsigned
+        shift: 224
+      - logical_offset: 29
+        source_width: 8
+        interpretation: unsigned
+        shift: 232
+      - logical_offset: 30
+        source_width: 8
+        interpretation: unsigned
+        shift: 240
+      - logical_offset: 31
+        source_width: 8
+        interpretation: unsigned
+        shift: 248
+- name: B_matrix
+  role: right_operand_matrix
+  data_type: s8
+  dimensions:
+  - K
+  - N
+  producer: external
+  consumers:
+  - gemm
+  external: true
+  serialization:
+    kind: packed_encoding
+    description: 'N=128 decomposes into N_tile(4) x N_lane(16) x N_offset(2), outer
+      to inner: n = N_tile*32 + N_lane*2 + N_offset. Word = K*4 + N_tile (256 words
+      total). Each word holds 16 containers (lanes); lane N_lane packs the pair (n0=tile*32+lane*2,
+      n1=n0+1) via signed shift-add: P = as_signed(B[k][n0],8) + (as_signed(B[k][n1],8)<<18),
+      truncated to 27 bits -- the DSP48 pre-adder packing trick in gemm_hls/int8_gemm.cpp
+      (packed_gemm_contract::load_b/packed_products). Bits 27-31 of every lane are
+      zero-padded, never read by the RTL.'
+    derived_axes:
+    - real_axis: N
+      order:
+      - N_tile
+      - N_lane
+      - N_offset
+      sub_axes:
+      - name: N_tile
+        extent: 4
+      - name: N_lane
+        extent: 16
+      - name: N_offset
+        extent: 2
+    traversal:
+      word_axes:
+      - K
+      - N_tile
+      containers_per_word: 16
+      container_axis: N_lane
+      field_axis: N_offset
+    packed_encoding:
+      physical_container_width: 32
+      used_width: 27
+      used_bit_range:
+      - 0
+      - 26
+      padding_value: zero
+      container_bit_layout: contiguous_ascending
+      group_size: 2
+      fields:
+      - logical_offset: 0
+        source_width: 8
+        interpretation: signed
+        shift: 0
+      - logical_offset: 1
+        source_width: 8
+        interpretation: signed
+        shift: 18
+- name: Y_matrix
+  role: result_matrix
+  data_type: s32
+  dimensions:
+  - M
+  - N
+  producer: gemm
+  consumers:
+  - external
+  external: true
+  serialization:
+    kind: dense_tensor
+    index_order:
+    - M
+    - N
+    description: 'Row-major: N varies fastest, then M (plain, no packing).'
+dimensions:
+- name: M
+  semantic: GEMM row count
+  minimum: 32
+  maximum: 32
+  runtime_configurable: false
+  bound_parameter: ''
+- name: K
+  semantic: GEMM reduction depth
+  minimum: 64
+  maximum: 64
+  runtime_configurable: false
+  bound_parameter: ''
+- name: N
+  semantic: GEMM column count
+  minimum: 128
+  maximum: 128
+  runtime_configurable: false
+  bound_parameter: ''
+parameters: []
+compute:
+  organization: 4-way systolic tile array, 32x16 pairs per tile
+  parallelism: 4 tiles x 32 rows x 16 column-pairs, DSP48 SIMD-packed
+  dataflow: load A, load B, run_tiles (dataflow), store C
+storage: []
+pipeline:
+  stages: load_a || load_b -> run_tiles (4-way dataflow) -> store_c
+control:
+  style: 'Vitis HLS ap_ctrl_chain: IDLE -> (register-driven start) -> RUNNING -> DONE'
+reset:
+  synchronous: true
+  active_low: true
+  behavior: aborts any in-flight job
+latency_model:
+  exact: false
+  note: Bounded by ap_done liveness only; no exact cycle count promised.
+architectural_invariants:
+- Exactly one GEMM job may be in flight at a time.
+- A_matrix and B_matrix are read via independent AXI4 manager ports (gmem_a, gmem_b)
+  concurrently with each other; Y_matrix is written via a third (gmem_c).
+open_assumptions:
+- Job control is entirely AXI4-Lite register-mapped (ap_start/ap_done are internal
+  wires, never top-level ports) -- see control_plane_sequence.

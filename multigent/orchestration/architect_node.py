@@ -10,11 +10,18 @@ from jsonschema import Draft202012Validator
 
 from multigent.agents.architect import ARCHITECT_OUTPUT_SCHEMA, ArchitectAgent, ContractValidationError
 from multigent.agents.base import AgentRuntimeError
+from multigent.verifier_tool import (
+    validate_architecture_lifecycle_policies,
+    with_lifecycle_policy_schema,
+    validate_architecture_operation_arithmetic,
+    with_operation_arithmetic_schema,
+)
 from multigent.intake.request_builder import (
     WORKSPACE_ROOT,
     build_architect_intake,
     build_rtl_context,
     build_verification_context,
+    load_frozen_architecture,
     persist_intake,
 )
 
@@ -42,6 +49,24 @@ def _run_architect_revision(
         previous = json.loads(previous_path.read_text(encoding="utf-8"))
     else:
         previous = feedback.get("candidate_contract")
+    if not isinstance(previous, Mapping) or not all(
+        key in previous for key in (
+            "architecture_contract", "interface_contract", "module_manifest",
+            "acceptance_criteria",
+        )
+    ):
+        # ``--use-frozen-architecture`` intentionally accepts the four public
+        # artifacts without requiring the Architect's private result envelope.
+        # Reconstruct that envelope so a later downstream conflict can still be
+        # sent back for a bounded local Architect revision.
+        try:
+            previous = {
+                "status": "READY",
+                "conflicts": [],
+                **load_frozen_architecture(output_dir),
+            }
+        except (FileNotFoundError, TypeError, ValueError):
+            pass
     if not isinstance(previous, Mapping) or not all(
         key in previous for key in (
             "architecture_contract", "interface_contract", "module_manifest",
@@ -77,7 +102,12 @@ do not invent a contract change merely because it asked. Return PATCH_READY only
 when Architect decides that an actual contract amendment is required.
 Use replace on existing scalar leaves and add only to a missing scalar field or the
 end of a scalar list; never replace a section, list, module, operation, channel,
-signal, data type, or parameter object. Preserve all unrelated decisions byte-for-
+signal, data type, or parameter object. One narrow structural exception exists:
+when downstream evidence names a module whose frozen interconnect is incomplete,
+you may append complete port objects at
+``/module_manifest/modules/name=<exact module>/ports/-``. Each such object must
+contain exactly name, direction, width, signed, and semantics. Do not add modules,
+channels, signals, operations, or any other object. Preserve all unrelated decisions byte-for-
 byte after JSON parsing, including names, feature pools and module decomposition.
 For lists of named objects, select the object with a stable ``name=<exact name>``
 path segment; for pipeline stages use ``stage=<exact stage>``. Never use a numeric
@@ -128,7 +158,13 @@ Never ask RTL Generator to silently work around an unresolved external defect.
             result = apply_architect_revision_patch(previous, feedback, patch)
         except RevisionPatchError as exc:
             raise ContractValidationError(f"Architect local patch rejected: {exc}", previous) from exc
-    schema = json.loads(ARCHITECT_OUTPUT_SCHEMA.read_text(encoding="utf-8"))
+    schema = with_operation_arithmetic_schema(
+        with_lifecycle_policy_schema(
+            json.loads(ARCHITECT_OUTPUT_SCHEMA.read_text(encoding="utf-8")),
+            required=False,
+        ),
+        required=False,
+    )
     errors = list(Draft202012Validator(schema).iter_errors(result))
     if errors:
         message = "; ".join(error.message for error in errors[:3])
@@ -136,6 +172,16 @@ Never ask RTL Generator to silently work around an unresolved external defect.
             f"Architect local patch produced schema-invalid contract: {message}", result
         )
 
+    policy_errors = validate_architecture_lifecycle_policies(
+        result["architecture_contract"],
+        previous_architecture=previous["architecture_contract"],
+    )
+    policy_errors.extend(validate_architecture_operation_arithmetic(
+        result["architecture_contract"],
+        previous_architecture=previous["architecture_contract"],
+    ))
+    if policy_errors:
+        raise ContractValidationError("; ".join(policy_errors), result)
     agent._validate_contract_references(result)
     agent._write_yaml(
         output_dir / "architecture_contract.yaml", result["architecture_contract"]

@@ -1,0 +1,50 @@
+format:
+  name: verifier_to_debugger_feedback
+  schema_version: 1
+  owner: verifier_tool.feedback_to_debugger
+  pipeline_dependencies: []
+
+included_verifier_fields:
+  verdict:
+    - verification_status
+    - failure_class
+  authoritative_evidence:
+    - verification_evidence
+    - failed_run_artifacts.coverage_plan
+    - failed_run_artifacts.coverage_report
+    - failed_run_artifacts.stimulus_ledger
+  frozen_verifier_artifacts:
+    - frozen_verifier.reference
+    - frozen_verifier.tests
+    - frozen_verifier.verification_plan
+    - frozen_verifier.operation_coverage
+
+excluded_non_verifier_fields:
+  architect_owned:
+    - frozen_architecture
+    - user_request
+  rtl_generator_owned:
+    - current_rtl
+    - rtl_feedback
+  debugger_owned:
+    - root_cause_policy
+    - prior_diagnosis
+    - prior_repair_plan
+    - repair_iteration
+
+fixed_provenance:
+  deterministic_evidence_authoritative: true
+  verifier_artifacts_frozen: true
+  coverage_hits_are_measured: true
+
+artifact_selection:
+  coverage_report:
+    - status
+    - coverage_percent
+    - assertion_failures
+    - failure_records
+    - last_observed_snapshot
+    - operation_sampling
+  stimulus_ledger:
+    most_recent_checked_stimuli: 8
+  long_value_policy: preserve_prefix_and_suffix_with_on_disk_pointer

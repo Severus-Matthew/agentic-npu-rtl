@@ -275,6 +275,13 @@ class APIAgent:
         }
         return raw_output, metadata
 
+    def load_output_schema(self, schema_path: Path) -> dict[str, Any]:
+        """Load a response schema; subclasses may compose their own metadata."""
+
+        if not schema_path.is_file():
+            raise FileNotFoundError(f"Output schema does not exist: {schema_path}")
+        return json.loads(schema_path.read_text(encoding="utf-8"))
+
     def run_structured(
         self,
         *,
@@ -290,10 +297,7 @@ class APIAgent:
         rather than hiding network or configuration failures.
         """
 
-        if not schema_path.is_file():
-            raise FileNotFoundError(f"Output schema does not exist: {schema_path}")
-
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        schema = self.load_output_schema(schema_path)
         try:
             Draft202012Validator.check_schema(schema)
         except SchemaError as exc:
@@ -321,6 +325,9 @@ class APIAgent:
             "api_mode": self.config.api_mode,
             "model_requested": self.config.model,
             "schema": str(schema_path),
+            "schema_sha256": hashlib.sha256(
+                json.dumps(schema, sort_keys=True).encode()
+            ).hexdigest(),
             "verbosity": os.getenv("NPU_AGENT_VERBOSITY", DEFAULT_VERBOSITY),
             "attempts": [],
         }

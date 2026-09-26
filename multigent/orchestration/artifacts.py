@@ -4,17 +4,18 @@ import hashlib
 import json
 import re
 import shutil
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from multigent.intake.request_builder import WORKSPACE_ROOT, build_verification_context
-from multigent.verifier_tool.coverage.stimulus import (
+from multigent.verifier_tool import (
     HISTORY_FILE,
-    rebuild_stimulus_history,
-    verifier_stimulus_history_view,
-)
-from multigent.verifier_tool.coverage.protocol.plan import build_interface_coverage_plan
-from multigent.verifier_tool.coverage.operation.plan import (
+    build_interface_coverage_plan,
+    findings_from_coverage,
+    findings_from_validation_error,
     merge_coverage_plans,
     operation_plan_for_tests,
+    rebuild_stimulus_history,
+    verifier_stimulus_history_view,
 )
 from multigent.tools.vivado import digest, write_json
 
@@ -41,13 +42,14 @@ def review_definition_hashes(state, artifact_hashes=None):
     verifier_tool = code_root / 'verifier_tool'
     sources = [
         *sorted(verifier_tool.rglob('*.yaml')),
-        verifier_tool / 'coverage/runtime.py',
-        verifier_tool / 'coverage/cocotb_model.py',
-        verifier_tool / 'coverage/operation/plan.py',
-        verifier_tool / 'coverage/operation/sampling.py',
-        verifier_tool / 'predefined_assertion/protocol/generator.py',
-        verifier_tool / 'predefined_assertion/operation/generator.py',
-        verifier_tool / 'predefined_assertion/instrumentation.py',
+        verifier_tool / 'orchestration/runtime.py',
+        verifier_tool / 'orchestration/cocotb_model.py',
+        verifier_tool / 'operation/coverage/plan.py',
+        verifier_tool / 'operation/coverage/sampling.py',
+        verifier_tool / 'protocol/assertion/generator.py',
+        verifier_tool / 'operation/assertion/generator.py',
+        verifier_tool / 'orchestration/instrumentation.py',
+        verifier_tool / 'operation/stimulus/stimulus_generator.py',
     ]
     result['taxonomy_and_monitor'] = {path.relative_to(code_root).as_posix(): digest(path) for path in sources}
     return result
@@ -114,17 +116,36 @@ def guarded(name, node):
     return run
 
 
+def _patchable_verifier_result(value):
+    return (
+        isinstance(value, dict)
+        and value.get('status') == 'VERIFICATION_READY'
+        and bool(value.get('reference_files'))
+        and bool(value.get('test_files'))
+    )
+
+
+def _local_review(context):
+    if not isinstance(context, dict):
+        return None
+    for key in ('deterministic_validation_review', 'assertion_definition_review'):
+        review = context.get(key)
+        if isinstance(review, dict):
+            return review
+    return None
+
+
 def verification_repair_node(state):
     # Do not transmit Debugger prose/logs/source-derived facts to independent Verifier.
     context = build_verification_context(user_request=state['user_request'],
                                          architecture_dir=Path(state['architecture_dir']))
     if state.get('verifier_review_status') == 'VERIFIER_REPAIR_REQUIRED':
         review = state['verifier_review_result']
-        context['assertion_definition_review'] = {
+        context['deterministic_validation_review'] = {
             'findings': review['findings'],
             'previous_verifier_output': state['verifier_result'],
             'instruction': (
-                'Repair only the concrete coverage/assertion definition findings. '
+                'Repair only the concrete deterministic findings. '
                 'Start from previous_verifier_output and return exact local source '
                 'patches only. Preserve frozen external semantics, valid existing '
                 'coverage/checks, and existing valid stimulus. Change stimulus only '
@@ -160,11 +181,14 @@ def verification_repair_node(state):
         missing_concepts = _extract_missing_concepts(validator_error)
         previous_draft = state.get('verifier_draft')
         previous_context = state.get('verification_context')
-        previous_assertion_review = (
-            previous_context.get('assertion_definition_review')
-            if isinstance(previous_context, dict)
-            else None
-        )
+        if isinstance(previous_context, dict):
+            # A malformed local patch must not discard the measured bin hits that
+            # motivated this coverage-closure round.  The next Verifier attempt
+            # still needs the same observed misses and covered scenarios.
+            previous_hits = previous_context.get('coverage_closure_review')
+            if isinstance(previous_hits, dict):
+                context['coverage_closure_review'] = previous_hits
+        previous_assertion_review = _local_review(previous_context)
         if isinstance(previous_assertion_review, dict):
             # A malformed or incomplete local patch remains owned by Verifier. Keep
             # the same concrete review findings and retry against the most recent
@@ -178,7 +202,42 @@ def verification_repair_node(state):
             )
             total_findings = len(previous_assertion_review.get('findings', []))
             remaining = sorted(set(range(total_findings)) - set(already_addressed))
-            context['assertion_definition_review'] = {
+            if not remaining:
+                # The previous local round is complete. Any validator error now
+                # describes a newly exposed defect, not a reason to replay stale
+                # finding indices. Start a fresh bounded finding round against the
+                # already-patched draft while preserving every applied byte.
+                new_findings = findings_from_validation_error(validator_error)
+                context['deterministic_validation_review'] = {
+                    'findings': new_findings,
+                    'previous_verifier_output': (
+                        previous_draft
+                        if isinstance(previous_draft, dict)
+                        else previous_assertion_review.get('previous_verifier_output')
+                    ),
+                    'patch_validation_error': validator_error,
+                    'already_addressed_findings': [],
+                    'instruction': (
+                        'The prior deterministic finding round is complete. Preserve '
+                        'all of its applied edits and patch only these newly exposed '
+                        'validator findings. Address every new finding once; do not '
+                        'replay or refine old finding indices.'
+                    ),
+                }
+                return {
+                    'verification_context': context,
+                    'verifier_revision': state.get('verifier_revision', 0) + 1,
+                    'verifier_status': 'PENDING',
+                    'verification_status': 'PENDING',
+                    'needs_regression': True,
+                    'history': [{
+                        'stage': 'verification_repair',
+                        'status': 'NEW_DETERMINISTIC_FINDING_ROUND',
+                        'validator_error': validator_error,
+                        'findings': new_findings,
+                    }],
+                }
+            context['deterministic_validation_review'] = {
                 **previous_assertion_review,
                 'previous_verifier_output': (
                     previous_draft
@@ -214,6 +273,37 @@ def verification_repair_node(state):
                     'already_addressed_findings': already_addressed,
                 }],
             }
+        if _patchable_verifier_result(previous_draft):
+            findings = findings_from_validation_error(validator_error)
+            context['deterministic_validation_review'] = {
+                'findings': findings,
+                'previous_verifier_output': previous_draft,
+                'patch_validation_error': validator_error,
+                'already_addressed_findings': [],
+                'instruction': (
+                    'Apply exact local patches only for these deterministic findings. '
+                    'Preserve every unaffected byte of every existing reference and test '
+                    'file, all valid stimulus, assertions, coverage metadata, and sampling '
+                    'bindings. Address every listed finding in this one patch response; '
+                    'do not regenerate complete files and do not escalate a Verifier-owned '
+                    'source, patch, coverage, or output-size problem to Architect.'
+                ),
+            }
+            return {
+                'verification_context': context,
+                'verifier_revision': state.get('verifier_revision', 0) + 1,
+                'verifier_status': 'PENDING',
+                'verification_status': 'PENDING',
+                'needs_regression': True,
+                'history': [{
+                    'stage': 'verification_repair',
+                    'status': 'DETERMINISTIC_LOCAL_CORRECTION',
+                    'findings': findings,
+                }],
+            }
+        # A schema-invalid/absent first draft has no stable artifact to patch.  This
+        # is the only remaining full-source fallback; every existing valid draft
+        # takes the local-patch path above.
         context['semantic_validation_review'] = {
             'validator_error': validator_error,
             'missing_concepts': missing_concepts,
@@ -272,6 +362,76 @@ def verification_repair_node(state):
     cocotb_evidence = (
         (state.get('verification_evidence') or {}).get('cocotb') or {}
     )
+    functional_coverage = cocotb_evidence.get('functional_coverage')
+    previous_result = state.get('verifier_result')
+    if _patchable_verifier_result(previous_result):
+        failure_excerpt = _first_cocotb_failure_excerpt(cocotb_evidence.get('stdout'))
+        if not failure_excerpt:
+            failure_excerpt = _first_xunit_failure_excerpt(cocotb_evidence.get('results_xml'))
+        is_coverage_failure = state.get('verification_status') == 'COVERAGE_FAILURE'
+        if is_coverage_failure and isinstance(functional_coverage, dict):
+            findings = findings_from_coverage(functional_coverage)
+            correction_status = 'COVERAGE_LOCAL_CORRECTION'
+        else:
+            evidence = failure_excerpt or str(cocotb_evidence.get('worker_error') or 'Verifier-owned simulation failure')
+            findings = [{
+                'category': 'INVALID_ASSERTION',
+                'requirement': 'The generated testbench must drive, await, observe, and check the frozen interface causally',
+                'evidence': evidence,
+                'recommended_change': (
+                    'Preserve all passing scenarios and patch only the failing verifier-owned '
+                    'driver, timing, oracle, or assertion code identified by this evidence'
+                ),
+            }]
+            correction_status = 'TESTBENCH_LOCAL_CORRECTION'
+        context['deterministic_validation_review'] = {
+            'findings': findings,
+            'previous_verifier_output': previous_result,
+            'already_addressed_findings': [],
+            'runtime_evidence': {
+                'functional_coverage': functional_coverage,
+                'first_failure_excerpt': failure_excerpt,
+            },
+            'instruction': (
+                'Patch the existing Verifier artifacts locally. Preserve all unaffected '
+                'source bytes, valid checks, covered scenarios, coverage definitions, and '
+                'sampling bindings. For coverage findings, add only real legal DUT traffic '
+                'and checked observations for the exact missing obligations; never fabricate '
+                'a hit. For a failing checked stimulus, ensure its inputs are actually driven '
+                'and its handshake/completion is awaited before recording expected versus '
+                'observed data. Address all findings together and rerun the full TB.'
+            ),
+        }
+        if is_coverage_failure and isinstance(functional_coverage, dict):
+            history = rebuild_stimulus_history(WORKSPACE_ROOT / 'verification')
+            context['coverage_closure_review'] = {
+                'missing_bins': list(functional_coverage.get('missing_bins', [])),
+                'covered_bins': list(functional_coverage.get('covered_bins', [])),
+                'bin_hits': dict(functional_coverage.get('bin_hits', {})),
+                'missing_bin_definitions': _missing_bin_definitions(
+                    context, state, list(functional_coverage.get('missing_bins', []))
+                ),
+                'stimulus_summary': verifier_stimulus_history_view(
+                    history,
+                    history_path=WORKSPACE_ROOT / 'verification' / HISTORY_FILE,
+                ),
+                'instruction': 'Runtime evidence only; make local real-stimulus patches for the deterministic findings.',
+            }
+        return {
+            'verification_context': context,
+            'verifier_revision': state.get('verifier_revision', 0) + 1,
+            'verifier_status': 'PENDING',
+            'verification_status': 'PENDING',
+            'verifier_review_status': 'PENDING',
+            'verifier_review_result': None,
+            'verifier_review_hashes': {},
+            'needs_regression': True,
+            'history': [{
+                'stage': 'verification_repair',
+                'status': correction_status,
+                'findings': findings,
+            }],
+        }
     context['verification_infrastructure_review'] = {
         'category':'TESTBENCH_ERROR',
         'instruction':(
@@ -287,9 +447,6 @@ def verification_repair_node(state):
     failure_excerpt = _first_cocotb_failure_excerpt(cocotb_evidence.get('stdout'))
     if failure_excerpt:
         context['verification_infrastructure_review']['first_failure_excerpt'] = failure_excerpt
-    functional_coverage = (
-        (state.get('verification_evidence') or {}).get('cocotb') or {}
-    ).get('functional_coverage')
     if isinstance(functional_coverage, dict) and functional_coverage.get('status') != 'PASS':
         history = rebuild_stimulus_history(WORKSPACE_ROOT / 'verification')
         history_view = verifier_stimulus_history_view(
@@ -353,6 +510,23 @@ def _first_cocotb_failure_excerpt(stdout, *, max_chars=6000):
             end = index
             break
     return '\n'.join(lines[start:end])[:max_chars]
+
+
+def _first_xunit_failure_excerpt(path, *, max_chars=6000):
+    """Read one cocotb failure from its deterministic xUnit artifact."""
+
+    if not path:
+        return None
+    try:
+        root = ET.parse(Path(str(path))).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    failure = root.find('.//testcase/failure')
+    if failure is None:
+        return None
+    message = str(failure.get('message') or '')
+    detail = str(failure.text or '')
+    return ('\n'.join(part for part in (message, detail) if part))[:max_chars] or None
 
 
 def _extract_missing_concepts(message: str) -> list[str]:

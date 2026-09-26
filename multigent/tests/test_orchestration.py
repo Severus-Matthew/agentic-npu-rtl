@@ -45,6 +45,17 @@ def test_langgraph_compiles_repair_nodes() -> None:
     } <= nodes
 
 
+def test_failed_report_prefers_downstream_rtl_conflict_over_ready_verifier() -> None:
+    from multigent.orchestration.graph import _failed_node
+
+    result = _failed_node({
+        "verifier_status": "VERIFICATION_READY",
+        "verifier_review_status": "APPROVED",
+        "rtl_status": "ARCHITECTURE_CONFLICT",
+    })
+    assert result["history"][0]["reason"] == "ARCHITECTURE_CONFLICT"
+
+
 def test_architect_ready_routes_to_pre_rtl_verifier() -> None:
     assert route_after_architect({"architecture_status": "READY"}) == "verifier"
 
@@ -183,6 +194,19 @@ def test_resume_frozen_architecture_without_rtl_starts_at_verifier() -> None:
         "rtl_context": {"frozen_architecture": {}},
     }
     assert route_start(state) == "verifier"
+
+
+def test_resume_prioritizes_downstream_architecture_conflict() -> None:
+    state = {
+        "architecture_status": "READY",
+        "architecture_conflict": {"issue": "missing inter-module data path"},
+        "rtl_status": "ARCHITECTURE_CONFLICT",
+        "verifier_status": "VERIFICATION_READY",
+        "verifier_review_status": "APPROVED",
+        "architecture_revision": 8,
+        "max_architecture_revisions": 10,
+    }
+    assert route_start(state) == "architect"
 
 
 def test_resume_retries_pending_rtl_node_after_validation_error():

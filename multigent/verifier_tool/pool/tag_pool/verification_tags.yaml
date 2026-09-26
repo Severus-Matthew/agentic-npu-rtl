@@ -1,0 +1,81 @@
+taxonomy:
+  name: accelerator_verification_tags
+  version: "1.0"
+  description: Closed capability vocabulary shared by protocol, lifecycle, and operation feature matching.
+
+tag_defaults:
+  allowed_scopes: [interface, protocol_group, channel, signal, operation, data_object]
+  allowed_sources: [signal_role, semantic_class, protocol_profile, feature_catalog, contract_local]
+
+tags:
+  4k_boundary: {domains: [protocol], description: Transfer interaction with a 4-KiB address boundary.}
+  ack_phase: {domains: [protocol], description: Exercise a request/acknowledgement protocol phase transition.}
+  address_boundary: {domains: [protocol, operation], description: Address values at or adjacent to a declared region boundary.}
+  address_range: {domains: [protocol, operation], description: Partition addresses across the declared legal range.}
+  alignment: {domains: [protocol, operation], description: Values obey or exercise an address or data alignment rule.}
+  arbitration: {domains: [protocol], description: Competing requests exercise a declared arbitration policy.}
+  back_to_back: {domains: [protocol, lifecycle], description: Consecutive legal transfers or jobs occur without an idle gap.}
+  backpressure: {domains: [protocol], description: A consumer temporarily prevents a producer transfer.}
+  burst_length: {domains: [protocol], description: Partition accepted transfers by burst length.}
+  burst_type: {domains: [protocol], description: Partition accepted transfers by burst addressing mode.}
+  busy: {domains: [lifecycle], description: Observe the externally visible active-job indication.}
+  byte_enable: {domains: [protocol], description: Exercise enabled and disabled byte lanes.}
+  cancel: {domains: [lifecycle], description: Cancel or drain an accepted active job.}
+  clocking: {domains: [protocol, lifecycle], description: Identify and validate simulation clock behavior.}
+  coherence_state: {domains: [protocol], description: Partition protocol-visible coherence states.}
+  completion: {domains: [lifecycle], description: Observe the declared terminal completion behavior.}
+  configuration: {domains: [operation, lifecycle], description: Exercise legal runtime or elaboration configuration values.}
+  contract_defined_protocol: {domains: [protocol], description: Protocol behavior is defined by the frozen contract rather than a standard profile.}
+  control: {domains: [protocol, lifecycle], description: Generic externally visible control behavior.}
+  correlation: {domains: [protocol], description: Match responses or events to their originating transactions.}
+  credit_boundary: {domains: [protocol], description: Exercise a contract-defined flow-control credit threshold or boundary.}
+  credit_empty: {domains: [protocol], description: Observe a flow-control credit count at zero.}
+  credit_full: {domains: [protocol], description: Observe a flow-control credit count at its declared maximum.}
+  debug_visibility: {domains: [protocol, lifecycle], description: Contract-visible diagnostic or debug state.}
+  denied_access: {domains: [protocol], description: Observe a defined access-denied response.}
+  destination_partition: {domains: [protocol], description: Partition traffic by destination identifier.}
+  empty_frame: {domains: [protocol], description: Exercise a legal empty or rejected-empty frame case.}
+  empty_symbols: {domains: [protocol], description: Exercise the declared number of unused symbols in a final beat.}
+  epoch_partition: {domains: [protocol, lifecycle], description: Partition transactions or jobs by a contract-visible generation epoch.}
+  error: {domains: [protocol, lifecycle], description: Observe a declared error condition.}
+  error_response: {domains: [protocol], description: Partition protocol error response behavior.}
+  extrema: {domains: [operation, protocol], description: Exercise minimum and maximum representable values.}
+  flow_control: {domains: [protocol], description: Exercise protocol-visible resource or credit flow control.}
+  flush: {domains: [lifecycle], description: Flush accepted or buffered work according to contract policy.}
+  framing: {domains: [protocol], description: Exercise packet or transaction boundary markers.}
+  handshake: {domains: [protocol], description: Coordinate producer-valid and consumer-ready transfer acceptance.}
+  identifier_partition: {domains: [protocol], description: Partition traffic by transaction identifier.}
+  illegal_command: {domains: [lifecycle], description: Exercise a command encoding outside the declared legal set.}
+  illegal_opcode: {domains: [protocol, lifecycle], description: Exercise an illegal opcode encoding.}
+  illegal_size: {domains: [protocol], description: Exercise or reject an unsupported transfer size.}
+  illegal_value: {domains: [protocol, lifecycle, operation], description: Exercise a contract-defined illegal value.}
+  interrupt: {domains: [lifecycle], description: Observe interrupt assertion and clearing behavior.}
+  legal_boundary: {domains: [protocol, operation], description: Exercise values at the edge of a legal range.}
+  legal_command: {domains: [lifecycle], description: Exercise a declared legal command encoding.}
+  lifecycle: {domains: [lifecycle], description: Generic accepted-active-terminal accelerator job behavior.}
+  mask_patterns: {domains: [protocol, operation], description: Exercise representative mask or byte-lane patterns.}
+  mathematical_correctness: {domains: [operation], description: Compare an observed result with the resolved mathematical oracle.}
+  maximum_length: {domains: [protocol, operation], description: Exercise the maximum declared sequence or transfer length.}
+  metadata_values: {domains: [protocol], description: Partition protocol metadata values.}
+  minimum_length: {domains: [protocol, operation], description: Exercise the minimum declared sequence or transfer length.}
+  opcode_partition: {domains: [protocol, lifecycle], description: Partition accepted commands by opcode.}
+  operation_feature: {domains: [operation], description: A selected reusable mathematical operation concept.}
+  ordering: {domains: [protocol, lifecycle, operation], description: Preserve or exercise declared transaction, job, or result order.}
+  outstanding_ids: {domains: [protocol], description: Exercise multiple outstanding identified transactions.}
+  partial_transfer: {domains: [protocol], description: Exercise a legal transfer with only part of the data lanes valid.}
+  payload_values: {domains: [protocol], description: Partition accepted payload values.}
+  performance_event: {domains: [protocol, lifecycle], description: Observe a contract-visible performance event.}
+  priority_partition: {domains: [protocol], description: Partition transactions by priority value.}
+  protection_partition: {domains: [protocol], description: Partition accesses by protection attributes.}
+  recovery: {domains: [lifecycle, protocol], description: Return to legal operation after reset, error, cancel, or retry.}
+  request_acknowledge: {domains: [protocol], description: Coordinate a request with its acknowledgement phase.}
+  reset: {domains: [lifecycle, protocol], description: Exercise reset assertion, release, and declared reset state.}
+  response_partition: {domains: [protocol], description: Partition responses by status encoding.}
+  serialization: {domains: [operation, protocol], description: Map logical values to and from the physical transfer representation.}
+  setup_access_phase: {domains: [protocol], description: Exercise distinct setup and access protocol phases.}
+  size_partition: {domains: [protocol], description: Partition accepted transfers by encoded size.}
+  source_id: {domains: [protocol], description: Correlate a response with its request source identifier.}
+  stall_stability: {domains: [protocol], description: Hold producer-owned transfer content stable while stalled.}
+  user_metadata: {domains: [protocol], description: Partition contract-defined user sideband metadata.}
+  value_partition: {domains: [protocol, operation], description: Partition values into contract-relevant numeric classes.}
+  wait_state: {domains: [protocol], description: Exercise a finite protocol wait before completion.}

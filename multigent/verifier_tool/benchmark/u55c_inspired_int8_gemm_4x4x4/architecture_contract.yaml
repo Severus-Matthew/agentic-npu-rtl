@@ -1,0 +1,174 @@
+design:
+  name: u55c_inspired_int8_gemm_4x4x4
+  description: 'Tiny 4x4x4 signed-int8 GEMM accelerator, hand-authored (no Architect
+    LLM call) as a verifier_tool benchmark fixture. Loosely inspired by u55c_mb_packed_gemm32x128/gemm_hls/int8_gemm.cpp:
+    same core math (signed int8 A/B, exact product, signed int32 accumulate, no bias,
+    no activation) at a scale small enough for this tool''s fully automatic ready/valid
+    + AXI4-Lite capture/drive campaign to cover end to end without any Verifier-authored
+    code. Memory access is one shared AXI4-Lite manager port (sequential A-then-B
+    reads, then Y writes) rather than the real kernel''s three independent burst-AXI4
+    gmem ports; this fixture intentionally uses the simpler shared single-beat interface
+    to keep the benchmark compact.'
+operations:
+- name: gemm
+  kind: arithmetic
+  coverage_family: matrix_multiply
+  coverage_family_source: catalog
+  features:
+  - dimensions
+  - operand_values
+  - accumulation
+  feature_extensions: []
+  semantics: Y[m,n] = sum_k A[m,k] * B[k,n], exact signed 32-bit accumulation, no
+    bias, no activation.
+  inputs:
+  - A_matrix
+  - B_matrix
+  outputs:
+  - Y_matrix
+  arithmetic:
+    classifier_profile: integer_matrix_multiply
+    product_data_type: s16
+    accumulator_data_type: s32
+    accumulator_initialization: 0
+    reduction_dimensions:
+    - K
+    reduction_order: increasing_declared_reduction_coordinate
+    reduction_conversion: exact
+    post_operations: {}
+    post_output: accumulator
+    bias_conversion: exact
+    result_data_type: s32
+    result_conversion: exact
+  lifecycle_policy:
+    job_acceptance: valid_ready_handshake
+    job_overlap: single_inflight
+    busy_behavior: tracks_active_job
+    completion_style: pulse
+    completion_timing: next_cycle_after_retirement
+    illegal_command_behavior: error_without_start
+    error_style: pulse
+    error_timing: next_cycle_after_error_event
+    reset_behavior: abort_inflight
+data_types:
+- name: s8
+  role: signed 8-bit GEMM operand
+  width_bits: 8
+  signed: true
+  representation: twos_complement
+  conversion_semantics: n/a
+  overflow_semantics: n/a
+  rounding_semantics: n/a
+- name: s16
+  role: signed 16-bit exact intermediate product
+  width_bits: 16
+  signed: true
+  representation: twos_complement
+  conversion_semantics: n/a
+  overflow_semantics: n/a
+  rounding_semantics: n/a
+- name: s32
+  role: signed 32-bit accumulator and result
+  width_bits: 32
+  signed: true
+  representation: twos_complement
+  conversion_semantics: n/a
+  overflow_semantics: n/a
+  rounding_semantics: n/a
+data_objects:
+- name: A_matrix
+  role: left_operand_matrix
+  data_type: s8
+  dimensions:
+  - M
+  - K
+  producer: external
+  consumers:
+  - gemm
+  external: true
+  serialization:
+    kind: dense_tensor
+    index_order:
+    - M
+    - K
+    description: 'Row-major: one element per logical position, K varies fastest, then
+      M.'
+- name: B_matrix
+  role: right_operand_matrix
+  data_type: s8
+  dimensions:
+  - K
+  - N
+  producer: external
+  consumers:
+  - gemm
+  external: true
+  serialization:
+    kind: dense_tensor
+    index_order:
+    - K
+    - N
+    description: 'Row-major: one element per logical position, N varies fastest, then
+      K.'
+- name: Y_matrix
+  role: result_matrix
+  data_type: s32
+  dimensions:
+  - M
+  - N
+  producer: gemm
+  consumers:
+  - external
+  external: true
+  serialization:
+    kind: dense_tensor
+    index_order:
+    - M
+    - N
+    description: 'Row-major: one element per logical position, N varies fastest, then
+      M.'
+dimensions:
+- name: M
+  semantic: GEMM row count
+  minimum: 4
+  maximum: 4
+  runtime_configurable: false
+  bound_parameter: ''
+- name: K
+  semantic: GEMM reduction depth
+  minimum: 4
+  maximum: 4
+  runtime_configurable: false
+  bound_parameter: ''
+- name: N
+  semantic: GEMM column count
+  minimum: 4
+  maximum: 4
+  runtime_configurable: false
+  bound_parameter: ''
+parameters: []
+compute:
+  organization: direct elementwise MAC, no tiling
+  parallelism: fully sequential
+  dataflow: load A/B then compute then store Y
+storage: []
+pipeline:
+  stages: 'none: single always-legal command executes to completion before the next
+    is accepted'
+control:
+  style: 'single-job FSM: IDLE -> LOAD_A -> LOAD_B -> COMPUTE -> STORE_Y -> IDLE'
+reset:
+  synchronous: true
+  active_low: true
+  behavior: aborts any in-flight job with no ghost completion/error
+latency_model:
+  exact: false
+  note: Bounded by handshake liveness only; no exact cycle count promised.
+architectural_invariants:
+- Exactly one GEMM job may be in flight at a time.
+- A and B are fully consumed through the shared AXI4-Lite manager group before Y is
+  written through that same group.
+open_assumptions:
+- Real burst AXI4 (as in the u55c reference kernel) is out of scope; this benchmark
+  uses one shared AXI4-Lite manager group for sequential single-beat A/B reads and
+  Y writes instead.

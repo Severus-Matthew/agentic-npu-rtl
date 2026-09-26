@@ -19,7 +19,6 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping
 
-
 def run_cocotb_regression(
     *,
     rtl_dir: Path,
@@ -35,6 +34,7 @@ def run_cocotb_regression(
     coverage_plan: Mapping[str, Any] | None = None,
     coverage_report_path: Path | None = None,
     stimulus_ledger_report_path: Path | None = None,
+    simulation_env: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build and run cocotb tests in a bounded worker subprocess."""
 
@@ -46,9 +46,9 @@ def run_cocotb_regression(
     build_dir.mkdir(parents=True, exist_ok=True)
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
-    sources = sorted(rtl_dir.rglob("*.sv"))
+    sources = sorted({*rtl_dir.rglob("*.sv"), *rtl_dir.rglob("*.v")})
     if not sources:
-        raise FileNotFoundError(f"No SystemVerilog sources found under {rtl_dir}")
+        raise FileNotFoundError(f"No Verilog/SystemVerilog sources found under {rtl_dir}")
     if not test_modules:
         raise ValueError("At least one cocotb test module is required")
 
@@ -107,6 +107,10 @@ def run_cocotb_regression(
             if stimulus_ledger_report_path is not None
             else None
         ),
+        "simulation_env": {
+            str(name): str(value)
+            for name, value in (simulation_env or {}).items()
+        },
     }
     _write_json(config_path, config)
     if worker_result_path.exists():
@@ -241,6 +245,12 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
     # Set the worker's actual import path so both flat and reference.* imports work.
     sys.path[:0] = [str(tests_dir), str(reference_dir), str(workspace_root)]
     extra_env = {"PYTHONPATH": os.pathsep.join(pythonpath_parts)}
+    for name, value in config.get("simulation_env", {}).items():
+        if not isinstance(name, str) or not name or "=" in name or "\x00" in name:
+            raise ValueError(f"invalid simulation environment name {name!r}")
+        if not isinstance(value, str) or "\x00" in value:
+            raise ValueError(f"invalid simulation environment value for {name!r}")
+        extra_env[name] = value
     coverage_config = config.get("coverage_config_path")
     coverage_report = config.get("coverage_report_path")
     stimulus_ledger_report = config.get("stimulus_ledger_report_path")
@@ -263,7 +273,7 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
             build_dir=build_dir,
             always=True,
             clean=True,
-            build_args=["-Wno-fatal"] + (["--public-flat-rw"] if config.get("public_signals") else []),
+            build_args=["-Wno-fatal", "--no-timing"] + (["--public-flat-rw"] if config.get("public_signals") else []),
         )
     except BaseException as exc:
         result = {
@@ -351,7 +361,10 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
             simulation_pass == "PASS"
             and coverage_config
             and coverage_report
-            and coverage.get("status") != "PASS"
+            and (
+                coverage.get("status") != "PASS"
+                or float(coverage.get("coverage_percent", 0.0)) != 100.0
+            )
         )
         else simulation_pass
     )

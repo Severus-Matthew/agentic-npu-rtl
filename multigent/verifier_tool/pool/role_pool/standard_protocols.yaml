@@ -1,0 +1,202 @@
+catalog:
+  name: standard_protocol_machine_readable_bindings
+  version: "1.0"
+  owner: verifier_tool
+  rule: >-
+    protocol_group, protocol_channel, and protocol_field are authoritative.
+    Signal spelling, channel spelling, and prose are never used to infer a binding.
+  channel_metadata:
+    required: [protocol_group, protocol_channel]
+    optional: [protocol_capabilities]
+  signal_metadata:
+    required_for_standard_payload_and_sideband_signals: [protocol_field]
+  endpoint_direction: >-
+    Channel direction is relative to the DUT. A manager/source owns output
+    request/data channels and input response/ready channels; a subordinate/sink
+    has the reciprocal directions.
+
+profiles:
+  axi4:
+    standard: AMBA AXI4
+    specification: ARM IHI 0022
+    channels:
+      write_address:
+        required_fields: [addr, len, size, burst]
+        optional_fields: [id, lock, cache, prot, qos, region, user]
+      write_data:
+        required_fields: [data, strb, last]
+        optional_fields: [user]
+      write_response:
+        required_fields: [resp]
+        optional_fields: [id, user]
+      read_address:
+        required_fields: [addr, len, size, burst]
+        optional_fields: [id, lock, cache, prot, qos, region, user]
+      read_data:
+        required_fields: [data, resp, last]
+        optional_fields: [id, user]
+    channel_sets:
+      write: [write_address, write_data, write_response]
+      read: [read_address, read_data]
+    rules:
+      - standard_signal_widths
+      - ready_valid_stability
+      - valid_low_during_reset
+      - legal_burst_encoding
+      - legal_burst_length
+      - transfer_size_within_data_bus
+      - wrap_length_and_alignment
+      - no_4k_boundary_crossing
+      - write_last_matches_length
+      - read_last_matches_length
+      - write_strobe_within_active_lanes
+      - response_after_request
+      - response_id_matches_request
+      - response_order_preserved_per_id
+      - write_address_and_data_are_independent
+      - legal_response_encoding
+      - exclusive_access_restrictions
+      - exclusive_response_consistency
+    coverage:
+      - handshake_states
+      - stall_stability
+      - handshake_arrival_order
+      - axi4_burst_type
+      - axi4_burst_length
+      - axi4_transfer_size
+      - axi4_alignment
+      - axi4_4k_boundary
+      - axi4_write_strobe
+      - axi4_write_channel_order
+      - axi4_response_code
+      - axi4_outstanding_depth
+
+  axi4_lite:
+    standard: AMBA AXI4-Lite
+    specification: ARM IHI 0022
+    channels:
+      write_address:
+        required_fields: [addr]
+        optional_fields: [prot, id]
+      write_data:
+        required_fields: [data, strb]
+        optional_fields: []
+      write_response:
+        required_fields: [resp]
+        optional_fields: [id]
+      read_address:
+        required_fields: [addr]
+        optional_fields: [prot, id]
+      read_data:
+        required_fields: [data, resp]
+        optional_fields: [id]
+    channel_sets:
+      write: [write_address, write_data, write_response]
+      read: [read_address, read_data]
+    rules:
+      - standard_signal_widths
+      - ready_valid_stability
+      - valid_low_during_reset
+      - write_response_after_address_and_data
+      - read_response_after_address
+      - write_address_and_data_are_independent
+      - legal_lite_response_encoding
+      - data_width_is_32_or_64
+      - strobe_width_matches_data_bytes
+      - optional_id_return_and_in_order_completion
+    coverage:
+      - handshake_states
+      - stall_stability
+      - handshake_arrival_order
+      - axi_lite_write_channel_order
+      - axi_lite_write_strobe
+      - axi_lite_response_code
+      - axi_lite_read_write_concurrency
+      - axi_lite_outstanding_depth
+
+  axi4_stream:
+    standard: AMBA AXI4-Stream
+    specification: ARM IHI 0051
+    channels:
+      stream:
+        required_fields: []
+        optional_fields: [data, strb, keep, last, id, dest, user]
+        optional_roles: [ready]
+        effective_defaults:
+          ready: 1
+          keep: all_data_bytes
+          strb: effective_keep
+          id: 0
+          dest: 0
+          user: 0
+    channel_sets:
+      stream: [stream]
+    rules:
+      - standard_signal_widths
+      - ready_valid_stability
+      - valid_low_during_reset
+      - keep_and_strobe_width_match_data_bytes
+      - strobe_is_subset_of_keep
+      - packet_state_is_tracked_per_stream_key
+      - continuous_packet_constraints_when_declared
+    coverage:
+      - handshake_states
+      - stall_stability
+      - handshake_arrival_order
+      - axis_packet_length
+      - axis_keep_pattern
+      - axis_stall_position
+      - axis_back_to_back_packets
+      - axis_sideband_partition
+
+  custom_mmio:
+    standard: verifier_tool generic outstanding request/response memory pattern
+    specification: >-
+      Not a named industry standard. Lets an LLM-declared custom protocol that
+      is structurally memory-like -- an address-bearing request accepted on
+      one ready/valid channel, completed by a data-bearing response accepted
+      on another, optionally correlated by an id and optionally spanning
+      multiple beats terminated by last -- reuse the exact same
+      protocol_group/protocol_channel/protocol_field tag vocabulary as
+      axi4/axi4_lite, so the same multi-outstanding, ID-correlated,
+      burst-aware capture engine (operation_metadata/protocol.py) applies
+      with zero custom-protocol-specific code. A write's completion
+      acknowledgement channel is optional: when the contract declares no
+      "response" channel, acceptance onto the "data" channel itself is the
+      completion signal. `len` on "request" is optional: the capture side
+      never needed it (a run of "data" beats terminated by "last" is
+      self-describing, whatever its length), but a driver acting as the
+      memory subordinate must be told upfront how many beats a read spans
+      before it can send them, exactly like AXI4's own ARLEN/AWLEN --
+      unbound, a design is understood to issue only single-beat requests.
+    channels:
+      request:
+        required_fields: [addr]
+        optional_fields: [id, len]
+      data:
+        required_fields: [data]
+        optional_fields: [id, last, resp, strb]
+      response:
+        required_fields: [resp]
+        optional_fields: [id]
+    rules:
+      - ready_valid_stability
+      - valid_low_during_reset
+    coverage:
+      - handshake_states
+      - stall_stability
+      - handshake_arrival_order
+
+  # These pre-existing profiles receive every invariant that can be proved from
+  # their existing generic role mapping. Deeper profile-specific checks require
+  # the same explicit protocol_channel/protocol_field mapping as AXI.
+  ready_valid:
+    rules: [ready_valid_stability, valid_low_during_reset]
+    coverage: [handshake_states, stall_stability, handshake_arrival_order]
+  # Future candidates: no protocol-specific compiler/checker/driver yet.
+  # tilelink:
+  #   rules: []
+  #   coverage: [handshake_states, handshake_arrival_order]
+  # avalon_st:
+  #   rules: []
+  #   coverage: [handshake_states, handshake_arrival_order]

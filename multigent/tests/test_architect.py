@@ -1,17 +1,58 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
-from multigent.agents.architect import ARCHITECT_OUTPUT_SCHEMA, ArchitectAgent
+from multigent.agents.architect import ARCHITECT_OUTPUT_SCHEMA, ArchitectAgent, ContractValidationError
 from multigent.agents.base import AgentRuntimeError
 from multigent.intake.request_builder import build_architect_intake
+
+
+def _datapath_signals() -> tuple[list[dict], list[dict]]:
+    """Valid/ready/payload bindings for every fixture channel and the matching top ports.
+
+    A ready_valid channel that carries an operation's data object but has no
+    valid/ready/payload signals cannot be captured or driven, so the Architect
+    validator rejects it (`missing_ready_valid_signal_roles`); the fixture is a
+    complete, implementable interface, not a channel list with no wires.
+    """
+
+    signals: list[dict] = []
+    ports: list[dict] = []
+    for channel, direction, width in (
+        ("sample_in", "input", "16"),
+        ("coefficients", "input", "16"),
+        ("result_out", "output", "32"),
+    ):
+        for role in ("valid", "ready", "payload"):
+            signal_direction = direction
+            if role == "ready":
+                signal_direction = "output" if direction == "input" else "input"
+            signal = {
+                "name": f"{channel}_{role}",
+                "role": role,
+                "semantic_class": "data" if role == "payload" else None,
+                "channel": channel,
+                "direction": signal_direction,
+                "width": width if role == "payload" else "1",
+                "signed": role == "payload",
+                "semantic": role,
+                "reset_value": "0",
+            }
+            signals.append(signal)
+            ports.append({
+                **{key: signal[key] for key in ("name", "direction", "width", "signed")},
+                "semantics": role,
+            })
+    return signals, ports
 
 
 class FakeArchitectAgent(ArchitectAgent):
@@ -32,7 +73,7 @@ class FakeArchitectAgent(ArchitectAgent):
                         "name": "filter",
                         "kind": "FIR",
                         "coverage_family": "fir",
-                        "coverage_family_source": "catalog",
+                        "coverage_family_source": "novel",
                         "features": [
                             "tap_count",
                             "stream_length",
@@ -44,6 +85,21 @@ class FakeArchitectAgent(ArchitectAgent):
                         "semantics": "y[t] is the weighted sum of the current and previous samples",
                         "inputs": ["sample_stream", "coefficient_vector"],
                         "outputs": ["result_stream"],
+                        "arithmetic": {
+                            "classifier_profile": "llm_extension",
+                            "reason": "FIR history and coefficient convolution are not implemented by the code-owned GEMM profile",
+                        },
+                        "lifecycle_policy": {
+                            "job_acceptance": "valid_ready_handshake",
+                            "job_overlap": "single_inflight",
+                            "busy_behavior": "tracks_active_job",
+                            "completion_style": "pulse",
+                            "completion_timing": "next_cycle_after_retirement",
+                            "illegal_command_behavior": "error_without_start",
+                            "error_style": "pulse",
+                            "error_timing": "next_cycle_after_error_event",
+                            "reset_behavior": "abort_inflight",
+                        },
                     }
                 ],
                 "data_types": [
@@ -84,6 +140,7 @@ class FakeArchitectAgent(ArchitectAgent):
                         "role": "external input sample sequence",
                         "data_type": "sample_t",
                         "dimensions": [],
+                        "serialization": {"kind": "scalar", "index_order": [], "description": "One sample per transfer."},
                         "producer": "external",
                         "consumers": ["filter"],
                         "external": True,
@@ -93,6 +150,7 @@ class FakeArchitectAgent(ArchitectAgent):
                         "role": "FIR coefficient set",
                         "data_type": "coefficient_t",
                         "dimensions": ["tap_count"],
+                        "serialization": {"kind": "dense_tensor", "index_order": ["tap_count"], "description": "Coefficients in increasing tap index order."},
                         "producer": "external",
                         "consumers": ["filter"],
                         "external": True,
@@ -102,6 +160,7 @@ class FakeArchitectAgent(ArchitectAgent):
                         "role": "external filtered sample sequence",
                         "data_type": "result_t",
                         "dimensions": [],
+                        "serialization": {"kind": "scalar", "index_order": [], "description": "One result per transfer."},
                         "producer": "filter",
                         "consumers": ["external"],
                         "external": True,
@@ -234,6 +293,7 @@ class FakeArchitectAgent(ArchitectAgent):
                         "semantic": "synchronous active-high reset",
                         "reset_value": "not applicable",
                     },
+                    *_datapath_signals()[0],
                 ],
                 "global_handshake_rules": {
                     "transfer_condition": "valid && ready",
@@ -252,6 +312,7 @@ class FakeArchitectAgent(ArchitectAgent):
                         "ports": [
                             {"name":"clk", "direction":"input", "width":"1", "signed":False, "semantics":"rising-edge clock"},
                             {"name":"rst", "direction":"input", "width":"1", "signed":False, "semantics":"active-high reset"},
+                            *_datapath_signals()[1],
                         ],
                     },
                     {
@@ -274,7 +335,7 @@ class FakeArchitectAgent(ArchitectAgent):
 
 
 def architect_schema() -> dict:
-    return json.loads(ARCHITECT_OUTPUT_SCHEMA.read_text(encoding="utf-8"))
+    return ArchitectAgent().load_output_schema(ARCHITECT_OUTPUT_SCHEMA)
 
 
 def test_generic_non_gemm_output_satisfies_architect_schema() -> None:
@@ -283,20 +344,17 @@ def test_generic_non_gemm_output_satisfies_architect_schema() -> None:
     )
 
 
-def test_architect_operation_features_are_closed_and_complete() -> None:
+def test_architect_novel_operation_features_are_explicit_and_nonempty() -> None:
     result = copy.deepcopy(FakeArchitectAgent().run_structured())
-    result["architecture_contract"]["operations"][0]["features"].remove(
-        "numeric_behavior"
-    )
-    with pytest.raises(AgentRuntimeError, match="feature selection mismatch"):
+    result["architecture_contract"]["operations"][0]["features"] = []
+    with pytest.raises(AgentRuntimeError, match="at least one feature"):
         ArchitectAgent._validate_contract_references(result)
 
     result = copy.deepcopy(FakeArchitectAgent().run_structured())
     result["architecture_contract"]["operations"][0]["features"].append(
         "invented_feature"
     )
-    with pytest.raises(AgentRuntimeError, match="invented_feature"):
-        ArchitectAgent._validate_contract_references(result)
+    ArchitectAgent._validate_contract_references(result)
 
     result = copy.deepcopy(FakeArchitectAgent().run_structured())
     result["architecture_contract"]["operations"][0]["feature_extensions"] = [
@@ -463,3 +521,150 @@ def test_architect_prompt_contains_external_signal_role_taxonomy() -> None:
     assert "- valid:" in task
     assert "- completion:" in task
     assert "Never infer any of these fields" in task
+
+
+def test_architect_effective_schema_requires_pool_selection_without_copying_enums():
+    from multigent.verifier_tool import lifecycle_policy_schema, with_lifecycle_policy_schema
+
+    base = json.loads(ARCHITECT_OUTPUT_SCHEMA.read_text(encoding="utf-8"))
+    before = copy.deepcopy(base)
+    schema = ArchitectAgent().load_output_schema(ARCHITECT_OUTPUT_SCHEMA)
+    operation = schema["properties"]["architecture_contract"]["properties"]["operations"]["items"]
+    assert "lifecycle_policy" in operation["required"]
+    assert operation["properties"]["lifecycle_policy"] == lifecycle_policy_schema()
+    assert base == before
+    assert with_lifecycle_policy_schema(schema) == schema
+    patch_schema = ARCHITECT_OUTPUT_SCHEMA.with_name("architect_revision_patch.schema.json")
+    assert ArchitectAgent().load_output_schema(patch_schema) == json.loads(patch_schema.read_text())
+
+
+@pytest.mark.parametrize("invalid_policy", [None, {}, {"error_style": "pulse"}])
+def test_new_architect_output_rejects_incomplete_lifecycle_policy(invalid_policy):
+    result = FakeArchitectAgent().run_structured()
+    operation = result["architecture_contract"]["operations"][0]
+    operation["lifecycle_policy"] = invalid_policy
+    with pytest.raises(ValidationError):
+        Draft202012Validator(architect_schema()).validate(result)
+    with pytest.raises(AgentRuntimeError, match="lifecycle_policy"):
+        ArchitectAgent._validate_contract_references(result, require_lifecycle_policy=True)
+
+
+def test_new_architect_cannot_drop_policy_even_if_transport_validation_is_bypassed(tmp_path):
+    class MissingPolicyArchitect(FakeArchitectAgent):
+        def run_structured(self, **kwargs):
+            result = super().run_structured(**kwargs)
+            result["architecture_contract"]["operations"][0].pop("lifecycle_policy")
+            return result
+
+    with pytest.raises(AgentRuntimeError, match="lifecycle_policy is required"):
+        MissingPolicyArchitect().run("streaming FIR", output_dir=tmp_path / "architecture")
+    assert not (tmp_path / "architecture" / "architect_result.json").exists()
+
+
+@pytest.mark.parametrize("api_mode", ["responses", "chat_completions"])
+def test_architect_sends_effective_policy_schema_and_retries_incomplete_policy(
+    api_mode, tmp_path, monkeypatch,
+):
+    from multigent.agents import base as base_module
+    from multigent.verifier_tool import build_architect_operation_metadata, lifecycle_policy_schema
+
+    good = FakeArchitectAgent().run_structured()
+    bad = copy.deepcopy(good)
+    bad["architecture_contract"]["operations"][0]["lifecycle_policy"].pop("error_style")
+    outputs = iter([bad, good])
+    requests = []
+
+    def create(**request):
+        requests.append(request)
+        content = json.dumps(next(outputs))
+        if api_mode == "responses":
+            return SimpleNamespace(output_text=content, status="completed")
+        return SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content=content), finish_reason="stop"
+        )])
+
+    client = SimpleNamespace(
+        responses=SimpleNamespace(create=create),
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+    )
+    monkeypatch.setattr(base_module, "WORKSPACE_ROOT", tmp_path)
+    agent = ArchitectAgent(api_mode=api_mode)
+    monkeypatch.setattr(agent, "_client", lambda: client)
+    result = agent.run("streaming FIR", output_dir=tmp_path / "architecture", run_id="policy")
+    assert result == good
+    assert len(requests) == 2
+    for request in requests:
+        schema = (
+            request["text"]["format"]["schema"] if api_mode == "responses"
+            else request["response_format"]["json_schema"]["schema"]
+        )
+        operation = schema["properties"]["architecture_contract"]["properties"]["operations"]["items"]
+        assert "lifecycle_policy" in operation["required"]
+        assert operation["properties"]["lifecycle_policy"] == lifecycle_policy_schema()
+        assert "arithmetic" in operation["required"]
+        objects = schema["properties"]["architecture_contract"]["properties"]["data_objects"]["items"]
+        assert "serialization" in objects["required"]
+    trace = json.loads((tmp_path / "logs/agent_traces/architect-policy.json").read_text())
+    assert trace["successful_attempt"] == 2
+    assert "error_style" in trace["attempts"][0]["parse_error"]
+    assert trace["schema_sha256"] == hashlib.sha256(
+        json.dumps(agent.load_output_schema(ARCHITECT_OUTPUT_SCHEMA), sort_keys=True).encode()
+    ).hexdigest()
+    saved = yaml.safe_load((tmp_path / "architecture/architecture_contract.yaml").read_text())
+    metadata = build_architect_operation_metadata(saved, result["interface_contract"])
+    assert metadata["operations"][0]["lifecycle"]["policy_source"] == "explicit_contract"
+    assert metadata["operations"][0]["lifecycle"]["policy"] == saved["operations"][0]["lifecycle_policy"]
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_architect_revision_validates_policy_and_rejects_undeclared_legacy_contracts(
+    legacy, tmp_path, monkeypatch,
+):
+    from multigent.orchestration.architect_node import _run_architect_revision
+
+    previous = FakeArchitectAgent().run_structured()
+    if legacy:
+        previous["architecture_contract"]["operations"][0].pop("lifecycle_policy")
+    output = tmp_path / "architecture"
+    output.mkdir()
+    (output / "architect_result.json").write_text(json.dumps(previous))
+    agent = ArchitectAgent()
+    monkeypatch.setattr(agent, "run_structured", lambda **_: {
+        "status": "CONTRACT_CONFIRMED", "edits": [], "issue": "existing behavior is unambiguous"
+    })
+    if legacy:
+        with pytest.raises(ContractValidationError, match="lifecycle_policy is required"):
+            _run_architect_revision(
+                agent, user_request="streaming FIR", feedback={"issue": "status behavior"},
+                output_dir=output, run_id="policy-r1",
+            )
+        assert json.loads((output / "architect_result.json").read_text()) == previous
+    else:
+        result = _run_architect_revision(
+            agent, user_request="streaming FIR", feedback={"issue": "status behavior"},
+            output_dir=output, run_id="policy-r1",
+        )
+        assert result == previous
+
+
+def test_architect_revision_rejects_unknown_policy_before_persisting(tmp_path, monkeypatch):
+    from multigent.orchestration.architect_node import _run_architect_revision
+
+    previous = FakeArchitectAgent().run_structured()
+    output = tmp_path / "architecture"
+    output.mkdir()
+    (output / "architect_result.json").write_text(json.dumps(previous))
+    agent = ArchitectAgent()
+    monkeypatch.setattr(agent, "run_structured", lambda **_: {
+        "status": "PATCH_READY", "issue": "completion style", "edits": [{
+            "op": "replace",
+            "path": "/architecture_contract/operations/name=filter/lifecycle_policy/completion_style",
+            "value_json": json.dumps("unimplemented"), "reason": "completion style feedback",
+        }],
+    })
+    with pytest.raises(AgentRuntimeError, match="schema-invalid"):
+        _run_architect_revision(
+            agent, user_request="streaming FIR", feedback={"issue": "completion style"},
+            output_dir=output, run_id="policy-r1",
+        )
+    assert json.loads((output / "architect_result.json").read_text()) == previous

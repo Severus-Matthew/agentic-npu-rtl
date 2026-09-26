@@ -1,0 +1,9 @@
+functional:
+- Y exactly equals the int32 golden GEMM of the accepted A/B for every legal job.
+verification:
+- 100% functional coverage on dimensions/operand_values/accumulation bins.
+- Reset-abort and illegal-opcode recovery both exercised.
+rtl:
+- Synthesizable SystemVerilog, no forbidden constructs.
+fpga_handoff:
+- Not required for this benchmark fixture.

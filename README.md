@@ -11,8 +11,8 @@ user request
    -> independent Verifier
       -> Python reference model + cocotb TB
       -> ask Architect only if one expected behavior cannot be derived
-   -> TB-only Verifier Reviewer
-      -> repair findings return only to Verifier
+   -> deterministic Verifier artifact gate (no reviewer-agent call)
+      -> bounded repair findings return only to Verifier
    -> RTL Generator
    -> Verilator lint/elaboration
    -> cocotb full regression

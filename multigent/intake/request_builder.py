@@ -143,10 +143,16 @@ def build_verification_context(
         raise ValueError("User request must not be empty.")
     project = load_project_constraints()
     frozen = load_frozen_architecture(architecture_dir)
+    from multigent.verifier_tool import build_architect_operation_metadata
+
+    operation_metadata = build_architect_operation_metadata(
+        frozen["architecture_contract"], frozen["interface_contract"]
+    )
     return {
         "user_request": request,
         "verification_policy": project["verification_policy"],
         "frozen_architecture": frozen,
+        "architect_operation_metadata": operation_metadata,
         # The deterministic runner currently supplies no parameter overrides.
         # This is execution setup, not an added hardware/architectural decision.
         "execution_configuration": {

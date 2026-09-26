@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import ast
 import copy
+import difflib
 import json
 import os
 from pathlib import Path
@@ -18,55 +19,65 @@ from typing import Any, Mapping
 
 import yaml
 
-from multigent.verifier_tool.coverage.protocol.plan import build_interface_coverage_plan
-from multigent.verifier_tool.coverage.operation.plan import (
-    canonicalize_operation_obligation_claim,
-    merge_coverage_plans,
-    operation_plan_for_tests,
-    render_operation_coverage_catalog,
-    validate_architecture_operation_features,
-    validate_operation_coverage,
-)
-from multigent.verifier_tool.coverage.operation.sampling import (
-    OperationSamplingError, effective_operation_coverage, extract_operation_sampling_bindings,
-    normalize_operation_sampling_bindings, render_operation_sampling_catalog,
-)
-from multigent.verifier_tool.predefined_assertion.instrumentation import (
+from multigent.verifier_tool import (
     AUDIT_BEGIN_MARKER,
     AUDIT_END_MARKER,
     BEGIN_MARKER,
     END_MARKER,
-    extract_stimulus_coverage_intents,
-    install_contract_generated_block,
-    install_pipeline_generated_annotations,
-    validate_contract_generated_block,
-    validate_verifier_authored_structure,
-)
-from multigent.verifier_tool.predefined_assertion.operation import (
-    render_operation_assertion_catalog,
-)
-from multigent.intake.request_builder import WORKSPACE_ROOT, build_verification_context
-from multigent.verifier_tool.role_pool.interface_semantics import (
-    derive_interface_coverage_seed,
-    render_interface_semantic_catalog,
-    validate_interface_semantics,
-)
-from multigent.verifier_tool.role_pool.signal_roles import (
-    render_signal_role_catalog,
-    signals_with_coverage_tags,
-    validate_interface_signal_roles,
-)
-
-from .base import APIAgent, AgentConfig, AgentRuntimeError, SCHEMA_ROOT
-from .verifier_revision_patch import (
+    OperationSamplingError,
+    ReviewPatchPartialFailure,
     VerifierMetadataPatchError,
     apply_operation_coverage_metadata_edits,
+    automatic_campaign_support,
+    build_architect_operation_metadata,
+    build_feature_extension_manifest,
+    build_interface_coverage_plan,
+    canonical_operation_obligation_id,
+    canonicalize_operation_obligation_claim,
+    code_owned_obligations_for_supported_operations,
+    coverage_obligation_mapping_diff,
+    derive_interface_coverage_seed,
+    effective_operation_coverage,
+    extract_literal_coverage_obligations,
+    extract_operation_sampling_bindings,
+    extract_stimulus_coverage_intents,
+    finding_scope,
+    install_contract_generated_block,
+    install_pipeline_generated_annotations,
+    interface_vocabulary_extensions,
+    merge_coverage_plans,
+    normalize_operation_sampling_bindings,
+    operation_plan_for_tests,
+    render_extension_authoring_guide,
+    render_requested_extension_worklist,
+    render_interface_semantic_catalog,
+    render_operation_coverage_catalog,
+    render_operation_assertion_catalog,
+    render_operation_sampling_catalog,
+    render_signal_role_catalog,
+    signals_with_coverage_tags,
+    supported_code_owned_concepts,
+    synthesize_code_owned_operation_coverage,
+    synchronize_test_coverage_metadata,
+    validate_architecture_operation_features,
+    validate_contract_generated_block,
+    validate_frozen_operation_scope,
+    validate_interface_semantics,
+    validate_interface_signal_roles,
+    validate_operation_coverage,
+    validate_verifier_authored_structure,
+    validate_architect_extension_requests,
+    validate_verifier_extension_bundles,
+    with_verifier_extension_bundle_schema,
 )
+from multigent.intake.request_builder import WORKSPACE_ROOT, build_verification_context
+
+from .base import APIAgent, AgentConfig, AgentRuntimeError, SCHEMA_ROOT
 
 
 VERIFIER_OUTPUT_SCHEMA = SCHEMA_ROOT / "verifier_output.schema.json"
 VERIFIER_SOURCE_REPAIR_SCHEMA = SCHEMA_ROOT / "verifier_source_repair.schema.json"
-VERIFIER_REVISION_PATCH_SCHEMA = SCHEMA_ROOT / "verifier_revision_patch.schema.json"
+VERIFIER_REVISION_PATCH_SCHEMA = SCHEMA_ROOT / "deterministic_verifier_patch.schema.json"
 _FORBIDDEN_IMPORT_ROOTS = {
     "os", "sys", "io", "builtins", "ctypes", "pickle", "shutil", "subprocess", "socket", "requests", "urllib", "http", "pathlib", "glob", "importlib"
 }
@@ -125,22 +136,6 @@ def _local_checker_run_calls(tree: ast.AST) -> set[ast.Call]:
     return permitted
 
 
-class ReviewPatchPartialFailure(AgentRuntimeError):
-    """A review-patch response was rejected but some of its edits were valid.
-
-    Carries the partially-patched candidate and the finding indices genuinely
-    resolved so far, so a retry only needs to cover what is still missing
-    instead of re-deriving every patch from the pre-round draft again.
-    """
-
-    def __init__(
-        self, message: str, *, partial_result: Mapping[str, Any], addressed_findings: set[int],
-    ) -> None:
-        super().__init__(message)
-        self.partial_result = dict(partial_result)
-        self.addressed_findings = set(addressed_findings)
-
-
 class VerifierAgent(APIAgent):
     """Generate independent verification artifacts without reading generated RTL."""
 
@@ -159,6 +154,15 @@ class VerifierAgent(APIAgent):
         if not self.role_skill_path.is_file():
             raise FileNotFoundError(self.role_skill_path)
         return "# INDEPENDENT VERIFIER TECHNICAL SKILL\n\n" + self.role_skill_path.read_text(encoding="utf-8") + "\n"
+
+    def load_output_schema(self, schema_path: Path) -> dict[str, Any]:
+        schema = super().load_output_schema(schema_path)
+        if schema_path.resolve() in {
+            VERIFIER_OUTPUT_SCHEMA.resolve(),
+            VERIFIER_SOURCE_REPAIR_SCHEMA.resolve(),
+        }:
+            return with_verifier_extension_bundle_schema(schema)
+        return schema
 
     def run(
         self,
@@ -206,6 +210,15 @@ class VerifierAgent(APIAgent):
                 self.last_generated_result = exc.partial_result
                 self.last_addressed_findings = exc.addressed_findings
                 raise
+            if result.get("status") == "VERIFICATION_READY":
+                # The local patch round itself completed even if the subsequent
+                # whole-artifact semantic validator exposes a different defect.
+                # Preserve that distinction so orchestration starts a fresh
+                # finding round instead of asking the model to replay edits that
+                # are already present in this reconstructed draft.
+                review = self._patch_review(context) or {}
+                findings, _, _ = finding_scope(review)
+                self.last_addressed_findings = set(range(len(findings)))
         elif draft is None:
             result = self.run_structured(
                 task=self._build_task(context),
@@ -233,8 +246,18 @@ class VerifierAgent(APIAgent):
         )
 
     @staticmethod
+    def _patch_review(context: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        """Return the one deterministic local-repair request, including old state."""
+
+        for key in ("deterministic_validation_review", "assertion_definition_review"):
+            review = context.get(key)
+            if isinstance(review, Mapping):
+                return review
+        return None
+
+    @staticmethod
     def _review_patch_draft(context: Mapping[str, Any]) -> dict[str, Any] | None:
-        review = context.get("assertion_definition_review")
+        review = VerifierAgent._patch_review(context)
         if not isinstance(review, Mapping):
             return None
         draft = review.get("previous_verifier_output")
@@ -282,15 +305,10 @@ class VerifierAgent(APIAgent):
                 "Verifier review correction requires PATCH_READY, local edits, and no architecture conflict"
             )
 
-        review = context.get("assertion_definition_review", {})
-        findings = list(review.get("findings", [])) if isinstance(review, Mapping) else []
-        already_addressed: set[int] = (
-            set(review.get("already_addressed_findings", []))
-            if isinstance(review, Mapping) else set()
-        )
+        review = cls._patch_review(context) or {}
+        findings, already_addressed, expected_findings = finding_scope(review)
         # A prior retry in this same review round may have already applied real
         # edits for some findings; only the remainder must be covered now.
-        expected_findings = set(range(len(findings))) - already_addressed
         addressed_findings: set[int] = set()
 
         files: dict[str, dict[str, Any]] = {}
@@ -305,6 +323,16 @@ class VerifierAgent(APIAgent):
         # wasted retry per defect instead of fixing them all in the next turn.
         patch_errors: list[str] = []
         for index, patch in enumerate(patches):
+            finding_indices = set(patch.get("finding_indices", []))
+            if (
+                finding_indices
+                and finding_indices <= already_addressed
+                and not (finding_indices - set(range(len(findings))))
+            ):
+                # The prior attempt already applied these findings to the draft.
+                # Ignore stale replays (including no-ops/old anchors) instead of
+                # rejecting the genuinely new patches in the same response.
+                continue
             raw_path = str(patch.get("path", ""))
             parts = Path(raw_path).parts
             if len(parts) != 2 or parts[0] not in {"reference", "tests"}:
@@ -320,6 +348,16 @@ class VerifierAgent(APIAgent):
                 continue
             old_text = str(patch.get("old_text", ""))
             new_text = str(patch.get("new_text", ""))
+            occurrence_line = patch.get("occurrence_line")
+            if occurrence_line is not None and (
+                isinstance(occurrence_line, bool)
+                or not isinstance(occurrence_line, int)
+                or occurrence_line < 1
+            ):
+                patch_errors.append(
+                    f"patch {index} occurrence_line must be null or a positive one-based integer"
+                )
+                continue
             if not old_text or old_text == new_text:
                 patch_errors.append(
                     f"patch {index} (finding_indices={sorted(patch.get('finding_indices', []))}) "
@@ -327,21 +365,68 @@ class VerifierAgent(APIAgent):
                 )
                 continue
             content = str(files[path]["content"])
-            if old_text.strip() == content.strip():
+            whole_file_append = (
+                old_text == content
+                and new_text.startswith(old_text)
+                and len(new_text) > len(old_text)
+                and any(
+                    marker in str(finding.get("evidence", "")).lower()
+                    for finding in findings
+                    for marker in ("no executable", "incomplete", "truncated")
+                )
+            )
+            if old_text.strip() == content.strip() and not whole_file_append:
                 patch_errors.append(
                     f"patch {index} attempts to replace the entire file; use local edits"
                 )
                 continue
-            if content.count(old_text) != 1:
+            occurrences = content.count(old_text)
+            starts: list[int] = []
+            search_start = content.find(old_text)
+            while search_start != -1:
+                starts.append(search_start)
+                search_start = content.find(old_text, search_start + 1)
+            selected_start: int | None = None
+            if occurrences == 0:
                 patch_errors.append(
-                    f"patch {index} old_text must occur exactly once in {path}; "
-                    f"found {content.count(old_text)}"
+                    f"patch {index} {cls._describe_patch_mismatch(old_text, content, path, occurrences)}"
                 )
                 continue
-            if owner == "tests" and cls._patch_touches_generated_block(content, old_text):
+            if occurrences == 1:
+                selected_start = starts[0]
+                actual_line = content.count("\n", 0, selected_start) + 1
+                if occurrence_line is not None and occurrence_line != actual_line:
+                    patch_errors.append(
+                        f"patch {index} occurrence_line={occurrence_line} does not match "
+                        f"the unique old_text start line {actual_line} in {path}; use null "
+                        "for a unique old_text or copy the exact reported line"
+                    )
+                    continue
+            elif occurrence_line is None:
+                patch_errors.append(
+                    f"patch {index} {cls._describe_patch_mismatch(old_text, content, path, occurrences)}"
+                )
+                continue
+            else:
+                matching_starts = [
+                    start for start in starts
+                    if content.count("\n", 0, start) + 1 == occurrence_line
+                ]
+                if len(matching_starts) != 1:
+                    available = [content.count("\n", 0, start) + 1 for start in starts]
+                    patch_errors.append(
+                        f"patch {index} occurrence_line={occurrence_line} does not select "
+                        f"exactly one identical old_text in {path}; available start "
+                        f"lines={available}"
+                    )
+                    continue
+                selected_start = matching_starts[0]
+            assert selected_start is not None
+            if owner == "tests" and cls._patch_touches_generated_block(
+                content, old_text, start=selected_start
+            ):
                 patch_errors.append(f"patch {index} may not edit pipeline-generated TB blocks")
                 continue
-            finding_indices = set(patch.get("finding_indices", []))
             truly_unknown = finding_indices - set(range(len(findings)))
             usable = finding_indices & expected_findings
             if not finding_indices or truly_unknown:
@@ -356,7 +441,11 @@ class VerifierAgent(APIAgent):
                 )
                 continue
             addressed_findings.update(usable)
-            files[path]["content"] = content.replace(old_text, new_text, 1)
+            files[path]["content"] = (
+                content[:selected_start]
+                + new_text
+                + content[selected_start + len(old_text):]
+            )
 
         # STIMULUS_COVERAGE_INTENTS is re-derived and re-rendered by the pipeline
         # at persist time (see _with_contract_generated_blocks), so a raw source
@@ -366,8 +455,16 @@ class VerifierAgent(APIAgent):
         # and its # STIMULUS comment once a matching _contract_record_checked_
         # stimulus(..., label=...) call exists in the patched body above.
         for index, edit in enumerate(stimulus_intent_edits):
-            if edit.get("op") != "add":
-                patch_errors.append(f"stimulus intent edit {index} must use op 'add'")
+            finding_indices = set(edit.get("finding_indices", []))
+            if (
+                finding_indices
+                and finding_indices <= already_addressed
+                and not (finding_indices - set(range(len(findings))))
+            ):
+                continue
+            op = edit.get("op")
+            if op not in {"add", "add_targets"}:
+                patch_errors.append(f"stimulus intent edit {index} must use op 'add' or 'add_targets'")
                 continue
             label = str(edit.get("label", "")).strip()
             targets = [str(t) for t in edit.get("targets", [])]
@@ -376,7 +473,6 @@ class VerifierAgent(APIAgent):
                     f"stimulus intent edit {index} needs a non-empty label and targets"
                 )
                 continue
-            finding_indices = set(edit.get("finding_indices", []))
             truly_unknown = finding_indices - set(range(len(findings)))
             usable = finding_indices & expected_findings
             if not finding_indices or truly_unknown or not usable:
@@ -405,12 +501,34 @@ class VerifierAgent(APIAgent):
             except ValueError as exc:
                 patch_errors.append(f"stimulus intent edit {index}: {exc}")
                 continue
-            if any(existing["label"] == label for existing in current_intents):
-                patch_errors.append(
-                    f"stimulus intent edit {index} label {label!r} is already declared"
-                )
-                continue
-            updated_intents = current_intents + [{"label": label, "targets": targets}]
+            existing = next((item for item in current_intents if item["label"] == label), None)
+            if op == "add":
+                if existing is not None:
+                    patch_errors.append(
+                        f"stimulus intent edit {index} label {label!r} is already declared; "
+                        "use op 'add_targets' to widen its existing targets instead"
+                    )
+                    continue
+                updated_intents = current_intents + [{"label": label, "targets": targets}]
+            else:
+                if existing is None:
+                    patch_errors.append(
+                        f"stimulus intent edit {index} label {label!r} is not declared; "
+                        "use op 'add' to declare it as a new intent instead"
+                    )
+                    continue
+                merged_targets = list(existing["targets"])
+                merged_targets += [t for t in targets if t not in merged_targets]
+                if merged_targets == existing["targets"]:
+                    patch_errors.append(
+                        f"stimulus intent edit {index} adds no new target to {label!r}; "
+                        "every listed target is already present"
+                    )
+                    continue
+                updated_intents = [
+                    {"label": label, "targets": merged_targets} if item["label"] == label else item
+                    for item in current_intents
+                ]
             tree = ast.parse(content)
             declaration = next(
                 (
@@ -450,8 +568,15 @@ class VerifierAgent(APIAgent):
             )
 
         metadata_finding_indices: set[int] = set()
+        active_metadata_edits = []
         for index, edit in enumerate(metadata_edits):
             finding_indices = set(edit.get("finding_indices", []))
+            if (
+                finding_indices
+                and finding_indices <= already_addressed
+                and not (finding_indices - set(range(len(findings))))
+            ):
+                continue
             truly_unknown = finding_indices - set(range(len(findings)))
             usable = finding_indices & expected_findings
             if not finding_indices or truly_unknown:
@@ -464,9 +589,10 @@ class VerifierAgent(APIAgent):
                     addressed_findings=already_addressed | addressed_findings,
                 )
             metadata_finding_indices.update(usable)
+            active_metadata_edits.append(edit)
         try:
             apply_operation_coverage_metadata_edits(
-                result["operation_coverage"], metadata_edits,
+                result["operation_coverage"], active_metadata_edits,
             )
         except VerifierMetadataPatchError as exc:
             # Edits before the failing one may already be applied in-place above;
@@ -494,8 +620,10 @@ class VerifierAgent(APIAgent):
         return result
 
     @staticmethod
-    def _patch_touches_generated_block(content: str, old_text: str) -> bool:
-        start = content.index(old_text)
+    def _patch_touches_generated_block(
+        content: str, old_text: str, *, start: int | None = None
+    ) -> bool:
+        start = content.index(old_text) if start is None else start
         stop = start + len(old_text)
         for begin_marker, end_marker in (
             (BEGIN_MARKER, END_MARKER),
@@ -510,58 +638,242 @@ class VerifierAgent(APIAgent):
                 return True
         return False
 
+    @staticmethod
+    def _describe_patch_mismatch(old_text: str, content: str, path: str, occurrences: int) -> str:
+        """Give the next attempt concrete evidence instead of just a count.
+
+        LLMs are unreliable at exact substring counting/matching over long
+        files; re-asking the same model to "double check" its own old_text is
+        just another fallible guess. Instead, compute the precise mismatch
+        deterministically here so the next revision gets an anchor it can
+        actually fix, not just a bare number.
+        """
+
+        def line_of(offset: int) -> int:
+            return content.count("\n", 0, offset) + 1
+
+        if occurrences == 0:
+            matcher = difflib.SequenceMatcher(None, content, old_text, autojunk=False)
+            match = matcher.find_longest_match(0, len(content), 0, len(old_text))
+            if match.size == 0:
+                return (
+                    f"old_text was not found anywhere in {path} (0 characters of it "
+                    "match); this is not a small anchor mismatch, re-copy old_text "
+                    "directly from the supplied file content"
+                )
+            matched = old_text[match.b : match.b + match.size]
+            expected_next = old_text[match.b + match.size : match.b + match.size + 40]
+            actual_next = content[match.a + match.size : match.a + match.size + 40]
+            return (
+                f"old_text must occur exactly once in {path}; found 0. The longest "
+                f"part of old_text that does match starts at line {line_of(match.a)}: "
+                f"{matched[-60:]!r}. Right after that point old_text expects "
+                f"{expected_next!r} but the file actually has {actual_next!r} there — "
+                "copy old_text from the file exactly from that point on (check "
+                "whitespace, quotes, and whether a prior edit in this same batch "
+                "already changed this region)"
+            )
+        starts = []
+        start = content.find(old_text)
+        while start != -1:
+            starts.append(start)
+            start = content.find(old_text, start + 1)
+        locations = ", ".join(f"line {line_of(s)}" for s in starts)
+        return (
+            f"old_text must occur exactly once in {path}; found {occurrences} "
+            f"identical occurrences ({locations}). Either widen old_text with unique "
+            "surrounding context, or keep this exact local old_text and set "
+            "occurrence_line to the exact one-based start line of the ONE occurrence "
+            "you mean. Do not guess a different label or add a placeholder call"
+        )
+
     @classmethod
     def _build_review_patch_task(
         cls, context: Mapping[str, Any], draft: Mapping[str, Any]
     ) -> str:
-        review = context["assertion_definition_review"]
+        review = cls._patch_review(context)
+        if not isinstance(review, Mapping):
+            raise AgentRuntimeError("Verifier local patch requires deterministic findings")
         files = []
         for field, owner in (("reference_files", "reference"), ("test_files", "tests")):
             for item in draft[field]:
                 filename = cls._safe_python_filename(str(item["path"]), owned_root=owner)
                 files.append({"path": f"{owner}/{filename}", "content": item["content"]})
+        findings, already_addressed, expected_findings = finding_scope(review)
         envelope = {
             "user_request": context["user_request"],
             "frozen_architecture": context["frozen_architecture"],
             "review_findings": [
                 {"index": index, **dict(finding)}
-                for index, finding in enumerate(review["findings"])
+                for index, finding in enumerate(findings)
+                if index in expected_findings
             ],
+            "already_applied_finding_indices": sorted(already_addressed),
             "patch_validation_error": review.get("patch_validation_error"),
             "operation_coverage": draft["operation_coverage"],
             "files": files,
         }
-        return """Repair the reviewed verifier artifacts with local source patches.
+        coverage_feedback = context.get("coverage_closure_review")
+        if isinstance(coverage_feedback, Mapping):
+            feedback = {
+                key: copy.deepcopy(coverage_feedback[key])
+                for key in (
+                    "missing_bins", "covered_bins", "bin_hits",
+                    "missing_bin_definitions", "stimulus_summary",
+                )
+                if key in coverage_feedback
+            }
+            if {"runtime_report_missing", "invalid_runtime_report"} & set(
+                map(str, feedback.get("missing_bins", []))
+            ):
+                envelope["coverage_report_failure"] = feedback
+            else:
+                envelope["coverage_hit_feedback"] = feedback
+        if isinstance(review.get("runtime_evidence"), Mapping):
+            envelope["runtime_failure_evidence"] = copy.deepcopy(
+                review["runtime_evidence"]
+            )
+        declared_module_names = ", ".join(
+            sorted(
+                str(item["name"])
+                for item in context["frozen_architecture"]["module_manifest"]["modules"]
+            )
+        ) or "none"
+        return f"""Repair the reviewed verifier artifacts with local source patches.
 
 The complete previously accepted oracle/TB is supplied below. Return only the
 smallest exact old_text -> new_text source substitutions and, when coverage bins or
 point fields change, leaf-level metadata_edits needed for the enumerated findings.
 Do not regenerate or return a complete file or coverage catalog. Preserve all
 unaffected source, metadata, valid stimulus and checks. Each old_text must occur
-exactly once in its named file; use a small stable anchor plus new code to insert
-a helper. Every finding index must be referenced by at least one local edit.
+exactly once in its named file unless occurrence_line deterministically selects
+one of several identical occurrences. Set occurrence_line=null when old_text is
+unique. If patch_validation_error lists identical start lines, either widen the
+anchor or keep the exact local old_text and set occurrence_line to exactly ONE of
+those reported one-based start lines; never guess a different label or insert a
+placeholder merely to make an anchor unique. Use a small stable anchor plus new
+code to insert a helper. Test functions often share near-identical boilerplate lines (a common
+closing assert, a common helper call): before submitting old_text, check whether
+that exact snippet could plausibly appear verbatim at more than one call site in
+the file (e.g. the same two lines closing two different @cocotb.test functions);
+if so, widen old_text with a few more lines of that SAME occurrence's unique
+surrounding context or set occurrence_line from the deterministic duplicate-line
+error. Only the findings present in
+review_findings remain open. Every listed finding index must be referenced by at
+least one local edit. Indices in already_applied_finding_indices are historical
+and must not appear in any edit.
+If coverage_hit_feedback is present, treat its hit counts as the authoritative
+result of the previous executed regression. Keep the already covered scenarios;
+add real DUT-driven, checked stimulus for every missing bin, using
+missing_bin_definitions to target the actual predicate and stimulus_summary to
+avoid repeating unsuccessful schedules. Never claim or synthesize a hit. The
+pipeline reruns the full TB after this local patch and repeats coverage closure
+until every required bin is hit or the bounded Verifier budget is exhausted.
+If coverage_report_failure is present, there are no trustworthy hit results:
+repair only the report/instrumentation failure named by the findings. Do not
+invent bin hits or add stimulus for the report-missing sentinel.
+operation_coverage (operation names, coverpoints, bins, predicates, intents,
+descriptions) is never literal text inside any source file, in any format,
+including as an embedded YAML/JSON-looking block: it is supplied to you and
+returned to the runtime purely as structured data. A finding that says a
+coverpoint or bin definition is wrong (wrong bins, wrong predicate, wrong value
+space, stale/impossible bin) is corrected only through metadata_edits, never
+through a patches old_text/new_text substitution; a patches entry whose
+old_text looks like coverage-catalog content will always fail to match any
+real file and wastes the whole edit. Use a patches entry only to change actual
+Python source text (stimulus, checkers, helper functions, comments).
 One edit may address multiple findings. Use value_json for metadata scalar values,
-one appended coverpoint, or one appended bin. Named selectors are stable:
-/operation_coverage/operation_name=<name>/coverpoints/id=<id>/field or
-/operation_coverage/operation_name=<name>/coverpoints/id=<id>/bins/-.
-Do not replace operation, point, bin, or entire source-file sections wholesale.
+one appended coverpoint, or one appended bin. Named selectors are stable and never
+numeric indices:
+/operation_coverage/operation_name=<name>/coverpoints/id=<id>/field to edit a
+coverpoint's own field,
+/operation_coverage/operation_name=<name>/coverpoints/id=<id>/bins/name=<bin-name>/field
+to edit an EXISTING bin's non-identity field (predicate, intent, etc. — this is
+the correct path to fix a bin whose meaning/predicate is wrong), or
+/operation_coverage/operation_name=<name>/coverpoints/id=<id>/bins/- to append a
+brand new bin object, or op "remove" on
+/operation_coverage/operation_name=<name>/coverpoints/id=<id>/bins/name=<bin-name>
+(no trailing field) to delete one existing bin outright — this is the correct
+fix when a finding says a bin represents a value the contract makes impossible
+to observe, not a relabel/patch. remove never targets a field beneath the
+selector, and refuses to remove a coverpoint's last remaining bin (add its
+replacement first, same batch or a prior one). Paths like bins/0/... or
+bins/1/... are always rejected; a bin has no stable position, only its name.
+A bin's own name/id can never be the edited field via add/replace, even via
+the name=<bin-name> selector: to correct what a mislabeled-but-still-reachable
+bin means, leave name unchanged and edit its sibling predicate/intent instead
+of removing and re-adding it. A bin's predicate is itself an object
+{{"op": ..., "args": [...]}}: you can never replace predicate or predicate/args
+wholesale in one edit (each is a composite value, always rejected), only their
+own scalar leaves — predicate/op (a string) and each existing predicate/args/<i>
+(a numeric index into that array, one scalar per edit; args cannot grow or
+shrink). predicate/op must be one of exactly these literal strings — no others
+are recognized, and there is no boolean/nested-condition combinator: "eq",
+"neq", "lt", "lte", "gt", "gte" (each takes exactly 1 arg), "between", "mod_eq",
+"mod_ne" (each takes exactly 2 args), "one_of" (1 or more args — this is the op
+for "value is one of a set", not "in_set" or "or"), "truthy", "falsy" (each
+takes 0 args). A new bin you add via bins/- must use one of these too. Do not
+replace operation, point, bin, or entire source-file sections wholesale.
+A coverpoint's existing bin names, and an operation's existing coverpoint ids,
+are already listed in operation_coverage below: before appending a new one via
+bins/- or coverpoints/-, check it is not already present under that exact
+name/id. Appending a duplicate name/id is always rejected; if a review finding
+says an existing bin's predicate is wrong, that is a 'replace' on its predicate
+fields (or a 'remove' of the one bin plus a differently-named 'add', never both
+an 'add' of the same name and a later fix attempt on it in the same or a later
+round). A review finding's prose (e.g. "includes a negative/minimum bin") is a
+paraphrased description of a problem, not a literal name: before writing any
+name=<x>/id=<x> selector, find that exact bin/coverpoint in the operation_coverage
+listed below and copy its real declared name/id character-for-character — never
+infer, guess, or reuse a word from the finding text itself as a selector. If no
+bin in the current operation_coverage actually matches what the finding
+describes (e.g. it already only has non-negative bins), the finding is likely
+already satisfied by a prior edit; do not keep guessing a nonexistent name — use
+metadata_edits addressing only what genuinely still needs to change, or a
+smaller predicate/intent refinement, referencing this finding's index.
+
+Every bare `assert` you add or leave in a patched region needs a feature comment
+on the line immediately above it, in exactly this literal form:
+`# LLM-GENERATED OPERATION ASSERTION [feature]` — this is the only comment the
+runtime recognizes for a Verifier-authored assert, including one that checks a
+protocol/signal-level concept (reset behavior, error behavior, channel
+handshake/stall state, illegal-command recovery timing, and similar): the
+bracketed feature is a free-form label naming what the assert checks, not
+restricted to an operation-catalog id. No other comment text satisfies this —
+not `# FEATURE: x`, not `# PROTOCOL ASSERTION [x]`, not a plain description —
+only this exact bracketed form. Adding an assert without also adding its
+comment in the same patch, or resubmitting one you already tried without
+fixing its wording, wastes the edit.
 
 Do not edit either PIPELINE-GENERATED VERIFIER ANNOTATIONS or CONTRACT-GENERATED
 PROTOCOL MONITOR blocks with a source patch; code owns them, and the runtime
-rebuilds both after your edits apply. To add a brand new stimulus label (a
-MISSING_STIMULUS finding that needs one), do not touch the STIMULUS_COVERAGE_INTENTS
-declaration directly: use stimulus_intent_edits with op "add", the new label, and
-its targets, and separately add the actual stimulus construction plus a
+rebuilds both after your edits apply. STIMULUS_COVERAGE_INTENTS itself is never
+a metadata_edits target (metadata_edits only ever targets /operation_coverage/...;
+a path starting /stimulus_coverage_intents/... is always rejected) and never a
+source patch target either — both are always rejected as edits to a
+pipeline-rebuilt declaration. It has its own two structured edits instead. To add
+a brand new stimulus label (a MISSING_STIMULUS finding that needs one), use
+stimulus_intent_edits with op "add", the new label, and its targets, and
+separately add the actual stimulus construction plus a
 _contract_record_checked_stimulus(..., label="<same label>") call to the test body
 via a normal source patch. The runtime appends your declared label and re-derives
-its # STIMULUS comment from that call once both land together. stimulus_intent_edits
-can only append a brand new label; it can never edit or remove an existing one.
+its # STIMULUS comment from that call once both land together. "add" is rejected
+if that label is already declared. To make an EXISTING label also cover one or
+more additional obligation targets (e.g. a finding says an existing stimulus
+should also exercise/validate a target it does not yet list), use
+stimulus_intent_edits with op "add_targets", that same existing label, and only
+the new target(s) to add — it merges them into the label's existing targets list
+and is rejected if the label is not already declared or if every listed target
+is already present. Neither op can remove a label or a target, or rename one.
 Do not weaken existing assertions or
 coverage. Change stimulus only when a MISSING_STIMULUS or
 INVALID_STIMULUS_MAPPING finding requires it. A response/output limit, patch-format
 problem, Python problem, or coverage implementation choice is a Verifier defect,
 never an architecture conflict. Return ARCHITECTURE_CONFLICT only for a genuine
-unresolved contradiction in externally observable frozen semantics.
+unresolved contradiction in externally observable frozen semantics. If you do,
+architecture_conflict.affected_modules must contain only exact names from
+module_manifest.modules[].name. The declared modules for this contract are:
+{declared_module_names}. Never put a test or reference file name/path there.
 
 After applying your patches, the runtime reparses and validates the complete source,
 then sends it through the independent review again before simulation.
@@ -574,15 +886,79 @@ FROZEN INPUT, FINDINGS, AND EXISTING SOURCES
         result: Mapping[str, Any], context: Mapping[str, Any]
     ) -> dict[str, Any]:
         prepared = copy.deepcopy(dict(result))
+        prepared.setdefault("feature_extensions", [])
         if prepared.get("status") != "VERIFICATION_READY":
             return prepared
         interface_plan = build_interface_coverage_plan(
             context["frozen_architecture"]["interface_contract"]
         )
+        operation_metadata = build_architect_operation_metadata(
+            context["frozen_architecture"]["architecture_contract"],
+            context["frozen_architecture"]["interface_contract"],
+        )
+        supported = supported_code_owned_concepts(operation_metadata)
+        campaign_support = automatic_campaign_support(
+            operation_metadata,
+            context["frozen_architecture"]["architecture_contract"],
+        )
+        automatic_campaign_supported = bool(campaign_support["supported"])
+        # Embedding the executable campaign test is safe to relax to "at
+        # least one operation qualifies": the campaign's own per-operation
+        # loop (orchestration/campaign.py) skips any operation that
+        # individually fails automatic_campaign_support's checks, so a
+        # contract with a mix of known and unknown protocols/lifecycles still
+        # gets automatic driving for the operations that do qualify.
+        any_operation_campaign_supported = bool(campaign_support["any_operation_supported"])
+        # synthesize_code_owned_operation_coverage is per-concept, not
+        # per-operation or all-or-nothing: it generates deterministic
+        # coverpoints only for concepts supported_code_owned_concepts marks
+        # code-owned and preserves the LLM's own supplied points for every
+        # other concept untouched (see its own per-concept "code_owned"/
+        # "preserved" split) -- so it is safe, and correct, to call
+        # unconditionally rather than gate it on every operation qualifying.
         try:
-            for item in prepared["test_files"]:
+            prepared["operation_coverage"] = (
+                synthesize_code_owned_operation_coverage(
+                    list(prepared.get("operation_coverage", [])),
+                    context["frozen_architecture"]["architecture_contract"],
+                    operation_metadata,
+                )
+            )
+        except ValueError as exc:
+            raise AgentRuntimeError(
+                f"Cannot synthesize code-owned operation coverage: {exc}"
+            ) from exc
+        operation_points = [
+            (
+                str(spec.get("operation_name", "")),
+                str(point.get("id", "")),
+                str(point.get("concept", "")),
+            )
+            for spec in prepared.get("operation_coverage", [])
+            for point in spec.get("coverpoints", [])
+        ]
+        # Use the canonical helper directly because local point IDs may already
+        # contain the operation prefix after a prior model revision.
+        code_owned_ids = {
+            canonical_operation_obligation_id(operation_name, point.get("id"))
+            for spec in prepared.get("operation_coverage", [])
+            for operation_name in [str(spec.get("operation_name", ""))]
+            for point in spec.get("coverpoints", [])
+            if str(point.get("concept", ""))
+            in supported.get(operation_name, set())
+        }
+        all_points_code_owned = bool(operation_points) and len(code_owned_ids) == len(operation_points)
+        try:
+            minimum_randomized = int(
+                context.get("verification_policy", {}).get(
+                    "randomized_transactions_minimum", 0
+                )
+            )
+            for index, item in enumerate(prepared["test_files"]):
                 item["content"] = normalize_operation_sampling_bindings(
-                    str(item["content"])
+                    str(item["content"]),
+                    code_owned_ids=code_owned_ids,
+                    all_points_code_owned=all_points_code_owned,
                 )
                 if "STIMULUS_COVERAGE_INTENTS" in str(item["content"]):
                     item["content"] = install_pipeline_generated_annotations(
@@ -592,6 +968,10 @@ FROZEN INPUT, FINDINGS, AND EXISTING SOURCES
                     str(item["content"]),
                     interface_plan,
                     context["frozen_architecture"]["architecture_contract"],
+                    include_automatic_campaign=(
+                        any_operation_campaign_supported and index == 0
+                    ),
+                    randomized_transactions_minimum=minimum_randomized,
                 )
         except (SyntaxError, ValueError) as exc:
             raise AgentRuntimeError(
@@ -617,8 +997,14 @@ FROZEN INPUT, FINDINGS, AND EXISTING SOURCES
         if validate_operation_coverage(
             context["frozen_architecture"]["architecture_contract"],
             draft.get("operation_coverage", []),
+        ) or validate_frozen_operation_scope(
+            context["frozen_architecture"]["architecture_contract"],
+            draft.get("operation_coverage", []),
         ):
             return None  # Invalid metadata still needs the normal full correction.
+        # Operation metadata and the frozen scope were checked above.  Any
+        # remaining obligation mismatch is therefore confined to the test-file
+        # metadata/source pair and is safe for the local source-repair path.
         return copy.deepcopy(dict(draft))
 
     @classmethod
@@ -629,6 +1015,10 @@ FROZEN INPUT, FINDINGS, AND EXISTING SOURCES
         result["status"] = sources["status"]
         result["architecture_conflict"] = sources["architecture_conflict"]
         result["known_verification_gaps"] = list(sources["known_verification_gaps"])
+        if "feature_extensions" in sources:
+            result["feature_extensions"] = copy.deepcopy(
+                list(sources["feature_extensions"])
+            )
         if sources["status"] == "ARCHITECTURE_CONFLICT":
             if sources["files"]:
                 raise AgentRuntimeError("ARCHITECTURE_CONFLICT must not emit source files")
@@ -653,6 +1043,10 @@ FROZEN INPUT, FINDINGS, AND EXISTING SOURCES
             )
         for path, item in expected.items():
             item["content"] = emitted[path]
+        try:
+            result = synchronize_test_coverage_metadata(result)
+        except (SyntaxError, ValueError) as exc:
+            raise AgentRuntimeError(str(exc)) from exc
         result["summary"] = "Verifier source completion; deterministic validation and simulation remain authoritative."
         return result
 
@@ -664,9 +1058,19 @@ FROZEN INPUT, FINDINGS, AND EXISTING SOURCES
         ) if key in context}
         envelope["verification_plan"] = draft["verification_plan"]
         envelope["operation_coverage"] = draft["operation_coverage"]
-        envelope["operation_sampling_bindings"] = extract_operation_sampling_bindings(
-            [item["content"] for item in draft["test_files"]]
-        )
+        envelope["feature_extensions"] = draft.get("feature_extensions", [])
+        try:
+            envelope["operation_sampling_bindings"] = extract_operation_sampling_bindings(
+                [item["content"] for item in draft["test_files"]]
+            )
+        except OperationSamplingError:
+            # previous_content itself may be exactly what is broken (e.g. the
+            # rejected prior draft that made this repair round happen in the
+            # first place). This field is supplementary context only; a raw
+            # extraction failure here must never crash task construction, since
+            # validator_error below already tells the model the real defect and
+            # previous_content still lets it see and fix the actual bindings.
+            envelope["operation_sampling_bindings"] = []
         envelope["interface_coverage_plan"] = build_interface_coverage_plan(
             context["frozen_architecture"]["interface_contract"]
         )
@@ -681,6 +1085,12 @@ FROZEN INPUT, FINDINGS, AND EXISTING SOURCES
             for field, owner in (("reference_files", "reference"), ("test_files", "tests"))
             for item in draft[field]
         ]
+        declared_module_names = ", ".join(
+            sorted(
+                str(item["name"])
+                for item in context["frozen_architecture"]["module_manifest"]["modules"]
+            )
+        ) or "none"
         return """Complete the missing executable sources in one counted Verifier correction.
 
 validator_error names the exact defect that made previous_content invalid; every
@@ -689,6 +1099,17 @@ file's previous_content byte-for-byte and change only what validator_error requi
 you to fix. Do not rewrite, reformat, restructure, or regenerate code that
 validator_error does not implicate, even though the schema still requires you to
 return each file's complete content.
+
+Exception: if a specific file's previous_content is itself genuinely incomplete or
+truncated independent of validator_error — it ends mid-statement, or ends cleanly
+but is missing an actual required test body (e.g. only helper/observer functions
+are defined, with no real @cocotb.test implementation) — byte-for-byte preservation
+of that one file is impossible by construction. In that case only, write a fresh
+complete replacement for that file (reusing its still-valid helpers, stimulus, and
+structure where you can) while still reproducing every OTHER file's previous_content
+byte-for-byte except for validator_error's own fix. This is a normal, expected
+correction here, never a reason to return ARCHITECTURE_CONFLICT: Architect has no
+artifact that repairs the Verifier's own prior incomplete generation.
 
 If validator_error says a stimulus needs a "# STIMULUS [label]" comment, do not
 just insert that comment line: the runtime strips every such comment and
@@ -713,10 +1134,12 @@ while leaving the assert in place, or renaming its label, does not resolve this
 error and produces the opposite "assert needs a feature comment" error instead —
 the assert itself must go.
 
-Return only status, files (path and complete content), architecture_conflict, and
-known_verification_gaps. Metadata is reused by the runtime; do not regenerate or
-return coverage plans, catalogs, or test metadata. Return every planned file in
-full. JSON content strings are executed verbatim; there is no later delivery step.
+Return only status, files (path and complete content), architecture_conflict,
+known_verification_gaps, and feature_extensions when the validator error implicates
+that field. Otherwise omit feature_extensions and the previous bundle is preserved.
+Metadata is reused by the runtime; coverage plans, catalogs, and ordinary test
+metadata must not be regenerated. Return every planned file in full. JSON content strings are
+executed verbatim; there is no later delivery step.
 Imports/declarations/comments alone are invalid: emit actual async test functions.
 Choose your oracle, helpers and stimulus code independently from the frozen
 semantics. No RTL/source-derived evidence is present. Do not weaken any checks.
@@ -724,10 +1147,13 @@ The regression uses declared parameter defaults without overrides. Verifier owns
 custom observer implementations and scheduling; exact unpromised cycle timing and missing
 prior TB are not architecture conflicts. Genuine unresolved external contradictions
 may still return ARCHITECTURE_CONFLICT with exact evidence and no files.
-
+""" + f"""If you do, architecture_conflict.affected_modules must contain only exact
+names from module_manifest.modules[].name. The declared modules for this contract
+are: {declared_module_names}. Never put a test or reference file name/path there.
+""" + """
 Use cocotb 2.x and one free-running Clock per test. Use finite literal timeout_time
 and timeout_unit in every @cocotb.test decorator, with @contract_coverage() directly
-below it (import from multigent.verifier_tool.coverage.runtime). Drive on the inactive clock edge,
+below it (import from multigent.verifier_tool). Drive on the inactive clock edge,
 settle/sample ready/valid/payload before the active edge, then commit that recorded
 handshake. Never infer transfer from post-edge signals. Hold presented valid/payload
 until transfer; optional idle delays before presentation are legal. Use independent
@@ -747,10 +1173,9 @@ _contract_record_checked_stimulus(kind, actual_inputs, expected_outputs,
 observed_outputs, operations=(exact_operation_name, ...), label=...) with full,
 equally structured JSON-serializable expected and observed outputs. It applies the
 taxonomy-owned assertions for catalog features and records the stimulus only after
-they pass. Then call sample_operation(exact_operation_name, {}, kind, stimulus_id)
-for every operation in that checked job. Import sample_operation from
-multigent.verifier_tool.coverage.runtime; do not import or call raw record_stimulus. Every selected
-bin must be deliberately exercised by
+they pass. The inserted helper also links every listed operation to that checked
+stimulus; do not import or call sample_operation or raw record_stimulus yourself.
+Every selected bin must be deliberately exercised by
 real submitted and checked traffic. Never fabricate hits or sample synthetic jobs.
 Use no filesystem, subprocess, network or dynamic import capabilities. Keep prose
 minimal; spend output on working source bodies and include useful failure context.
@@ -770,14 +1195,17 @@ features absent from the selected taxonomy family. Put
 custom assert and include useful input/expected/observed/signal context in its
 failure message. Do not reimplement catalog-feature assertions. Review will compare
 actual stimulus code with these claims.
-Preserve the supplied operation_sampling_bindings as literal module-level
-OPERATION_SAMPLING_BINDINGS in the complete test sources. These are static DUT
-connections, not coverage values: the trusted observer samples their points.
-Every point needs a reusable binding or custom observer(values, state). Preserve
+Preserve supplied operation_sampling_bindings only for unknown/novel points as a
+literal module-level OPERATION_SAMPLING_BINDINGS list. Known points listed in
+architect_operation_metadata are assembled and classified by verifier_tool and
+must not get an LLM binding. The remaining bindings are static DUT connections,
+not coverage values: the trusted observer samples their points. Every remaining
+point needs a reusable binding or custom observer(values, state). Preserve
 or implement its local synchronous function and helpers in the test module. Runtime
 reads the fields and invokes it; None means no observation, a scalar is evaluated
-by the normal coverage predicates. sample_operation only links the checked job:
-pass {} and never try to hit coverage from that hook or from driver values.
+by the normal coverage predicates. Never try to hit coverage from driver values.
+The generated wrapper's internal sample_operation only links the checked job; it
+is not a Verifier-authored sampling API call.
 
 FROZEN INPUT AND REUSED GENERATION PLAN
 """ + yaml.safe_dump(envelope, sort_keys=False, default_flow_style=False)
@@ -792,6 +1220,13 @@ FROZEN INPUT AND REUSED GENERATION PLAN
         """Validate and persist an already generated structured verifier result."""
 
         result = self._with_contract_generated_blocks(result, context)
+        try:
+            result = synchronize_test_coverage_metadata(result)
+        except (SyntaxError, ValueError) as exc:
+            raise AgentRuntimeError(str(exc)) from exc
+        # If validation exposes a different defect, local-repair callers must
+        # continue from this normalized candidate, not stale duplicate metadata.
+        self.last_generated_result = copy.deepcopy(result)
         self._validate_context(context)
         self._validate_prepared_result(result=result, context=context)
         reference_dir = root / "reference"
@@ -829,6 +1264,28 @@ FROZEN INPUT AND REUSED GENERATION PLAN
             )
             (verification_dir / "operation_coverage_plan.yaml").write_text(
                 yaml.safe_dump(operation_plan, sort_keys=False, default_flow_style=False),
+                encoding="utf-8",
+            )
+            (verification_dir / "feature_extensions.yaml").write_text(
+                yaml.safe_dump(
+                    result.get("feature_extensions", []),
+                    sort_keys=False,
+                    default_flow_style=False,
+                ),
+                encoding="utf-8",
+            )
+            extension_manifest = build_feature_extension_manifest(
+                context["frozen_architecture"]["architecture_contract"],
+                result.get("feature_extensions", []),
+                source_files=[*result["reference_files"], *result["test_files"]],
+                interface=context["frozen_architecture"]["interface_contract"],
+            )
+            (verification_dir / "feature_extension_manifest.yaml").write_text(
+                yaml.safe_dump(
+                    extension_manifest,
+                    sort_keys=False,
+                    default_flow_style=False,
+                ),
                 encoding="utf-8",
             )
             (verification_dir / "combined_coverage_plan.yaml").write_text(
@@ -895,15 +1352,32 @@ FROZEN INPUT AND REUSED GENERATION PLAN
         missing_artifacts = sorted(needed - set(frozen))
         if missing_artifacts:
             raise AgentRuntimeError(f"Verifier context missing frozen artifacts: {missing_artifacts}")
-        role_errors = validate_interface_signal_roles(frozen["interface_contract"])
-        semantic_errors = validate_interface_semantics(frozen["interface_contract"])
+        extension_errors = validate_architect_extension_requests(
+            frozen["architecture_contract"], frozen["interface_contract"]
+        )
+        try:
+            role_extensions, semantic_extensions = interface_vocabulary_extensions(
+                frozen["architecture_contract"]
+            )
+        except ValueError:
+            role_extensions, semantic_extensions = {}, {}
+        role_errors = validate_interface_signal_roles(
+            frozen["interface_contract"], role_extensions=role_extensions
+        )
+        semantic_errors = validate_interface_semantics(
+            frozen["interface_contract"],
+            role_extensions=role_extensions,
+            semantic_class_extensions=semantic_extensions,
+        )
         operation_errors = validate_architecture_operation_features(
             frozen["architecture_contract"]
         )
-        if role_errors or semantic_errors or operation_errors:
+        if role_errors or semantic_errors or operation_errors or extension_errors:
             raise AgentRuntimeError(
                 "Verifier received an invalid taxonomy contract: "
-                + "; ".join(role_errors + semantic_errors + operation_errors)
+                + "; ".join(
+                    role_errors + semantic_errors + operation_errors + extension_errors
+                )
             )
 
     @staticmethod
@@ -1057,6 +1531,62 @@ FROZEN INPUT AND REUSED GENERATION PLAN
                     "that the contract agrees, needs no Architect decision, or only "
                     "encountered a Verifier-owned response-capacity problem"
                 )
+            if any(phrase in self_invalidating for phrase in (
+                "previous_content", "prior test file content", "prior source",
+                "planned_file", "planned file",
+            )) and any(
+                phrase in self_invalidating
+                for phrase in ("truncat", "incomplete", "not available")
+            ):
+                raise AgentRuntimeError(
+                    "Verifier ARCHITECTURE_CONFLICT escalates a defect in the Verifier's "
+                    "own prior generated output (previous_content reported as truncated "
+                    "or incomplete), not a frozen-contract question; Architect has no "
+                    "artifact that fixes this. Emit a fresh, complete replacement for "
+                    "the affected file(s) instead of escalating."
+                )
+            if any(phrase in self_invalidating for phrase in (
+                "input_evidence_mismatch",
+                "patch_context_mismatch",
+                "artifact_mismatch",
+                "actual current file snapshot",
+                "exact current on-disk artifact",
+                "precise validator-flagged region",
+                "updated findings",
+                "patch_validation_error",
+            )):
+                raise AgentRuntimeError(
+                    "Verifier ARCHITECTURE_CONFLICT describes a Verifier patch/input/"
+                    "validator evidence mismatch, not an unresolved frozen hardware "
+                    "semantic. Architect cannot provide or repair Verifier-owned file "
+                    "snapshots. Continue from previous_verifier_output and correct only "
+                    "the remaining deterministic findings."
+                )
+            if "operation_sampling_bindings" in self_invalidating or "operation sampling bindings" in self_invalidating:
+                raise AgentRuntimeError(
+                    "OPERATION_SAMPLING_BINDINGS is never a frozen architecture artifact "
+                    "and Architect never supplies it: it is a module-level literal list "
+                    "that the Verifier itself declares in its own test file content, "
+                    "binding each operation coverage point already in operation_coverage "
+                    "to a reusable template or custom observer. A missing or invalid "
+                    "entry is always a Verifier defect to fix directly, never an "
+                    "architecture conflict to escalate."
+                )
+            if any(phrase in self_invalidating for phrase in (
+                "operation obligation id",
+                "operation-obligation id",
+                "operation coverage id namespace",
+                "operation-obligation id namespace",
+                "authoritative operation-obligation",
+                "verifier-defined operation id namespace",
+            )):
+                raise AgentRuntimeError(
+                    "Operation coverage obligation IDs are generated by the deterministic "
+                    "Verifier taxonomy from the frozen operation metadata; they are not "
+                    "an Architect-owned interface namespace. Copy the exact IDs supplied "
+                    "in the current operation_coverage/coverage findings and correct the "
+                    "Verifier files locally instead of escalating an architecture conflict."
+                )
             unknown = sorted(set(conflict["affected_modules"]) - module_names)
             if unknown:
                 raise AgentRuntimeError(
@@ -1072,6 +1602,16 @@ FROZEN INPUT AND REUSED GENERATION PLAN
             raise AgentRuntimeError("VERIFICATION_READY cannot also contain architecture_conflict")
         if not references or not tests:
             raise AgentRuntimeError("VERIFICATION_READY requires reference model and cocotb tests")
+        extension_errors = validate_verifier_extension_bundles(
+            context["frozen_architecture"]["architecture_contract"],
+            result.get("feature_extensions", []),
+            source_files=[*references, *tests],
+            interface=context["frozen_architecture"]["interface_contract"],
+        )
+        if extension_errors:
+            raise AgentRuntimeError(
+                "Invalid Verifier feature extensions: " + "; ".join(extension_errors)
+            )
         if str(plan["top_module"]) != top:
             raise AgentRuntimeError(f"Verification plan top={plan['top_module']!r} does not match manifest top={top!r}")
 
@@ -1087,7 +1627,27 @@ FROZEN INPUT AND REUSED GENERATION PLAN
         test_modules: set[str] = set()
         test_contents: list[str] = []
         implemented_obligations: set[str] = set()
-        for item in tests:
+        minimum_randomized = int(
+            context.get("verification_policy", {}).get(
+                "randomized_transactions_minimum", 0
+            )
+        )
+        automatic_metadata = build_architect_operation_metadata(
+            context["frozen_architecture"]["architecture_contract"],
+            context["frozen_architecture"]["interface_contract"],
+        )
+        automatic_campaign_report = automatic_campaign_support(
+            automatic_metadata,
+            context["frozen_architecture"]["architecture_contract"],
+        )
+        # See _with_contract_generated_blocks: obligation bookkeeping stays
+        # gated on every operation qualifying (no mixed code-owned/LLM-owned
+        # mode yet), but embedding the executable campaign test is safe to
+        # relax to "at least one operation qualifies" -- the campaign's own
+        # per-operation loop skips whichever operations do not.
+        automatic_campaign_supported = bool(automatic_campaign_report["supported"])
+        any_operation_campaign_supported = bool(automatic_campaign_report["any_operation_supported"])
+        for test_index, item in enumerate(tests):
             name = cls._safe_python_filename(str(item["path"]), owned_root="tests")
             if name in test_names:
                 raise AgentRuntimeError(f"Duplicate test filename: {name}")
@@ -1103,6 +1663,10 @@ FROZEN INPUT AND REUSED GENERATION PLAN
                         context["frozen_architecture"]["interface_contract"]
                     ),
                     context["frozen_architecture"]["architecture_contract"],
+                    include_automatic_campaign=(
+                        any_operation_campaign_supported and test_index == 0
+                    ),
+                    randomized_transactions_minimum=minimum_randomized,
                 )
             except (SyntaxError, ValueError) as exc:
                 raise AgentRuntimeError(
@@ -1117,9 +1681,15 @@ FROZEN INPUT AND REUSED GENERATION PLAN
             declared_obligations = set(raw_obligations)
             code_obligations = cls._extract_coverage_obligations(name, content)
             if declared_obligations != code_obligations:
+                difference = coverage_obligation_mapping_diff(
+                    declared_obligations, code_obligations
+                )
                 raise AgentRuntimeError(
                     f"Generated test file {name} coverage_obligations must match its "
-                    "module-level COVERAGE_OBLIGATIONS constant"
+                    "module-level COVERAGE_OBLIGATIONS constant; "
+                    f"missing_in_source_constant={difference['missing_in_source_constant']}, "
+                    f"unexpected_in_source_constant={difference['unexpected_in_source_constant']}. "
+                    "Update only the stale side so both preserve the frozen deterministic plan."
                 )
             implemented_obligations.update(declared_obligations)
             test_contents.append(content)
@@ -1135,6 +1705,12 @@ FROZEN INPUT AND REUSED GENERATION PLAN
         operation_errors = validate_operation_coverage(
             context["frozen_architecture"]["architecture_contract"],
             effective_operation_coverage(operation_coverage, operation_plan),
+        )
+        operation_errors.extend(
+            validate_frozen_operation_scope(
+                context["frozen_architecture"]["architecture_contract"],
+                effective_operation_coverage(operation_coverage, operation_plan),
+            )
         )
         if operation_errors:
             raise AgentRuntimeError(
@@ -1172,6 +1748,45 @@ FROZEN INPUT AND REUSED GENERATION PLAN
         required_obligations = {
             str(item["id"]) for item in deterministic_plan["obligations"]
         }
+        # Lifecycle/protocol/operation obligations that the automatic campaign
+        # actually drives are deliberately not assigned to LLM-authored
+        # COVERAGE_OBLIGATIONS bookkeeping -- per operation and, for a shared
+        # protocol channel, only when every operation on it qualifies (see
+        # code_owned_obligations_for_supported_operations's docstring for why
+        # a wrong attribution here fails loudly at simulation time rather
+        # than silently under-covering).
+        supported_operation_names = {
+            name
+            for name, info in automatic_campaign_report["operations"].items()
+            if info.get("known_scope_campaign_supported", info["supported"])
+        }
+        # Wider than supported_operation_names: an operation blocked only on
+        # arithmetic still gets real protocol/lifecycle traffic from
+        # _run_arithmetic_blocked_operation_smoke, so its own channel/
+        # command/status obligations close the same way a fully-supported
+        # operation's do (see code_owned_obligations_for_supported_operations's
+        # docstring). scope=="operation" obligations stay gated on the
+        # narrower set regardless -- only this widens.
+        protocol_lifecycle_ready_names = {
+            name
+            for name, info in automatic_campaign_report["operations"].items()
+            if info["protocol_lifecycle_supported"]
+        }
+        reset_signal = next(
+            (
+                str(item.get("name", ""))
+                for item in context["frozen_architecture"]["interface_contract"].get("signals", [])
+                if isinstance(item, dict) and item.get("role") == "reset"
+            ),
+            None,
+        )
+        code_owned_runtime_obligations = code_owned_obligations_for_supported_operations(
+            deterministic_plan["obligations"],
+            automatic_metadata,
+            supported_operation_names,
+            reset_signal_name=reset_signal,
+            protocol_lifecycle_ready_operations=protocol_lifecycle_ready_names,
+        )
         operation_names = [
             str(item["operation_name"]) for item in operation_coverage
         ]
@@ -1179,34 +1794,44 @@ FROZEN INPUT AND REUSED GENERATION PLAN
             canonicalize_operation_obligation_claim(item, operation_names)
             for item in implemented_obligations
         }
+        implemented_obligations.update(code_owned_runtime_obligations)
         missing_obligations = sorted(required_obligations - implemented_obligations)
         unknown_obligations = sorted(implemented_obligations - required_obligations)
         if missing_obligations or unknown_obligations:
             raise AgentRuntimeError(
                 "Verifier coverage-obligation mapping does not match the deterministic "
-                f"plan; missing={missing_obligations}, unknown={unknown_obligations}"
+                f"plan; missing={missing_obligations}, unknown={unknown_obligations}. "
+                "The test artifact coverage_obligations list and its matching "
+                "module-level COVERAGE_OBLIGATIONS constant are already required to "
+                "be identical: add every missing ID to both and remove every unknown "
+                "ID from both. Do not alter the frozen deterministic plan."
             )
 
-        try:
-            validate_verifier_authored_structure(
-                test_contents,
-                required_obligations,
-                context["frozen_architecture"]["architecture_contract"],
-            )
-        except (SyntaxError, ValueError) as exc:
-            raise AgentRuntimeError(
-                f"Verifier TB review structure is invalid: {exc}"
-            ) from exc
+        if not automatic_campaign_supported:
+            try:
+                validate_verifier_authored_structure(
+                    test_contents,
+                    required_obligations,
+                    context["frozen_architecture"]["architecture_contract"],
+                    context["frozen_architecture"]["interface_contract"],
+                    randomized_transactions_minimum=minimum_randomized,
+                    code_owned_obligations=code_owned_runtime_obligations,
+                )
+            except (SyntaxError, ValueError) as exc:
+                raise AgentRuntimeError(
+                    f"Verifier TB review structure is invalid: {exc}"
+                ) from exc
 
         # Ready/valid correctness is temporal, not a property of Python loop
         # nesting or variable spelling. The generated TB assertion checks the
         # actual sampled valid/payload history during simulation instead.
-        cls._validate_runtime_coverage_instrumentation(test_contents, context)
         cls._validate_cocotb_phase_safety(test_contents)
-        cls._validate_required_signal_coverage(test_contents, context)
-        cls._validate_operation_coverage_sampling(
-            test_contents, operation_coverage,
-        )
+        if not automatic_campaign_supported:
+            cls._validate_runtime_coverage_instrumentation(test_contents, context)
+            cls._validate_required_signal_coverage(test_contents, context)
+            cls._validate_operation_coverage_sampling(
+                test_contents, operation_coverage,
+            )
 
     @staticmethod
     def _validate_python_content(filename: str, content: str, *, cocotb_required: bool) -> None:
@@ -1239,12 +1864,15 @@ FROZEN INPUT AND REUSED GENERATION PLAN
             )
 
         imported_cocotb = False
+        cocotb_module_aliases: set[str] = set()
         local_checker_calls = _local_checker_run_calls(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     root = alias.name.split(".", 1)[0]
                     imported_cocotb = imported_cocotb or root == "cocotb"
+                    if root == "cocotb":
+                        cocotb_module_aliases.add(alias.asname or root)
                     if root in _FORBIDDEN_IMPORT_ROOTS:
                         raise AgentRuntimeError(f"Generated verification file {filename} imports forbidden capability {root}")
             elif isinstance(node, ast.ImportFrom):
@@ -1265,7 +1893,7 @@ FROZEN INPUT AND REUSED GENERATION PLAN
                 if (
                     isinstance(node.func, ast.Attribute)
                     and isinstance(node.func.value, ast.Name)
-                    and node.func.value.id == "cocotb"
+                    and node.func.value.id in cocotb_module_aliases
                     and node.func.attr == "start"
                 ):
                     raise AgentRuntimeError(
@@ -1279,7 +1907,7 @@ FROZEN INPUT AND REUSED GENERATION PLAN
                 isinstance(decorator, ast.Call)
                 and isinstance(decorator.func, ast.Attribute)
                 and isinstance(decorator.func.value, ast.Name)
-                and decorator.func.value.id == "cocotb"
+                and decorator.func.value.id in cocotb_module_aliases
                 and decorator.func.attr == "test"
                 for decorator in node.decorator_list
             )
@@ -1295,37 +1923,10 @@ FROZEN INPUT AND REUSED GENERATION PLAN
     @staticmethod
     def _extract_coverage_obligations(filename: str, content: str) -> set[str]:
         """Read a literal module-level traceability declaration from generated tests."""
-
-        tree = ast.parse(content, filename=filename, mode="exec")
-        declarations: list[ast.AST] = []
-        for node in tree.body:
-            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
-                continue
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            if any(isinstance(target, ast.Name) and target.id == "COVERAGE_OBLIGATIONS" for target in targets):
-                declarations.append(node.value)
-        if len(declarations) != 1:
-            raise AgentRuntimeError(
-                f"Generated test file {filename} must define exactly one module-level "
-                "COVERAGE_OBLIGATIONS literal"
-            )
         try:
-            value = ast.literal_eval(declarations[0])
-        except (ValueError, TypeError) as exc:
-            raise AgentRuntimeError(
-                f"Generated test file {filename} COVERAGE_OBLIGATIONS must be literal"
-            ) from exc
-        if not isinstance(value, (list, tuple, set)) or not all(
-            isinstance(item, str) for item in value
-        ):
-            raise AgentRuntimeError(
-                f"Generated test file {filename} COVERAGE_OBLIGATIONS must contain strings"
-            )
-        if len(value) != len(set(value)):
-            raise AgentRuntimeError(
-                f"Generated test file {filename} COVERAGE_OBLIGATIONS contains duplicates"
-            )
-        return set(value)
+            return extract_literal_coverage_obligations(filename, content)
+        except (SyntaxError, ValueError) as exc:
+            raise AgentRuntimeError(str(exc)) from exc
 
     @staticmethod
     def _validate_runtime_coverage_instrumentation(
@@ -1340,7 +1941,7 @@ FROZEN INPUT AND REUSED GENERATION PLAN
             tree = ast.parse(content, mode="exec")
             imported = any(
                 isinstance(node, ast.ImportFrom)
-                and node.module == "multigent.verifier_tool.coverage.runtime"
+                and node.module == "multigent.verifier_tool"
                 and any(alias.name == "contract_coverage" for alias in node.names)
                 for node in tree.body
             )
@@ -1355,7 +1956,7 @@ FROZEN INPUT AND REUSED GENERATION PLAN
                     isinstance(decorator, ast.Call)
                     and isinstance(decorator.func, ast.Attribute)
                     and isinstance(decorator.func.value, ast.Name)
-                    and decorator.func.value.id == "cocotb"
+                    and decorator.func.value.id in {"cocotb", "_contract_cocotb"}
                     and decorator.func.attr == "test"
                     )
                 ]
@@ -1372,15 +1973,27 @@ FROZEN INPUT AND REUSED GENERATION PLAN
                         f"Cocotb test {node.name} must declare timeout_time and "
                         "timeout_unit in @cocotb.test()"
                     )
-                covered = any(
+                coverage_decorators = [
+                    decorator
+                    for decorator in node.decorator_list
+                    if (
                     isinstance(decorator, ast.Call)
                     and isinstance(decorator.func, ast.Name)
                     and decorator.func.id == "contract_coverage"
-                    for decorator in node.decorator_list
-                )
-                if not covered:
+                    )
+                ]
+                if not coverage_decorators:
                     raise AgentRuntimeError(
                         f"Cocotb test {node.name} must use @contract_coverage()"
+                    )
+                if len(coverage_decorators) != 1 or any(
+                    decorator.args or decorator.keywords
+                    for decorator in coverage_decorators
+                ):
+                    raise AgentRuntimeError(
+                        f"Cocotb test {node.name} must call @contract_coverage() "
+                        "with no positional or keyword arguments; coverage obligations "
+                        "are installed by the deterministic tool"
                     )
             if not cocotb_tests:
                 raise AgentRuntimeError(
@@ -1389,7 +2002,7 @@ FROZEN INPUT AND REUSED GENERATION PLAN
             if not imported:
                 raise AgentRuntimeError(
                     "Generated cocotb tests must import contract_coverage from "
-                    "multigent.verifier_tool.coverage.runtime"
+                    "multigent.verifier_tool"
                 )
             direct_clock_drives = {
                 target.value.attr
@@ -1422,7 +2035,6 @@ FROZEN INPUT AND REUSED GENERATION PLAN
         required_operations = {str(item.get("operation_name")) for item in operation_coverage}
         if not required_operations:
             return
-        imported = False
         recorder_calls = 0
         raw_recorder_calls = 0
         checked_operations: set[str] = set()
@@ -1430,12 +2042,6 @@ FROZEN INPUT AND REUSED GENERATION PLAN
         unlinked_samples = 0
         for content in test_contents:
             tree = ast.parse(content, mode="exec")
-            imported = imported or any(
-                isinstance(node, ast.ImportFrom)
-                and node.module == "multigent.verifier_tool.coverage.runtime"
-                and any(alias.name == "sample_operation" for alias in node.names)
-                for node in tree.body
-            )
             for node in ast.walk(tree):
                 if (
                     isinstance(node, ast.Call)
@@ -1487,11 +2093,6 @@ FROZEN INPUT AND REUSED GENERATION PLAN
                     unlinked_samples += 1
                 operation_name = node.args[0].value
                 sampled.add(operation_name)
-        if not imported:
-            raise AgentRuntimeError(
-                "Recognized accelerator operations require sample_operation import from "
-                "multigent.verifier_tool.coverage.runtime"
-            )
         if raw_recorder_calls:
             raise AgentRuntimeError(
                 "Generated operation tests must use the code-inserted "
@@ -1514,11 +2115,6 @@ FROZEN INPUT AND REUSED GENERATION PLAN
             raise AgentRuntimeError(
                 "Catalog operation checks must name the exact contract operations; "
                 f"missing={missing_checks}, unknown={unknown_checks}"
-            )
-        missing = sorted(required_operations - sampled)
-        if missing:
-            raise AgentRuntimeError(
-                f"Generated tests do not sample recognized operations: {missing}"
             )
 
     @staticmethod
@@ -1571,7 +2167,10 @@ FROZEN INPUT AND REUSED GENERATION PLAN
                     raise AgentRuntimeError(
                         f"Generated cocotb coroutine {function.name} both drives DUT "
                         "signals and awaits ReadOnly(); separate the active driver from "
-                        "ReadOnly monitoring to avoid writes during the ReadOnly phase"
+                        "ReadOnly monitoring to avoid writes during the ReadOnly phase. "
+                        "For a post-RisingEdge sample that must remain in this driving "
+                        "coroutine, replace ReadOnly() with a small Timer before reading; "
+                        "do not remove the settling wait and do not add another ReadOnly()"
                     )
 
     @staticmethod
@@ -1699,6 +2298,188 @@ FROZEN INPUT AND REUSED GENERATION PLAN
             + render_operation_assertion_catalog()
         )
         sampling_catalog = render_operation_sampling_catalog()
+        operation_metadata = build_architect_operation_metadata(
+            context["frozen_architecture"]["architecture_contract"],
+            context["frozen_architecture"]["interface_contract"],
+        )
+        unrepresentable_operations = list(operation_metadata.get("unrepresentable_operations", []))
+        campaign_support = automatic_campaign_support(
+            operation_metadata,
+            context["frozen_architecture"]["architecture_contract"],
+        )
+        # synthesize_code_owned_operation_coverage is per-concept, not
+        # per-operation: called with no prior LLM specs, it emits
+        # deterministic coverpoints for exactly the concepts
+        # supported_code_owned_concepts already says are code-owned (which
+        # is an arithmetic/classifier question, independent of whether this
+        # operation's protocol or lifecycle also qualifies) and silently
+        # omits everything else -- safe to compute unconditionally, in the
+        # fully-supported case and the partial one alike, since a concept it
+        # cannot yet own just does not appear in the seed.
+        code_owned_coverage_seed = yaml.safe_dump(
+            synthesize_code_owned_operation_coverage(
+                [],
+                context["frozen_architecture"]["architecture_contract"],
+                operation_metadata,
+            ),
+            sort_keys=False,
+            default_flow_style=False,
+        )
+        if campaign_support["supported"]:
+            automatic_ownership_text = f"""
+CODE-OWNED AUTOMATIC CAMPAIGN (OVERRIDES GENERAL MANUAL-TB RULES BELOW)
+---------------------------------------------------------------------
+- This frozen contract is fully supported by verifier_tool. Python code owns the
+  known operation golden model, directed and randomized vectors, ready/valid
+  traffic, exact short/long input and output stalls, command legality, reset at
+  every external job phase, abort/recovery, lifecycle assertions, and runtime
+  coverage sampling. The pipeline appends the real executable cocotb test after
+  your structured response.
+- Do not duplicate that work in LLM source. Do not write another golden model,
+  ready/valid driver, output collector, reset sequence, illegal-command test,
+  backpressure loop, directed-vector loop, randomized loop, operation sampler,
+  lifecycle checker, or manual coverage-intent ledger for the known scope.
+- The response schema still requires one reference file and one test file. Emit a
+  compact reference ownership marker and a compact test host containing exactly a
+  module-level literal ``COVERAGE_OBLIGATIONS = set()``. No manual ``@cocotb.test``
+  is needed: code installs the executable campaign before source validation.
+- The response schema also still requires ``operation_coverage``. Copy the
+  deterministic seed below for clarity. Code rebuilds all known points from the
+  frozen feature list, so these declarations are not an LLM decision. Add source,
+  observers, stimulus, or coverage only if the frozen Architect contract contains
+  a genuinely non-code-owned feature; this contract contains none.
+- Set verification_plan.randomized_test_count to at least the policy minimum and
+  list the compact test host in every selected regression group. The generated
+  runtime, not this declared number, proves that the randomized jobs executed.
+- Later general rules about manually authored stimulus, bindings, checked-stimulus
+  calls, status-signal references, and per-test ``@contract_coverage`` decorators
+  apply only when this section says a feature is LLM-owned.
+
+DETERMINISTIC CODE-OWNED OPERATION_COVERAGE SEED
+{code_owned_coverage_seed}
+"""
+        elif campaign_support["any_operation_supported"]:
+            supported_ops = sorted(
+                name for name, info in campaign_support["operations"].items() if info["supported"]
+            )
+            arithmetic_only_blocked_ops = sorted(
+                name for name, info in campaign_support["operations"].items()
+                if not info["supported"]
+                and info["protocol_lifecycle_supported"]
+                and info["arithmetic_reasons"]
+                and not info.get("lifecycle_extension_fields")
+            )
+            contract_extension_ops = sorted(
+                name for name, info in campaign_support["operations"].items()
+                if info.get("lifecycle_extension_fields")
+                and info.get("known_scope_campaign_supported")
+            )
+            fully_blocked_lines = "\n".join(
+                f"  - {name}: {'; '.join(info['reasons'])}"
+                for name, info in sorted(campaign_support["operations"].items())
+                if not info["supported"]
+                and not info["protocol_lifecycle_supported"]
+                # Operations that did not compile have their own section below.
+                and not info.get("compile_blocked")
+            )
+            arithmetic_only_blocked_lines = "\n".join(
+                f"  - {name}: {'; '.join(info['arithmetic_reasons'])}"
+                for name, info in sorted(campaign_support["operations"].items())
+                if name in arithmetic_only_blocked_ops
+            )
+            automatic_ownership_text = f"""
+LLM-EXTENSION CAMPAIGN (PARTIAL -- PER-OPERATION BREAKDOWN BELOW IS EXACT)
+--------------------------------------------------------------------------
+- This contract has a mix of operations across three buckets, not just two.
+  Use this exact breakdown; do not re-derive it yourself by re-reading the
+  contract.
+- Fully code-owned (do not write driving code, a golden model, a stimulus
+  loop, or coverage bookkeeping for these -- the generated campaign already
+  drives, checks, and samples coverage for them):
+  {supported_ops}
+- Arithmetic-blocked only -- protocol and lifecycle are still fully
+  code-owned for these (reasons below name only ``operation_profile_not_executable``
+  or ``llm_extension_features``, never protocol/lifecycle/shape): the
+  generated campaign already drives real traffic through these operations'
+  own channels and command/status signals and samples their
+  channel/command/status coverage, exactly like a fully code-owned
+  operation's -- do not write a protocol/lifecycle driver or declare their
+  channel/command/status obligations. What you *do* still own for these:
+  the golden model/correctness check itself (still reuse
+  ``_contract_generate_operation_stimulus``/
+  ``_contract_generate_random_operation_stimuli`` for stimulus and expected
+  values if useful, but nothing here checks them automatically) and this
+  operation's own arithmetic-concept coverage
+  (``operation_coverage``/``COVERAGE_OBLIGATIONS`` for its ``scope ==
+  "operation"`` obligations specifically):
+{arithmetic_only_blocked_lines or "  (none)"}
+- Contract-local lifecycle extension only -- the generated campaign preserves
+  and executes every safe known sibling feature for these operations. Implement
+  only the listed missing lifecycle policy fields through the exact extension
+  worklist and feature_extensions bundle below; do not replace their existing
+  protocol driver, arithmetic golden model, or unrelated lifecycle checks:
+  {[(name, campaign_support['operations'][name]['lifecycle_extension_fields']) for name in contract_extension_ops] or '(none)'}
+- Fully blocked -- protocol, lifecycle, or shape itself is the problem, so
+  nothing here is automatic, including driving: own everything for these,
+  exactly as the general manual-TB rules below describe:
+{fully_blocked_lines or "  (none)"}
+- ``operation_coverage`` for the code-owned concepts above (both the fully
+  code-owned bucket and the arithmetic-only-blocked bucket's non-arithmetic
+  obligations) is already synthesized for you -- copy the seed below; it
+  silently omits any operation or concept this tool cannot yet own, so it
+  never conflicts with what you add yourself. Do not hand-author
+  ``operation_coverage`` entries duplicating what the seed already gives
+  you, and do not declare the omitted ones in a test file's
+  ``COVERAGE_OBLIGATIONS`` constant either -- the deterministic plan and
+  this breakdown are the only source of truth for which IDs still need your
+  bookkeeping.
+
+DETERMINISTIC CODE-OWNED OPERATION_COVERAGE SEED (for the operations listed as fully code-owned above only)
+{code_owned_coverage_seed}
+"""
+        else:
+            automatic_ownership_text = """
+LLM-EXTENSION CAMPAIGN
+----------------------
+The frozen operation set is not completely executable by verifier_tool. Follow
+the general manual-TB rules below only for the unsupported operation/features;
+reuse every generated protocol/assertion/coverage helper that does apply.
+"""
+        if unrepresentable_operations:
+            unrepresentable_lines = "\n".join(
+                f"  - {item['name']} [{item.get('reason_code', 'unclassified')}; "
+                f"{item.get('category', 'unclassified')}; owner={item.get('owner', 'unknown')}]: "
+                f"{item['reason']}\n      resolution: {item.get('resolution_hint', 'n/a')}\n"
+                f"      required lifecycle/operation features it blocks: "
+                f"{', '.join(item.get('affected_feature_ids', [])) or 'none listed'}"
+                for item in unrepresentable_operations
+            )
+            automatic_ownership_text += f"""
+OPERATIONS THAT COULD NOT BE COMPILED (DISTINCT FROM "FULLY BLOCKED" ABOVE)
+-------------------------------------------------------------------------------
+- These operations could not be compiled into architect_operation_metadata, so
+  nothing else in this section applies to them, even if it says "fully supported"
+  above: no code-owned driver, checker, or coverage sampler exists for them.
+- Each entry names its defect (reason_code), its category and who owns the fix.
+  contract_error: the frozen contract is at fault and only the Architect can correct
+  it -- you cannot fix it and must not work around it. tool_capability: the contract is
+  valid but verifier_tool has no automatic path for it (an engineer adds support to
+  verifier_tool; you never invent a lifecycle policy or protocol behavior on the
+  tool's behalf).
+- Their contract-required lifecycle obligations REMAIN in the deterministic plan
+  (the operation.<name>.* IDs). They are not code-owned, so the deterministic
+  comparison expects them in COVERAGE_OBLIGATIONS, and they are required: a bin nothing
+  hits fails the run, reported under the blocker named in each entry. Their bins are
+  sampled only by tool-owned monitors for compiled operations and no public API
+  records hits for them from Verifier-authored code, so do not fabricate coverage or
+  edit tool-owned code to close them; list the gap in known_verification_gaps.
+- Author everything else for these operations by hand -- golden model, protocol
+  driver, lifecycle checks -- exactly as the general manual-TB rules below describe,
+  with zero code-owned help. Do not assume any generated protocol/lifecycle/coverage
+  helper applies to these operations' own channels or status signals just because it
+  applies to other operations sharing the same interface.
+{unrepresentable_lines}
+"""
         policy = context["verification_policy"]
         interface_signals = context["frozen_architecture"]["interface_contract"].get(
             "signals", []
@@ -1719,7 +2500,20 @@ FROZEN INPUT AND REUSED GENERATION PLAN
                 for item in context["frozen_architecture"]["module_manifest"]["modules"]
             )
         ) or "none"
+        extension_authoring = render_extension_authoring_guide()
+        extension_worklist = render_requested_extension_worklist(
+            context["frozen_architecture"]["architecture_contract"],
+            context["frozen_architecture"]["interface_contract"],
+        )
         return f"""Create an independent executable verification environment for the frozen hardware contract.
+
+{automatic_ownership_text}
+
+{extension_authoring}
+
+EXACT CONTRACT-LOCAL EXTENSION WORKLIST
+---------------------------------------
+{extension_worklist}
 
 FIRST-CANDIDATE COMPLETENESS CHECK
 ----------------------------------
@@ -1751,7 +2545,8 @@ FIRST-CANDIDATE COMPLETENESS CHECK
   legality bound from the frozen default parameter values for this regression;
   do not silently reuse a GEMM-like fixed 4-bit nibble/8-bound convention when
   the selected contract has different parameter defaults.
-- Emit OPERATION_SAMPLING_BINDINGS as an inert module-level literal list (or an
+- For unknown/novel points not handled by architect_operation_metadata, emit
+  OPERATION_SAMPLING_BINDINGS as an inert module-level literal list (or an
   alias to inert literal containers). Spell out each entry. Do not build that
   list with a for-comprehension, function call, mutation, or runtime loop, even
   when the iterable happens to be a fixed tuple; the safe source extractor does
@@ -1935,7 +2730,7 @@ OUTPUT RULES
     byte-for-byte: ``operation.`` is a required prefix and must never be shortened
     to ``op.`` or otherwise paraphrased.
 11. Use only contract-declared top-level signals and preserve verifier independence.
-12. Import ``contract_coverage`` from ``multigent.verifier_tool.coverage.runtime`` and decorate
+12. Import ``contract_coverage`` from ``multigent.verifier_tool`` and decorate
     every cocotb test with ``@contract_coverage()`` directly below
     ``@cocotb.test()``. Code appends one immutable, visibly marked block to each
     saved TB after your response. It snapshots every declared interface signal once,
@@ -1987,8 +2782,8 @@ OUTPUT RULES
     Before returning source, ensure each exact required stall-duration bin has a
     directed witness, including a one-cycle stall; randomized ready deassertion is
     not proof that valid overlapped it for the required duration.
-14. Import only ``sample_operation`` from ``multigent.verifier_tool.coverage.runtime``; do not
-    import or call raw ``record_stimulus``. After each real accelerator job has
+14. Do not import or call ``sample_operation`` or raw ``record_stimulus``; the
+    generated wrapper owns both ledger operations. After each real accelerator job has
     completed, and before moving to the next job, call the helper inserted by code:
     ``stimulus_id = _contract_record_checked_stimulus(
     "directed" | "randomized",
@@ -2003,10 +2798,24 @@ OUTPUT RULES
     performs the taxonomy-feature comparison before it records anything. The three
     mappings must be JSON-serializable and contain concrete values used or observed
     for that checked job; do not store only category labels, seeds, or coverage
-    fields. Then call
-    ``sample_operation(<exact contract operation name>, {{}},
-    "directed" | "randomized", stimulus_id)`` for every
-    participating operation. The operation names tuple and case label must be
+    fields. For functional jobs, key accepted operands by the exact ``data_object``
+    names shown in ``architect_operation_metadata`` (legacy short aliases are only
+    a compatibility path). For a code-owned known operation, obtain numeric vectors
+    from ``_contract_generate_operation_stimulus(operation_name, concept, bin_name)``
+    and randomized jobs from
+    ``_contract_generate_random_operation_stimuli(operation_name, count, seed=...)``.
+    These return canonical ``stimulus`` and ``expected`` mappings already checked
+    against the same classifier; drive their stimulus through the real protocol,
+    independently capture DUT outputs, and pass literal top-level dicts whose values
+    come from those mappings into the checked-stimulus call. Do not copy or rewrite
+    the GEMM arithmetic merely to choose known-feature vectors. A reported
+    ``unreachable`` bin is not a coverage target; ``metadata_missing`` requires a
+    contract correction and ``llm_extension_required`` is the explicit fallback for
+    novel semantics. The inserted helper validates transaction completeness,
+    assembles the canonical job, computes known-feature evidence, and links every
+    participating operation to the checked stimulus. Do not import or call
+    ``sample_operation`` or raw ``record_stimulus`` yourself. The operation names
+    tuple and case label must be
     literals in source; mapping values and the stimulus-kind value may be runtime
     expressions. The coverage runtime accepts only ``directed`` or
     ``randomized`` labels. The kind used by a sample must match its recorded
@@ -2014,14 +2823,12 @@ OUTPUT RULES
     records, not from the number of operation hooks (one composed job can have many
     operation hooks). Execute at least the policy's randomized transaction minimum.
     Do not emit synthetic coverage-only samples or record a stimulus that did not
-    pass the code-owned comparison. ``sample_operation`` only associates the checked job
-    with its operation; it cannot hit coverage. Every operation point is sampled
+    pass the code-owned comparison. Every operation point is sampled
     by the same clock observer through reusable or custom observation code; see rule 18.
     A composed accelerator job may contain several contract operations without
     exposing a separate handshake for each internal stage. In that case, the
-    accepted external job is the real transaction for all of those operations:
-    after the complete job output has passed its independent oracle, call
-    ``sample_operation`` once for each participating exact operation name with {{}}.
+    accepted external job is the real transaction for all of those operations;
+    list every participating exact operation name in the helper's literal tuple.
     Absence of internal stage handshakes is not
     an architecture conflict and does not require new top-level signals.
 15. When ``coverage_closure_review`` is present, use its ``covered_bins``,
@@ -2053,8 +2860,13 @@ OUTPUT RULES
     external semantics may still return ARCHITECTURE_CONFLICT with exact evidence;
     missing observer association or coverage helper structure is not external
     semantics and must stay in Verifier repair.
-18. For EVERY operation coverage point, declare literal module-level
-    ``OPERATION_SAMPLING_BINDINGS`` connection metadata. Do not implement its own
+18. ``architect_operation_metadata`` identifies known concepts whose adapter,
+    canonical-job assembler, and classifier are owned by verifier_tool. Do not
+    declare ``OPERATION_SAMPLING_BINDINGS`` or custom observers for those concepts;
+    the checked-stimulus helper supplies their evidence after the central golden
+    comparison passes. For every remaining unknown or novel operation coverage
+    point, declare literal module-level ``OPERATION_SAMPLING_BINDINGS`` connection
+    metadata. Do not implement its own
     clock/task observer or call a sampler for these points: @contract_coverage starts the
     trusted observer. Each binding references an existing operation coverpoint;
     reusable template generates effective bins; a custom observer retains your
@@ -2086,9 +2898,15 @@ OUTPUT RULES
     covers an input scenario, never asserts correct result/flag handling.
     boolean_mode/discrete_mode use legal_values containing applicable contract
     encodings; do not invent a disabled mode when only enabled is possible.
-    channel_stall needs channel but no fields: the observer measures actual stalls
-    through release, not planned ready delays. For any feature/encoding without an
-    appropriate reusable template, use template="custom", observer="observe_name",
+    channel_stall needs a top-level "channel" key and no "fields" or "observer" key:
+    {{"operation": "<exact operation name>", "point": "<local coverpoint id>",
+    "template": "channel_stall", "channel": "<declared channel>"}}. There is no
+    per-binding "observer" key for this template, as a string or as an object: the
+    runtime's own trusted stall tracker measures actual stalls through release
+    directly from the named channel, not planned ready delays and not a
+    Verifier-supplied function. Only template="custom" ever takes an "observer" key.
+    For any feature/encoding without an appropriate reusable template, use
+    template="custom", observer="observe_name",
     event/channel/guards and fields describing actual DUT observations. Implement
     a local synchronous def observe_name(values, state) with exactly two arguments,
     no decorators/defaults, no awaits, no drivers and no hit/coverage API calls.
@@ -2106,8 +2924,7 @@ OUTPUT RULES
     a shared state between points or a contract-visible job-ID signal.
     Your custom value classification and bins remain generated and definition-reviewed.
     New features/families require no runtime registry edit and are not prohibited.
-    sample_operation remains required after complete independent output checking
-    solely for the job ledger. Pass {{}}: supplied values are ignored for ALL points.
+    The generated checked-stimulus wrapper owns operation-ledger linkage.
     Definitions/connection metadata are reviewed before simulation; actual hits
     remain a simulation outcome. Catalog operation assertions are pipeline-owned;
     only taxonomy-missing feature assertions are Verifier-authored.

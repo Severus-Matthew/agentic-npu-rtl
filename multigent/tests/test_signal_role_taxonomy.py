@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from multigent.verifier_tool.role_pool.signal_roles import (
+from multigent.verifier_tool.pool.role_pool.signal_roles import (
     SIGNAL_ROLE_TAXONOMY_PATH,
     load_signal_role_taxonomy,
     signals_with_coverage_tags,
     signals_with_roles,
     validate_interface_signal_roles,
 )
-from multigent.verifier_tool.role_pool.interface_semantics import (
+from multigent.verifier_tool.pool.role_pool.interface_semantics import (
     derive_interface_coverage_seed,
     load_interface_protocol_taxonomy,
     load_interface_semantic_taxonomy,
@@ -18,7 +18,6 @@ from multigent.verifier_tool.role_pool.interface_semantics import (
 def test_signal_role_taxonomy_is_external_and_loadable() -> None:
     assert SIGNAL_ROLE_TAXONOMY_PATH.suffix == ".yaml"
     taxonomy = load_signal_role_taxonomy()
-    assert taxonomy["taxonomy"]["scope"]
     assert {"clock", "reset", "valid", "ready", "payload", "completion", "error"} <= set(
         taxonomy["roles"]
     )
@@ -91,13 +90,13 @@ def test_semantic_and_protocol_taxonomies_cover_cpu_facing_interfaces() -> None:
     classes = load_interface_semantic_taxonomy()["semantic_classes"]
     profiles = load_interface_protocol_taxonomy()["protocol_profiles"]
     assert {"address", "byte_enable", "length", "response_code", "protection"} <= set(classes)
-    assert {"axi4", "axi4_lite", "apb", "tilelink"} <= set(profiles)
+    assert {"custom", "ready_valid", "axi4", "axi4_lite", "axi4_stream", "custom_mmio"} == set(profiles)
 
 
 def test_payload_requires_semantic_class() -> None:
     interface = {
         "channels": [
-            {"name": "memory_request", "direction": "input", "protocol_profile": "axi4"}
+            {"name": "memory_request", "direction": "input", "protocol_profile": "ready_valid"}
         ],
         "signals": [
             {
@@ -115,6 +114,5 @@ def test_payload_requires_semantic_class() -> None:
     assert validate_interface_semantics(interface) == []
 
     seed = derive_interface_coverage_seed(interface)
-    assert "4k_boundary" in seed["channels"]["memory_request"]
     assert "alignment" in seed["signals"]["not_named_address"]
     assert "address_boundary" in seed["signals"]["not_named_address"]

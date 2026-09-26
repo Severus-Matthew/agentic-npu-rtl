@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Architect-declared operation arithmetic",
+  "description": "Select a supported exact arithmetic profile, or explicitly delegate unsupported semantics. Type and dimension names reference the existing architecture contract.",
+  "anyOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classifier_profile", "product_data_type", "accumulator_data_type", "accumulator_initialization", "reduction_dimensions", "reduction_order", "reduction_conversion", "post_operations", "post_output", "bias_conversion", "result_data_type", "result_conversion"],
+      "properties": {
+        "classifier_profile": {"type": "string", "enum": ["integer_matrix_multiply"]},
+        "product_data_type": {"type": "string", "minLength": 1, "description": "Declared integer data type wide enough for an exact product."},
+        "accumulator_data_type": {"type": "string", "minLength": 1},
+        "accumulator_initialization": {"type": "integer", "enum": [0]},
+        "reduction_dimensions": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 1},
+        "reduction_order": {"type": "string", "enum": ["increasing_declared_reduction_coordinate"]},
+        "reduction_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement_after_each_add"]},
+        "post_operations": {
+          "type": "object",
+          "description": "A DAG of named post-reduction stages, not a fixed order. Each stage names exactly one predecessor via depends_on -- either the literal string 'accumulator' or another stage's key -- so execution order is derived by following depends_on edges back from post_output, not by object-key order. Empty object means no post-processing at all (post_output must then be 'accumulator'). The current integer GEMM backend supports at most one each of bias_add, wrap, relu, and affine_quantize, in any order the depends_on chain expresses, plus any number of llm_defined stages (each with its own closed-grammar formula -- see formula.py) for a post-op this tool has no other built-in kind for.",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "object", "additionalProperties": false,
+                "required": ["kind", "depends_on", "data_object", "broadcast_dimensions"],
+                "properties": {
+                  "kind": {"type": "string", "enum": ["bias_add"]},
+                  "depends_on": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 1},
+                  "data_object": {"type": "string", "minLength": 1},
+                  "broadcast_dimensions": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 1}
+                }
+              },
+              {
+                "type": "object", "additionalProperties": false,
+                "required": ["kind", "depends_on", "data_type"],
+                "properties": {
+                  "kind": {"type": "string", "enum": ["wrap"]},
+                  "depends_on": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 1},
+                  "data_type": {"type": "string", "minLength": 1}
+                }
+              },
+              {
+                "type": "object", "additionalProperties": false,
+                "required": ["kind", "depends_on"],
+                "properties": {
+                  "kind": {"type": "string", "enum": ["relu"]},
+                  "depends_on": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 1}
+                }
+              },
+              {
+                "type": "object", "additionalProperties": false,
+                "required": ["kind", "depends_on", "scale_multiplier", "scale_shift", "zero_point", "data_type", "rounding", "saturation", "granularity"],
+                "properties": {
+                  "kind": {"type": "string", "enum": ["affine_quantize"]},
+                  "depends_on": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 1},
+                  "scale_multiplier": {"type": "integer", "minimum": 1, "maximum": 2147483647, "description": "Positive numerator of the fixed-point affine scale."},
+                  "scale_shift": {"type": "integer", "minimum": 0, "maximum": 62, "description": "Power-of-two denominator: effective scale is scale_multiplier / 2^scale_shift."},
+                  "zero_point": {"type": "integer"},
+                  "data_type": {"type": "string", "minLength": 1},
+                  "rounding": {"type": "string", "enum": ["nearest_ties_to_even"]},
+                  "saturation": {"type": "string", "enum": ["clamp"]},
+                  "granularity": {"type": "string", "enum": ["per_tensor"]}
+                }
+              },
+              {
+                "type": "object", "additionalProperties": false,
+                "required": ["kind", "depends_on", "formula"],
+                "properties": {
+                  "kind": {"type": "string", "enum": ["llm_defined"]},
+                  "depends_on": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 1},
+                  "formula": {
+                    "type": "string", "minLength": 1,
+                    "description": "A closed-grammar expression over the single free variable 'value' (the running scalar entering this stage): integer literals, + - * and unary -, comparisons (< <= > >= == !=), and calls to min/max (2 args), abs (1 arg), clip(x, lo, hi) (3 args). No division, modulo, bitwise ops, exponentiation, attribute access, subscripting, other names, or other calls. See pool/operation_metadata/formula.py for the exact grammar and its rationale."
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "post_output": {
+          "type": "string", "minLength": 1,
+          "description": "The stage (key in post_operations) or the literal 'accumulator' whose output feeds result_conversion."
+        },
+        "bias_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement_after_add"]},
+        "result_data_type": {"type": "string", "minLength": 1},
+        "result_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement"]}
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["classifier_profile", "reason"],
+      "properties": {
+        "classifier_profile": {"type": "string", "enum": ["llm_extension"]},
+        "reason": {"type": "string", "minLength": 1, "description": "Name the unsupported mathematical behavior. Exact semantics remain in operations[].semantics; no code-owned arithmetic is inferred for this profile."},
+        "extension_request": {"type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$", "description": "Optional exact link to the operation-domain verification_extensions request that owns this unsupported arithmetic. Omitted only for legacy coarse llm_extension contracts."}
+      }
+    }
+  ]
+}

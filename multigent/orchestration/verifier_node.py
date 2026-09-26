@@ -56,11 +56,13 @@ def make_verifier_node(
             "verification_context",
         ) if key in state}
         context = state.get("verification_context")
-        semantic_review = (
-            context.get("semantic_validation_review")
-            if isinstance(context, Mapping)
-            else None
-        )
+        semantic_review = None
+        if isinstance(context, Mapping):
+            semantic_review = (
+                context.get("deterministic_validation_review")
+                or context.get("semantic_validation_review")
+                or context.get("assertion_definition_review")
+            )
         try:
             update = runtime.run_from_state(state)
         except AgentRuntimeError as exc:
@@ -102,7 +104,9 @@ def make_verifier_node(
         }
         if semantic_review:
             history_entry["semantic_retry_error"] = str(
-                semantic_review.get("validator_error", "")
+                semantic_review.get("validator_error")
+                or semantic_review.get("patch_validation_error")
+                or semantic_review.get("findings", "")
             )
 
         return {

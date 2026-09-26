@@ -31,7 +31,7 @@ def generic_fir_context() -> dict:
                         "name": "filter",
                         "kind": "FIR",
                         "coverage_family": "fir",
-                        "coverage_family_source": "catalog",
+                        "coverage_family_source": "novel",
                         "features": [
                             "tap_count",
                             "stream_length",
@@ -41,6 +41,14 @@ def generic_fir_context() -> dict:
                         ],
                         "feature_extensions": [],
                         "semantics": "weighted sum of current and prior samples",
+                        "arithmetic": {"classifier_profile": "llm_extension", "reason": "FIR history and coefficients need an explicit LLM implementation"},
+                        "lifecycle_policy": {
+                            "job_acceptance": "valid_ready_handshake", "job_overlap": "single_inflight",
+                            "busy_behavior": "tracks_active_job", "completion_style": "pulse",
+                            "completion_timing": "next_cycle_after_retirement",
+                            "illegal_command_behavior": "error_without_start", "error_style": "pulse",
+                            "error_timing": "next_cycle_after_error_event", "reset_behavior": "abort_inflight",
+                        },
                     }
                 ],
                 "data_types": [
@@ -155,7 +163,25 @@ def test_verifier_prompt_does_not_force_unreachable_catalog_starter_bins() -> No
 
 def verification_ready_result() -> dict:
     reference = """def wrap_signed(value: int, bits: int) -> int:\n    mask = (1 << bits) - 1\n    value &= mask\n    sign = 1 << (bits - 1)\n    return value - (1 << bits) if value & sign else value\n"""
-    test = """import cocotb\nfrom multigent.verifier_tool.coverage.runtime import contract_coverage, sample_operation\n\nCOVERAGE_OBLIGATIONS = {\"signal.rst.reset_behavior\", \"operation.filter.tap_count\", \"operation.filter.stream_length\", \"operation.filter.coefficient_values\", \"operation.filter.sample_values\", \"operation.filter.numeric_behavior\"}\n\n# === STIMULUS AND COVERAGE INTENT ===\nSTIMULUS_COVERAGE_INTENTS = [{\"label\": \"mixed\", \"targets\": [\"signal.rst.reset_behavior\", \"operation.filter.tap_count\", \"operation.filter.stream_length\", \"operation.filter.coefficient_values\", \"operation.filter.sample_values\", \"operation.filter.numeric_behavior\"]}]\n\n# === LLM-GENERATED OPERATION ASSERTIONS ===\n@cocotb.test(timeout_time=1, timeout_unit=\"ms\")\n@contract_coverage()\nasync def test_contract_smoke(dut):\n    # LLM-GENERATED OPERATION ASSERTION [filter.interface_clock]\n    assert hasattr(dut, \"clk\"), \"feature=filter.interface_clock expected=clk observed=missing signal=clk\"\n    # LLM-GENERATED OPERATION ASSERTION [filter.interface_reset]\n    assert hasattr(dut, \"rst\"), \"feature=filter.interface_reset expected=rst observed=missing signal=rst\"\n    stimulus_id = _contract_record_checked_stimulus(\"randomized\", {\"samples\": [1, 2, 3, 4], \"coefficients\": [1, 1, 1, 1]}, {\"result\": [1, 3, 6, 10]}, {\"result\": [1, 3, 6, 10]}, operations=(\"filter\",), label=\"mixed\")\n    sample_operation(\"filter\", {}, \"randomized\", stimulus_id)\n"""
+    test = """import cocotb\nfrom multigent.verifier_tool import contract_coverage, sample_operation\n\nCOVERAGE_OBLIGATIONS = {\"signal.rst.reset_behavior\", \"operation.filter.tap_count\", \"operation.filter.stream_length\", \"operation.filter.coefficient_values\", \"operation.filter.sample_values\", \"operation.filter.numeric_behavior\"}\n\n# === STIMULUS AND COVERAGE INTENT ===\nSTIMULUS_COVERAGE_INTENTS = [{\"label\": \"mixed\", \"targets\": [\"signal.rst.reset_behavior\", \"operation.filter.tap_count\", \"operation.filter.stream_length\", \"operation.filter.coefficient_values\", \"operation.filter.sample_values\", \"operation.filter.numeric_behavior\"]}]\n\n# === LLM-GENERATED OPERATION ASSERTIONS ===\n@cocotb.test(timeout_time=1, timeout_unit=\"ms\")\n@contract_coverage()\nasync def test_contract_smoke(dut):\n    # LLM-GENERATED OPERATION ASSERTION [filter.interface_clock]\n    assert hasattr(dut, \"clk\"), \"feature=filter.interface_clock expected=clk observed=missing signal=clk\"\n    # LLM-GENERATED OPERATION ASSERTION [filter.interface_reset]\n    assert hasattr(dut, \"rst\"), \"feature=filter.interface_reset expected=rst observed=missing signal=rst\"\n    stimulus_id = _contract_record_checked_stimulus(\"randomized\", {\"samples\": [1, 2, 3, 4], \"coefficients\": [1, 1, 1, 1]}, {\"result\": [1, 3, 6, 10]}, {\"result\": [1, 3, 6, 10]}, operations=(\"filter\",), label=\"mixed\")\n    sample_operation(\"filter\", {}, \"randomized\", stimulus_id)\n"""
+    test = test.replace(
+        '{"result": [1, 3, 6, 10]}, {"result": [1, 3, 6, 10]}',
+        '{"result": [1, 3, 6, 10]}, {"result": observed_result}',
+    )
+    # FIR is a novel family now: each asserted feature belongs to the
+    # Verifier-authored extension rather than the code-owned GEMM catalog.
+    extension_assertions = "".join(
+        f"    # LLM-GENERATED OPERATION ASSERTION [operation.filter.{feature}]\n"
+        "    assert observed_result == [1, 3, 6, 10]\n"
+        for feature in (
+            "tap_count", "stream_length", "coefficient_values",
+            "sample_values", "numeric_behavior",
+        )
+    )
+    test = test.replace(
+        "    stimulus_id = _contract_record_checked_stimulus(",
+        extension_assertions + "    stimulus_id = _contract_record_checked_stimulus(",
+    )
     bindings = []
     for identity, fields in (("tap_count", {"cfg": {"signal": "cfg"}}),
                              ("stream_length", {"cfg": {"signal": "cfg"}}),
@@ -239,7 +265,7 @@ def observe_numeric_behavior(values, state):
 
 
 def test_operation_sampling_allows_runtime_stimulus_kind_variable() -> None:
-    content = """from multigent.verifier_tool.coverage.runtime import sample_operation
+    content = """from multigent.verifier_tool import sample_operation
 def record(kind):
     stimulus_id = _contract_record_checked_stimulus(kind, {"x": 1}, {"y": 1}, {"y": 1}, operations=("filter",), label="case")
     sample_operation("filter", {"tap_count": 4}, kind, stimulus_id)
@@ -250,7 +276,7 @@ def record(kind):
 
 
 def test_operation_sampling_allows_runtime_stimulus_kind_expression() -> None:
-    content = """from multigent.verifier_tool.coverage.runtime import sample_operation
+    content = """from multigent.verifier_tool import sample_operation
 def record(randomized):
     kind = "randomized" if randomized else "directed"
     stimulus_id = _contract_record_checked_stimulus(kind, {"x": 1}, {"y": 1}, {"y": 1}, operations=("filter",), label="case")
@@ -262,7 +288,7 @@ def record(randomized):
 
 
 def test_operation_ledger_hook_does_not_require_coverage_fields() -> None:
-    content = """from multigent.verifier_tool.coverage.runtime import sample_operation
+    content = """from multigent.verifier_tool import sample_operation
 def record(kind):
     stimulus_id = _contract_record_checked_stimulus(kind, {"x": 1}, {"y": 1}, {"y": 1}, operations=("filter",), label="case")
     sample_operation("filter", {"tap_count": 4}, kind, stimulus_id)
@@ -281,7 +307,7 @@ def record(kind):
 
 @pytest.mark.parametrize("expression", ["fields", "operation_fields(job)"])
 def test_operation_sampling_accepts_mapping_helper_with_runtime_field_checks(expression):
-    content = f'''from multigent.verifier_tool.coverage.runtime import sample_operation
+    content = f'''from multigent.verifier_tool import sample_operation
 def record(kind, job):
     stimulus_id = _contract_record_checked_stimulus(kind, {{"x": 1}}, {{"y": 1}}, {{"y": 1}}, operations=("filter",), label="case")
     fields = {{"tap_count": 4}}
@@ -293,7 +319,7 @@ def record(kind, job):
 
 
 def test_operation_sampling_requires_persisted_linked_stimulus() -> None:
-    content = """from multigent.verifier_tool.coverage.runtime import sample_operation
+    content = """from multigent.verifier_tool import sample_operation
 def record(kind):
     sample_operation("filter", {"tap_count": 4}, kind)
 """
@@ -475,6 +501,18 @@ def test_verifier_rejects_deprecated_cocotb_start() -> None:
     )
     with pytest.raises(AgentRuntimeError, match="cocotb.start"):
         VerifierAgent._validate_result(result=result, context=generic_fir_context())
+
+
+def test_contract_coverage_decorator_rejects_llm_authored_arguments() -> None:
+    result = verification_ready_result()
+    content = result["test_files"][0]["content"].replace(
+        "@contract_coverage()",
+        "@contract_coverage(coverage_obligations=COVERAGE_OBLIGATIONS)",
+    )
+    with pytest.raises(AgentRuntimeError, match="with no positional or keyword arguments"):
+        VerifierAgent._validate_runtime_coverage_instrumentation(
+            [content], generic_fir_context()
+        )
 
 
 def test_verifier_rejects_explicitly_omitted_test_source() -> None:

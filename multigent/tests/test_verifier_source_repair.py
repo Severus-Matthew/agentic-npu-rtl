@@ -82,6 +82,48 @@ def test_source_completion_handles_any_semantic_error_with_a_valid_draft():
     assert result['operation_coverage'] == draft['operation_coverage']
 
 
+def test_source_completion_locally_repairs_obligation_mapping_after_scope_validation():
+    # Invalid operation metadata already falls through above. Once metadata and
+    # frozen scope are valid, this mismatch can only live in the test artifact
+    # list/source constant and must keep the prior draft for a local repair.
+    context, _ = review_context()
+    context['semantic_validation_review']['validator_error'] = (
+        "Verifier coverage-obligation mapping does not match the deterministic "
+        "plan; missing=['operation.gemm_core.channel_stall_a'], unknown=[]"
+    )
+    assert VerifierAgent._source_repair_draft(context) is not None
+
+
+def test_source_completion_rebuilds_test_metadata_from_literal_constant():
+    _, draft = review_context()
+    draft['test_files'][0]['coverage_obligations'].append('stale.metadata.only')
+    result = VerifierAgent._merge_source_repair(draft, complete_sources())
+    assert 'stale.metadata.only' not in result['test_files'][0]['coverage_obligations']
+    assert set(result['test_files'][0]['coverage_obligations']) == {
+        'signal.rst.reset_behavior',
+        'operation.filter.tap_count',
+        'operation.filter.stream_length',
+        'operation.filter.coefficient_values',
+        'operation.filter.sample_values',
+        'operation.filter.numeric_behavior',
+    }
+
+
+def test_persist_rebuilds_stale_obligation_metadata_for_local_patch_paths(tmp_path):
+    context = generic_fir_context()
+    candidate = verification_ready_result()
+    candidate['test_files'][0]['coverage_obligations'].append('stale.metadata.only')
+
+    result = VerifierAgent().persist_validated_result(
+        result=candidate, context=context, root=tmp_path
+    )
+
+    assert 'stale.metadata.only' not in result['test_files'][0]['coverage_obligations']
+    assert result['test_files'][0]['content'] == (
+        tmp_path / 'tests/test_fir_contract.py'
+    ).read_text()
+
+
 @pytest.mark.parametrize('defect', ['missing', 'unknown', 'duplicate'])
 def test_source_completion_rejects_inexact_file_set(defect):
     _, draft = review_context()
@@ -100,9 +142,6 @@ def test_source_completion_does_not_bypass_full_validation(tmp_path):
     _, draft = review_context()
     sources = complete_sources()
     sources['files'][1]['content'] = 'import cocotb\n'
-    result = VerifierAgent._merge_source_repair(draft, sources)
-    with pytest.raises(AgentRuntimeError, match='no executable async'):
-        VerifierAgent().persist_validated_result(
-            result=result, context=generic_fir_context(), root=tmp_path,
-        )
+    with pytest.raises(AgentRuntimeError, match='COVERAGE_OBLIGATIONS'):
+        VerifierAgent._merge_source_repair(draft, sources)
     assert not (tmp_path / 'tests/test_fir_contract.py').exists()

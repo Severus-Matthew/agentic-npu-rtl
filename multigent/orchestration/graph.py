@@ -1,6 +1,6 @@
 """Executable LangGraph for contract-derived verification, RTL and repair.
 
-The independent Verifier and its TB-only Reviewer run before initial RTL generation.
+The independent Verifier and a deterministic TB gate run before initial RTL generation.
 Deterministic Verilator/cocotb status controls PASS/FAIL. Functional failures route
 through an evidence-driven Debugger and back to the RTL Generator while preserving
 the approved verifier artifacts.
@@ -19,7 +19,6 @@ from multigent.agents.architect import ArchitectAgent
 from multigent.agents.debugger import DebuggerAgent
 from multigent.agents.rtl_generator import RTLGeneratorAgent
 from multigent.agents.verifier import VerifierAgent
-from multigent.agents.verifier_review import VerifierReviewAgent
 from multigent.intake.request_builder import WORKSPACE_ROOT, build_rtl_context
 
 from .architect_node import make_architect_node
@@ -72,8 +71,9 @@ def _tool_unavailable_node(state: HardwareDesignState) -> dict[str, Any]:
 def _failed_node(state: HardwareDesignState) -> dict[str, Any]:
     reason = (
         state.get("debugger_status")
-        or state.get("verifier_status")
         or state.get("rtl_status")
+        or state.get("verifier_review_status")
+        or state.get("verifier_status")
         or state.get("architecture_status")
         or state.get("failure_class")
         or "UNKNOWN"
@@ -89,7 +89,7 @@ def build_workflow_graph(
     architect_agent: ArchitectAgent | None = None,
     rtl_agent: RTLGeneratorAgent | None = None,
     verifier_agent: VerifierAgent | None = None,
-    verifier_review_agent: VerifierReviewAgent | None = None,
+    verifier_review_agent: Any | None = None,
     debugger_agent: DebuggerAgent | None = None,
     ppa_agent=None,
 ):
@@ -103,12 +103,9 @@ def build_workflow_graph(
     add_node("architect", make_architect_node(architect_agent))
     add_node("rtl_generator", make_rtl_generator_node(rtl_agent))
     add_node("verifier", make_verifier_node(verifier_agent))
-    # The review uses the same configured model/API as generation, but a separate
-    # concise call and read-only scope. No source generation occurs in this node.
-    review_agent = verifier_review_agent
-    if review_agent is None and getattr(verifier_agent, "config", None) is not None:
-        review_agent = VerifierReviewAgent(model=verifier_agent.config.model, api_mode=verifier_agent.config.api_mode)
-    add_node("verifier_review", make_verifier_review_node(review_agent))
+    # Keep the legacy injection argument and node name for saved-state/API
+    # compatibility. The node is now a code-only gate and never invokes the agent.
+    add_node("verifier_review", make_verifier_review_node(verifier_review_agent))
     add_node("verification_tools", verification_tools_node)
     add_node("debugger", make_debugger_node(debugger_agent))
     add_node("synthesis", synthesis_node)
@@ -162,7 +159,7 @@ def _existing_rtl_files() -> list[str]:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Run LangGraph Architect -> Verifier -> TB review -> RTL -> simulation -> "
+            "Run LangGraph Architect -> Verifier -> deterministic TB gate -> RTL -> simulation -> "
             "Debugger/repair loop"
         )
     )
@@ -258,6 +255,16 @@ def main() -> None:
             parser.error("Resume must use the exact original request and run-id")
         initial.update(saved)
         initial.update(status="RUNNING", orchestration_error=None)
+        completed_architecture_versions = [
+            int(event.get("architecture_version", 0))
+            for event in saved.get("history", [])
+            if event.get("stage") == "architect" and event.get("status") == "READY"
+        ]
+        if completed_architecture_versions:
+            initial["architecture_version"] = max(
+                int(initial.get("architecture_version", 0)),
+                max(completed_architecture_versions),
+            )
         # Resuming must not expand the recorded retry budget; CLI can lower it.
         initial["max_architecture_revisions"] = min(
             int(saved.get("max_architecture_revisions", 0)),
@@ -277,7 +284,7 @@ def main() -> None:
     if args.external_vivado_bundle:
         initial['external_vivado_bundle'] = str(args.external_vivado_bundle.resolve())
 
-    if args.use_frozen_architecture:
+    if args.use_frozen_architecture and not args.resume_state:
         initial.update(
             {
                 "architecture_status": "READY",

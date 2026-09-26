@@ -10,20 +10,20 @@ import yaml
 
 from multigent.agents.base import AgentRuntimeError
 from multigent.agents.verifier import VerifierAgent
-from multigent.agents.verifier_review import VerifierReviewAgent
-from multigent.verifier_tool.coverage.protocol.plan import build_interface_coverage_plan
-from multigent.verifier_tool.coverage.operation.plan import build_operation_coverage_plan, merge_coverage_plans, operation_plan_for_tests
-from multigent.verifier_tool.coverage.operation.sampling import (
-    OperationSamplingError, effective_operation_coverage, extract_operation_sampling_bindings,
-    normalize_operation_sampling_bindings, operation_observer_views,
-)
-from multigent.verifier_tool.coverage.runtime import (
+from multigent.verifier_tool import (
     CoverageRuntimeError,
     InterfaceCoverageTracker,
+    OperationSamplingError,
+    build_interface_coverage_plan,
+    build_operation_coverage_plan,
     capture_contract_snapshot,
-)
-from multigent.verifier_tool.predefined_assertion.instrumentation import (
+    effective_operation_coverage,
+    extract_operation_sampling_bindings,
     install_contract_generated_block,
+    merge_coverage_plans,
+    normalize_operation_sampling_bindings,
+    operation_observer_views,
+    operation_plan_for_tests,
     render_contract_generated_block,
 )
 from multigent.tools.cocotb_runner import run_cocotb_regression
@@ -193,7 +193,7 @@ def test_one_bit_boolean_payload_can_be_code_bound_by_role():
     payload.update(width="1", signed=False)
     config = binding("mode", "boolean_mode", channel="a", fields={}, legal_values=[0, 1])
     _, plan = tracker_for(
-        spec(point("mode", "post_processing")), [config],
+        spec(point("mode", "activation")), [config],
         architecture=architecture, interface=interface,
     )
     assert plan["obligations"][0]["bindings"]["sampling"]["fields"]["value"]["signal"] == "left"
@@ -228,7 +228,7 @@ def test_uncertain_payload_binding_requires_explicit_field(change, reason):
 
 def test_fixed_enabled_mode_does_not_invent_disabled_bin_or_accept_claimed_label():
     config = binding("relu", "boolean_mode", fields={"value": {"signal": "cfg", "lsb": 9, "width": 1}}, legal_values=[1])
-    tracker, _ = tracker_for(spec(point("relu", "post_processing")), [config])
+    tracker, _ = tracker_for(spec(point("relu", "activation")), [config])
     dut = Dut()
     dut.cv.value = dut.cr.value = 1
     sample_tracker(tracker, dut)
@@ -425,18 +425,6 @@ def test_verifier_persists_effective_runtime_plan_without_requiring_claimed_fiel
     # Old candidate bins are saved for provenance, never used for runtime sampling.
     saved = json.loads((tmp_path / "verification/verifier_result.json").read_text())
     assert saved["operation_coverage"][0]["coverpoints"][0]["bins"][0]["name"] == "four"
-
-
-def test_review_sees_actual_operation_sources_and_effective_bins_not_hit_evidence():
-    context, candidate, _ = bound_fir_candidate()
-    review = VerifierReviewAgent.build_context(context, candidate)
-    point = review["operation_coverage"][0]["coverpoints"][0]
-    assert [row["name"] for row in point["bins"]] == ["minimum", "interior", "maximum"]
-    automatic = next(row for row in review["operation_sampling_plan"]["obligations"] if row["id"] == "operation.filter.tap_count")
-    assert automatic["bindings"]["sampling"]["fields"]["value"]["signal"] == "taps"
-    assert review["provenance"]["includes_stimulus"] is True
-    assert "operation_sampling_source" in review["trusted_monitor"]
-    assert "samples" not in automatic and "hits" not in automatic["bins"][0]
 
 
 def test_source_only_repair_preserves_literal_operation_connections():

@@ -137,7 +137,7 @@ Do not reference a clear/acknowledge/retry command or signal unless it exists in
 For every logical channel define:
 - name
 - direction
-- protocol profile from `multigent/taxonomy/interface_protocol_profiles.yaml`
+- protocol profile from `multigent/verifier_tool/pool/role_pool/interface_protocol_profiles.yaml`
 - purpose
 - declared data object(s) carried on the channel
 - metadata carried on the channel
@@ -147,8 +147,8 @@ For every logical channel define:
 
 For every signal define:
 - name
-- exactly one role from `multigent/taxonomy/interface_signal_roles.yaml`
-- semantic class from `multigent/taxonomy/interface_semantic_classes.yaml` when required
+- exactly one role from `multigent/verifier_tool/pool/role_pool/interface_signal_roles.yaml`
+- semantic class from `multigent/verifier_tool/pool/role_pool/interface_semantic_classes.yaml` when required
 - declared channel name for channel-bound roles, otherwise `null`
 - direction
 - width expression
@@ -160,6 +160,25 @@ Signal names are identifiers, not semantic classifiers. Role defines transport o
 lifecycle behavior, semantic class defines what a carried value means, and protocol
 profile defines channel-level rules. The runtime rejects unknown taxonomy values,
 invalid bindings, and inconsistent directions.
+
+The tool compiles each operation's inputs/outputs into a channel binding, so these
+must be exact (a violation rejects the contract with the operation, reason code and
+a hint):
+- every operation input/output data object is carried by exactly one channel of the
+  matching direction; for a memory-mapped protocol group (`axi4`, `axi4_lite`,
+  `custom_mmio`) list the object only on its data channel (`read_data` / `write_data`)
+  and leave the address and response channels of that group with no data objects
+- every `ready_valid` data channel has exactly one `valid`, one `ready`, and one
+  `payload` signal
+- at most one `busy`, one `completion`, and one `error` signal is bound
+- the tool binds an operation only to channel-carried (external) data objects: an
+  operation over an internal intermediate object is a valid contract, but the tool
+  cannot verify it automatically
+- when a job is started and completed only through register accesses on an AXI4-Lite
+  subordinate control interface, select `control_plane_sequence` for `job_acceptance`
+  and/or `completion_style` and declare `operations[].lifecycle_control_plane_sequence`
+  (shape in the rendered metadata format); declare it only in that case, and the
+  interface must contain the AXI4-Lite subordinate group
 
 The interface description must be sufficient to implement a decoder/encoder without guessing. For every packet/section/transfer class, explicitly state:
 - which fields or element(s) are carried in one transfer
@@ -239,6 +258,8 @@ Before returning `READY`, verify:
 - every operation input/output is a declared data object
 - every data object references a declared data type and declared dimensions
 - every operation/data-object producer and consumer relationship is reciprocal
+- every operation input/output is carried by exactly one channel of the matching direction (memory-mapped objects only on their data channel), and every `ready_valid` data channel has exactly one `valid`, `ready`, and `payload`
+- a `control_plane_sequence` policy has its `lifecycle_control_plane_sequence` declaration, and no such declaration exists without one
 - every runtime dimension has concrete default-parameter bounds and clear parameter-dependent legality semantics
 - every bound parameter and module parameter is declared
 - all parameter defaults are concrete and legal

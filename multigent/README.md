@@ -7,11 +7,12 @@ forward to it. Runtime logic has no GEMM-specific dimensions, names or arithmeti
 ## Flow and ownership
 
 Natural-language request → Architect → independent Verifier generates the golden
-model and TB → TB-only Verifier Reviewer → RTL Generator → deterministic Verilator
-lint and full cocotb regression. If Verifier cannot derive one executable expected
-behavior, it asks Architect before initial RTL generation. Architect alone decides
-whether to patch the contract or confirm that the existing contract is already clear.
-The Reviewer never contacts Architect. Failures go to Debugger, then constrained RTL
+model and TB → deterministic Verifier artifact gate → RTL Generator → deterministic
+Verilator lint and full cocotb regression. The gate reuses the Verifier's code-owned
+semantic validator and makes no reviewer-agent/model call. If Verifier cannot derive
+one executable expected behavior, it asks Architect before initial RTL generation.
+Architect alone decides whether to patch the contract or confirm that the existing
+contract is already clear. Gate findings return only to Verifier. Failures go to Debugger, then constrained RTL
 repair, high-confidence independent verification-infrastructure repair, or an
 explicit terminal failure; Debugger never changes or escalates the contract.
 A functional PASS proceeds to the deterministic external Vivado adapter, then PPA
@@ -32,8 +33,8 @@ and frozen contracts. Original artifacts and failures remain in attempt snapshot
 RTL repair and optimization reuse the frozen, reviewed Verifier artifacts. A real
 Architecture revision invalidates them and runs Verifier again; an Architect
 `CONTRACT_CONFIRMED` decision preserves the contract version and returns its exact
-resolution to Verifier. Initial RTL generation is blocked until the current TB-only
-review approves the actual reference/tests/coverage definitions. The Verifier remains
+resolution to Verifier. Initial RTL generation is blocked until the deterministic
+artifact gate approves the actual reference/tests/coverage definitions. The Verifier remains
 independent of RTL and receives an up-front first-candidate checklist for checked
 traffic, observed evidence and exact stimulus-intent labels.
 
@@ -85,6 +86,13 @@ exit. Inherited test-filter variables are cleared. Seeds are fixed by the plan;
 whole-process timeouts kill the compiler/simulator process group. Build configuration
 failures are distinct from RTL failures. Individual attempts include ppa/verifier
 revision identifiers so optimization results cannot overwrite prior evidence.
+The cocotb runner (`multigent/tools/cocotb_runner.py`) collects both `*.sv` and
+`*.v` sources under the RTL directory and always builds Verilator with
+`-Wno-fatal --no-timing` (the latter so generated Verilog that uses `#0`
+delays, as Vitis HLS output does, elaborates without the timing feature). This
+applies to the cocotb runner only: the Verilator lint step
+(`multigent/tools/verilator.py`) and `--use-existing-rtl` still look only at
+`*.sv` files under `workspace/rtl`.
 
 Verifier generation has one semantic self-correction attempt in addition to the API
 schema retry. Exhaustion is a structured failure with a final report, not an uncaught

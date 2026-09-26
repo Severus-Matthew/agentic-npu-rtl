@@ -1,0 +1,313 @@
+taxonomy:
+  name: accelerator_protocol_features
+  version: "1.0"
+  scope: deterministic interface coverage obligations
+
+feature_defaults:
+  assertion: {checker: null}
+  coverage: {sampler: protocol_runtime}
+  stimulus: {strategy: standard_protocol_scenarios}
+
+derived_features:
+  valid_low_during_reset:
+    scope: protocol_group
+    assertion: {checker: valid_low_during_reset}
+    coverage: {sampler: null, bins: []}
+    stimulus: {strategy: reset_assert_release}
+  standard_protocol_rule:
+    scope: protocol_group
+    assertion: {checker_from_binding: rule}
+    coverage: {sampler: null, bins: []}
+    stimulus: {strategy: standard_protocol_scenarios}
+
+features:
+  handshake_states:
+    scope: channel
+    match:
+      coverage_tag: handshake
+      required_roles: [valid, ready]
+    description: Cover all producer-valid and consumer-ready states.
+    assertion: {checker: null}
+    coverage:
+      sampler: valid_ready_cross
+      bins:
+        - {name: idle, values: {valid: 0, ready: 0}, intent: valid=0 and ready=0}
+        - {name: receiver_ready, values: {valid: 0, ready: 1}, intent: valid=0 and ready=1}
+        - {name: backpressured, values: {valid: 1, ready: 0}, intent: valid=1 and ready=0}
+        - {name: transfer, values: {valid: 1, ready: 1}, intent: valid=1 and ready=1}
+    stimulus:
+      strategy: channel_schedule
+      scenarios:
+        - {name: idle, schedule: {arrival_order: none, stall_cycles: 0, transfers: 0}}
+        - {name: simultaneous_transfer, schedule: {arrival_order: simultaneous, stall_cycles: 0}}
+        - {name: back_to_back_transfers, schedule: {arrival_order: simultaneous, stall_cycles: 0, transfers: 2}}
+
+  handshake_arrival_order:
+    scope: channel
+    match:
+      coverage_tag: handshake
+      required_roles: [valid, ready]
+    description: Exercise legal independent assertion order for VALID and READY.
+    assertion: {checker: null}
+    coverage:
+      sampler: handshake_arrival_order
+      bins:
+        - {name: simultaneous, event: simultaneous, intent: Transfer is first presented with valid=1 and ready=1.}
+        - {name: valid_before_ready, event: valid_before_ready, intent: Producer presents VALID before the receiver raises READY.}
+        - {name: ready_before_valid, event: ready_before_valid, intent: Receiver presents READY before the producer raises VALID.}
+    stimulus:
+      strategy: channel_schedule
+      scenarios:
+        - {name: ready_before_valid, schedule: {arrival_order: ready_before_valid, stall_cycles: 0}}
+
+  stall_stability:
+    scope: channel
+    match:
+      coverage_tag: stall_stability
+      required_roles: [valid, ready]
+      observed_roles: [payload, metadata, last, keep, transaction_id]
+    description: Exercise a stalled transfer and hold all producer-owned content stable.
+    assertion:
+      checker: stall_stability
+    coverage:
+      sampler: completed_stall_length
+      bins:
+        - {name: one_cycle_stall, range: [1, 1], intent: Observe exactly one stalled cycle.}
+        - {name: short_stall, range: [2, 4], intent: Observe two through four consecutive stalled cycles.}
+        - {name: long_stall, range: [5, null], intent: Observe five or more consecutive stalled cycles.}
+    stimulus:
+      strategy: channel_schedule
+      scenarios:
+        - {name: one_cycle_stall, schedule: {arrival_order: valid_before_ready, stall_cycles: 1}}
+        - {name: short_stall, schedule: {arrival_order: valid_before_ready, stall_cycles: 3}}
+        - {name: long_stall, schedule: {arrival_order: valid_before_ready, stall_cycles: 6}}
+
+  address_alignment:
+    scope: signal
+    match:
+      semantic_class: address
+    description: Partition legal address values around alignment and range boundaries.
+    coverage:
+      bins:
+        - {name: minimum, intent: Minimum legal address from the contract.}
+        - {name: aligned_interior, intent: Representative aligned non-boundary address.}
+        - {name: maximum, intent: Maximum legal address from the contract.}
+        - {name: boundary_neighbor, intent: Values immediately around a declared region boundary.}
+
+  axi4_4k_boundary:
+    scope: standard_channel
+    match:
+      protocol_profile: axi4
+      protocol_channels: [write_address, read_address]
+      required_fields: [addr, len, size, burst]
+    description: Exercise bursts ending at and near a 4-KiB address boundary.
+    coverage:
+      bins:
+        - {name: ends_before_boundary, intent: Legal burst ending immediately before a 4-KiB boundary.}
+        - {name: ends_at_boundary, intent: Legal burst ending at the last byte before the boundary.}
+        - {name: would_cross_boundary, required: false, intent: Diagnostic-only observation; a compliant source must never transfer this burst.}
+
+  axi4_burst_type:
+    scope: standard_channel
+    match: {protocol_profile: axi4, protocol_channels: [write_address, read_address]}
+    description: Cover every legal AXI4 burst encoding on accepted addresses.
+    coverage:
+      bins:
+        - {name: fixed, intent: Accepted AxBURST=FIXED.}
+        - {name: incrementing, intent: Accepted AxBURST=INCR.}
+        - {name: wrapping, intent: Accepted AxBURST=WRAP with a legal length and alignment.}
+
+  axi4_burst_length:
+    scope: standard_channel
+    match: {protocol_profile: axi4, protocol_channels: [write_address, read_address]}
+    description: Cover single, ordinary, and extended incrementing bursts.
+    coverage:
+      bins:
+        - {name: single, intent: Accepted one-beat burst.}
+        - {name: two_to_sixteen, intent: Accepted 2-16 beat burst.}
+        - {name: seventeen_to_256, intent: Accepted 17-256 beat INCR burst.}
+
+  axi4_transfer_size:
+    scope: standard_channel
+    match: {protocol_profile: axi4, protocol_channels: [write_address, read_address]}
+    description: Cover minimum, narrow, and full-bus transfer sizes.
+    coverage:
+      bins:
+        - {name: one_byte, intent: Accepted AxSIZE=0.}
+        - {name: narrow, intent: Accepted transfer wider than one byte but narrower than the data bus.}
+        - {name: full_width, intent: Accepted transfer whose bytes per beat equal the data-bus width.}
+
+  axi4_alignment:
+    scope: standard_channel
+    match: {protocol_profile: axi4, protocol_channels: [write_address, read_address]}
+    description: Cover legal aligned and legal unaligned starts.
+    coverage:
+      bins:
+        - {name: aligned, intent: Accepted address aligned to AxSIZE.}
+        - {name: unaligned, intent: Accepted legal unaligned non-WRAP address.}
+
+  axi4_write_strobe:
+    scope: standard_channel
+    match: {protocol_profile: axi4, protocol_channels: [write_data]}
+    description: Cover disabled, sparse, and full active write-byte lanes.
+    coverage:
+      bins:
+        - {name: all_zero, intent: Accepted beat with no byte strobes asserted.}
+        - {name: sparse, intent: Accepted beat with a nonzero non-full strobe mask.}
+        - {name: full, intent: Accepted beat with every bus byte enabled.}
+
+  axi4_write_channel_order:
+    scope: standard_group
+    match: {protocol_profile: axi4, required_channels: [write_address, write_data]}
+    description: Cover all legal first-handshake orders of independent AW and W channels.
+    coverage:
+      bins:
+        - {name: address_first, intent: AW transfer precedes the first W transfer.}
+        - {name: data_first, intent: First W transfer precedes its AW transfer.}
+        - {name: same_cycle, intent: AW and first W transfer on the same active edge.}
+
+  axi4_response_code:
+    scope: standard_channel
+    match: {protocol_profile: axi4, protocol_channels: [write_response, read_data]}
+    description: Partition legal AXI4 response encodings.
+    coverage:
+      bins:
+        - {name: okay, intent: Accepted OKAY response.}
+        - {name: exokay, required: false, intent: Accepted EXOKAY response when exclusive access is implemented.}
+        - {name: slverr, required: false, intent: Accepted SLVERR response when the contract exposes an error case.}
+        - {name: decerr, required: false, intent: Accepted DECERR response when the contract exposes a decode error.}
+
+  axi4_outstanding_depth:
+    scope: standard_group
+    match: {protocol_profile: axi4}
+    description: Cover one and multiple outstanding requests, including ID partitions when present.
+    coverage:
+      bins:
+        - {name: one, intent: Exactly one request is outstanding.}
+        - {name: multiple_same_id, intent: Multiple requests with the same ID are outstanding.}
+        - {name: multiple_ids, required: false, intent: Requests with different IDs are outstanding.}
+
+  axi4_sideband_partition:
+    scope: standard_field
+    match: {protocol_profile: axi4, protocol_channels: [write_address, write_response, read_address, read_data], protocol_fields: [id, lock, cache, prot, qos, region, user]}
+    description: Exercise zero and nonzero values for every implemented AXI4 sideband.
+    coverage:
+      bins:
+        - {name: zero, intent: Accepted transfer carries an all-zero sideband value.}
+        - {name: nonzero, intent: Accepted transfer carries a nonzero sideband value.}
+
+  axi_lite_write_channel_order:
+    scope: standard_group
+    match: {protocol_profile: axi4_lite, required_channels: [write_address, write_data]}
+    description: Cover all legal independent AXI4-Lite AW/W arrival orders.
+    coverage:
+      bins:
+        - {name: address_first, intent: AW transfer precedes W transfer.}
+        - {name: data_first, intent: W transfer precedes AW transfer.}
+        - {name: same_cycle, intent: AW and W transfer together.}
+
+  axi_lite_write_strobe:
+    scope: standard_channel
+    match: {protocol_profile: axi4_lite, protocol_channels: [write_data]}
+    description: Cover AXI4-Lite write-strobe masks.
+    coverage:
+      bins:
+        - {name: all_zero, intent: Accepted write with no bytes enabled.}
+        - {name: sparse, intent: Accepted partial-register write.}
+        - {name: full, intent: Accepted full-register write.}
+
+  axi_lite_response_code:
+    scope: standard_channel
+    match: {protocol_profile: axi4_lite, protocol_channels: [write_response, read_data]}
+    description: Partition legal AXI4-Lite responses; EXOKAY is forbidden.
+    coverage:
+      bins:
+        - {name: okay, intent: Accepted OKAY response.}
+        - {name: slverr, required: false, intent: Accepted SLVERR for a defined error case.}
+        - {name: decerr, required: false, intent: Accepted DECERR for a defined decode error.}
+
+  axi_lite_read_write_concurrency:
+    scope: standard_group
+    match: {protocol_profile: axi4_lite, required_channels: [write_address, read_address]}
+    description: Exercise independent read and write address traffic concurrently.
+    coverage:
+      bins:
+        - {name: write_only_cycle, intent: AW transfers without AR on the edge.}
+        - {name: read_only_cycle, intent: AR transfers without AW on the edge.}
+        - {name: simultaneous, intent: AW and AR transfer on the same edge.}
+
+  axi_lite_address_partition:
+    scope: standard_channel
+    match: {protocol_profile: axi4_lite, protocol_channels: [write_address, read_address], required_fields: [addr]}
+    description: Cover zero, aligned, unaligned, and 4-KiB-edge register addresses.
+    coverage:
+      bins:
+        - {name: zero, intent: Accepted address zero.}
+        - {name: aligned, intent: Accepted nonzero address aligned to the data-bus width.}
+        - {name: unaligned, intent: Accepted address with nonzero low byte-lane bits.}
+        - {name: page_edge, intent: Accepted address in the first or last word of a 4-KiB page.}
+
+  axi_lite_protection_partition:
+    scope: standard_field
+    match: {protocol_profile: axi4_lite, protocol_channels: [write_address, read_address], protocol_fields: [prot]}
+    description: Exercise zero and nonzero AxPROT attributes when implemented.
+    coverage:
+      bins:
+        - {name: zero, intent: Accepted AxPROT is zero.}
+        - {name: nonzero, intent: Accepted AxPROT has at least one attribute bit set.}
+
+  axi_lite_outstanding_depth:
+    scope: standard_group
+    match: {protocol_profile: axi4_lite}
+    description: Cover legal AXI4-Lite multiple outstanding traffic while preserving order.
+    coverage:
+      bins:
+        - {name: one, intent: Exactly one read or write address is outstanding.}
+        - {name: multiple, intent: At least two addresses are outstanding before responses complete.}
+
+  axis_packet_length:
+    scope: standard_channel
+    match: {protocol_profile: axi4_stream, protocol_channels: [stream], required_fields: [last]}
+    description: Cover single-beat and multi-beat AXI4-Stream packets.
+    coverage:
+      bins:
+        - {name: single_beat, intent: Accepted beat starts and ends a packet.}
+        - {name: multi_beat, intent: TLAST ends a packet after at least two accepted beats.}
+
+  axis_keep_pattern:
+    scope: standard_channel
+    match: {protocol_profile: axi4_stream, protocol_channels: [stream], required_fields: [keep]}
+    description: Cover full, partial, and empty terminal byte qualification.
+    coverage:
+      bins:
+        - {name: full, intent: Every byte lane has TKEEP asserted.}
+        - {name: partial, intent: A nonzero subset of byte lanes has TKEEP asserted.}
+        - {name: empty_last, required: false, intent: TLAST closes a packet with all TKEEP bits clear.}
+
+  axis_stall_position:
+    scope: standard_channel
+    match: {protocol_profile: axi4_stream, protocol_channels: [stream], required_fields: [last]}
+    description: Apply backpressure at packet start, middle, and terminal transfer.
+    coverage:
+      bins:
+        - {name: first_beat, intent: Stall the first presented beat of a packet.}
+        - {name: middle_beat, intent: Stall a non-first non-terminal beat.}
+        - {name: last_beat, intent: Stall a beat with TLAST, when TLAST exists.}
+
+  axis_back_to_back_packets:
+    scope: standard_channel
+    match: {protocol_profile: axi4_stream, protocol_channels: [stream], required_fields: [last]}
+    description: Cover packet spacing around accepted TLAST.
+    coverage:
+      bins:
+        - {name: no_gap, intent: First beat of the next packet transfers on the edge after TLAST.}
+        - {name: with_gap, intent: At least one non-transfer edge separates packets.}
+
+  axis_sideband_partition:
+    scope: standard_field
+    match: {protocol_profile: axi4_stream, protocol_channels: [stream], protocol_fields: [id, dest, user]}
+    description: Exercise zero and nonzero values for every implemented stream sideband.
+    coverage:
+      bins:
+        - {name: zero, intent: Accepted transfer carries an all-zero sideband value.}
+        - {name: nonzero, intent: Accepted transfer carries a nonzero sideband value.}

@@ -396,6 +396,58 @@ def test_final_report_lists_covered_missing_bins_and_stimulus_history(
     assert 'Executed records: 4' in report
 
 
+def test_coverage_failure_returns_to_verifier_as_local_multi_finding_patch(
+    tmp_path, monkeypatch
+):
+    from multigent.tests.test_verifier import generic_fir_context, verification_ready_result
+
+    monkeypatch.setattr(artifacts, 'WORKSPACE_ROOT', tmp_path)
+    monkeypatch.setattr(
+        artifacts, 'build_verification_context', lambda **kwargs: generic_fir_context()
+    )
+    (tmp_path / 'verification').mkdir()
+    coverage = {
+        'status': 'FAIL',
+        'coverage_percent': 40.0,
+        'missing_bins': [
+            'channel.in_chan.handshake_states.transfer',
+            'channel.in_chan.handshake_states.backpressured',
+            'operation.filter.tap_count.maximum',
+        ],
+        'covered_bins': ['channel.in_chan.handshake_states.idle'],
+        'bin_hits': {
+            'channel.in_chan.handshake_states.idle': 7,
+            'channel.in_chan.handshake_states.transfer': 0,
+            'channel.in_chan.handshake_states.backpressured': 0,
+            'operation.filter.tap_count.maximum': 0,
+        },
+        'assertion_failures': [],
+    }
+    update = artifacts.verification_repair_node({
+        'user_request': 'fir',
+        'architecture_dir': str(tmp_path),
+        'verification_status': 'COVERAGE_FAILURE',
+        'verification_evidence': {'cocotb': {'functional_coverage': coverage}},
+        'verifier_result': verification_ready_result(),
+        'verifier_revision': 2,
+    })
+    review = update['verification_context']['deterministic_validation_review']
+    assert update['history'][0]['status'] == 'COVERAGE_LOCAL_CORRECTION'
+    assert review['previous_verifier_output']['test_files']
+    assert len(review['findings']) == 2
+    assert 'transfer' in review['findings'][0]['evidence']
+    assert 'backpressured' in review['findings'][0]['evidence']
+    assert update['verifier_status'] == 'PENDING'
+    hit_feedback = update['verification_context']['coverage_closure_review']
+    assert hit_feedback['bin_hits']['channel.in_chan.handshake_states.idle'] == 7
+    from multigent.agents.verifier import VerifierAgent
+    prompt = VerifierAgent._build_review_patch_task(
+        update['verification_context'], review['previous_verifier_output']
+    )
+    assert 'channel.in_chan.handshake_states.idle: 7' in prompt
+    assert 'channel.in_chan.handshake_states.transfer: 0' in prompt
+
+
 def test_optimizer_keeps_better_baseline(tmp_path,monkeypatch):
     baseline={'architecture_version':1,'synthesis_result':{'status':'PASS','metrics':{'lut':50}}}
     state={'architecture_version':1,'verification_status':'PASS','synthesis_result':{'status':'PASS','metrics':{'lut':70}},
@@ -427,7 +479,7 @@ def test_diagnostic_copy_removes_contract_coverage_wrapper(tmp_path, monkeypatch
     from multigent.tools import diagnostic
     (tmp_path / 'tests').mkdir()
     original = '''import cocotb
-from multigent.verifier_tool.coverage.runtime import contract_coverage
+from multigent.verifier_tool import contract_coverage
 @cocotb.test()
 @contract_coverage()
 async def check(dut):
@@ -451,7 +503,7 @@ def test_diagnostic_copy_disables_operation_coverage_hook(tmp_path, monkeypatch)
     from multigent.tools import diagnostic
     (tmp_path / 'tests').mkdir()
     original = '''import cocotb
-from multigent.verifier_tool.coverage.runtime import contract_coverage, sample_operation
+from multigent.verifier_tool import contract_coverage, sample_operation
 @cocotb.test()
 @contract_coverage()
 async def check(dut):

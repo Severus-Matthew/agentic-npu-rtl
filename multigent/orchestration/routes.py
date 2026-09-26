@@ -24,6 +24,12 @@ def route_start(state: HardwareDesignState) -> StartRoute:
     history = state.get("history", [])
     if history and history[-1].get("status") == "ERROR" and history[-1].get("stage") in {"architect","rtl_generator","verifier","verifier_review","debugger","verification_tools"}:
         return history[-1]["stage"]
+    if state.get("architecture_conflict") and (
+        state.get("rtl_status") == "ARCHITECTURE_CONFLICT"
+        or state.get("verifier_status") == "ARCHITECTURE_CONFLICT"
+        or state.get("architecture_status") in {"SEMANTIC_VALIDATION_FAILED", "SPEC_CONFLICT"}
+    ):
+        return "architect" if _architecture_revision_available(state) else "failed"
     if state.get("debugger_status") == "EVIDENCE_INSUFFICIENT" and state.get("max_diagnostic_iterations",0)>state.get("diagnostic_iteration",0):
         return "diagnostic_probe"
     if state.get("architecture_status") == "READY":

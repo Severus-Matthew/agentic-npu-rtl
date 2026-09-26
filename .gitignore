@@ -14,7 +14,12 @@ venv/
 .DS_Store
 
 # Runtime-generated artifacts
-# multigent/workspace/logs/agent_traces/*.json
+multigent/workspace/logs/agent_traces/
+*.log
+*.jsonl
+
+# Local authorization / handoff notes
+API_EXECUTION_AUTHORIZATION.md
 
 # Rebuildable simulator output
 multigent/workspace/verification/build/
@@ -22,6 +27,29 @@ sim_build/
 obj_dir/
 *.vcd
 *.fst
+
+# FPGA/HLS and native build products
+*.elf
+*.xo
+*.xclbin
+*.xsa
+*.bit
+*.dcp
+*.xpr
+*.jou
+*.wdb
+*.wcfg
+*.ltx
+
+# Locally packaged handoff/presentation bundles
+*.zip
+slide/
+
+# Local review and external reference projects
+taxonomy_review.md
+u55c_mb_packed_gemm32x128/
+gemm_golden/
+gemm_golden_hls/
 
 # Generated run output (regenerate by re-running the pipeline)
 multigent/runs/

@@ -2,24 +2,21 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 import pytest
-from multigent.verifier_tool.coverage.operation.plan import (
+from multigent.verifier_tool import (
+    CoverageRuntimeError,
+    InterfaceCoverageTracker,
     build_operation_coverage_plan,
     canonical_operation_obligation_id,
     canonicalize_operation_obligation_claim,
+    capture_contract_snapshot,
     load_operation_coverage_families,
+    load_operation_assertion_catalog,
     operation_family,
+    render_operation_assertion_catalog,
     render_operation_coverage_catalog,
     validate_architecture_operation_features,
+    validate_frozen_operation_scope,
     validate_operation_coverage,
-)
-from multigent.verifier_tool.coverage.runtime import (
-    CoverageRuntimeError,
-    InterfaceCoverageTracker,
-    capture_contract_snapshot,
-)
-from multigent.verifier_tool.predefined_assertion.operation.catalog import (
-    load_operation_assertion_catalog,
-    render_operation_assertion_catalog,
 )
 
 
@@ -65,42 +62,53 @@ def _gemm_spec() -> list[dict]:
                 _point("dimensions", "shape_class", "partial"),
                 _point("operand_values", "operand_class", "extremes"),
                 _point("accumulation", "accumulation_case", "overflow"),
-                _point("post_processing", "post_op", "relu"),
                 _point("sparse_operand", "sparsity", "sparse", source="llm_extension"),
             ],
         }
     ]
 
 
-def test_common_accelerator_family_catalog_is_broad_and_aliases_are_exact() -> None:
+def test_operation_catalog_only_advertises_the_code_owned_family() -> None:
     families = load_operation_coverage_families()["families"]
-    assert {
-        "matrix_multiply", "convolution", "fft", "aes", "dma", "fir",
-        "reduction", "pooling", "activation", "normalization", "softmax",
-        "attention", "compression", "checksum", "sort_search", "vector_alu",
-    } <= set(families)
+    assert set(families) == {"matrix_multiply"}
     assert operation_family("GEMM") == "matrix_multiply"
-    assert operation_family("depthwise-convolution") == "convolution"
+    assert operation_family("depthwise-convolution") is None
     assert operation_family("invented accelerator") is None
 
 
-def test_gemm_catalog_exposes_optional_features() -> None:
+def test_gemm_catalog_exposes_only_executable_optional_features() -> None:
     matrix = load_operation_coverage_families()["families"]["matrix_multiply"]
-    assert {
-        "transpose_modes",
-        "tiling",
-        "batching",
-        "mixed_precision",
-        "quantization",
-        "bias",
-        "activation",
-        "sparsity",
-        "tail_padding_policy",
-        "configuration_snapshot",
-        "multi_job_ordering",
-    } <= set(matrix["optional_concepts"])
+    assert matrix["optional_concepts"] == {}
+    assert set(matrix["feature_groups"]["post_processing"]["optional_concepts"]) == {
+        "bias", "activation", "quantization",
+    }
+    assert not {"bias", "activation", "quantization"} & set(matrix["optional_concepts"])
     rendered = render_operation_coverage_catalog()
-    assert "optional transpose_modes" in rendered
+    assert "optional bias" in rendered
+    assert "optional transpose_modes" not in rendered
+
+
+def test_advertised_gemm_concepts_have_code_owned_classifier_support() -> None:
+    from multigent.verifier_tool.pool.operation_metadata.canonical import (
+        supported_code_owned_concepts,
+    )
+
+    family = load_operation_coverage_families()["families"]["matrix_multiply"]
+    advertised = set(family["baseline_concepts"])
+    advertised.update(family["feature_groups"]["post_processing"]["optional_concepts"])
+    metadata = {"operations": [{
+        "operation_name": "gemm",
+        "arithmetic": {
+            "classifier_profile": "integer_matrix_multiply",
+            "post_operations": {
+                "biased": {"kind": "bias_add"},
+                "activated": {"kind": "relu"},
+                "quantized": {"kind": "affine_quantize"},
+            },
+        },
+    }]}
+
+    assert advertised == supported_code_owned_concepts(metadata)["gemm"]
 
 
 def test_gemm_assertion_catalog_exposes_required_property_guidance() -> None:
@@ -110,8 +118,6 @@ def test_gemm_assertion_catalog_exposes_required_property_guidance() -> None:
         "exact_result_accounting",
         "contract_phase_consumption",
         "no_unsolicited_stream_output",
-        "tail_independence",
-        "configuration_atomicity",
     } <= set(matrix["required_properties"])
     rendered = render_operation_assertion_catalog()
     assert "property oracle_equivalence" in rendered
@@ -153,6 +159,19 @@ def test_known_family_requires_every_baseline_but_allows_llm_extensions() -> Non
     assert any("missing=['dimensions']" in error for error in errors)
 
 
+def test_release_scope_rejects_post_freeze_llm_operation_obligations() -> None:
+    specs = _gemm_spec()
+    errors = validate_frozen_operation_scope(_gemm_architecture(), specs)
+    assert errors == [
+        "operation gemm_bias_relu adds post-freeze release concepts "
+        "['sparse_operand']; required operation coverage is exactly Architect "
+        "leaf features+feature_extensions=['accumulation', 'dimensions', "
+        "'operand_values']. Keep proposed risks diagnostic, "
+        "and use existing interface/protocol obligations for handshake, stall, "
+        "reset, completion, or error behavior."
+    ]
+
+
 def test_operation_coverage_rejects_explicitly_noncoverable_bins() -> None:
     specs = _gemm_spec()
     specs[0]["coverpoints"][0]["bins"][0]["intent"] = (
@@ -160,6 +179,18 @@ def test_operation_coverage_rejects_explicitly_noncoverable_bins() -> None:
     )
     errors = validate_operation_coverage(_gemm_architecture(), specs)
     assert any("declares a non-coverable bin" in error for error in errors)
+
+
+def test_operation_coverage_rejects_distinct_bins_with_identical_predicates() -> None:
+    specs = _gemm_spec()
+    point = specs[0]["coverpoints"][2]
+    point["bins"].append({
+        "name": "fake_boundary",
+        "intent": "Claim a distinct case without a distinct observation",
+        "predicate": dict(point["bins"][0]["predicate"]),
+    })
+    errors = validate_operation_coverage(_gemm_architecture(), specs)
+    assert any("identical predicate" in error for error in errors)
 
 
 def test_known_family_allows_architect_feature_extension_and_enforces_provenance() -> None:
