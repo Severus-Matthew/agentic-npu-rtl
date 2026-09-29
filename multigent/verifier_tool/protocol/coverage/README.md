@@ -45,7 +45,7 @@ re-exports — no divergence here.
 `multigent.verifier_tool.protocol.coverage.runtime` directly. In practice the
 only production caller is `orchestration/runtime.py` (`InterfaceCoverageTracker.__init__`
 constructs one `ProtocolCoverageMonitor(self.plan)`); the only other consumer is
-`multigent/tests/test_standard_axi_protocols.py`, which imports
+`multigent/verifier_tool/tool_regression/integration/test_standard_axi_protocols.py`, which imports
 `ProtocolCoverageMonitor` directly from `multigent.verifier_tool.protocol.coverage.runtime`
 to unit-test AXI bin classification without a full `InterfaceCoverageTracker`.
 
@@ -138,7 +138,7 @@ and `multigent/orchestration/artifacts.py` (build the coverage plan handed to
 gate), `multigent/verifier_tool/protocol/stimulus/stimulus_generator.py`, and
 `operation/coverage/plan.py:merge_coverage_plans` (as the `interface_plan`
 half of the merge). Also called directly (bypassing the facade) by several
-`multigent/tests/test_*.py` files.
+`multigent/verifier_tool/tool_regression/` tests.
 
 ### `feature_plan` / `compiled_coverage` fields
 
@@ -151,7 +151,7 @@ obligations already built above** into the shared cross-domain Feature Plan
 record shape (`bindings`/`assertion`/`coverage`/`stimulus`) rather than
 re-deriving bins independently — it iterates `interface_plan.get("obligations",
 [])` and wraps each one via `feature_record(...)`. These two fields are
-currently read only by `multigent/tests/test_feature_plans.py`; neither
+currently read only by `multigent/verifier_tool/tool_regression/unit/test_feature_plans.py`; neither
 `InterfaceCoverageTracker`, `ProtocolCoverageMonitor`, nor
 `manifest.py:compile_verification_manifest` ever reads `plan["feature_plan"]` or
 `plan["compiled_coverage"]` — both only read `plan["obligations"]` directly. If

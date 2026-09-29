@@ -24,6 +24,7 @@ from .standard_protocols import (
     enrich_standard_protocol_metadata,
     load_standard_protocol_catalog,
     render_standard_protocol_metadata_format,
+    standard_field_width,
     validate_standard_protocol_bindings,
 )
 
@@ -44,6 +45,7 @@ __all__ = [
     "enrich_standard_protocol_metadata",
     "load_standard_protocol_catalog",
     "render_standard_protocol_metadata_format",
+    "standard_field_width",
     "validate_standard_protocol_bindings",
     "signals_with_roles",
     "validate_interface_semantics",

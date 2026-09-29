@@ -98,7 +98,7 @@ recursively. It only bounds the returned copy; it does not read or write files.
 ## How it is currently used
 
 Nothing in `multigent/` other than
-[`multigent/tests/test_debugger_feedback_builder.py`](../tests/test_debugger_feedback_builder.py)
+[`multigent/verifier_tool/tool_regression/integration/test_debugger_feedback_builder.py`](tool_regression/integration/test_debugger_feedback_builder.py)
 calls these four functions today (checked by grep), and
 `multigent/agents/debugger.py` imports nothing from `verifier_tool`. The package
 is an available surface, not a wired dependency. The same statement holds in the

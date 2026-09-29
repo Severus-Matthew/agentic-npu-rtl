@@ -359,7 +359,7 @@ def install_pipeline_generated_annotations(source: str) -> str:
         cleaned_lines.insert(line_index, comment)
     audit = [
         AUDIT_BEGIN_MARKER,
-        "# This literal and the following comments are emitted by my_v.",
+        "# This literal and the following comments are emitted by the deterministic verification tool.",
         "# The Verifier chooses semantic label-to-target mappings; code owns syntax.",
         STIMULUS_SECTION,
         f"STIMULUS_COVERAGE_INTENTS = {_literal(intents)}",
@@ -485,7 +485,7 @@ def render_contract_generated_block(
 
     lines = [
         BEGIN_MARKER,
-        "# This block is emitted by my_v from the frozen interface contract.",
+        "# This block is emitted by the deterministic verification tool from the frozen interface contract.",
         "# It is not authored or repaired by the LLM.",
         "from multigent.verifier_tool import (",
         "    capture_contract_snapshot,",

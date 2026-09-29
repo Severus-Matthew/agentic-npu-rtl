@@ -14,6 +14,12 @@ verification domain ([`../protocol/`](../protocol/README.md),
 | `history.py` | `rebuild_stimulus_history` — aggregates the stimulus ledger across every run, domain-agnostic by construction. |
 | `campaign.py` | `run_code_owned_verification_campaign` — the fully-automatic test-generation-time driver that dispatches into `protocol/stimulus/drivers/` (AXI4-Lite, full AXI4 — via a separate multi-port register-started path for `control_plane_sequence` operations — or the LLM-declared memory-like `custom_mmio` profile) or the generic ready-valid path, samples coverage via `runtime.py`, and is what `instrumentation.py` embeds when `automatic_campaign_support()` says a design qualifies. If only arithmetic is LLM-owned, it still runs `_run_arithmetic_blocked_operation_smoke`: real protocol/lifecycle traffic without inventing a golden output. `any_operation_supported` therefore means at least one operation has an executable protocol/lifecycle path, while per-operation `supported` still means the full golden-checked campaign is available. |
 
+`runtime.py` evaluates protocol assertions before ordinary protocol coverage.
+On a failing edge it transactionally samples only bins explicitly marked
+`required: false`, restores the temporal monitor state, records those
+diagnostic hits, and raises the original assertion. An illegal AXI transfer
+can therefore explain `would_cross_boundary` without earning legal coverage.
+
 The campaign records each checked job through `_record_case`, which turns the
 driver's observed beats into logical output elements and hands them, with the
 code-owned golden result, to the coverage/ledger runtime. What a "beat" is
@@ -44,15 +50,32 @@ after the start transaction, while the independent AXI4 memory drivers are
 still running. The generated lifecycle monitor checks that a successful poll
 cannot precede the final declared output retirement. Polling only after the
 drivers returned concealed a falsely early `ap_done` readback. The real-RTL
-regression in `../../tests/test_int8_gemm_hls_golden.py` copies the golden
-Verilog into a temporary directory and mutates only that readback bit;
+regression in
+[`../tool_regression/rtl/test_int8_gemm_hls_golden.py`](../tool_regression/rtl/test_int8_gemm_hls_golden.py)
+copies the golden Verilog into a temporary directory and mutates only that readback bit;
 golden passes and the mutant fails `completion_matches_final_output`.
+The same orchestration layer translates two bounded-wait failures into the
+contract feature that owns the missing progress. If a successfully issued
+control-plane start is followed by no accepted AXI4 memory traffic before the
+memory-driver deadline, it raises
+`lifecycle.<operation>.accepted_command_starts_job`. If declared memory
+traffic completes but the bounded completion-register poll expires, it raises
+`lifecycle.<operation>.completion_matches_final_output`. The AXI4 driver
+publishes only protocol-neutral observed-transfer counters through its optional
+`progress_state` mapping; lifecycle policy and diagnostic ownership remain in
+`campaign.py`. During a generated reset-abort sweep, those counters also choose
+the actual input-A, input-B, compute, or output reset boundary. If the first
+accepted start after such an abort makes no memory progress, the campaign
+reports `lifecycle.<operation>.reset_aborts_pending_job`, rather than
+misclassifying stale post-reset state as an ordinary start failure. The same
+bounded progress evidence assigns accepted AW requests followed by zero W
+transfers to `protocol.<group>.write_address_and_data_are_independent`.
 The automatic campaign now dispatches this policy to a separate multi-port
 AXI4/control-plane path instead of the generic single-manager AXI4 path. The
-unchanged HLS RTL now passes the normal generated TB with all 137 required
-bins, no assertion failures, and a PASS ledger. Individual checker/bin mutant
-qualification remains open; the manually assembled regression above is smoke
-evidence and does not earn a strict matrix check by itself.
+unchanged HLS RTL now passes the normal generated TB with all 152 required
+bins, no assertion failures, and a PASS ledger. Individual checker/bin
+qualification is tracked in the HLS benchmark matrix; the manually assembled
+regression above remains smoke evidence only.
 The control-plane campaign compiles timing and page-split variants from the
 resolved protocol feature plan, then reuses the AXI4 memory driver's
 first-transfer READY policy and the AXI4-Lite master's response sinks.
@@ -120,19 +143,31 @@ generated monitor's `FallingEdge + ReadOnly` snapshot. Waiting 1 ps before
 publishing let an invalid, one-cycle early command acceptance escape the
 `single_inflight` assertion; the local faulty RTL then failed only by missing
 command-stall coverage. The current scheduling catches that acceptance as
-`legal_command_starts_one_job` while the corrected RTL still closes all bins.
+`single_inflight_job_enforced` while the corrected RTL still closes all bins.
+
+These are intentionally separate checks. The post-start watchdog proves an
+accepted command causes observable work; the overlap probe proves a second
+command cannot be accepted while that work remains active.
+
+For the generic ready/valid path, reset-abort phases come from the resolved
+lifecycle stimulus plan instead of a second hard-coded phase list. An input
+whose entire object is one transfer is reset before that transfer (otherwise
+the DUT has already advanced to compute), and `reset_abort_phase.output` is
+omitted when the contract proves the complete result retires in one transfer.
+The command-overlap probe that splits a result before its final beat is likewise
+run only for results with at least two transfers; required coverage remains the
+final gate for scalar-result designs.
 
 ## Known limitations of the register-started (`control_plane_sequence`) path
 
 Read directly from `campaign.py`; none of these is fixed here.
 
-- `run_code_owned_axi4_operation_case_via_control_plane_sequence` is the
-  happy-path job driver only; `_run_axi4_control_plane_operation_campaign` runs
-  transport variants (READY stalls, simultaneous first transfer, page-split
-  tails, delayed W) and post-job control-bus probes, but not the reset-abort,
-  illegal-command, or error-injection sweeps that
-  `_run_axi4_operation_campaign` runs for a ready/valid-started AXI4 operation
-  (the function's own docstring says the same).
+- `_run_axi4_control_plane_operation_campaign` now runs observed phase-specific
+  reset-abort and clean-recovery probes as well as transport variants (READY
+  stalls, simultaneous first transfer, page-split tails, delayed W) and
+  post-job control-bus probes. It still does not invent illegal-command or
+  injected-error behavior when the frozen control-plane sequence and lifecycle
+  policy do not declare such a drive.
 - `_run_arithmetic_blocked_operation_smoke` dispatches `{"axi4"}` operations to
   `run_code_owned_axi4_operation_case`, which requires exactly one resolved
   ready/valid command channel (`"AXI4 job needs one resolved legal command"`).
@@ -140,9 +175,10 @@ Read directly from `campaign.py`; none of these is fixed here.
   operation, so a control-plane operation whose arithmetic is `llm_extension`
   would (by reading the code; not exercised by any test) reach that smoke path
   and raise there, rather than being driven through the control-plane runner.
-- Lifecycle coverage obligations and the lifecycle stimulus plan are not
-  produced for such an operation (no command channel; see
-  [`../pool/lifecycle_policy_pool/README.md`](../pool/lifecycle_policy_pool/README.md)).
+- Arithmetic-blocked `control_plane_sequence` smoke dispatch remains separate
+  from the fully code-owned golden campaign; its extension bundle must still
+  supply any arithmetic-dependent oracle/coverage work before it can earn
+  operation correctness credit.
 
 ## Historical overviews
 

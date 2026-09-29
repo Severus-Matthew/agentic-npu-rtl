@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "catalog_case_count": 27,
+  "domain_case_counts": {
+    "operation": 10,
+    "protocol": 7,
+    "lifecycle": 7,
+    "mixed": 3
+  },
+  "attempts": [
+    {
+      "attempt_id": "api-eval-2026-09-29-mixed-001",
+      "scenario_id": "mixed.affine_and_busy_watchdog",
+      "domain": "mixed",
+      "api_calls": 1,
+      "raw_model_status": "VERIFICATION_READY",
+      "reviewed_verdict": "REJECTED_BY_HARDENED_GATES",
+      "operation_formula": "triple_plus_one(value) = value * 3 + 1 after ReLU",
+      "requested_extension_ids": [
+        "lifecycle.busy_watchdog_observation"
+      ],
+      "defects": [
+        "unreachable_formula_coverage_bin",
+        "inert_existing_primitive_claim"
+      ],
+      "deterministic_gates": [
+        "formula_bin_solver_witness",
+        "extension_entry_point_reachability"
+      ],
+      "first_attempt_success": false,
+      "concise_result": "The response invented an impossible negative formula bin and named nonexistent existing primitives; both are now rejected before TB acceptance.",
+      "raw_artifacts_committed": false
+    }
+  ]
+}

@@ -64,6 +64,37 @@ _FIXED_FIELD_WIDTHS = {
     "axi4_lite": {"prot": 3, "resp": 2},
     "axi4_stream": {"last": 1},
 }
+
+
+def standard_field_width(
+    profile: str,
+    group: Mapping[str, Any],
+    field: str,
+    *,
+    channel: Mapping[str, Any] | None = None,
+) -> int | None:
+    """Return the contract-selected physical width for one standard field.
+
+    AXI4 defines AxLOCK as one bit, but older Vitis/Vivado HLS RTL exposes a
+    two-bit compatibility port while using only ``00`` and ``01``.  Accept
+    that physical representation only when the contract declares it
+    explicitly; every ordinary AXI4 contract keeps the strict one-bit rule.
+    """
+
+    expected = _FIXED_FIELD_WIDTHS.get(profile, {}).get(field)
+    field_metadata = (
+        channel.get("field_metadata", {}).get(field, {})
+        if isinstance(channel, Mapping)
+        else {}
+    )
+    if (
+        profile == "axi4"
+        and field == "lock"
+        and isinstance(field_metadata, Mapping)
+        and field_metadata.get("physical_encoding") == "legacy_hls_2bit"
+    ):
+        return 2
+    return expected
 _TAG_VALUE = re.compile(
     r"(?:^|[\s,;])(?P<key>protocol_group|protocol_channel|protocol_field)="
     r"(?P<value>[A-Za-z0-9_]+)(?=$|[\s,;])"
@@ -89,6 +120,9 @@ def load_standard_protocol_catalog() -> dict[str, Any]:
             for key in ("required_fields", "optional_fields"):
                 if not isinstance(channel.get(key), list):
                     raise ValueError(f"{profile_name}.{kind}.{key} must be a list")
+        for key in ("rules", "coverage", "driver_invariants"):
+            if key in profile and not isinstance(profile.get(key), list):
+                raise ValueError(f"{profile_name}.{key} must be a list")
     return raw
 
 
@@ -100,6 +134,8 @@ def render_standard_protocol_metadata_format() -> str:
         "- channel.protocol_group: identifies one complete protocol interface",
         "- channel.protocol_channel: standardized channel kind",
         "- signal.protocol_field: standardized field within that channel",
+        "- signal physical adapter metadata: physical_encoding, logical_bit, reserved_zero_bits",
+        "- physical adapter metadata describes RTL representation and is not a protocol capability",
         "- current schema adapter: channel metadata entries use protocol_group=<value> and protocol_channel=<value>",
         "- current schema adapter: signal semantic text uses protocol_field=<value>",
         "- current schema adapter: channel metadata may use protocol_capability.<key>=<value>",
@@ -188,11 +224,11 @@ def _capability_tags(values: Any, *, location: str) -> dict[str, Any]:
 def enrich_standard_protocol_metadata(interface: Mapping[str, Any]) -> dict[str, Any]:
     """Return a detached interface with explicit schema-compatible tags promoted.
 
-    The current Architect schema cannot carry ``protocol_group``,
-    ``protocol_channel``, or ``protocol_field`` as native properties.  Until the
-    schema is merged, it carries the same data as literal key=value tags in
-    existing metadata/semantic fields.  This adapter promotes only those exact
-    tags and deliberately performs no signal-name inference.
+    Legacy contracts may carry ``protocol_group``, ``protocol_channel``, or
+    ``protocol_field`` as literal key=value tags in existing metadata/semantic
+    fields.  This adapter promotes only those exact tags and deliberately
+    performs no signal-name inference. Native signal-level physical adapter
+    metadata is preserved unchanged.
     """
 
     enriched = deepcopy(dict(interface))
@@ -372,6 +408,43 @@ def _signal_binding(
     widths = {
         name: _literal_width(signal.get("width")) for name, signal in fields.items()
     }
+    field_metadata = {
+        name: {
+            key: deepcopy(signal[key])
+            for key in ("physical_encoding", "logical_bit", "reserved_zero_bits")
+            if key in signal
+        }
+        for name, signal in fields.items()
+    }
+    for field, metadata in field_metadata.items():
+        if not metadata:
+            continue
+        encoding = metadata.get("physical_encoding")
+        if encoding != "legacy_hls_2bit":
+            errors.append(
+                f"standard field {channel_name}.{field} has unsupported physical_encoding "
+                f"{encoding!r}"
+            )
+            continue
+        if str(channel.get("protocol_profile", "")) != "axi4" or field != "lock":
+            errors.append(
+                f"physical_encoding 'legacy_hls_2bit' is only valid for AXI4 lock fields, "
+                f"not {channel_name}.{field}"
+            )
+            continue
+        if widths.get(field) != 2:
+            errors.append(
+                f"standard field {channel_name}.{field} legacy_hls_2bit must be two bits"
+            )
+        if metadata.get("logical_bit") != 0:
+            errors.append(
+                f"standard field {channel_name}.{field} legacy_hls_2bit requires logical_bit=0"
+            )
+        if metadata.get("reserved_zero_bits") != [1]:
+            errors.append(
+                f"standard field {channel_name}.{field} legacy_hls_2bit requires "
+                "reserved_zero_bits=[1]"
+            )
     return {
         "name": channel_name,
         "direction": str(channel.get("direction", "")),
@@ -385,6 +458,7 @@ def _signal_binding(
         "effective_defaults": dict(kind_spec.get("effective_defaults", {})),
         "fields": field_names,
         "widths": widths,
+        "field_metadata": field_metadata,
         "capabilities": dict(
             channel.get("protocol_capabilities", {})
             if isinstance(channel.get("protocol_capabilities"), Mapping)
@@ -432,9 +506,9 @@ def _validate_widths(profile: str, group: Mapping[str, Any], errors: list[str]) 
                     f"{profile} group {group['name']!r} {channel['kind']} {mask} width "
                     f"{mask_width} must equal data bytes {data_width // 8}"
                 )
-    fixed_widths = _FIXED_FIELD_WIDTHS.get(profile, {})
     for channel in group["channels"].values():
-        for field, expected in fixed_widths.items():
+        for field in _FIXED_FIELD_WIDTHS.get(profile, {}):
+            expected = standard_field_width(profile, group, field, channel=channel)
             actual = channel["widths"].get(field)
             if actual is not None and actual != expected:
                 errors.append(
@@ -560,6 +634,7 @@ def compile_standard_protocol_plan(
             "capabilities": group_capabilities,
             "channels": compiled_channels,
             "rules": list(profile_spec.get("rules", [])),
+            "driver_invariants": list(profile_spec.get("driver_invariants", [])),
             "coverage": list(profile_spec.get("coverage", [])),
         }
         _validate_widths(profile, group, errors)
@@ -646,5 +721,6 @@ __all__ = [
     "enrich_standard_protocol_metadata",
     "load_standard_protocol_catalog",
     "render_standard_protocol_metadata_format",
+    "standard_field_width",
     "validate_standard_protocol_bindings",
 ]

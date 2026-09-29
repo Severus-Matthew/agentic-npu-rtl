@@ -5,6 +5,10 @@ from __future__ import annotations
 import math
 from typing import Any, Mapping
 
+from multigent.verifier_tool.lifecycle.assertion.control_plane_sequence_tracker import (
+    advance_control_plane_sequence,
+)
+
 
 class LifecycleCoverageMonitor:
     """Classify lifecycle events without trusting stimulus labels."""
@@ -16,9 +20,19 @@ class LifecycleCoverageMonitor:
             if item.get("template")
             in {"busy_behavior", "command_legality", "job_lifecycle", "reset_abort_phase", "post_reset_purity"}
         }
+        resolved_operations = (
+            plan.get("lifecycle_plan", {})
+            .get("feature_plan", {})
+            .get("bindings", {})
+            .get("operations", [])
+        )
+        if not resolved_operations:
+            resolved_operations = plan.get("operation_metadata", {}).get(
+                "operations", []
+            )
         self.operation_metadata = {
             str(item.get("operation_name", "")): dict(item)
-            for item in plan.get("operation_metadata", {}).get("operations", [])
+            for item in resolved_operations
             if isinstance(item, Mapping)
         }
         self.state: dict[str, Any] = {}
@@ -100,6 +114,7 @@ class LifecycleCoverageMonitor:
                     current["recovery_job_started"] = False
                 current["active"] = False
                 current["counts"] = {}
+                current["control_plane_tracker"] = {}
             return hits
 
         for obligation_id, obligation in self.obligations.items():
@@ -117,10 +132,36 @@ class LifecycleCoverageMonitor:
         for name, operation in self.operation_metadata.items():
             current = operation_states.setdefault(
                 name,
-                {"active": False, "counts": {}, "awaiting_clean_recovery": False},
+                {
+                    "active": False,
+                    "counts": {},
+                    "awaiting_clean_recovery": False,
+                    "control_plane_tracker": {},
+                },
             )
             lifecycle = operation.get("lifecycle", {})
             job_id = self._obligation("job_lifecycle", name)
+            control_start = False
+            control_complete = False
+            sequence = operation.get("control_plane_sequence")
+            control_signals = operation.get("control_plane_signals")
+            if isinstance(sequence, Mapping) and isinstance(control_signals, Mapping):
+                try:
+                    control_start, control_complete = advance_control_plane_sequence(
+                        snapshot,
+                        control_signals,
+                        sequence,
+                        current.setdefault("control_plane_tracker", {}),
+                    )
+                except AssertionError as exc:
+                    raise ValueError(str(exc)) from exc
+            if control_start:
+                current["active"] = True
+                current["counts"] = {}
+                if current.get("awaiting_clean_recovery"):
+                    current["recovery_job_started"] = True
+                if job_id:
+                    hits.extend(((job_id, "accepted"), (job_id, "active")))
             for command in lifecycle.get("job_accept_channels", []):
                 signals = command.get("signals", {})
                 if not self._transfer(snapshot, signals):
@@ -177,7 +218,9 @@ class LifecycleCoverageMonitor:
                 if current.get("awaiting_clean_recovery") and not current.get("active"):
                     current["ghost_output"] = True
             completion_names = tuple(map(str, lifecycle.get("status_bindings", {}).get("completion", ())))
-            if any(bool(self._read(snapshot, signal)) for signal in completion_names):
+            if control_complete or any(
+                bool(self._read(snapshot, signal)) for signal in completion_names
+            ):
                 if current.get("awaiting_clean_recovery") and not current.get("recovery_job_started"):
                     current["ghost_completion"] = True
                 if current.get("active"):

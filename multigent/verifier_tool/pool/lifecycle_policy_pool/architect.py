@@ -6,7 +6,12 @@ from copy import deepcopy
 from typing import Any, Mapping
 
 from .control_plane_sequence import control_plane_sequence_schema
-from .policies import LifecyclePolicyError, lifecycle_policy_schema, validate_lifecycle_policy
+from .policies import (
+    LifecyclePolicyError,
+    lifecycle_policy_schema,
+    reset_channel_policies_schema,
+    validate_lifecycle_policy,
+)
 
 
 def with_lifecycle_policy_schema(
@@ -36,6 +41,15 @@ def with_lifecycle_policy_schema(
             "Register-level start/completion sequence. Declare it if and only if "
             "lifecycle_policy.job_acceptance or completion_style is control_plane_sequence; "
             "omit it otherwise."
+        ),
+    }
+    interface_properties = result["properties"]["interface_contract"]["properties"]
+    interface_properties["reset_channel_policies"] = {
+        **reset_channel_policies_schema(),
+        "description": (
+            "Optional explicit reset behavior for generic ready_valid or custom "
+            "channels. Standard AXI-family channels already receive their "
+            "standard-owned reset rules and must not be listed here."
         ),
     }
     fields = list(operation.get("required", []))

@@ -76,11 +76,16 @@ features:
     stimulus: {strategy: legal_illegal_commands}
 
 operation_features:
-  legal_command_starts_one_job:
+  accepted_command_starts_job:
     scope: operation
-    assertion: {checker: legal_command_starts_one_job}
+    assertion: {checker: accepted_command_starts_job}
     coverage: {obligations: [job_lifecycle]}
     stimulus: {strategy: legal_command}
+  single_inflight_job_enforced:
+    scope: operation
+    assertion: {checker: single_inflight_job_enforced}
+    coverage: {obligations: [job_lifecycle]}
+    stimulus: {strategy: back_to_back_legal_jobs}
   illegal_command_errors_without_start:
     scope: operation
     assertion: {checker: illegal_command_errors_without_start}

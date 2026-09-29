@@ -68,15 +68,33 @@ These follow from how the tool resolves contracts:
     {"operation_name", "reason_code", "category", "owner", "affected_domains",
      "message", "resolution_hint", "blocked_by"},
   ],
+  "operation_solver_compilation": {              # Architect formula gate
+    "status": "PASS" | "BLOCKED",
+    "coverage_owner": "verifier",
+    "operations": [
+      {"operation", "status", "stages": [
+        {"stage", "status", "formula", "solver_ir", "domain_constraints"}
+      ]},
+    ],
+  },
+  "resolved_lifecycle_plans": {                  # exact generated-TB plans
+    "assertion": {...},
+    "coverage": {...},
+    "stimulus": {...},
+  },
+  "automatic_campaign_support": {...} | None,   # non-blocking capability report
 }
 ```
 
 Checks it runs, in order (`contract_review/preflight.py`): `contract_vocabulary`,
 `extension_requests`, `signal_roles`, `interface_semantics`,
 `standard_protocol_bindings`, `operation_features`, `lifecycle_policy`,
-`operation_arithmetic`, `standard_protocol_plan`, `interface_coverage_plan`,
+`reset_channel_policies`,
+`operation_arithmetic`, `operation_solver_compilation`, `standard_protocol_plan`, `interface_coverage_plan`,
 `operation_metadata` (catches a compile that raises), `operation_compilation` (the
-blocking compile defects, one finding each); then `module_manifest_identity` (`module_manifest.top` must
+blocking compile defects, one finding each), `lifecycle_assertion_plan`,
+`lifecycle_coverage_plan`, `lifecycle_stimulus_plan`, and
+`automatic_campaign_support`; then `module_manifest_identity` (`module_manifest.top` must
 name exactly one declared module) and `acceptance_criteria_shape` (a mapping or a
 list) when those artifacts are passed; then `extension_reuse` and `extension_match`
 (a request whose declared `match` requirements its exact target does not meet).
@@ -84,6 +102,13 @@ Findings are de-duplicated by `(artifact, message)`. A validator returning
 `list[str]` yields one finding per string; one that raises
 `ValueError`/`AssertionError`/`KeyError`/`TypeError` yields one finding with the
 exception text.
+
+`operation_solver_compilation` is the compiler-first boundary. For each
+formula-defined DAG stage, Contract Review invokes the same Z3 compiler used by
+the golden model. Success records the resolved solver IR. Failure is an
+`operation_arithmetic` finding that asks the Architect to revise the formula or
+explicitly select `llm_extension`. The report never asks the Architect for
+coverage bins: bin and predicate authoring belongs to the Verifier.
 
 Verified by running it, not only by reading it:
 
@@ -117,16 +142,18 @@ Verified by running it, not only by reading it:
     are reported only by `ArchitectAgent._validate_contract_references` (the
     Architect's relational validator, which the facade does not run); the facade lists
     them as `contract_error` notes but does not block on them.
-- **Not run by the facade:** the lifecycle plan builders and
-  `automatic_campaign_support` (a blocked operation's lifecycle obligations are
-  planned from its compile `shell`, see
+- The facade compiles all three lifecycle plans from the same resolved metadata
+  used by generated testbenches. A plan-construction exception is blocking. It
+  also returns `automatic_campaign_support` without treating `supported: false`
+  as a contract defect; a blocked operation's lifecycle obligations remain
+  planned from its compile `shell` (see
   [`pool/feature_plans/README.md`](pool/feature_plans/README.md)).
 - The two `require_*` keywords are passed to the lifecycle-policy and arithmetic
   validators. With `False`, an operation that has not declared the field is not an
   error; the facade never passes `previous_architecture`, so it does not check
   that a previously declared field was kept.
 - Today only
-  [`multigent/tests/test_tag_pool_and_contract_preflight.py`](../tests/test_tag_pool_and_contract_preflight.py)
+  [`multigent/verifier_tool/tool_regression/integration/test_tag_pool_and_contract_preflight.py`](tool_regression/integration/test_tag_pool_and_contract_preflight.py)
   and `benchmark/frozen_contract_qualification.py` call the facade.
 
 ## `resolve_extension_reuse`
@@ -154,6 +181,7 @@ domain that fails to build is reported in `diagnostics` rather than guessed.
 | complete protocol plan | `compile_standard_protocol_plan(interface)` | plan; raises `ValueError` when incomplete or ambiguous |
 | operation family / features | `validate_architecture_operation_features(architecture)` | `list[str]` |
 | lifecycle policy selection | `validate_architecture_lifecycle_policies(architecture, *, require_policy=True, previous_architecture=None)` | `list[str]` |
+| generic-channel reset policy | `validate_interface_reset_channel_policies(interface)` | `list[str]` (exact channels, one VALID binding, explicit reset polarity, no duplicate standard ownership) |
 | arithmetic and serialization declarations | `validate_architecture_operation_arithmetic(architecture, *, require_arithmetic=True, previous_architecture=None)` | `list[str]` (includes `packed_encoding` validation) |
 | canonical operation metadata | `build_architect_operation_metadata(architecture, interface)` | `{operations, unrepresentable_operations, ...}`; per-operation failures are recorded (reason code, category, owner, every defect, and a planning `shell`), not raised |
 | Architect-blocking compile defects | `validate_operation_compilation(architecture, interface)`; `blocking_compilation_errors(metadata)`; `compilation_capability_notes(metadata)` | `list[str]` / `list[dict]`; the facade's `operation_compilation` check and `capability_notes` are built from these |
@@ -235,9 +263,13 @@ domain that fails to build is reported in `diagnostics` rather than guessed.
   (an optional Architect-schema property, required exactly when `job_acceptance` or
   `completion_style` is the string `control_plane_sequence`, forbidden otherwise, and
   needing an AXI4-Lite subordinate group in the interface). Status signals are optional; their policies apply only
-  when bound. See
-  [`pool/lifecycle_policy_pool/README.md`](pool/lifecycle_policy_pool/README.md) and
-  [`lifecycle/assertion/README.md`](lifecycle/assertion/README.md).
+  when bound. An optional `interface_contract.reset_channel_policies` declaration is used when a
+  generic `ready_valid`/`custom` producer must deassert VALID during reset.
+  The declaration must state `settle_cycles` so synchronous reset is not checked
+  before the edge that applies it.
+  Standard AXI-family channels must not repeat that standard-owned behavior.
+  See [`pool/lifecycle_policy_pool/README.md`](pool/lifecycle_policy_pool/README.md)
+  and [`lifecycle/assertion/README.md`](lifecycle/assertion/README.md).
 - **Reset timing:** an optional `reset_settle_cycles` on the reset signal delays
   the reset-output checks. The current Architect JSON schema has no such property,
   so only hand-authored frozen contracts carry it.

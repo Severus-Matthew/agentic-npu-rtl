@@ -10,6 +10,7 @@ catalog:
     optional: [protocol_capabilities]
   signal_metadata:
     required_for_standard_payload_and_sideband_signals: [protocol_field]
+    optional_physical_adapter_fields: [physical_encoding, logical_bit, reserved_zero_bits]
   endpoint_direction: >-
     Channel direction is relative to the DUT. A manager/source owns output
     request/data channels and input response/ready channels; a subordinate/sink
@@ -40,7 +41,6 @@ profiles:
       read: [read_address, read_data]
     rules:
       - standard_signal_widths
-      - ready_valid_stability
       - valid_low_during_reset
       - legal_burst_encoding
       - legal_burst_length
@@ -52,11 +52,11 @@ profiles:
       - write_strobe_within_active_lanes
       - response_after_request
       - response_id_matches_request
-      - response_order_preserved_per_id
       - write_address_and_data_are_independent
-      - legal_response_encoding
       - exclusive_access_restrictions
       - exclusive_response_consistency
+    driver_invariants:
+      - response_order_preserved_per_id
     coverage:
       - handshake_states
       - stall_stability
@@ -95,7 +95,6 @@ profiles:
       read: [read_address, read_data]
     rules:
       - standard_signal_widths
-      - ready_valid_stability
       - valid_low_during_reset
       - write_response_after_address_and_data
       - read_response_after_address
@@ -133,7 +132,6 @@ profiles:
       stream: [stream]
     rules:
       - standard_signal_widths
-      - ready_valid_stability
       - valid_low_during_reset
       - keep_and_strobe_width_match_data_bytes
       - strobe_is_subset_of_keep
@@ -180,7 +178,6 @@ profiles:
         required_fields: [resp]
         optional_fields: [id]
     rules:
-      - ready_valid_stability
       - valid_low_during_reset
     coverage:
       - handshake_states
@@ -191,7 +188,9 @@ profiles:
   # their existing generic role mapping. Deeper profile-specific checks require
   # the same explicit protocol_channel/protocol_field mapping as AXI.
   ready_valid:
-    rules: [ready_valid_stability, valid_low_during_reset]
+    # Reset behavior is not intrinsic to a generic ready/valid handshake.
+    # Select it explicitly through interface.reset_channel_policies when needed.
+    rules: []
     coverage: [handshake_states, stall_stability, handshake_arrival_order]
   # Future candidates: no protocol-specific compiler/checker/driver yet.
   # tilelink:

@@ -17,7 +17,7 @@
         "reduction_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement_after_each_add"]},
         "post_operations": {
           "type": "object",
-          "description": "A DAG of named post-reduction stages, not a fixed order. Each stage names exactly one predecessor via depends_on -- either the literal string 'accumulator' or another stage's key -- so execution order is derived by following depends_on edges back from post_output, not by object-key order. Empty object means no post-processing at all (post_output must then be 'accumulator'). The current integer GEMM backend supports at most one each of bias_add, wrap, relu, and affine_quantize, in any order the depends_on chain expresses, plus any number of llm_defined stages (each with its own closed-grammar formula -- see formula.py) for a post-op this tool has no other built-in kind for.",
+          "description": "A DAG of named post-reduction stages, not a fixed order. Each stage names exactly one predecessor via depends_on -- either the literal string 'accumulator' or another stage's key -- so execution order is derived by following depends_on edges back from post_output, not by object-key order. Empty object means no post-processing at all (post_output must then be 'accumulator'). Built-in stages may be combined with formula-defined stages. A formula-defined stage is accepted by the Contract Reviewer only when the deterministic solver compiler can translate it; otherwise the Architect revises it or explicitly requests llm_extension.",
           "additionalProperties": {
             "anyOf": [
               {
@@ -69,8 +69,8 @@
                   "kind": {"type": "string", "enum": ["llm_defined"]},
                   "depends_on": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 1},
                   "formula": {
-                    "type": "string", "minLength": 1,
-                    "description": "A closed-grammar expression over the single free variable 'value' (the running scalar entering this stage): integer literals, + - * and unary -, comparisons (< <= > >= == !=), and calls to min/max (2 args), abs (1 arg), clip(x, lo, hi) (3 args). No division, modulo, bitwise ops, exponentiation, attribute access, subscripting, other names, or other calls. See pool/operation_metadata/formula.py for the exact grammar and its rationale."
+                    "type": "string", "minLength": 1, "maxLength": 4096,
+                    "description": "A deterministic integer expression over 'value', the scalar entering this DAG stage. The Contract Reviewer decides representability by invoking the solver compiler rather than by matching a contract-level operator list. The same compiled expression drives symbolic solving and concrete golden evaluation."
                   }
                 }
               }

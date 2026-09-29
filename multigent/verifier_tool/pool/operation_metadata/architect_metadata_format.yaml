@@ -17,6 +17,11 @@ standard_protocol_extension:
       Exact standardized field within its channel. AXI4 uses addr, len, size,
       burst, data, strb, last, resp, id, lock, cache, prot, qos, region, user;
       AXI4-Stream additionally uses keep and dest. valid/ready remain signal roles.
+    physical_encoding: >-
+      Optional physical RTL representation of the bound field. This is adapter
+      metadata, never a protocol capability.
+    logical_bit: Logical standard-protocol bit within a wider compatibility port.
+    reserved_zero_bits: Physical compatibility bits that must remain zero.
   profiles: [axi4, axi4_lite, axi4_stream]
   no_name_inference: true
 
@@ -80,6 +85,21 @@ lifecycle_policy_extension:
     Old frozen contracts without the field are rejected and must be explicitly
     updated by Architect. There is no legacy policy/default inference. Local
     revisions cannot remove declarations. This does not expand revision permissions.
+
+reset_channel_policy_extension:
+  owner: verifier_tool
+  merge_status: integrated_in_effective_architect_output_schema
+  pool: lifecycle_policy_pool/lifecycle_policies.yaml
+  schema_composer: multigent.verifier_tool.with_lifecycle_policy_schema
+  compact_contract_field: interface_contract.reset_channel_policies
+  rule: >-
+    Generic ready_valid and custom channels make no implicit reset promise.
+    When their producer VALID must remain low during active reset, list the
+    exact channel under behavior=valid_deasserted and declare nonnegative
+    settle_cycles (0 for asynchronous clearing, normally 1 for synchronous
+    clearing). AXI4, AXI4-Lite,
+    AXI4-Stream, and custom_mmio channels already receive the standard-owned
+    rule and must not be listed here.
 
 lifecycle_control_plane_sequence_extension:
   owner: verifier_tool
@@ -169,6 +189,12 @@ arithmetic:
         - relu
         - wrap
         - affine_quantize
+        - llm_defined_formula
+      formula_stage_rule: >-
+        Architect declares the formula and DAG dependency only. Contract Review
+        attempts deterministic solver compilation. Verifier owns coverage bins
+        and predicates after successful compilation; llm_extension is reserved
+        for behavior the Architect declares not solver-representable.
 
 lifecycle:
   owner: verifier_tool

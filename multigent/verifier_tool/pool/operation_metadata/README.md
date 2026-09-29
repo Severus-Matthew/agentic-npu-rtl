@@ -36,7 +36,7 @@ name-based guess.
 | `architect_metadata.py` | The main compiler: frozen contract → canonical per-operation I/O + lifecycle + arithmetic metadata |
 | `arithmetic_metadata.py` | The arithmetic sub-schema, its Architect-schema composer, and the compact-declaration → canonical-arithmetic compiler |
 | `arithmetic_metadata.schema.json` | The actual JSON Schema for `operations[].arithmetic` (`anyOf`: `integer_matrix_multiply` branch or `llm_extension` branch) |
-| `formula.py` | The closed-grammar expression parser/evaluator for `llm_defined` post-op stages — never `eval`/`exec`, an explicit AST-shape whitelist |
+| `formula.py` | The safe compiler for formula-defined post-op stages. It translates contract syntax into Z3 IR and uses that same IR for golden evaluation; it never uses `eval`/`exec`. |
 | `io_metadata.py` | `data_objects[].serialization` schema (`dense_tensor` / `scalar` / `llm_extension` / `packed_encoding`) + validation + the wire-adapter support guard |
 | `packed_encoding.py` | The `packed_encoding` serialization kind: declaration validation and the encode-only `pack_words` engine (several logical elements folded into one physical container) |
 | `canonical.py` | Canonical job assembly + code-owned GEMM classifiers + reachable coverage bins |
@@ -436,16 +436,18 @@ post_operations:
 post_output: clipped
 ```
 
-`formula.py` parses and validates `formula` against a small, closed grammar
-(the free variable `value` is the running scalar entering this stage;
-integer literals; `+ - *` and unary `-`; comparisons `< <= > >= == !=`
-yielding 0/1; calls to `min`/`max` (2 args), `abs` (1 arg), `clip(x, lo,
-hi)` (3 args, sugar for `min(max(x, lo), hi)`) — no division, modulo,
-bitwise ops, exponentiation, attribute access, subscripting, other names, or
-other calls, ever (it is never `eval`/`exec`'d: an explicit recursive
-AST-shape whitelist rejects anything else, since this text is LLM-authored
-contract input). `canonical.py::integer_matrix_multiply_events` evaluates it
-directly in the golden-model walk, so once the formula parses,
+`formula.py` attempts to compile `formula` into an integer Z3 expression. The
+contract schema deliberately does not publish a fixed list of accepted
+operators. The Contract Reviewer runs the compiler: a successful compilation
+becomes the single semantic source for symbolic solving and concrete golden
+evaluation; a failed compilation is returned to the Architect for revision.
+The compiler translates syntax node by node and never uses `eval` or `exec`.
+If the Architect determines that the behavior cannot be represented by this
+solver-backed scalar model, it explicitly selects `classifier_profile:
+llm_extension` and links an operation-domain extension request.
+
+`canonical.py::integer_matrix_multiply_events` evaluates the compiled formula
+inside the golden-model walk, so once the formula compiles,
 `accumulation`/`bias`/`activation`/`dimensions`/`operand_values` — none of
 which have anything to do with the new stage — go back to being fully
 automatic, exactly as if the stage were
@@ -454,12 +456,12 @@ singular by construction), a contract may declare several
 distinct `llm_defined` stages chained together; they are disambiguated by
 stage name and formula, not by `kind`.
 
-This does not extend to genuinely arbitrary math (no way to express, say, a
-lookup table or a transcendental function in this grammar) — that is exactly
-what `classifier_profile: llm_extension` remains for. `llm_defined` is
-specifically for the "new post-op, but it is still simple closed-form
-integer arithmetic" case, which is the common one in practice (saturating
-casts, additional clamps, alternative activations).
+The Architect declares only the formula and its DAG dependency here. It does
+not declare coverage bins. After successful compilation, the Verifier owns the
+feature's bins and predicates and may use the compiled formula for targeted
+stimulus. Full `llm_extension` remains the explicit path for behavior that the
+compiler cannot represent, such as stateful, temporal, or externally defined
+semantics.
 
 ## `io_metadata.py` — explicit serialization, never inferred from shape
 
@@ -556,7 +558,7 @@ real worked example is `benchmark/int8_gemm_hls_golden/build_contract.py`
 bits zero; B: `N` decomposed into `N_tile x N_lane x N_offset`, sixteen 32-bit
 containers per word, each `(B[n1] << 18) + B[n0]` over signed fields, 27 bits
 used; word index is `K*4 + N_tile`, 256 words). Unit tests:
-`multigent/tests/test_packed_encoding.py` (reference-encoder equality incl. the
+`multigent/verifier_tool/tool_regression/unit/test_packed_encoding.py` (reference-encoder equality incl. the
 sign-extension-carry edge case, and each rejection rule above). Do not confuse
 this with `test_packed_memory_output.py`, which covers ordinary sub-word
 `dense_tensor` outputs (several narrow elements per bus word).
@@ -737,7 +739,7 @@ interface contract, and on every sampled snapshot where a channel's bound
   a seeded-random completion scheduler
   (`protocol/stimulus/drivers/_completion_scheduler.py::RandomCompletionScheduler`), proven
   against a real Verilator simulation in
-  `multigent/tests/test_axi4_outstanding_drive.py` (a request issued second
+  `multigent/verifier_tool/tool_regression/rtl/test_axi4_outstanding_drive.py` (a request issued second
   is driven to complete *before* one issued first, deterministically from a
   fixed seed). `orchestration/campaign.py::automatic_campaign_support` now
   reports `axi4` bindings as automatable only when the required
@@ -749,9 +751,9 @@ interface contract, and on every sampled snapshot where a channel's bound
   AXI4 manager groups. See
   [`protocol/stimulus/README.md`](../../protocol/stimulus/README.md) for the
   exact mechanism, including legal unaligned INCR starts and byte-lane
-  reconstruction. Coverage/qualification status is tracked in
-  [`../../SUPPORT_VALIDATION_MATRIX.md`](../../SUPPORT_VALIDATION_MATRIX.md)
-  (which now points to `FULL_POOL_QUALIFICATION_MATRIX.md`): an entry is only
+  reconstruction. Coverage/qualification status is tracked in the executable
+  [`../../tool_regression/qualification/ledger.json`](../../tool_regression/qualification/ledger.json):
+  an entry is only
   strictly qualified when a frozen-contract/generated-TB mutant fails for the
   intended reason and the corrected RTL passes every required bin; earlier
   smoke-level runs are not counted, and rows are marked one at a time (see the
@@ -781,7 +783,7 @@ only three generic channel kinds instead of AXI4's five:
 A group is one direction only (a `request`+`data` pair) — unlike AXI4, a
 `custom_mmio` group has no distinct kind names for read vs. write, so a
 design wanting both directions on what is conceptually "one port" declares
-two `custom_mmio` groups (see `multigent/tests/test_custom_mmio_protocol.py`
+two `custom_mmio` groups (see `multigent/verifier_tool/tool_regression/unit/test_custom_mmio_protocol.py`
 for a worked example using channel/signal names — `req_out`, `dat_in`,
 `wreq_out`, `wdat_out`, `ack_in` — that look nothing like AXI, proving the
 binding is matched purely by tag, never by spelling). The `response` channel
@@ -850,7 +852,7 @@ alongside compact `arithmetic` on the same operation.
 
 Test fixtures explicitly state their intended semantics; production code never
 borrows fixture defaults. The test suite
-(`multigent/tests/test_operation_arithmetic_metadata.py`,
+(`multigent/verifier_tool/tool_regression/unit/test_operation_arithmetic_metadata.py`,
 `test_canonical_operation.py`, `test_lifecycle_policy_pool.py`) covers missing
 fields, invalid references, unsupported math, extension delegation,
 serialization, accumulator/result width differences, conversion order, and

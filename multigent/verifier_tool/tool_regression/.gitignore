@@ -1,0 +1,11 @@
+local_reports/*
+!local_reports/README.md
+
+# Rebuildable regression output
+**/functional_coverage_report.json
+**/functional_coverage_report.cocotb-coverage.yml
+**/simulation_report.json
+**/stimulus_ledger.json
+**/qualification.json
+**/run_all_summary.json
+benchmarks/int8_gemm_hls_golden/prepared_qualification_catalog.json

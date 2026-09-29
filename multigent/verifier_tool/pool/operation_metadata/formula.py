@@ -1,153 +1,317 @@
-"""A small, closed, sandboxed integer-arithmetic expression language for an
-Architect-declared `post_operations` stage this tool has no built-in `kind`
-for (`bias_add`/`wrap`/`relu`/`affine_quantize`) -- see `arithmetic_metadata.py`'s
-`llm_defined` kind and `canonical.py::integer_matrix_multiply_events`'s
-dispatch of it. Declaring a new post-op this way, instead of falling back to
-`classifier_profile: llm_extension`, is what lets every concept that does not
-need to look past the new stage (e.g. `accumulation`, which only needs the
-reduction) keep getting fully automatic code-owned stimulus and golden
-values: the moment a `post_operations` stage kind is genuinely unknown to
-this whole file, `_gemm_model` rejects the *entire* operation, not just the
-part that touches that stage.
+"""Compile Architect-declared scalar formulas into the tool's solver IR.
 
-Grammar: the single free variable `value` (the running scalar entering this
-stage), integer literals, `+ - *` and unary `-`, comparisons (`< <= > >= ==
-!=`, yielding 0/1), and calls to `min`/`max` (2 args), `abs` (1 arg), and
-`clip(x, lo, hi)` (sugar for `min(max(x, lo), hi)`) -- enough to express
-relu-family and saturation/clamp post-ops. The common per-tensor fixed-point
-affine quantizer has its own built-in `affine_quantize` kind; this formula path
-is for different custom quantizers. No division, modulo, bitwise ops, or
-exponentiation in this version; no attribute access, subscripting, other
-names, or other calls, ever.
+The contract does not select from a published list of arithmetic tokens or
+feature names. It supplies a formula over ``value`` and the Contract Reviewer
+accepts it only when this module can compile it into an integer Z3 expression.
+The same compiled expression is used for concrete golden-model evaluation, so
+the solver and the reference model cannot silently implement different maths.
 
-Never uses `eval`/`exec`: `parse_formula` recursively validates the parsed
-AST against an explicit shape whitelist and raises `FormulaError` for
-anything outside it. This text ultimately comes from LLM-authored contract
-input, so accepting it as trusted Python would be a code-execution hole.
+This is deliberately a compiler, not ``eval``/``exec``. Python syntax is only
+used as a convenient parser; names, calls, and expression nodes are translated
+one by one into solver expressions. An expression the compiler cannot give
+precise integer semantics is rejected. The Architect may revise the formula,
+or explicitly declare ``classifier_profile: llm_extension`` when the behavior
+is genuinely outside the solver-backed scalar model.
 """
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
+from typing import Mapping
 
-_ALLOWED_COMPARISONS = (ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Eq, ast.NotEq)
-_ALLOWED_BINOPS = (ast.Add, ast.Sub, ast.Mult)
-_CALL_ARITY = {"min": 2, "max": 2, "abs": 1, "clip": 3}
+import z3
 
 
 class FormulaError(ValueError):
-    """An llm_defined post-operation formula is not in the supported grammar."""
+    """A formula cannot be represented by the deterministic solver backend."""
 
 
-def _validate(node: ast.AST, formula: str) -> None:
-    if isinstance(node, ast.Constant):
-        if not isinstance(node.value, int) or isinstance(node.value, bool):
-            raise FormulaError(f"formula {formula!r} has a non-integer literal {node.value!r}")
-        return
-    if isinstance(node, ast.Name):
-        if node.id != "value":
+@dataclass(frozen=True)
+class CompiledFormula:
+    """One solver-compiled scalar formula and its well-definedness guards."""
+
+    source: str
+    value_symbol: z3.ArithRef
+    expression: z3.ArithRef
+    constraints: tuple[z3.BoolRef, ...]
+
+    def evaluate(self, value: int) -> int:
+        """Evaluate with exactly the semantics used by symbolic solving."""
+
+        replacement = z3.IntVal(int(value))
+        guards = [
+            z3.simplify(z3.substitute(item, (self.value_symbol, replacement)))
+            for item in self.constraints
+        ]
+        if any(z3.is_false(item) for item in guards):
             raise FormulaError(
-                f"formula {formula!r} references unknown name {node.id!r}; only 'value' is bound"
+                f"formula {self.source!r} is undefined for value={value}"
             )
-        return
-    if isinstance(node, ast.UnaryOp):
-        if not isinstance(node.op, ast.USub):
+        result = z3.simplify(
+            z3.substitute(self.expression, (self.value_symbol, replacement))
+        )
+        if z3.is_int_value(result):
+            return result.as_long()
+        solver = z3.Solver()
+        solver.add(*guards)
+        if solver.check() != z3.sat:
             raise FormulaError(
-                f"formula {formula!r} uses unsupported unary operator {type(node.op).__name__}"
+                f"formula {self.source!r} is undefined for value={value}"
             )
-        _validate(node.operand, formula)
-        return
-    if isinstance(node, ast.BinOp):
-        if not isinstance(node.op, _ALLOWED_BINOPS):
+        evaluated = solver.model().eval(result, model_completion=True)
+        if not z3.is_int_value(evaluated):
             raise FormulaError(
-                f"formula {formula!r} uses unsupported operator {type(node.op).__name__}"
+                f"formula {self.source!r} did not produce a concrete integer"
             )
-        _validate(node.left, formula)
-        _validate(node.right, formula)
-        return
-    if isinstance(node, ast.Compare):
-        if (
-            len(node.ops) != 1
-            or len(node.comparators) != 1
-            or not isinstance(node.ops[0], _ALLOWED_COMPARISONS)
-        ):
-            raise FormulaError(f"formula {formula!r} uses an unsupported comparison")
-        _validate(node.left, formula)
-        _validate(node.comparators[0], formula)
-        return
-    if isinstance(node, ast.Call):
-        if (
-            not isinstance(node.func, ast.Name)
-            or node.func.id not in _CALL_ARITY
-            or node.keywords
-            or len(node.args) != _CALL_ARITY[node.func.id]
-        ):
+        return evaluated.as_long()
+
+
+def _integer(expression: z3.ExprRef, formula: str) -> z3.ArithRef:
+    if z3.is_bool(expression):
+        return z3.If(expression, z3.IntVal(1), z3.IntVal(0))
+    if z3.is_int(expression):
+        return expression  # type: ignore[return-value]
+    raise FormulaError(
+        f"formula {formula!r} does not compile to an integer expression"
+    )
+
+
+def _boolean(expression: z3.ExprRef, formula: str) -> z3.BoolRef:
+    if z3.is_bool(expression):
+        return expression  # type: ignore[return-value]
+    if z3.is_int(expression):
+        return expression != 0
+    raise FormulaError(
+        f"formula {formula!r} does not compile to a boolean condition"
+    )
+
+
+class _SolverCompiler:
+    def __init__(self, formula: str, bindings: Mapping[str, z3.ExprRef]) -> None:
+        self.formula = formula
+        self.bindings = dict(bindings)
+        self.constraints: list[z3.BoolRef] = []
+
+    def compile(self, node: ast.AST) -> z3.ExprRef:
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, bool):
+                return z3.BoolVal(node.value)
+            if isinstance(node.value, int):
+                return z3.IntVal(node.value)
             raise FormulaError(
-                f"formula {formula!r} calls an unsupported function "
-                f"(only {sorted(_CALL_ARITY)} with fixed arity are allowed)"
+                f"formula {self.formula!r} has a non-integer literal {node.value!r}"
             )
-        for arg in node.args:
-            _validate(arg, formula)
-        return
-    raise FormulaError(f"formula {formula!r} uses unsupported syntax {type(node).__name__}")
+
+        if isinstance(node, ast.Name):
+            if node.id not in self.bindings:
+                raise FormulaError(
+                    f"formula {self.formula!r} references unbound name {node.id!r}"
+                )
+            return self.bindings[node.id]
+
+        if isinstance(node, ast.UnaryOp):
+            operand = self.compile(node.operand)
+            if isinstance(node.op, ast.USub):
+                return -_integer(operand, self.formula)
+            if isinstance(node.op, ast.UAdd):
+                return _integer(operand, self.formula)
+            if isinstance(node.op, ast.Not):
+                return z3.Not(_boolean(operand, self.formula))
+            raise FormulaError(
+                f"formula {self.formula!r} has no solver meaning for "
+                f"unary node {type(node.op).__name__}"
+            )
+
+        if isinstance(node, ast.BinOp):
+            left = _integer(self.compile(node.left), self.formula)
+            right = _integer(self.compile(node.right), self.formula)
+            if isinstance(node.op, ast.Add):
+                return left + right
+            if isinstance(node.op, ast.Sub):
+                return left - right
+            if isinstance(node.op, ast.Mult):
+                return left * right
+            if isinstance(node.op, ast.FloorDiv):
+                self.constraints.append(right != 0)
+                return left / right
+            if isinstance(node.op, ast.Mod):
+                self.constraints.append(right != 0)
+                return left % right
+            if isinstance(node.op, ast.Pow):
+                if (
+                    not isinstance(node.right, ast.Constant)
+                    or not isinstance(node.right.value, int)
+                    or isinstance(node.right.value, bool)
+                    or node.right.value < 0
+                    or node.right.value > 64
+                ):
+                    raise FormulaError(
+                        f"formula {self.formula!r} requires an integer literal "
+                        "exponent in the bounded range 0..64"
+                    )
+                result: z3.ArithRef = z3.IntVal(1)
+                for _ in range(node.right.value):
+                    result = result * left
+                return result
+            if isinstance(node.op, ast.Div):
+                raise FormulaError(
+                    f"formula {self.formula!r} uses real division and therefore "
+                    "has no declared integer rounding semantics"
+                )
+            raise FormulaError(
+                f"formula {self.formula!r} has no integer solver meaning for "
+                f"node {type(node.op).__name__}"
+            )
+
+        if isinstance(node, ast.BoolOp):
+            values = [
+                _boolean(self.compile(item), self.formula) for item in node.values
+            ]
+            if isinstance(node.op, ast.And):
+                return z3.And(*values)
+            if isinstance(node.op, ast.Or):
+                return z3.Or(*values)
+            raise FormulaError(
+                f"formula {self.formula!r} has no solver meaning for "
+                f"boolean node {type(node.op).__name__}"
+            )
+
+        if isinstance(node, ast.Compare):
+            operands = [
+                self.compile(node.left),
+                *[self.compile(item) for item in node.comparators],
+            ]
+            comparisons: list[z3.BoolRef] = []
+            for left_raw, operator, right_raw in zip(
+                operands, node.ops, operands[1:]
+            ):
+                left = _integer(left_raw, self.formula)
+                right = _integer(right_raw, self.formula)
+                if isinstance(operator, ast.Lt):
+                    comparisons.append(left < right)
+                elif isinstance(operator, ast.LtE):
+                    comparisons.append(left <= right)
+                elif isinstance(operator, ast.Gt):
+                    comparisons.append(left > right)
+                elif isinstance(operator, ast.GtE):
+                    comparisons.append(left >= right)
+                elif isinstance(operator, ast.Eq):
+                    comparisons.append(left == right)
+                elif isinstance(operator, ast.NotEq):
+                    comparisons.append(left != right)
+                else:
+                    raise FormulaError(
+                        f"formula {self.formula!r} has no solver meaning for "
+                        f"comparison node {type(operator).__name__}"
+                    )
+            return z3.And(*comparisons)
+
+        if isinstance(node, ast.IfExp):
+            condition = _boolean(self.compile(node.test), self.formula)
+            yes = _integer(self.compile(node.body), self.formula)
+            no = _integer(self.compile(node.orelse), self.formula)
+            return z3.If(condition, yes, no)
+
+        if isinstance(node, ast.Call):
+            if not isinstance(node.func, ast.Name) or node.keywords:
+                raise FormulaError(
+                    f"formula {self.formula!r} contains a call the solver cannot bind"
+                )
+            name = node.func.id
+            args = [self.compile(item) for item in node.args]
+            if name in {"min", "max"} and args:
+                integers = [_integer(item, self.formula) for item in args]
+                result = integers[0]
+                for item in integers[1:]:
+                    if name == "min":
+                        result = z3.If(result <= item, result, item)
+                    else:
+                        result = z3.If(result >= item, result, item)
+                return result
+            if name == "abs" and len(args) == 1:
+                value = _integer(args[0], self.formula)
+                return z3.If(value >= 0, value, -value)
+            if name == "clip" and len(args) == 3:
+                value, low, high = [
+                    _integer(item, self.formula) for item in args
+                ]
+                return z3.If(
+                    value < low, low, z3.If(value > high, high, value)
+                )
+            if name in {"ite", "if_then_else"} and len(args) == 3:
+                return z3.If(
+                    _boolean(args[0], self.formula),
+                    _integer(args[1], self.formula),
+                    _integer(args[2], self.formula),
+                )
+            raise FormulaError(
+                f"formula {self.formula!r} calls {name!r}, which has no "
+                "registered deterministic solver implementation"
+            )
+
+        raise FormulaError(
+            f"formula {self.formula!r} contains syntax the solver cannot compile: "
+            f"{type(node).__name__}"
+        )
 
 
 def parse_formula(formula: str) -> ast.expr:
-    """Parse and validate `formula` against the closed grammar without executing it."""
+    """Parse only; representability is decided by :func:`compile_formula`."""
 
+    if not isinstance(formula, str) or not formula.strip():
+        raise FormulaError("formula must be a non-empty string")
+    if len(formula) > 4096:
+        raise FormulaError("formula exceeds the deterministic compiler size limit")
     try:
-        tree = ast.parse(formula, mode="eval")
+        expression = ast.parse(formula, mode="eval").body
     except SyntaxError as exc:
-        raise FormulaError(f"formula {formula!r} is not valid syntax: {exc}") from exc
-    _validate(tree.body, formula)
-    return tree.body
+        raise FormulaError(
+            f"formula {formula!r} is not valid syntax: {exc}"
+        ) from exc
+    if sum(1 for _ in ast.walk(expression)) > 512:
+        raise FormulaError("formula exceeds the deterministic compiler node limit")
+    return expression
 
 
-def _evaluate(node: ast.expr, value: int) -> int:
-    if isinstance(node, ast.Name):
-        return value
-    if isinstance(node, ast.Constant):
-        return int(node.value)
-    if isinstance(node, ast.UnaryOp):
-        return -_evaluate(node.operand, value)
-    if isinstance(node, ast.BinOp):
-        left, right = _evaluate(node.left, value), _evaluate(node.right, value)
-        if isinstance(node.op, ast.Add):
-            return left + right
-        if isinstance(node.op, ast.Sub):
-            return left - right
-        return left * right
-    if isinstance(node, ast.Compare):
-        left, right = _evaluate(node.left, value), _evaluate(node.comparators[0], value)
-        op = node.ops[0]
-        if isinstance(op, ast.Lt):
-            return int(left < right)
-        if isinstance(op, ast.LtE):
-            return int(left <= right)
-        if isinstance(op, ast.Gt):
-            return int(left > right)
-        if isinstance(op, ast.GtE):
-            return int(left >= right)
-        if isinstance(op, ast.Eq):
-            return int(left == right)
-        return int(left != right)
-    if isinstance(node, ast.Call):
-        args = [_evaluate(arg, value) for arg in node.args]
-        name = node.func.id  # type: ignore[union-attr]
-        if name == "min":
-            return min(args)
-        if name == "max":
-            return max(args)
-        if name == "abs":
-            return abs(args[0])
-        lo, hi = sorted(args[1:3])
-        return min(max(args[0], lo), hi)
-    raise FormulaError(f"cannot evaluate node {type(node).__name__}")
+def compile_formula(formula: str) -> CompiledFormula:
+    """Compile a contract formula into reusable integer solver IR."""
+
+    value = z3.Int("formula_value")
+    compiler = _SolverCompiler(formula, {"value": value})
+    expression = _integer(compiler.compile(parse_formula(formula)), formula)
+    return CompiledFormula(
+        source=formula,
+        value_symbol=value,
+        expression=z3.simplify(expression),
+        constraints=tuple(
+            z3.simplify(item) for item in compiler.constraints
+        ),
+    )
+
+
+def compile_formula_expression(
+    formula: str, value: z3.ArithRef
+) -> tuple[z3.ArithRef, tuple[z3.BoolRef, ...]]:
+    """Compile directly against a caller-owned symbolic stage input."""
+
+    compiler = _SolverCompiler(formula, {"value": value})
+    expression = _integer(compiler.compile(parse_formula(formula)), formula)
+    return z3.simplify(expression), tuple(
+        z3.simplify(item) for item in compiler.constraints
+    )
 
 
 def evaluate_formula(formula: str, value: int) -> int:
-    """Evaluate `formula` for the concrete integer `value`."""
+    """Evaluate through the same solver expression used for constraint solving."""
 
-    return _evaluate(parse_formula(formula), value)
+    return compile_formula(formula).evaluate(value)
 
 
-__all__ = ["FormulaError", "evaluate_formula", "parse_formula"]
+__all__ = [
+    "CompiledFormula",
+    "FormulaError",
+    "compile_formula",
+    "compile_formula_expression",
+    "evaluate_formula",
+    "parse_formula",
+]

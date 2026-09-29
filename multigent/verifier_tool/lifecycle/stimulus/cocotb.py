@@ -52,7 +52,6 @@ async def drive_control_plane_sequence(
     from cocotbext.axi.axil_master import AxiLiteMaster
 
     from multigent.verifier_tool.protocol.stimulus.drivers._bus_binding import bind_channel_bus
-
     channels = control_group.get("channels", {})
     aw, w, b = (channels[name] for name in ("write_address", "write_data", "write_response"))
     ar, r = (channels[name] for name in ("read_address", "read_data"))

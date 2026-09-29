@@ -9,6 +9,20 @@ organized.
 
 ## What to require of a Verifier-side generator
 
+For a solver-compiled operation stage, the Architect provides the formula and
+DAG position and Contract Review proves it compiles. The Verifier owns that
+feature's coverage bins and machine-readable predicates. It should reuse the
+compiled formula for golden evaluation and targeted solving, and add only the
+coverage intent absent from the contract rather than copying the mathematical
+implementation into Verifier-authored Python.
+
+Use the formula stage name as the coverage concept, set
+`source: architect_extension`, and provide normal declarative bins. Sampling is
+automatically bound to the checked canonical trace. During plan validation the
+tool calls `generate_solver_compiled_stimulus_for_bin` for every declared bin;
+the TB is rejected unless each bin has a legal solver witness. Do not hand-code
+an inverse or duplicate the golden function.
+
 Each item is enforced (or consumed) by a `verifier_tool` function named beside it.
 
 1. **Work from the frozen contract only.** The context must carry
@@ -75,8 +89,8 @@ Each item is enforced (or consumed) by a `verifier_tool` function named beside i
 | Code-owned TB block | `render_contract_generated_block`, `install_contract_generated_block`, `validate_contract_generated_block`, `install_pipeline_generated_annotations`, `extract_stimulus_coverage_intents`, `validate_verifier_authored_structure` | [`orchestration/README.md`](orchestration/README.md), [`orchestration/OLD_stimulus_overview.md`](orchestration/OLD_stimulus_overview.md) (historical layout) |
 | Coverage plans and validation | `build_interface_coverage_plan`, `synthesize_code_owned_operation_coverage`, `operation_plan_for_tests`, `merge_coverage_plans`, `effective_operation_coverage`, `validate_operation_coverage`, `validate_frozen_operation_scope`, `canonical_operation_obligation_id`, `canonicalize_operation_obligation_claim`, `code_owned_obligations_for_supported_operations`, `extract_operation_sampling_bindings`, `normalize_operation_sampling_bindings` | [`protocol/coverage/README.md`](protocol/coverage/README.md), [`operation/coverage/README.md`](operation/coverage/README.md) |
 | Golden model and stimulus | `evaluate_canonical_operation`, `generate_canonical_stimulus_suite`, `generate_canonical_stimulus_for_bin`, the protocol/lifecycle drivers | [`operation/stimulus/README.md`](operation/stimulus/README.md), [`protocol/stimulus/README.md`](protocol/stimulus/README.md), [`lifecycle/stimulus/README.md`](lifecycle/stimulus/README.md) |
-| Deterministic review | `review_verifier_artifacts(context, candidate)` → `{"status": "APPROVED" \| "VERIFIER_REPAIR_REQUIRED", "summary", "findings": [{category, requirement, evidence, recommended_change}]}`; no model call | [`deterministic/README.md`](deterministic/README.md) |
-| Local repair primitives | `apply_operation_coverage_metadata_edits`, `finding_scope`, `findings_from_coverage`, `findings_from_validation_error`, `synchronize_test_coverage_metadata`, `coverage_obligation_mapping_diff` | [`deterministic/README.md`](deterministic/README.md) |
+| Deterministic review | `review_verifier_artifacts(context, candidate)` → `{"status": "APPROVED" \| "VERIFIER_REPAIR_REQUIRED", "summary", "findings": [{category, requirement, evidence, recommended_change}]}`; no model call | [`tb_validation/README.md`](tb_validation/README.md) |
+| Local repair primitives | `apply_operation_coverage_metadata_edits`, `finding_scope`, `findings_from_coverage`, `findings_from_validation_error`, `synchronize_test_coverage_metadata`, `coverage_obligation_mapping_diff` | [`tb_validation/README.md`](tb_validation/README.md) |
 | Extension support | `validate_verifier_extension_bundles`, `build_feature_extension_manifest`, `with_verifier_extension_bundle_schema` | [`extensions/README.md`](extensions/README.md) |
 | Runtime evidence | `get_coverage_tracker` / the generated block's monitor, `record_stimulus`, `sample_operation`, `rebuild_stimulus_history` | [`orchestration/README.md`](orchestration/README.md) |
 
@@ -174,7 +188,7 @@ README shows a standalone example.
 
 ## Watch-outs
 
-- `deterministic/review.py::_canonical_validator` lazily imports
+- `tb_validation/validator.py::_canonical_validator` lazily imports
   `multigent.agents.verifier.VerifierAgent` and calls its `_validate_context` and
   `_validate_prepared_result`, so the tool-side review has no separate copy of
   the checks: changing what those methods verify changes what

@@ -273,7 +273,19 @@ def _worker(config: Mapping[str, Any]) -> dict[str, Any]:
             build_dir=build_dir,
             always=True,
             clean=True,
-            build_args=["-Wno-fatal", "--no-timing"] + (["--public-flat-rw"] if config.get("public_signals") else []),
+            build_args=[
+                "-Wno-fatal",
+                "--no-timing",
+                # Verilator releases near the cocotb-supported minimum can
+                # reject synthesizable HLS shift-register templates when a
+                # delayed array-assignment loop exceeds the default unroll
+                # ceiling. Raising the ceiling affects elaboration capacity,
+                # not the behavior of designs that already build.
+                "--unroll-count",
+                "4096",
+                "--unroll-stmts",
+                "500000",
+            ] + (["--public-flat-rw"] if config.get("public_signals") else []),
         )
     except BaseException as exc:
         result = {

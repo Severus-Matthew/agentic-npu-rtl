@@ -148,8 +148,13 @@ other kind listed belongs to `axi4`/`axi4_lite`/`axi4_stream`.)
   and per channel kind (`write_address`, `write_data`, `write_response`,
   `read_address`, `read_data`, `stream`, or — for `custom_mmio` — the three
   generic kinds `request`/`data`/`response`), the `required_fields`/
-  `optional_fields` and the applicable `rules`/`coverage` tags consumed later
-  by `protocol/assertion/assertion_checkers.py`. `custom_mmio` exists so an
+  `optional_fields` and the applicable `rules`/`coverage` entries consumed
+  later by protocol assertion and coverage code. A profile may also declare
+  `driver_invariants`: behavior guaranteed by the tool-owned peer rather than
+  passively asserted against the DUT. Full AXI4 uses this for
+  `response_order_preserved_per_id`, which the shared completion scheduler
+  enforces because identical same-ID responses cannot be correlated by a
+  passive signal monitor. `custom_mmio` exists so an
   LLM-declared protocol that isn't AXI at all, but is structurally
   memory-like, can reuse this exact same compiler and the multi-outstanding
   capture engine in `operation_metadata/protocol.py` — see
@@ -172,6 +177,13 @@ other kind listed belongs to `axi4`/`axi4_lite`/`axi4_stream`.)
   ReadyValidCaptureAdapter`, `operation_metadata.architect_metadata.
   _attach_standard_memory_mappings`) calls this first so the rest of the
   pipeline never has to know tags exist.
+- Signal-level physical adapter metadata is kept separate from protocol
+  capability. For example, a legacy HLS two-bit AXI LOCK port declares
+  `physical_encoding: legacy_hls_2bit`, `logical_bit: 0`, and
+  `reserved_zero_bits: [1]` on the LOCK signal, while support for exclusive
+  transactions is independently declared as the group's
+  `protocol_capabilities.exclusive_access`. The compiled channel preserves
+  this under `field_metadata`.
 - `compile_standard_protocol_plan(interface, *, require_complete=True) -> dict`
   — the main compiler. Groups channels by `protocol_group`, checks the group is
   single-profile, binds each channel's `valid`/`ready`/named fields by walking
@@ -192,6 +204,7 @@ other kind listed belongs to `axi4`/`axi4_lite`/`axi4_stream`.)
 - The returned `groups[]` entries are what `role_pool`'s consumers actually
   read: each has `name`, `profile`, `endpoint_role`, `capabilities`, and
   `channels: {kind: {valid, ready, fields: {field: signal_name}, widths,
+  field_metadata,
   effective_defaults, capabilities}}`. This exact shape is what
   `operation_metadata/protocol.py::ReadyValidCaptureAdapter.__init__` iterates
   to build its own per-channel capture table, and what

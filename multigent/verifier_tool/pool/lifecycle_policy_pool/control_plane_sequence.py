@@ -7,9 +7,12 @@ Four primitives only, deliberately narrow, no LLM-authored code, no eval/exec:
 `write_reg`, `write_field`, `read_reg`, `poll_field`. This sits beside
 `policy` in a lifecycle declaration whenever `job_acceptance` or
 `completion_style` selects `control_plane_sequence` (see
-`lifecycle_policies.yaml`). Job-legality concepts (`legal_command_starts_one_job`,
-`illegal_command_errors_without_start`) never apply here -- there is no
-opcode/legal_values concept for a register-driven start.
+`lifecycle_policies.yaml`). Opcode-legality and overlap concepts
+(`single_inflight_job_enforced`, `illegal_command_errors_without_start`) never
+apply here -- there is no opcode/legal_values concept for a register-driven
+start. The orchestration path can still prove `accepted_command_starts_job`
+from post-start memory progress because that feature does not depend on an
+opcode encoding.
 """
 
 from __future__ import annotations

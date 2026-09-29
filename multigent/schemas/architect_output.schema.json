@@ -613,6 +613,24 @@
               },
               "reset_value": {
                 "type": "string"
+              },
+              "physical_encoding": {
+                "type": "string",
+                "description": "Optional physical RTL representation of this signal field; this is adapter metadata, not a protocol capability."
+              },
+              "logical_bit": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Bit carrying the logical standard-protocol value when physical_encoding uses a wider compatibility port."
+              },
+              "reserved_zero_bits": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "Physical compatibility bits that must remain zero."
               }
             }
           }

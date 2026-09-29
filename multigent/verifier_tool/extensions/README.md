@@ -6,11 +6,12 @@ testing, qualification, pool promotion, or automatic promotion.
 
 Not every unfamiliar spelling needs an extension. Use a built-in pool entry when
 the semantics already match. For a known integer-GEMM pipeline with a new scalar
-post-operation that fits the closed formula grammar, use an arithmetic
-`kind: llm_defined` DAG stage; the tool-owned golden trace can then keep handling
-the known operation. Create a `verification_extensions[]` request only for the
-remaining behavior that the closed pools and formula grammar cannot represent.
-This decision order keeps the LLM-authored surface as small as possible.
+post-operation, declare an arithmetic `kind: llm_defined` DAG stage and let the
+Contract Reviewer attempt solver compilation. A successful compilation keeps the
+tool-owned golden path; a failed formula is revised by the Architect. Create a
+`verification_extensions[]` request only when the Architect explicitly declares
+that the behavior is not solver-representable. This decision order keeps the
+LLM-authored surface as small as possible.
 
 The Architect declares only an `architecture_contract.verification_extensions[]`
 request: stable identity, owning domain, exact target, parameters, observable
@@ -29,6 +30,14 @@ entry point. Protocol-group targets are resolved through the same compiled
 standard-protocol metadata used by the drivers, so a group declared through
 canonical `protocol_group=...` channel metadata is a valid exact target even
 when it is not duplicated as a literal top-level channel key.
+
+The canonical bundle keeps `bindings`, branch `parameters`, bin `predicate`, and
+scenario `parameters` as normal JSON objects. At the OpenAI strict-structured
+output boundary only, those dynamic-key objects travel as JSON strings because
+the provider schema requires statically named object properties. The Verifier
+decodes them immediately, validates the ordinary canonical bundle schema, and
+persists only the canonical object form. This transport detail never appears in
+the saved extension manifest.
 
 Plural local vocabulary is declared once under
 `architecture_contract.verification_vocabulary`, rather than copying one role or
@@ -55,6 +64,13 @@ and stimulus must be async and await executable work. This catches
 `return None`/constant-coverage/no-await bundles at the request boundary. It is
 not a correctness proof: actual simulation, observed evidence, and negative
 controls remain necessary.
+
+The three residual branches cannot be satisfied by merely naming an
+`existing_primitive`. Built-in helpers may be reused inside generated code, but
+the new behavior still needs a reachable `verifier_python` assertion and coverage
+wrapper plus a reachable `verifier_python` or `protocol_driver` stimulus wrapper.
+No runtime dispatcher currently turns an inert helper name in the manifest into
+an executable extension; forbidding that form prevents false readiness.
 
 Bundles remain Verifier-owned artifacts under `workspace/verification`; they do
 not modify `verifier_tool`, its catalogs, or any pool. Their format intentionally
@@ -108,11 +124,11 @@ The fields are optional only for compatibility with older coarse
 the unsupported fragment mechanically traceable while known protocol,
 lifecycle, family, and sibling-operation plans remain independently usable.
 
-`multigent/tests/test_extension_scenario_matrix.py` keeps ten intentionally
+`multigent/verifier_tool/tool_regression/extensions/rtl/test_extension_scenario_matrix.py` keeps ten intentionally
 diverse local examples at this boundary: compositional GEMM stages, fully
 LLM-owned arithmetic, APB, credit-based flow control, contract-local sideband
 vocabulary, lifecycle replacement/addition, and a mixed three-domain contract.
-`multigent/tests/test_extension_scenario_matrix_additional.py` adds fifteen
+`multigent/verifier_tool/tool_regression/extensions/unit/test_extension_scenario_matrix_additional.py` adds fifteen
 non-overlapping cases: runtime shapes, sparse serialization, convolution,
 attention, Wishbone, TileLink, Avalon-MM, Avalon-ST, a contract-local handshake
 role, lifecycle additions and replacements, sibling-operation isolation, and a
@@ -120,7 +136,7 @@ large mixed contract. Together these 25 cases use synthetic Verifier-owned
 Python artifacts and never call an external model.
 
 Those structural cases are paired with the executable fixture in
-`multigent/tests/fixtures/feature_extensions/`. Its fifteen cocotb TB cases
+`multigent/verifier_tool/tool_regression/extensions/fixtures/feature_extensions/`. Its fifteen cocotb TB cases
 drive real reference-RTL signals, derive coverage from observed evidence, and
 corrupt one observation per case to prove the checker rejects a false result.
 The fixture README records the direct source/timing audit and the defects found

@@ -44,6 +44,36 @@ remain errors. Busy/completion/error policies govern the corresponding status
 signal when that role is bound; choosing a policy does not invent a missing
 signal.
 
+### Channel behavior during reset
+
+A generic `ready_valid` or `custom` channel does not, by itself, say what its
+producer does during reset. When the contract requires reset quiescence, the
+Architect states it explicitly in the interface contract:
+
+```yaml
+reset_channel_policies:
+  - channels: [result, status_stream]
+    behavior: valid_deasserted
+    settle_cycles: 1  # synchronous reset; use 0 when the contract guarantees async clearing
+```
+
+`with_lifecycle_policy_schema()` exposes this optional
+`interface_contract.reset_channel_policies` field from the same lifecycle pool.
+`resolve_reset_channel_policies()` then checks that every channel exists, has
+exactly one `valid` role binding, is listed at most once, and that the interface
+has one reset signal with explicit active-high/active-low semantics. The resolved
+protocol feature is channel-scoped and uses the existing
+`valid_low_during_reset` checker and `reset_assert_release` stimulus strategy.
+`settle_cycles` is mandatory because observation on the first asserted-reset
+snapshot may precede the active clock edge for a synchronous reset. The checker
+therefore begins only after the declared number of sampled reset cycles.
+
+AXI4, AXI4-Lite, AXI4-Stream, and `custom_mmio` already define this behavior in
+their standard protocol rule set. Listing one of their channels here is rejected
+as duplicate ownership, which prevents duplicate assertions and preserves the
+existing `protocol.<group>.valid_low_during_reset` diagnostics. Omitting the field
+for a plain `ready_valid` channel makes no reset assumption.
+
 ## Implemented choices
 
 `lifecycle_policies.yaml` is the source of supported values; `policies.py`'s
@@ -61,6 +91,20 @@ the YAML exposes a value with no implemented behavior. Current values:
 | `error_style` | `pulse`, `sticky_until_reset` |
 | `error_timing` | `next_cycle_after_error_event` |
 | `reset_behavior` | `abort_inflight` |
+
+The pool also currently exposes one interface-level channel reset behavior:
+`valid_deasserted`.
+
+The three completion-transport fields are a coherent tuple, not independent
+mix-and-match enums. Built-in behavior accepts exactly these combinations:
+
+- `valid_ready_handshake` + `pulse` + `next_cycle_after_retirement`
+- `control_plane_sequence` + `control_plane_sequence` + `observed_via_poll`
+
+`resolve_lifecycle_policy()` rejects every other all-built-in combination as
+`lifecycle_metadata_contradiction`. If any of the three fields is an
+`extension_request`, that field's Verifier-owned bundle is responsible for the
+new relationship and the built-in tuple check does not guess it.
 
 ## `control_plane_sequence` — register-started jobs on a black-box control bus
 
@@ -206,8 +250,9 @@ only accepts explicit selections; it never guesses sticky error behavior from pr
 ## Architect schema integration
 
 The Architect uses `with_lifecycle_policy_schema()` when loading its response
-schema. The built-in choices and the `{extension_request: ...}` alternative are
-injected directly from the pool into the schema used to validate the response.
+schema. The built-in choices, the `{extension_request: ...}` alternative, and
+the optional `interface_contract.reset_channel_policies` field are injected
+directly from the pool into the schema used to validate the response.
 They are not copied into the base `architect_output.schema.json` file. The shared
 runtime exposes a generic `load_output_schema()` hook; only Architect composes
 this extension.

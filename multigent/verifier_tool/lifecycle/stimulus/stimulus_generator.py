@@ -20,6 +20,22 @@ def _safe(value: object) -> str:
     return re.sub(r"[^a-zA-Z0-9_]+", "_", str(value)).strip("_").lower() or "unnamed"
 
 
+def _reset_abort_bins(feature_plan: Mapping[str, Any], operation_name: str) -> set[str]:
+    obligation_id = f"operation.{_safe(operation_name)}.reset_abort_phase"
+    matches = [
+        item
+        for item in feature_plan.get("coverage_obligations", [])
+        if str(item.get("id", "")) == obligation_id
+    ]
+    if len(matches) != 1:
+        return set()
+    return {
+        str(item.get("name", ""))
+        for item in matches[0].get("bins", [])
+        if item.get("required", True)
+    }
+
+
 def build_lifecycle_stimulus_plan(
     interface: Mapping[str, Any], operation_metadata: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -56,6 +72,9 @@ def build_lifecycle_stimulus_plan(
             if policy_extension_request(value) is not None
         }
         command_channels = list(operation.get("commands", []))
+        uses_control_plane = isinstance(
+            operation.get("control_plane_sequence"), Mapping
+        )
         if "job_acceptance" in extension_fields:
             scenarios.append(
                 {
@@ -68,7 +87,7 @@ def build_lifecycle_stimulus_plan(
                 }
             )
             command_channels = []
-        elif len(command_channels) != 1:
+        elif len(command_channels) != 1 and not uses_control_plane:
             scenarios.append(
                 {
                     "id": f"lifecycle.{name}.command.unresolved",
@@ -77,12 +96,21 @@ def build_lifecycle_stimulus_plan(
                 }
             )
             continue
-        command = dict(command_channels[0])
+        if uses_control_plane:
+            scenarios.append(
+                {
+                    "id": f"lifecycle.{name}.command.control_plane_sequence",
+                    "kind": "legal_control_plane_start",
+                    "operation_name": name,
+                    "actions": list(
+                        operation["control_plane_sequence"]["job_start"]["actions"]
+                    ),
+                }
+            )
+        command = dict(command_channels[0]) if command_channels else {}
         legal_values = list(map(int, command.get("legal_values", [])))
         illegal_value = command.get("illegal_value")
-        if not command_channels:
-            pass
-        elif not legal_values:
+        if command_channels and not legal_values:
             scenarios.append(
                 {
                     "id": f"lifecycle.{name}.command.legality_unresolved",
@@ -90,7 +118,7 @@ def build_lifecycle_stimulus_plan(
                     "reason": "command legal values are not machine-readable",
                 }
             )
-        else:
+        elif command_channels:
             scenarios.append(
                 {
                     "id": f"lifecycle.{name}.command.legal",
@@ -125,6 +153,7 @@ def build_lifecycle_stimulus_plan(
                         ),
                     },
                 ])
+        required_abort_bins = _reset_abort_bins(feature_plan, name)
         phases = [
             {"phase": "idle", "progress": 0},
             *[
@@ -139,6 +168,7 @@ def build_lifecycle_stimulus_plan(
             {"phase": "compute", "progress": "all_inputs_accepted_before_first_output"},
             {"phase": "output", "progress": "after_at_least_one_accepted_output"},
         ]
+        phases = [item for item in phases if item["phase"] in required_abort_bins]
         for phase in phases if "reset_behavior" not in extension_fields else ():
             scenarios.append(
                 {

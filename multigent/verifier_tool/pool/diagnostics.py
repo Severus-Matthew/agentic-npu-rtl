@@ -165,6 +165,16 @@ REASONS: dict[str, ReasonSpec] = {
         "Select a supported choice for every lifecycle_policy field, or name one "
         "verification_extensions request.",
     ),
+    "invalid_reset_channel_policy": ReasonSpec(
+        CONTRACT_ERROR, _LC,
+        "Select a supported reset channel behavior for existing channels with one VALID "
+        "binding and an explicitly polarized reset signal.",
+    ),
+    "duplicate_reset_channel_policy": ReasonSpec(
+        CONTRACT_ERROR, _LC,
+        "Do not redeclare reset behavior for a standard-protocol channel; its standard "
+        "protocol group already owns that rule.",
+    ),
     "lifecycle_policy_conflict": ReasonSpec(
         CONTRACT_ERROR, _LC,
         "operation.lifecycle_policy and verification_metadata.lifecycle.policy must agree.",

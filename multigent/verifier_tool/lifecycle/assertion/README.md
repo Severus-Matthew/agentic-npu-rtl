@@ -91,11 +91,19 @@ binding — an unbound status role is silently skipped, never invented), `_fail`
     checker is selected only when the resolved operation has response
     channels; either error checker enforces an applicable sticky error until
     reset.
-  - **`<op>.legal_command_starts_one_job`** — an accepted legal command while
+  - **`<op>.accepted_command_starts_job`** — after a legal command is
+    accepted, the finite test must observe real job progress: bound `busy`,
+    an input/output transfer, retirement activity, or completion. A command
+    that is accepted but ignored receives this named diagnostic instead of a
+    generic simulator timeout. Register-started AXI4 campaigns also use a
+    bounded post-start memory-progress watchdog (4096 cycles by default).
+  - **`<op>.single_inflight_job_enforced`** — an accepted legal command while
     a job is already active is a failure, *unless* the command's payload
     fails a declared base-address word-stride check (`metadata_fields` with
     `address_role: base` and `word_stride_bytes`), in which case it is
     reclassified as an error condition rather than a second job start.
+    Already-generated TBs may use `legal_command_starts_one_job`; runtime maps
+    that legacy ID only to this overlap check.
   - **`<op>.no_output_without_active_job`** — any accepted output transfer
     while no job was active before this cycle is a failure.
   - **`<op>.busy_tracks_active_job`** — the bound `busy` status signal (if
@@ -143,10 +151,10 @@ binding — an unbound status role is silently skipped, never invented), `_fail`
   consumes. **Called from**
   `../../orchestration/instrumentation.py:render_contract_generated_block` (via
   `lifecycle_assertion_metadata`, see `generator.py` below) and directly in
-  `multigent/tests/test_canonical_operation.py`,
-  `multigent/tests/test_lifecycle_automation.py`,
-  `multigent/tests/test_lifecycle_policy_pool.py`, and
-  `multigent/tests/test_feature_plans.py`.
+  `multigent/verifier_tool/tool_regression/unit/test_canonical_operation.py`,
+  `multigent/verifier_tool/tool_regression/integration/test_lifecycle_automation.py`,
+  `multigent/verifier_tool/tool_regression/integration/test_lifecycle_policy_pool.py`, and
+  `multigent/verifier_tool/tool_regression/unit/test_feature_plans.py`.
 - `check_lifecycle_assertions(snapshot, plan, state)` — per-cycle entry point.
   If `is_lifecycle_reset_active`, it counts reset-active output samples, runs
   `check_reset_outputs` only once more than the reset signal's

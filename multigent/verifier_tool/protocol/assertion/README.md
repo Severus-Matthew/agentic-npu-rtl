@@ -8,11 +8,21 @@ local YAML catalog — it is backed entirely by two catalogs that live outside
 
 | Catalog | Owns | Consumed via |
 |---|---|---|
-| `verifier_tool/pool/feature_plans/protocol_features.yaml` | Generic per-channel features: handshake arrival order, `stall_stability`, `valid_low_during_reset` | `feature_plan.py::build_protocol_feature_plan` → `compile_assertion_feature_plan` (called from `runtime.py::build_protocol_assertion_plan`) |
+| `verifier_tool/pool/feature_plans/protocol_features.yaml` | Generic per-channel features: handshake arrival order and `stall_stability`; executable definition shared by standard-group and explicit channel-policy `valid_low_during_reset` features | `feature_plan.py::build_protocol_feature_plan` → `compile_assertion_feature_plan` (called from `runtime.py::build_protocol_assertion_plan`) |
 | `verifier_tool/pool/role_pool/standard_protocols.yaml` | Per-profile (`axi4`/`axi4_lite`/`axi4_stream`) field catalogs and each profile's `rules:` name list | `role_pool/standard_protocols.py::compile_standard_protocol_plan`, folded into the interface plan's `bindings.standard_groups` before it reaches this subfolder |
 
 No file in this subfolder reads either YAML directly; both arrive pre-compiled
 through the interface/feature plan passed into `build_protocol_assertion_plan`.
+
+`valid_low_during_reset` has two non-overlapping applicability paths. Standard
+AXI-family/`custom_mmio` groups receive it from their protocol specification.
+Generic `ready_valid`/`custom` channels receive it only when the frozen interface
+contract explicitly selects `reset_channel_policies[].behavior:
+valid_deasserted`. The latter produces
+`channel.<channel>.valid_low_during_reset`; it is never inferred merely from a
+VALID/READY pair. Its required `settle_cycles` binding controls when that
+channel becomes eligible for checking during an asserted reset; standard groups
+fall back to the reset signal's existing settle-cycle binding.
 
 ## `axi.py` — pure AXI transfer geometry
 
@@ -78,7 +88,7 @@ uses) back every public function below.
   `data_width/8`, and that read/write data widths agree (and are 32 or 64 for
   AXI4-Lite).
 - `check_axi4(snapshot, group, state)` — full AXI4 memory-map protocol:
-  BRESP/RRESP legality, response-to-request ID matching against
+  response-to-request ID matching against
   `state["pending_b"]`/`state["reads"]` (via `_matching_index`), EXOKAY only
   after a matching completed exclusive read (`state["exclusive_reads"]`),
   address-phase geometry via `_check_address` (delegates to `axi.py`), WLAST
@@ -123,7 +133,7 @@ generates (one `standard_protocol_rule` feature per name in
 back to this file only by **spelling**: e.g. the YAML's `axi4` profile lists
 `no_4k_boundary_crossing`, `wrap_length_and_alignment`,
 `write_strobe_within_active_lanes`, `response_after_request`,
-`response_id_matches_request`, `legal_response_encoding`,
+`response_id_matches_request`,
 `exclusive_access_restrictions`, `exclusive_response_consistency`,
 `write_last_matches_length`, `read_last_matches_length`,
 `legal_burst_encoding`, `legal_burst_length`, and
@@ -139,6 +149,23 @@ coverage/obligation bookkeeping and by
 `orchestration/instrumentation.py:validate_verifier_authored_structure`'s
 `required_obligations` check.
 
+Two former AXI4 entries intentionally do not appear in `rules:`.
+`legal_response_encoding` was vacuous because RESP is two bits and all four
+AXI4 encodings are legal; AXI4-Lite retains the meaningful
+`legal_lite_response_encoding` rule that rejects EXOKAY.
+`response_order_preserved_per_id` is a `driver_invariants:` entry instead:
+identical same-ID write responses are not passively correlatable, while the
+tool-owned `RandomCompletionScheduler` can and does serialize them.
+
+`ready_valid_stability` is intentionally not a second group-level rule: the
+resolved channel-level `stall_stability` feature is its executable form and
+owns the concrete VALID/READY/content bindings. Full AXI's two-bit RESP also
+has no `legal_response_encoding` target because all four encodings are defined;
+AXI4-Lite keeps the distinct `legal_lite_response_encoding` rule, where EXOKAY
+is forbidden. The feature-plan builder additionally omits read/write rules
+when the resolved group lacks the corresponding channels and omits the
+optional-ID rule when no response ID is physically bound.
+
 ## `runtime.py`
 
 - `build_protocol_assertion_plan(interface_plan: Mapping[str, Any]) -> dict[str, Any]`
@@ -151,12 +178,13 @@ coverage/obligation bookkeeping and by
   feature ID) from every `valid_low_during_reset` entry, and copies
   `bindings.standard_groups` through unchanged. Returns
   `{schema_version: 2, feature_plan, compiled_assertions, reset,
-  reset_active_value, reset_settle_cycles, valid_signals, valid_reset_features, stalls,
+  reset_active_value, reset_settle_cycles, valid_signals, valid_reset_features,
+  valid_reset_settle_cycles, stalls,
   standard_groups, features}`. **Called from**
   `../../orchestration/instrumentation.py:render_contract_generated_block` (via
   `protocol_assertion_metadata`, see `generator.py` below) and directly in
-  `multigent/tests/test_feature_plans.py` and
-  `multigent/tests/test_standard_axi_protocols.py`.
+  `multigent/verifier_tool/tool_regression/unit/test_feature_plans.py` and
+  `multigent/verifier_tool/tool_regression/integration/test_standard_axi_protocols.py`.
 - `check_protocol_assertions(snapshot, plan, state) -> dict[str, int]` — the
   one per-cycle entry point. If the plan's reset is active, clears temporal
   state and runs `check_valid_low_during_reset` only after the declared
@@ -168,7 +196,7 @@ coverage/obligation bookkeeping and by
   function selected by `group["profile"]`. **Called from**
   `../../orchestration/instrumentation.py`'s generated `_check_contract_assertions` (as
   `_contract_check_protocol_assertions`) inside `_contract_generated_monitor`,
-  and directly in `multigent/tests/test_standard_axi_protocols.py`.
+  and directly in `multigent/verifier_tool/tool_regression/integration/test_standard_axi_protocols.py`.
 - `finalize_protocol_assertions(plan, state)` — thin wrapper over
   `finalize_protocol_checker_state`. **Called from** the generated
   `_finalize_contract_assertions` (as `_contract_finalize_protocol_assertions`),

@@ -36,6 +36,7 @@ from multigent.verifier_tool import (
     canonicalize_operation_obligation_claim,
     code_owned_obligations_for_supported_operations,
     coverage_obligation_mapping_diff,
+    decode_verifier_extension_transport,
     derive_interface_coverage_seed,
     effective_operation_coverage,
     extract_literal_coverage_obligations,
@@ -56,6 +57,7 @@ from multigent.verifier_tool import (
     render_operation_sampling_catalog,
     render_signal_role_catalog,
     signals_with_coverage_tags,
+    solver_compiled_formula_concepts,
     supported_code_owned_concepts,
     synthesize_code_owned_operation_coverage,
     synchronize_test_coverage_metadata,
@@ -236,6 +238,7 @@ class VerifierAgent(APIAgent):
                 log_name=f"verifier-{run_id}.json",
             )
             result = self._merge_source_repair(draft, sources)
+        result = decode_verifier_extension_transport(result)
         # Keep a schema-valid draft available even when deterministic semantic
         # validation rejects it. The graph can return this verifier-owned source to
         # the same role for a targeted correction without repeating the code-owned
@@ -896,7 +899,12 @@ FROZEN INPUT, FINDINGS, AND EXISTING SOURCES
             context["frozen_architecture"]["architecture_contract"],
             context["frozen_architecture"]["interface_contract"],
         )
+        formula_coverage_concepts = solver_compiled_formula_concepts(
+            operation_metadata
+        )
         supported = supported_code_owned_concepts(operation_metadata)
+        for operation_name, concepts in formula_coverage_concepts.items():
+            supported.setdefault(operation_name, set()).update(concepts)
         campaign_support = automatic_campaign_support(
             operation_metadata,
             context["frozen_architecture"]["architecture_contract"],
@@ -2302,6 +2310,9 @@ FROZEN INPUT AND REUSED GENERATION PLAN
             context["frozen_architecture"]["architecture_contract"],
             context["frozen_architecture"]["interface_contract"],
         )
+        formula_coverage_concepts = solver_compiled_formula_concepts(
+            operation_metadata
+        )
         unrepresentable_operations = list(operation_metadata.get("unrepresentable_operations", []))
         campaign_support = automatic_campaign_support(
             operation_metadata,
@@ -2445,6 +2456,25 @@ The frozen operation set is not completely executable by verifier_tool. Follow
 the general manual-TB rules below only for the unsupported operation/features;
 reuse every generated protocol/assertion/coverage helper that does apply.
 """
+        if formula_coverage_concepts:
+            automatic_ownership_text += f"""
+
+SOLVER-COMPILED FORMULA-STAGE COVERAGE (VERIFIER OWNS THE INTENT)
+----------------------------------------------------------------
+- The Architect declared these formula DAG stages and Contract Review compiled
+  their mathematics successfully: {formula_coverage_concepts}
+- Add one same-named operation coverpoint for every listed stage with
+  source=architect_extension. You choose reachable bins and declarative
+  predicates from the frozen semantics.
+- Do not write a formula observer or OPERATION_SAMPLING_BINDINGS entry for these
+  points. verifier_tool samples the compiled stage output from the checked
+  canonical golden trace.
+- Every proposed bin must admit a legal input under the complete upstream DAG;
+  do not infer reachability from the final formula alone. The deterministic gate
+  calls generate_solver_compiled_stimulus_for_bin(...) for every predicate and
+  rejects the whole candidate if even one bin is unreachable or inconclusive.
+  Choose only bins for which that helper can solve and forward-check a witness.
+"""
         if unrepresentable_operations:
             unrepresentable_lines = "\n".join(
                 f"  - {item['name']} [{item.get('reason_code', 'unclassified')}; "
@@ -2510,6 +2540,18 @@ OPERATIONS THAT COULD NOT BE COMPILED (DISTINCT FROM "FULLY BLOCKED" ABOVE)
 {automatic_ownership_text}
 
 {extension_authoring}
+
+API TRANSPORT FOR FEATURE EXTENSION MAPPINGS
+--------------------------------------------
+The strict response schema transports each free-form extension mapping as a JSON
+string because provider schemas cannot express arbitrary object keys. Therefore:
+- feature_extensions[].bindings is a JSON-encoded object string;
+- assertion/coverage/stimulus.parameters are JSON-encoded object strings;
+- coverage.bins[].predicate and stimulus.scenarios[].parameters are JSON-encoded
+  object strings.
+Use valid compact JSON such as {{"threshold_cycles": 12}} or {{}}. The runtime
+decodes these strings back into the canonical mapping form before it validates or
+persists the bundle. This transport rule does not change extension semantics.
 
 EXACT CONTRACT-LOCAL EXTENSION WORKLIST
 ---------------------------------------
@@ -2753,6 +2795,11 @@ OUTPUT RULES
     family and implement every explicit contract feature.
     Implement every ``features`` concept with source ``baseline`` and every
     ``feature_extensions`` concept with source ``architect_extension``. Implement
+    every formula-defined arithmetic DAG stage as a same-named concept with source
+    ``architect_extension``. Choose its bins and declarative predicates here; do
+    not write a duplicate formula observer or sampling binding, because code samples
+    the Contract Reviewer-compiled stage output from the checked canonical trace.
+    Implement
     every selected known family's baseline concept exactly
     once or with multiple useful coverpoints; never downgrade a baseline concept
     to ``llm_extension``. Add further design-specific points with source

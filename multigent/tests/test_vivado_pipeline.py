@@ -399,7 +399,10 @@ def test_final_report_lists_covered_missing_bins_and_stimulus_history(
 def test_coverage_failure_returns_to_verifier_as_local_multi_finding_patch(
     tmp_path, monkeypatch
 ):
-    from multigent.tests.test_verifier import generic_fir_context, verification_ready_result
+    from multigent.verifier_tool.tool_regression.integration.test_verifier import (
+        generic_fir_context,
+        verification_ready_result,
+    )
 
     monkeypatch.setattr(artifacts, 'WORKSPACE_ROOT', tmp_path)
     monkeypatch.setattr(

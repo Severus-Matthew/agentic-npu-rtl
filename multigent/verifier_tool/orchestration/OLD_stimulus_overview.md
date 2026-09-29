@@ -191,9 +191,9 @@ should be passed to `install_contract_generated_block` (see below); the third
 (line ~2181) is inside `_build_task(context)`, the Verifier prompt/task-text
 builder, where it gates whether a `code_owned_coverage_seed` YAML block is
 rendered into the materials handed to the Verifier LLM. Directly unit-tested in
-`multigent/tests/test_lifecycle_automation.py`,
-`multigent/tests/test_canonical_operation.py`, and
-`multigent/tests/test_operation_arithmetic_metadata.py`.
+`multigent/verifier_tool/tool_regression/integration/test_lifecycle_automation.py`,
+`multigent/verifier_tool/tool_regression/unit/test_canonical_operation.py`, and
+`multigent/verifier_tool/tool_regression/unit/test_operation_arithmetic_metadata.py`.
 
 ### `initialize_testbench_owned_signals(dut, interface) -> None`
 
@@ -395,7 +395,7 @@ multiple test files. `randomized_transactions_minimum` (→ this function's
 `randomized_count`) is threaded from
 `context["verification_policy"]["randomized_transactions_minimum"]` in the
 same agent code. Directly introspected (via `inspect.getsource`, not executed)
-by `multigent/tests/test_lifecycle_automation.py`, and exercised end-to-end
+by `multigent/verifier_tool/tool_regression/integration/test_lifecycle_automation.py`, and exercised end-to-end
 through `render_contract_generated_block(...,
 include_automatic_campaign=True, ...)` plus `compile(source, ..., "exec")`
 in both `test_lifecycle_automation.py` and `test_canonical_operation.py` to

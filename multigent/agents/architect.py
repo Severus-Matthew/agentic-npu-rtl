@@ -28,6 +28,7 @@ from multigent.verifier_tool import (
     validate_interface_semantics,
     validate_interface_signal_roles,
     validate_architecture_lifecycle_policies,
+    validate_interface_reset_channel_policies,
     with_lifecycle_policy_schema,
     validate_architecture_operation_arithmetic,
     with_operation_arithmetic_schema,
@@ -198,6 +199,7 @@ class ArchitectAgent(APIAgent):
         errors.extend(validate_architecture_lifecycle_policies(
             arch, require_policy=require_lifecycle_policy
         ))
+        errors.extend(validate_interface_reset_channel_policies(interface))
         errors.extend(validate_architecture_operation_arithmetic(
             arch, require_arithmetic=require_operation_arithmetic,
         ))
@@ -494,6 +496,14 @@ Required design work:
     in particular, do not attach output status/error metadata to an input command
     or configuration channel. Put such metadata on an output/status channel or use
     an appropriate standalone role.
+    A generic ``ready_valid`` or ``custom`` profile does not imply reset behavior.
+    If your chosen design requires its producer VALID to remain low during active
+    reset, declare the exact channel under
+    ``interface_contract.reset_channel_policies`` with
+    ``behavior: valid_deasserted`` and an exact nonnegative ``settle_cycles``
+    (`0` only when the output is guaranteed to clear without a clock edge;
+    normally `1` for synchronous reset). Do not repeat this for AXI4, AXI4-Lite,
+    AXI4-Stream, or ``custom_mmio`` channels; their standard rule owns it.
     The verifier_tool compiles these existing fields into the machine-readable
     operation metadata format shown below. Make every operation data-object role,
     object dimension order, object-to-channel mapping, channel protocol profile,
@@ -571,9 +581,16 @@ present in the response schema.
 The initial response schema also requires ``operations[].arithmetic``. Declare
 the exact calculation using the tool-owned arithmetic schema below. Reuse existing
 data type, data object, and dimension names; do not infer an accumulator from the
-output type or assume that the activation feature means ReLU. If the requested
-arithmetic is not implemented by a code-owned profile, select ``llm_extension``
-with a precise reason and preserve its exact specification in ``semantics``.
+output type or assume that the activation feature means ReLU. For a new pure
+scalar post-operation, declare its formula and dependency as an ``llm_defined``
+DAG stage. Do not compare it against a handwritten operator list: deterministic
+Contract Review will attempt real solver compilation. If compilation fails,
+revise the formula while preserving the requested semantics. Select
+``llm_extension`` with a precise reason and operation-domain extension request
+only when the requested behavior is intentionally not representable by that
+solver-backed scalar model (for example stateful or temporal behavior).
+Do not put coverage bins or predicates in arithmetic metadata; those are chosen
+later by the Verifier from the frozen mathematical semantics.
 Never change the requested mathematics merely to fit an implemented profile.
 Every data object must declare ``serialization`` (kind, index_order, description)
 separately from its logical dimensions. Do not assume dimensions imply transfer

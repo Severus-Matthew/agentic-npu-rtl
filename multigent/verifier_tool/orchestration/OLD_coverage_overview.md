@@ -284,7 +284,7 @@ both this package's `__init__.py` and the top facade identically — no gap here
 - **`CoverageRuntimeError(AssertionError)`** — the umbrella runtime exception.
   Subclasses `AssertionError` deliberately, so a coverage/protocol violation
   surfaces to cocotb/pytest exactly like a failed `assert`. Caught only in
-  tests (`multigent/tests/test_*coverage*.py`); production code lets it
+  tests under `multigent/verifier_tool/tool_regression/`; production code lets it
   propagate and fail the cocotb test.
 - **`ContractSnapshot`** — `@dataclass(frozen=True)`, implements
   `Mapping[str, int]` over `data` plus a `signal_widths` mapping exposed as
@@ -299,7 +299,7 @@ both this package's `__init__.py` and the top facade identically — no gap here
   elaborated `len()` as its width (`0` if unavailable, e.g. a plain Python
   test double). Called from generated TB monitor code
   (`assertion/protocol/generator.py` renders the literal call) and directly by
-  several `multigent/tests/test_*.py` files building a snapshot without cocotb.
+  several simulator-free tests under `multigent/verifier_tool/tool_regression/`.
 - **`_evidence_snapshot(snapshot) -> dict`** — JSON-safe copy of a snapshot for
   embedding in the report/ledger; values over 128 bits become a `0x...` hex
   string (full precision kept; only the *presentation* is bounded, for the

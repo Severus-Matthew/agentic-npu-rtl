@@ -27,6 +27,12 @@ file. Nothing in `stimulus_generator.py` calls anything in `cocotb.py`, and
 simulation) does not call `build_protocol_stimulus_plan` at all — see the
 note at the end of the `stimulus_generator.py` section below.
 
+An explicit generic-channel reset policy is compiled through the same feature
+plan. `behavior: valid_deasserted` selects the reusable
+`reset_assert_release` strategy; the existing global reset sequence supplies
+the actual asserted/released waveform, so no channel-specific reset driver is
+duplicated. Standard AXI-family groups keep their standard-owned reset rule.
+
 For multi-port AXI4/control-plane jobs, `resolved_operation_transport_variants`
 compiles the required protocol feature plan into reusable timing and address
 parameters (a list of `{stall_cycles, simultaneous, tail_beats}` dicts, some
@@ -172,8 +178,8 @@ below plus its own inline channel-shape construction
 `groups[*]["scenarios"]`. The rich scenario catalog built here therefore exists
 for the generated TB's Verifier-authored extension code and for direct
 inspection/testing, not for the immutable campaign. Also called directly by
-`multigent/tests/test_standard_axi_protocols.py` and
-`multigent/tests/test_feature_plans.py`.
+`multigent/verifier_tool/tool_regression/integration/test_standard_axi_protocols.py` and
+`multigent/verifier_tool/tool_regression/unit/test_feature_plans.py`.
 
 ### `generate_random_protocol_scenarios(interface, count, *, seed=0) -> list[dict[str, Any]]`
 
@@ -188,7 +194,7 @@ is no golden model at the protocol layer — correctness here is "legal
 per the standard," not "produces a specific value").
 
 **Who calls it.** No non-test caller exists in this repository outside the
-re-export chain. Used directly by `multigent/tests/test_standard_axi_protocols.py`.
+re-export chain. Used directly by `multigent/verifier_tool/tool_regression/integration/test_standard_axi_protocols.py`.
 It is not embedded into the generated TB block (`orchestration/instrumentation.py`
 does not import it) and `../../orchestration/campaign.py` does not call it either — the
 campaign's own randomized coverage comes from
@@ -299,7 +305,7 @@ including every AXI4-Lite job's command, are just another
 `drive_protocol_transfers` call with a one-beat payload). Embedded in the
 generated TB aliased `_contract_drive_protocol_transfers`. Directly
 unit-tested (via monkeypatch, no simulator) in
-`multigent/tests/test_standard_axi_protocols.py`.
+`multigent/verifier_tool/tool_regression/integration/test_standard_axi_protocols.py`.
 
 ### `drive_protocol_field_values(dut, clock_name, channel, field, values, *, timeout_cycles=4096, settle_timer_ps=1) -> list[int]`
 
@@ -309,7 +315,7 @@ the one named field back out of each accepted beat.
 
 **Who calls it.** Embedded in the generated TB aliased
 `_contract_drive_protocol_field_values`; not called anywhere else in this
-repository outside tests. `multigent/tests/test_standard_axi_protocols.py::test_logical_field_transfer_wrappers_own_beat_packing_and_unpacking`
+repository outside tests. `multigent/verifier_tool/tool_regression/integration/test_standard_axi_protocols.py::test_logical_field_transfer_wrappers_own_beat_packing_and_unpacking`
 verifies the pack/unpack behavior by monkeypatching `drive_protocol_transfers`
 itself, without cocotb or a simulator.
 
@@ -335,7 +341,7 @@ equivalent collector in the input-stall variant
 inside its private helper `_collect_after_edges`). Embedded in the generated
 TB aliased `_contract_collect_protocol_transfers`.
 Directly unit-tested (via monkeypatch) in
-`multigent/tests/test_standard_axi_protocols.py`.
+`multigent/verifier_tool/tool_regression/integration/test_standard_axi_protocols.py`.
 
 ### `collect_protocol_field_values(dut, clock_name, channel, field, *, count=None, until_last=False, ready_pattern=(1,), initial_valid_stall_cycles=None, timeout_cycles=4096, settle_timer_ps=1) -> list[int]`
 
@@ -344,7 +350,7 @@ The sink-side mirror of `drive_protocol_field_values`: delegates to
 
 **Who calls it.** Embedded in the generated TB aliased
 `_contract_collect_protocol_field_values`; otherwise only exercised by
-`multigent/tests/test_standard_axi_protocols.py` (monkeypatched, no
+`multigent/verifier_tool/tool_regression/integration/test_standard_axi_protocols.py` (monkeypatched, no
 simulator).
 
 ### `drive_protocol_reset(dut, clock_name, reset_name, active_value, *, asserted_cycles=2) -> None`
@@ -568,6 +574,11 @@ an ID), which would defeat the entire point of this module.
   `field -> signal name` mapping as a `cocotb_bus.bus.Bus` with `name=None`,
   so cocotbext-axi's channel classes bind to this tool's actual contract
   signal names, never an assumed AXI naming convention.
+  A signal-level `physical_encoding: legacy_hls_2bit` on an AXI LOCK field is
+  intentionally omitted only from cocotbext-axi's channel view because that
+  dependency hard-codes one-bit AxLOCK. The generated runtime monitor still
+  observes the raw two-bit RTL signal, extracts `logical_bit`, and enforces all
+  `reserved_zero_bits`; memory serving itself does not depend on LOCK.
 - `RandomCompletionScheduler` — owned by the protocol-neutral
   `drivers/_completion_scheduler.py` module and re-exported here for
   compatibility. `await schedule(id,
@@ -576,9 +587,12 @@ an ID), which would defeat the entire point of this module.
   Same-id calls are strictly FIFO; different ids race, seeded by
   `random.Random(seed)` for reproducibility. This is the actual mechanism
   proven against real RTL by
-  `multigent/tests/test_axi4_outstanding_drive.py` (seed `6` makes a request
+  `multigent/verifier_tool/tool_regression/rtl/test_axi4_outstanding_drive.py` (seed `6` makes a request
   issued *second* complete *first*, deterministically).
-- `execute_axi4_memory_job(dut, clock_name, group, operation, case, bases, *, seed=None, max_extra_cycles=4, read_error_at=None, write_error_at=None, abort_signal_name=None, reset_signal_name=None, reset_active_value=0, stop_after=None, first_transfer_simultaneous=False, initial_sink_stall_cycles=0, initial_sink_stall_cycles_by_kind=None, write_address_one_cycle_probe=False, timeout_cycles=262_144) -> list[dict[str, int]]`
+  `response_order_preserved_per_id` is therefore an AXI4 driver invariant,
+  not a passive DUT assertion. A unit test proves a later same-ID completion
+  waits for the earlier one while different IDs remain independent.
+- `execute_axi4_memory_job(dut, clock_name, group, operation, case, bases, *, seed=None, max_extra_cycles=4, read_error_at=None, write_error_at=None, abort_signal_name=None, reset_signal_name=None, reset_active_value=0, stop_after=None, first_transfer_simultaneous=False, initial_sink_stall_cycles=0, initial_sink_stall_cycles_by_kind=None, write_address_one_cycle_probe=False, timeout_cycles=262_144, progress_state=None) -> list[dict[str, int]]`
   — the group may be a single-capability manager port: the call derives
   `needs_read = bool(operation["inputs"])` / `needs_write =
   bool(operation["outputs"])` and only requires (and only builds sinks/sources
@@ -605,6 +619,13 @@ releases READY after exactly one sampled stalled cycle; it is exclusive with
   for the item to actually reach the wire, and trusting it as if it meant
   "transferred" was a real bug caught while building the real-simulator test
   (the job would stop one cycle before the last read genuinely completed).
+  When the caller supplies a mutable `progress_state` mapping, the driver
+  publishes those same observed request/response/data counters into it. This
+  is observation only: the driver neither imports lifecycle policy nor chooses
+  lifecycle diagnostics. The register-started campaign uses the counters to
+  distinguish “accepted start produced no memory activity” from an ordinary
+  in-progress AXI timeout and assigns the former to
+  `accepted_command_starts_job`.
   Unlike `execute_axi_lite_memory_job`, this function does **not** drive the
   job-acceptance command itself; the caller composes it with the job start:
   `../../orchestration/campaign.py::run_code_owned_axi4_operation_case` runs it
@@ -641,10 +662,12 @@ releases READY after exactly one sampled stalled cycle; it is exclusive with
   These are **observed** coverage hits, not mere planned scenarios. For a
   register-started (`control_plane_sequence`) operation the dispatch is
   instead `_run_axi4_control_plane_operation_campaign`, which runs the
-  transport variants described near the top of this file and does **not**
-  replay the reset-abort / illegal-command / error-injection probes above.
+  transport variants described near the top of this file plus observed
+  phase-specific reset-abort and clean-recovery probes. It does not invent
+  illegal-command or error-injection behavior that its frozen lifecycle policy
+  and control-plane sequence do not declare.
   Real-RTL fault/fix pair tests for AXI4 read and write features are
-  `multigent/tests/test_axi4_read_rtl_feature_matrix.py` and
+  `multigent/verifier_tool/tool_regression/rtl/test_axi4_read_rtl_feature_matrix.py` and
   `test_axi4_write_rtl_feature_matrix.py`. Earlier per-run coverage figures
   that this section used to quote (e.g. an 85/104-bin single-beat probe, a
   86/86 "truthful capability" contract, and several bin families listed as
@@ -652,9 +675,8 @@ releases READY after exactly one sampled stalled cycle; it is exclusive with
   treated as qualification: under the current policy
   a strict pass needs a frozen-contract/generated-TB mutant that fails for the
   intended reason plus corrected RTL passing every required bin, and rows are
-  marked one at a time. Current status lives in
-  [`../../SUPPORT_VALIDATION_MATRIX.md`](../../SUPPORT_VALIDATION_MATRIX.md),
-  which points to `FULL_POOL_QUALIFICATION_MATRIX.md`.
+  marked one at a time. Current status lives in the executable
+  [`../../tool_regression/qualification/ledger.json`](../../tool_regression/qualification/ledger.json).
 
 ## `drivers/custom_mmio.py` — an LLM-declared custom memory-like protocol, both directions
 
@@ -721,9 +743,9 @@ field set.
   out-of-order-completion close when the operation has 2+ inputs), since both
   protocols share the same underlying `RandomCompletionScheduler`.
 - Proven against real Verilator simulation:
-  `multigent/tests/test_custom_mmio_burst_and_write.py` (read burst via `len`,
+  `multigent/verifier_tool/tool_regression/rtl/test_custom_mmio_burst_and_write.py` (read burst via `len`,
   two outstanding writes acking out of order) and
-  `multigent/tests/test_custom_mmio_campaign.py` (the full campaign wiring
+  `multigent/verifier_tool/tool_regression/rtl/test_custom_mmio_campaign.py` (the full campaign wiring
   above — command accepted, three inputs read genuinely out of order over one
   group, one output written over a second group, completion observed, value
   read back through the shared adapter).

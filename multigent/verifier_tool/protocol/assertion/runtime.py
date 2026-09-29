@@ -45,11 +45,17 @@ def build_protocol_assertion_plan(interface_plan: Mapping[str, Any]) -> dict[str
         feature_plan.get("bindings", {}).get("standard_groups", [])
     )
     valid_reset_features: dict[str, str] = {}
+    valid_reset_settle_cycles: dict[str, int] = {}
     for item in compiled_assertions["entries"]:
         if item.get("implementation") != "valid_low_during_reset":
             continue
         for signal in item.get("bindings", {}).get("valid_signals", ()):
             valid_reset_features[str(signal)] = str(item["id"])
+            valid_reset_settle_cycles[str(signal)] = int(
+                item.get("bindings", {}).get(
+                    "settle_cycles", reset_binding.get("settle_cycles", 0)
+                )
+            )
     valid_signals = tuple(sorted(valid_reset_features))
     features = [str(item["id"]) for item in compiled_assertions["entries"]]
     return {
@@ -61,6 +67,7 @@ def build_protocol_assertion_plan(interface_plan: Mapping[str, Any]) -> dict[str
         "reset_settle_cycles": int(reset_binding.get("settle_cycles", 0)),
         "valid_signals": valid_signals,
         "valid_reset_features": valid_reset_features,
+        "valid_reset_settle_cycles": valid_reset_settle_cycles,
         "stalls": stalls,
         "standard_groups": standard_groups,
         "features": tuple(dict.fromkeys(features)),
@@ -92,11 +99,21 @@ def check_protocol_assertions(
         active_samples = int(state.get("_reset_active_samples", 0)) + int(has_valid_sample)
         state.clear()
         state["_reset_active_samples"] = active_samples
-        if has_valid_sample and active_samples > int(plan.get("reset_settle_cycles", 0)):
+        eligible_valids = tuple(
+            str(signal)
+            for signal in plan.get("valid_signals", ())
+            if active_samples
+            > int(
+                plan.get("valid_reset_settle_cycles", {}).get(
+                    signal, plan.get("reset_settle_cycles", 0)
+                )
+            )
+        )
+        if has_valid_sample and eligible_valids:
             check_valid_low_during_reset(
                 snapshot,
                 reset,
-                tuple(map(str, plan.get("valid_signals", ()))),
+                eligible_valids,
                 plan.get("valid_reset_features", {}),
             )
         return {}

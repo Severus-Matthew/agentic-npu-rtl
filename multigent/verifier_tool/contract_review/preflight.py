@@ -41,13 +41,27 @@ def review_contract_deterministically(
     from multigent.verifier_tool.operation.coverage.plan import (
         validate_architecture_operation_features,
     )
+    from multigent.verifier_tool.lifecycle.assertion.runtime import (
+        build_lifecycle_assertion_plan,
+    )
+    from multigent.verifier_tool.lifecycle.coverage.plan import (
+        build_lifecycle_coverage_plan,
+    )
+    from multigent.verifier_tool.lifecycle.stimulus.stimulus_generator import (
+        build_lifecycle_stimulus_plan,
+    )
+    from multigent.verifier_tool.orchestration.campaign import (
+        automatic_campaign_support,
+    )
     from multigent.verifier_tool.pool.lifecycle_policy_pool import (
         validate_architecture_lifecycle_policies,
+        validate_interface_reset_channel_policies,
     )
     from multigent.verifier_tool.pool.operation_metadata import (
         blocking_compilation_errors,
         build_architect_operation_metadata,
         compilation_capability_notes,
+        operation_formula_compilation_report,
         validate_architecture_operation_arithmetic,
     )
     from multigent.verifier_tool.pool.role_pool.interface_semantics import (
@@ -118,16 +132,24 @@ def review_contract_deterministically(
         ),
     )
     collect(
+        "reset_channel_policies", "interface_contract",
+        lambda: validate_interface_reset_channel_policies(interface),
+    )
+    collect(
         "operation_arithmetic", "architecture_contract",
         lambda: validate_architecture_operation_arithmetic(
             architecture, require_arithmetic=require_operation_arithmetic,
         ),
     )
+    solver_compilation = collect(
+        "operation_solver_compilation", "architecture_contract",
+        lambda: operation_formula_compilation_report(architecture),
+    )
     collect(
         "standard_protocol_plan", "interface_contract",
         lambda: compile_standard_protocol_plan(interface),
     )
-    collect(
+    interface_plan = collect(
         "interface_coverage_plan", "interface_contract",
         lambda: build_interface_coverage_plan(
             interface,
@@ -140,6 +162,8 @@ def review_contract_deterministically(
         lambda: build_architect_operation_metadata(architecture, interface),
     )
     capability_notes: list[dict[str, Any]] = []
+    lifecycle_plans: dict[str, Any] = {}
+    campaign_support: dict[str, Any] | None = None
     if isinstance(operation_metadata, Mapping):
         # Only defects the Architect can resolve block. A valid contract the tool
         # cannot automate (tool_capability) or one whose declaration another
@@ -149,6 +173,47 @@ def review_contract_deterministically(
                 _finding("operation_compilation", "architecture_contract/interface_contract", message)
             )
         capability_notes = compilation_capability_notes(operation_metadata)
+
+        # Compile the exact lifecycle plans the generated testbench will use.
+        # Policy validation alone cannot prove that the resolved bindings select
+        # valid assertion, coverage, and stimulus implementations.
+        lifecycle_inputs = (
+            interface_plan if isinstance(interface_plan, Mapping) else interface
+        )
+        for plan_name, callback in (
+            (
+                "assertion",
+                lambda: build_lifecycle_assertion_plan(
+                    lifecycle_inputs, operation_metadata
+                ),
+            ),
+            (
+                "coverage",
+                lambda: build_lifecycle_coverage_plan(interface, operation_metadata),
+            ),
+            (
+                "stimulus",
+                lambda: build_lifecycle_stimulus_plan(interface, operation_metadata),
+            ),
+        ):
+            plan = collect(
+                f"lifecycle_{plan_name}_plan",
+                "architecture_contract/interface_contract",
+                callback,
+            )
+            if isinstance(plan, Mapping):
+                lifecycle_plans[plan_name] = plan
+
+        support = collect(
+            "automatic_campaign_support",
+            "architecture_contract/interface_contract",
+            lambda: automatic_campaign_support(operation_metadata, architecture),
+        )
+        if isinstance(support, Mapping):
+            # Unsupported automation is a capability result, not a malformed
+            # contract.  The report exposes it without turning it into a
+            # Contract Reviewer finding.
+            campaign_support = dict(support)
 
     if module_manifest is not None:
         top = str(module_manifest.get("top", ""))
@@ -206,6 +271,9 @@ def review_contract_deterministically(
         "findings": unique_findings,
         "resolved_extension_reuse": resolved_reuse,
         "capability_notes": capability_notes,
+        "operation_solver_compilation": solver_compilation,
+        "resolved_lifecycle_plans": lifecycle_plans,
+        "automatic_campaign_support": campaign_support,
     }
 
 

@@ -26,7 +26,11 @@ from ...pool.operation_metadata.canonical import (
     integer_matrix_multiply_events,
     supported_code_owned_concepts,
 )
-from ...pool.operation_metadata.formula import FormulaError, parse_formula
+from ...pool.operation_metadata.formula import (
+    FormulaError,
+    compile_formula,
+    compile_formula_expression,
+)
 
 
 _ERROR_CODES = {
@@ -251,7 +255,7 @@ def _gemm_model(operation: Mapping[str, Any]) -> _GemmModel:
         if stage.get("kind") != "llm_defined":
             continue
         try:
-            parse_formula(str(stage.get("formula", "")))
+            compile_formula(str(stage.get("formula", "")))
         except FormulaError as exc:
             raise _generation_error(
                 operation, "unsupported_known_feature", f"post-operation {name!r}: {exc}"
@@ -389,10 +393,28 @@ def _predicate_matches(value: Any, predicate: Mapping[str, Any]) -> bool:
     args = list(predicate.get("args", []))
     if op == "eq":
         return value == args[0]
+    if op == "neq":
+        return value != args[0]
+    if op == "lt":
+        return value < args[0]
+    if op == "lte":
+        return value <= args[0]
+    if op == "gt":
+        return value > args[0]
+    if op == "gte":
+        return value >= args[0]
     if op == "between":
         return args[0] <= value <= args[1]
     if op == "one_of":
         return value in args
+    if op == "mod_eq":
+        return value % args[0] == args[1]
+    if op == "mod_ne":
+        return value % args[0] != args[1]
+    if op == "truthy":
+        return bool(value)
+    if op == "falsy":
+        return not bool(value)
     raise ValueError(f"canonical stimulus generator cannot evaluate predicate {op!r}")
 
 
@@ -510,6 +532,254 @@ def _reduction_query(
         right[depth * model.n] = witness.evaluate(b_vars[depth], model_completion=True).as_long()
     bias_value = witness.evaluate(bias_var, model_completion=True).as_long() if bias else None
     return left, right, bias_value
+
+
+def _z3_wrap(value: z3.ArithRef, dtype: Mapping[str, Any]) -> z3.ArithRef:
+    width = int(dtype["width_bits"])
+    modulus = 1 << width
+    unsigned = value % modulus
+    if bool(dtype["signed"]):
+        sign = 1 << (width - 1)
+        return z3.If(unsigned >= sign, unsigned - modulus, unsigned)
+    return unsigned
+
+
+def _z3_affine_quantize(
+    value: z3.ArithRef,
+    stage: Mapping[str, Any],
+    dtype: Mapping[str, Any],
+) -> z3.ArithRef:
+    numerator = value * int(stage["scale_multiplier"])
+    denominator = 1 << int(stage["scale_shift"])
+    magnitude = z3.If(numerator < 0, -numerator, numerator)
+    quotient = magnitude / denominator
+    remainder = magnitude % denominator
+    rounded_magnitude = z3.If(
+        2 * remainder < denominator,
+        quotient,
+        z3.If(
+            2 * remainder > denominator,
+            quotient + 1,
+            z3.If(quotient % 2 == 0, quotient, quotient + 1),
+        ),
+    )
+    rounded = z3.If(numerator < 0, -rounded_magnitude, rounded_magnitude)
+    shifted = rounded + int(stage["zero_point"])
+    low, high = _integer_bounds(dtype)
+    return z3.If(shifted < low, low, z3.If(shifted > high, high, shifted))
+
+
+def _z3_predicate(value: z3.ArithRef, predicate: Mapping[str, Any]) -> z3.BoolRef:
+    op = str(predicate.get("op", ""))
+    args = list(predicate.get("args", []))
+    if op == "eq" and len(args) == 1:
+        return value == args[0]
+    if op == "neq" and len(args) == 1:
+        return value != args[0]
+    if op == "lt" and len(args) == 1:
+        return value < args[0]
+    if op == "lte" and len(args) == 1:
+        return value <= args[0]
+    if op == "gt" and len(args) == 1:
+        return value > args[0]
+    if op == "gte" and len(args) == 1:
+        return value >= args[0]
+    if op == "between" and len(args) == 2:
+        return z3.And(value >= args[0], value <= args[1])
+    if op == "one_of" and args:
+        return z3.Or(*[value == item for item in args])
+    if op == "mod_eq" and len(args) == 2 and int(args[0]) > 0:
+        return value % int(args[0]) == int(args[1])
+    if op == "mod_ne" and len(args) == 2 and int(args[0]) > 0:
+        return value % int(args[0]) != int(args[1])
+    if op == "truthy" and not args:
+        return value != 0
+    if op == "falsy" and not args:
+        return value == 0
+    raise ValueError(f"unsupported formula-stage coverage predicate {dict(predicate)!r}")
+
+
+def generate_solver_compiled_stimulus_for_bin(
+    operation_metadata: Mapping[str, Any],
+    concept: str,
+    bin_spec: Mapping[str, Any],
+    *,
+    operation_name: str | None = None,
+) -> dict[str, Any]:
+    """Solve one Verifier-defined bin over a formula-stage golden trace.
+
+    The Verifier owns ``bin_spec``.  The tool owns the symbolic GEMM pipeline,
+    the compiled formula, canonical tensor construction, forward golden check,
+    and final predicate confirmation.
+    """
+
+    operation = _select_operation(operation_metadata, operation_name)
+    model = _gemm_model(operation)
+    stage = model.post_operations.get(str(concept))
+    if not isinstance(stage, Mapping) or stage.get("kind") != "llm_defined":
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            "target concept must name a solver-compiled formula DAG stage",
+            concept=str(concept),
+            bin_name=str(bin_spec.get("name", "")),
+        )
+    predicate = bin_spec.get("predicate")
+    if not isinstance(predicate, Mapping):
+        raise _generation_error(
+            model,
+            "metadata_missing",
+            "Verifier formula-stage bin needs a declarative predicate",
+            concept=str(concept),
+            bin_name=str(bin_spec.get("name", "")),
+        )
+
+    solver = z3.Solver()
+    solver.set(timeout=10_000)
+    a_low, a_high = _integer_bounds(model.left["data_type"])
+    b_low, b_high = _integer_bounds(model.right["data_type"])
+    a_vars = [z3.Int(f"formula_a_{index}") for index in range(model.k)]
+    b_vars = [z3.Int(f"formula_b_{index}") for index in range(model.k)]
+    for item in a_vars:
+        solver.add(item >= a_low, item <= a_high)
+    for item in b_vars:
+        solver.add(item >= b_low, item <= b_high)
+
+    arithmetic = operation.get("arithmetic", {})
+    value: z3.ArithRef = z3.IntVal(
+        int(arithmetic.get("accumulator_initialization", 0))
+    )
+    reduction_conversion = str(arithmetic.get("reduction_conversion", "exact"))
+    for left, right in zip(a_vars, b_vars):
+        value = value + left * right
+        if reduction_conversion == "wrap_twos_complement_after_each_add":
+            value = _z3_wrap(value, model.accumulator_dtype)
+        elif reduction_conversion != "exact":
+            raise _generation_error(
+                model,
+                "unsupported_known_feature",
+                f"cannot symbolically compile reduction conversion {reduction_conversion!r}",
+                concept=str(concept),
+                bin_name=str(bin_spec.get("name", "")),
+            )
+
+    bias_var: z3.ArithRef | None = None
+    target_value: z3.ArithRef | None = None
+    for stage_name in model.resolved_stage_order:
+        current = model.post_operations[stage_name]
+        kind = str(current.get("kind", ""))
+        if kind == "bias_add":
+            if model.bias is None:
+                raise _generation_error(
+                    model, "metadata_missing", "bias_add has no canonical bias binding"
+                )
+            bias_low, bias_high = _integer_bounds(model.bias["data_type"])
+            bias_var = z3.Int("formula_bias")
+            solver.add(bias_var >= bias_low, bias_var <= bias_high)
+            value = value + bias_var
+            conversion = str(arithmetic.get("bias_conversion", "exact"))
+            if conversion == "wrap_twos_complement_after_add":
+                value = _z3_wrap(value, model.accumulator_dtype)
+            elif conversion != "exact":
+                raise _generation_error(
+                    model,
+                    "unsupported_known_feature",
+                    f"cannot symbolically compile bias conversion {conversion!r}",
+                    concept=str(concept),
+                    bin_name=str(bin_spec.get("name", "")),
+                )
+        elif kind == "wrap":
+            value = _z3_wrap(value, _dtype(operation, str(current["data_type"])))
+        elif kind == "relu":
+            value = z3.If(value < 0, 0, value)
+        elif kind == "affine_quantize":
+            value = _z3_affine_quantize(
+                value, current, _dtype(operation, str(current["data_type"]))
+            )
+        elif kind == "llm_defined":
+            try:
+                value, constraints = compile_formula_expression(
+                    str(current["formula"]), value
+                )
+            except FormulaError as exc:
+                raise _generation_error(
+                    model,
+                    "unsupported_known_feature",
+                    f"formula stage {stage_name!r} no longer compiles: {exc}",
+                    concept=str(concept),
+                    bin_name=str(bin_spec.get("name", "")),
+                ) from exc
+            solver.add(*constraints)
+        if stage_name == concept:
+            target_value = value
+            break
+
+    assert target_value is not None
+    try:
+        solver.add(_z3_predicate(target_value, predicate))
+    except (TypeError, ValueError) as exc:
+        raise _generation_error(
+            model,
+            "metadata_missing",
+            str(exc),
+            concept=str(concept),
+            bin_name=str(bin_spec.get("name", "")),
+        ) from exc
+    status = solver.check()
+    if status == z3.unsat:
+        raise _generation_error(
+            model,
+            "unreachable",
+            "Verifier predicate has no legal witness under the compiled operation",
+            concept=str(concept),
+            bin_name=str(bin_spec.get("name", "")),
+        )
+    if status != z3.sat:
+        raise _generation_error(
+            model,
+            "generation_inconclusive",
+            "solver did not finish the formula-stage witness search",
+            concept=str(concept),
+            bin_name=str(bin_spec.get("name", "")),
+        )
+
+    witness = solver.model()
+    stimulus = _base_stimulus(model)
+    left_values = stimulus[str(model.left["data_object"])]
+    right_values = stimulus[str(model.right["data_object"])]
+    for depth in range(model.k):
+        left_values[depth] = witness.eval(a_vars[depth], model_completion=True).as_long()
+        right_values[depth * model.n] = witness.eval(
+            b_vars[depth], model_completion=True
+        ).as_long()
+    if model.bias is not None and bias_var is not None:
+        stimulus[str(model.bias["data_object"])][0] = witness.eval(
+            bias_var, model_completion=True
+        ).as_long()
+
+    expected = evaluate_canonical_operation(operation, stimulus)
+    job = assemble_canonical_job(operation, stimulus, expected, expected)
+    assert job is not None
+    evidence = classify_operation_job(job)
+    values = evidence.get(str(concept), [])
+    if not any(_predicate_matches(item, predicate) for item in values):
+        raise _generation_error(
+            model,
+            "generation_inconclusive",
+            f"solver witness failed forward classification; evidence={values!r}",
+            concept=str(concept),
+            bin_name=str(bin_spec.get("name", "")),
+        )
+    return {
+        "operation_name": model.operation_name,
+        "kind": "directed",
+        "label": f"solver_{concept}_{bin_spec.get('name', 'bin')}",
+        "target": {"concept": str(concept), "bin": str(bin_spec.get("name", ""))},
+        "stimulus": stimulus,
+        "expected": expected,
+        "evidence": evidence,
+        "solver_origin": "verifier_predicate_over_compiled_formula_stage",
+    }
 
 
 def _solve_dot(model: _GemmModel, target: int) -> tuple[list[int], list[int]] | None:

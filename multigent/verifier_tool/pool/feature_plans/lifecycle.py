@@ -49,7 +49,8 @@ def _control_plane_signals(standard_groups: list[Mapping[str, Any]]) -> dict[str
 
 
 _LIFECYCLE_FEATURE_TAGS = {
-    "legal_command_starts_one_job": ("lifecycle", "legal_command"),
+    "accepted_command_starts_job": ("lifecycle", "legal_command"),
+    "single_inflight_job_enforced": ("lifecycle", "legal_command"),
     "illegal_command_errors_without_start": ("lifecycle", "illegal_command", "error"),
     "response_error_follows_nonokay": ("lifecycle", "error"),
     "no_output_without_active_job": ("lifecycle",),
@@ -60,7 +61,8 @@ _LIFECYCLE_FEATURE_TAGS = {
 }
 
 _AFFECTED_POLICY_FIELDS = {
-    "legal_command_starts_one_job": {"job_acceptance", "job_overlap"},
+    "accepted_command_starts_job": {"job_acceptance"},
+    "single_inflight_job_enforced": {"job_acceptance", "job_overlap"},
     "illegal_command_errors_without_start": {
         "job_acceptance", "illegal_command_behavior", "error_style", "error_timing",
     },
@@ -117,14 +119,67 @@ def _extension_fields(operation: Mapping[str, Any]) -> set[str]:
 
 
 def _operation_feature_kinds(
-    operation: Mapping[str, Any], catalog: Mapping[str, Any]
+    operation: Mapping[str, Any],
+    catalog: Mapping[str, Any],
+    *,
+    preserve_ambiguous_bindings: bool = False,
 ) -> list[str]:
     """Operation-scoped lifecycle feature kinds this operation's contract requires."""
 
     extension_fields = _extension_fields(operation)
+    status = operation.get("status", {})
+    status_names = {
+        role: tuple(map(str, status.get(role, ())))
+        for role in ("busy", "completion", "error")
+        if isinstance(status, Mapping)
+    }
+    commands = [
+        item for item in operation.get("commands", []) if isinstance(item, Mapping)
+    ]
+    uses_control_plane = isinstance(operation.get("control_plane_sequence"), Mapping)
+    has_start_source = bool(commands) or uses_control_plane
+    has_retirement = bool(operation.get("retirements") or operation.get("outputs"))
+    def has_status_endpoint(role: str) -> bool:
+        count = len(status_names.get(role, ()))
+        return count == 1 or (preserve_ambiguous_bindings and count > 1)
+
+    has_busy = has_status_endpoint("busy")
+    has_completion_signal = has_status_endpoint("completion")
+    has_error = has_status_endpoint("error")
+    completion_style = operation.get("policy", {}).get("completion_style")
+    error_style = operation.get("policy", {}).get("error_style")
     kinds: list[str] = []
     for kind in catalog["operation_features"]:
-        if kind == "response_error_follows_nonokay" and not operation.get("error_responses"):
+        # A policy value describes the behavior *when its observable endpoint is
+        # present*.  Do not publish an assertion whose checker has no signal or
+        # event to inspect: that would create a named but vacuous qualification
+        # target in the benchmark matrix.
+        if kind == "accepted_command_starts_job" and not has_start_source:
+            continue
+        if kind == "single_inflight_job_enforced" and not commands:
+            continue
+        if kind == "illegal_command_errors_without_start" and not (commands and has_error):
+            continue
+        if kind == "response_error_follows_nonokay" and not (
+            operation.get("error_responses") and has_error
+        ):
+            continue
+        if kind == "no_output_without_active_job" and not (
+            has_start_source and has_retirement
+        ):
+            continue
+        if kind == "busy_tracks_active_job" and not (has_start_source and has_busy):
+            continue
+        if kind == "completion_matches_final_output" and not (
+            has_retirement and (has_completion_signal or uses_control_plane)
+        ):
+            continue
+        if kind == "reset_aborts_pending_job" and not has_start_source:
+            continue
+        if kind == "status_pulses_are_one_cycle" and not (
+            (has_completion_signal and completion_style == "pulse")
+            or (has_error and error_style == "pulse")
+        ):
             continue
         affected = _AFFECTED_POLICY_FIELDS.get(kind, set())
         if kind == "status_pulses_are_one_cycle":
@@ -153,6 +208,7 @@ def _shell_runtime_operation(
     return {
         "operation_name": str(shell.get("operation_name", "")),
         "classifier_profile": str((shell.get("arithmetic") or {}).get("classifier_profile", "")),
+        "dimensions": dict(shell.get("dimensions") or {}),
         "commands": [
             dict(item)
             for item in lifecycle.get("job_accept_channels", [])
@@ -178,7 +234,9 @@ def blocked_lifecycle_feature_ids(
     catalog = load_lifecycle_feature_catalog()
     return [
         f"lifecycle.{operation['operation_name']}.{kind}"
-        for kind in _operation_feature_kinds(operation, catalog)
+        for kind in _operation_feature_kinds(
+            operation, catalog, preserve_ambiguous_bindings=True
+        )
     ]
 
 
@@ -306,6 +364,7 @@ def _runtime_operations(
             "classifier_profile": str(
                 operation.get("arithmetic", {}).get("classifier_profile", "")
             ),
+            "dimensions": dict(operation.get("dimensions", {})),
             "commands": [
                 dict(item)
                 for item in lifecycle.get("job_accept_channels", [])
@@ -349,6 +408,53 @@ def _bin(name: str, intent: str) -> dict[str, Any]:
     }
 
 
+def _output_abort_phase_reachable(operation: Mapping[str, Any]) -> bool:
+    """Whether reset can follow an accepted output before job retirement.
+
+    A single-transfer result retires on its first and only accepted transfer.
+    Calling that an ``output`` abort would first complete an unrecorded job and
+    only then assert reset. Keep the bin when retirement cardinality is unknown
+    (including a blocked operation shell), but remove it when the resolved
+    contract proves that the entire result retires in one transfer.
+    """
+
+    retirements = list(operation.get("retirements", []))
+    counts = [item.get("expected_count") for item in retirements]
+    if not retirements:
+        outputs = list(operation.get("outputs", []))
+        dimensions = operation.get("dimensions", {})
+        if not outputs or not isinstance(dimensions, Mapping):
+            return True
+        counts = []
+        for binding in outputs:
+            if not isinstance(binding, Mapping):
+                return True
+            if binding.get("bound") is False:
+                if not bool(binding.get("external", True)):
+                    continue
+                expected_elements = binding.get("expected_elements")
+                if not isinstance(expected_elements, int) or expected_elements <= 0:
+                    return True
+                counts.append(expected_elements)
+                continue
+            extents = [dimensions.get(str(axis)) for axis in binding.get("dimensions", [])]
+            if extents and not all(isinstance(value, int) and value > 0 for value in extents):
+                return True
+            count = prod(map(int, extents)) if extents else 1
+            mapping = binding.get("memory_mapping", {})
+            elements_per_word = (
+                mapping.get("elements_per_word") if isinstance(mapping, Mapping) else None
+            )
+            if isinstance(elements_per_word, int) and elements_per_word > 0:
+                count = (count + elements_per_word - 1) // elements_per_word
+            counts.append(count)
+        if not counts:
+            return True
+    if any(not isinstance(count, int) or count <= 0 for count in counts):
+        return True
+    return sum(map(int, counts)) > 1
+
+
 def _coverage_obligations(
     operations: list[Mapping[str, Any]],
     coverage_catalog: Mapping[str, Mapping[str, Any]],
@@ -361,7 +467,11 @@ def _coverage_obligations(
         # not on whether the operation's mathematics has a tool-owned golden
         # model.  An ``llm_extension`` operation with a resolved command path
         # still has accepted/active/retired/reset behavior to cover.
-        if len(commands) != 1 or not commands[0].get("legal_values"):
+        command_start = len(commands) == 1 and bool(commands[0].get("legal_values"))
+        control_plane_start = isinstance(
+            operation.get("control_plane_sequence"), Mapping
+        )
+        if not command_start and not control_plane_start:
             continue
         input_phases = [
             f"input_{safe_id(item.get('data_object', ''))}"
@@ -410,6 +520,12 @@ def _coverage_obligations(
                         for phase in input_phases
                     ],
                     *bin_specs[1:],
+                ]
+            if coverage_name == "reset_abort_phase" and not _output_abort_phase_reachable(
+                operation
+            ):
+                bin_specs = [
+                    item for item in bin_specs if str(item.get("name", "")) != "output"
                 ]
             obligations.append(
                 {
@@ -486,7 +602,11 @@ def build_lifecycle_feature_plan(
         extension_fields = _extension_fields(operation)
         owned = automation is None
         records: list[dict[str, Any]] = []
-        for kind in _operation_feature_kinds(operation, catalog):
+        for kind in _operation_feature_kinds(
+            operation,
+            catalog,
+            preserve_ambiguous_bindings=automation is not None,
+        ):
             spec = catalog["operation_features"][kind]
             operation_coverage = [
                 f"operation.{safe_id(name)}.{obligation}"

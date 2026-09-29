@@ -27,6 +27,10 @@ named in the tables below.
    profile with every numeric and ordered post-operation rule, or `llm_extension`
    with a reason), and `data_objects[].serialization`. Old frozen contracts
    without them are rejected, not migrated.
+   For generic channels whose producer must hold VALID low during reset, also
+   select `interface_contract.reset_channel_policies` with explicit
+   `settle_cycles`; generic ready/valid does not imply this policy, and a
+   synchronous reset cannot safely be checked before its active clock edge.
 3. **Encode protocol mapping and memory pointers as exact tags.** AXI4 /
    AXI4-Lite / AXI4-Stream / `custom_mmio` channels carry `protocol_group=`,
    `protocol_channel=` in `metadata` and `protocol_field=` in each signal's
@@ -52,7 +56,7 @@ named in the tables below.
 
 | Function | Adds |
 |---|---|
-| `with_lifecycle_policy_schema(schema, *, required=True)` | `operations[].lifecycle_policy` (built from the pool, plus the `{extension_request}` alternative) |
+| `with_lifecycle_policy_schema(schema, *, required=True)` | `operations[].lifecycle_policy` (built from the pool, plus the `{extension_request}` alternative), optional `operations[].lifecycle_control_plane_sequence`, and optional `interface_contract.reset_channel_policies` |
 | `with_operation_arithmetic_schema(schema, *, required=True)` | `operations[].arithmetic`; `data_objects[].serialization` (kinds `dense_tensor`, `scalar`, `llm_extension`, `packed_encoding`) |
 | `with_architect_extension_request_schema(schema, *, required=False)` | `architecture_contract.verification_extensions`, `architecture_contract.verification_vocabulary` |
 
@@ -71,6 +75,7 @@ if it is absent. `required=False` lets old contract shapes still be read.
 | `validate_architect_extension_requests(architecture, interface)` | request identity, domain, target, semantics, replacement paths, vocabulary |
 | `validate_architecture_operation_features(architecture)` | family and feature baselines |
 | `validate_architecture_lifecycle_policies(architecture, *, require_policy=True, previous_architecture=None)` | explicit, complete, supported policy selections; a previously declared one cannot be removed |
+| `validate_interface_reset_channel_policies(interface)` | generic-channel reset policy vocabulary, reset/VALID bindings, channel references, and non-duplication with standard protocol ownership |
 | `validate_architecture_operation_arithmetic(architecture, *, require_arithmetic=True, previous_architecture=None)` | arithmetic declarations and every `data_objects[].serialization` (including `packed_encoding`) |
 | `validate_standard_protocol_bindings(interface)` | exact AXI / custom_mmio tag binding |
 | `validate_contract_vocabulary(architecture, interface)` | contract-local roles, semantic classes, tags |
@@ -118,6 +123,7 @@ described in [`CONTRACT_REVIEWER_INTEGRATION.md`](CONTRACT_REVIEWER_INTEGRATION.
                                              semantic_class_extensions=semantic_extensions))
   errors.extend(validate_architecture_operation_features(arch))
   errors.extend(validate_architecture_lifecycle_policies(arch, require_policy=require_lifecycle_policy))
+  errors.extend(validate_interface_reset_channel_policies(interface))
   errors.extend(validate_architecture_operation_arithmetic(arch, require_arithmetic=require_operation_arithmetic))
   errors.extend(extension_errors)
   ```
@@ -205,12 +211,17 @@ channel-carried is what the tool can bind.
 ### Arithmetic
 
 `classifier_profile: integer_matrix_multiply` with the full compact declaration
-(`post_operations` is a DAG of named stages; `bias_add`, `wrap`, `relu`,
-`affine_quantize`, and formula-defined `llm_defined` stages), or
+(`post_operations` is a DAG of named stages; built-in stages may be combined
+with formula-defined `llm_defined` stages that the Contract Reviewer must
+successfully compile into solver IR), or
 `classifier_profile: llm_extension` with `reason` and a top-level
 `operation.semantics`. Exclusive with a full `verification_metadata` on the same
 operation. See
 [`pool/operation_metadata/README.md`](pool/operation_metadata/README.md#example-compact-declaration).
+
+The Architect owns the mathematical formula and DAG order, not coverage bins.
+If solver compilation fails, revise the formula. Use `llm_extension` only when
+the operation is intentionally outside the deterministic solver model.
 
 ### Object serialization
 

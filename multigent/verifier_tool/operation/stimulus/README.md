@@ -146,8 +146,9 @@ extents. `_gemm_model(operation)` is the sole constructor: it re-derives
 `K` agreement, caps total tensor size at `_MAX_CANONICAL_ELEMENTS_PER_CASE =
 1_000_000`, verifies `resolved_stage_order` names every declared DAG stage,
 accepts `bias_add`, `wrap`, `relu`, and `affine_quantize` in any resolved dependency order, and
-also accepts any number of `llm_defined` stages whose formulas pass the closed
-grammar in `pool/operation_metadata/formula.py`. It resolves at most one
+also accepts any number of `llm_defined` stages whose formulas pass the same
+solver-compilation gate used by Contract Review in
+`pool/operation_metadata/formula.py`. It resolves at most one
 `bias_add` to an input bound as a per-output-column vector (shape `(n,)` only
 — row or full-matrix bias is rejected as `unsupported_known_feature`) and
 rejects any input/output object not accounted for by left/right/bias/result.
@@ -163,6 +164,18 @@ The golden reference implementation. Assembles a `CanonicalOperationJob` via
 honoring `bias_conversion`, `wrap`, `relu`, and per-tensor affine
 quantization), and the output's
 `result_conversion` — to `operation_metadata.canonical.integer_matrix_multiply_events`
+
+### `generate_solver_compiled_stimulus_for_bin(operation_metadata, concept, bin_spec, *, operation_name=None)`
+
+This is the bridge between Verifier-owned coverage intent and Architect-owned
+formula semantics. `concept` names a formula-defined DAG stage and `bin_spec` is
+the Verifier's normal declarative `{name, intent, predicate}` object. The helper
+symbolically compiles the GEMM reduction and every stage up to that formula,
+asks Z3 for legal A/B/bias values satisfying the predicate, reconstructs the
+canonical tensors, and then runs the witness forward through the independent
+golden model and classifier. An unsatisfiable predicate is reported as
+`unreachable`; a timeout is `generation_inconclusive`. No Architect coverage
+bins and no Verifier-authored mathematical observer are required.
 and returns each event's `result_value`. This function does **not** carry its
 own copy of that arithmetic: it is the same walk
 `_classify_integer_matrix_multiply` (in `canonical.py`) calls to build
@@ -185,9 +198,9 @@ code-owned concept, it recomputes the truth itself from this function. Inside
 this file it is also called by `_case`, `generate_random_canonical_stimuli`,
 and `generate_canonical_discriminating_stimuli` to self-check every vector
 before returning it. It is exercised directly by
-`multigent/tests/test_canonical_operation.py`,
-`multigent/tests/test_operation_feature_groups.py`, and
-`multigent/tests/test_operation_arithmetic_metadata.py` as the GEMM reference
+`multigent/verifier_tool/tool_regression/unit/test_canonical_operation.py`,
+`multigent/verifier_tool/tool_regression/unit/test_operation_feature_groups.py`, and
+`multigent/verifier_tool/tool_regression/unit/test_operation_arithmetic_metadata.py` as the GEMM reference
 oracle.
 
 ### `generate_canonical_stimulus_for_bin(operation_metadata, concept, bin_name, *, operation_name=None) -> dict[str, Any]`
@@ -214,10 +227,10 @@ unbiased dot product, not `dot+bias`; otherwise a nominal negative-region
 vector can actually enter ReLU as zero.
 It does not assume raw reduction values `-1/0/+1` still have those meanings
 after quantization. The `ReLU → bias` ordering has no generated-TB/RTL
-fault-fix evidence recorded in the current qualification matrices
-(`../../FULL_POOL_QUALIFICATION_MATRIX.md` lists these features unqualified);
+fault-fix evidence recorded in the current executable qualification ledger
+([`../../tool_regression/qualification/ledger.json`](../../tool_regression/qualification/ledger.json));
 the DAG-order behavior itself is exercised by unit tests such as
-`multigent/tests/test_operation_arithmetic_metadata.py`.
+`multigent/verifier_tool/tool_regression/unit/test_operation_arithmetic_metadata.py`.
 
 **Who calls it.** Embedded directly into every generated cocotb testbench:
 `multigent/verifier_tool/orchestration/instrumentation.py` imports it through the
@@ -228,8 +241,8 @@ literal — that wrapper, not this function's real name, is what
 Verifier-authored `llm_extension` test code actually calls inside a generated
 TB. Also called in a loop, once per declared bin of every supported concept,
 by `generate_canonical_stimulus_suite` below, and directly by
-`multigent/tests/test_canonical_operation.py` and
-`multigent/tests/test_operation_feature_groups.py`.
+`multigent/verifier_tool/tool_regression/unit/test_canonical_operation.py` and
+`multigent/verifier_tool/tool_regression/unit/test_operation_feature_groups.py`.
 
 ### `generate_random_canonical_stimuli(operation_metadata, count, *, operation_name=None, seed=0) -> list[dict[str, Any]]`
 
@@ -251,7 +264,7 @@ from its own `randomized_count` argument — itself sourced from
 is threaded all the way from
 `context["verification_policy"]["randomized_transactions_minimum"]` in
 `multigent/agents/verifier.py`. Directly unit-tested in
-`multigent/tests/test_canonical_operation.py`.
+`multigent/verifier_tool/tool_regression/unit/test_canonical_operation.py`.
 
 ### `generate_canonical_discriminating_stimuli(operation_metadata, *, operation_name=None) -> list[dict[str, Any]]`
 
@@ -291,8 +304,8 @@ builds `cases = [*suite["directed"], *suite["qualification"],
 *suite["randomized"]]` and treats any `exceptions` entry whose `code` is not
 `"unreachable"` as a hard `AutomaticCampaignError` that aborts the whole
 campaign. Also directly tested in
-`multigent/tests/test_operation_feature_groups.py` and
-`multigent/tests/test_canonical_operation.py`.
+`multigent/verifier_tool/tool_regression/unit/test_operation_feature_groups.py` and
+`multigent/verifier_tool/tool_regression/unit/test_canonical_operation.py`.
 
 ### `reachable_canonical_bins_for_concept(operation_metadata, concept) -> list[dict[str, Any]] | None`
 
@@ -305,7 +318,7 @@ exclusion matters."
 
 **Who calls it.** No non-test caller exists in this repository outside the
 re-export chain (`../__init__.py`, `verifier_tool/__init__.py`). Used directly
-by `multigent/tests/test_canonical_operation.py` to enumerate the bins a
+by `multigent/verifier_tool/tool_regression/unit/test_canonical_operation.py` to enumerate the bins a
 contract fixture expects to be reachable.
 
 ### `canonical_bin_dispositions(operation_metadata, concept) -> list[dict[str, Any]] | None`

@@ -20,8 +20,6 @@ from multigent.verifier_tool.pool.feature_plans.catalog import (
     operation_feature_selections,
     operation_optional_concepts,
 )
-
-
 OPERATION_COVERAGE_FAMILIES_PATH = OPERATION_FEATURES_PATH
 _PREDICATE_OPS = {
     "eq", "neq", "lt", "lte", "gt", "gte", "between", "one_of",
@@ -35,6 +33,18 @@ def _normalize(value: object) -> str:
 
 def _safe_id(value: object) -> str:
     return _normalize(value) or "unnamed"
+
+
+def _formula_stage_concepts(operation: Mapping[str, Any]) -> set[str]:
+    arithmetic = operation.get("arithmetic", {})
+    stages = arithmetic.get("post_operations", {}) if isinstance(arithmetic, Mapping) else {}
+    if not isinstance(stages, Mapping):
+        return set()
+    return {
+        str(name)
+        for name, stage in stages.items()
+        if isinstance(stage, Mapping) and stage.get("kind") == "llm_defined"
+    }
 
 
 def canonical_operation_obligation_id(
@@ -114,7 +124,11 @@ def render_operation_coverage_catalog() -> str:
         "Put applicable child names in feature_extensions; never select all "
         "children merely because the group exists. Legacy frozen group markers "
         "create no standalone obligation. Arithmetic order comes from the "
-        "contract, not this catalog's grouping."
+        "contract, not this catalog's grouping. Formula-defined arithmetic DAG "
+        "stage names are additional required concepts: the Verifier chooses their "
+        "bins and declarative predicates with source=architect_extension, while "
+        "verifier_tool samples the solver-compiled stage output from the checked "
+        "canonical golden trace; no custom observer is needed."
     ]
     for family, spec in load_operation_coverage_families()["families"].items():
         lines.append(f"- {family}: aliases={','.join(spec['aliases'])}")
@@ -344,7 +358,8 @@ def validate_operation_coverage(
             if not operations[operation_name].get("features") and enforced_family in known_families:
                 baseline = set(known_families[enforced_family]["baseline_concepts"])
             architect_extensions = set(extension_names)
-            required = baseline | architect_extensions
+            formula_stages = _formula_stage_concepts(operations[operation_name])
+            required = baseline | architect_extensions | formula_stages
             implemented = {
                 concept
                 for concept, sources in concept_sources.items()
@@ -357,7 +372,7 @@ def validate_operation_coverage(
                     "baseline"
                     if concept in baseline
                     else "architect_extension"
-                    if concept in architect_extensions
+                    if concept in architect_extensions or concept in formula_stages
                     else "llm_extension"
                 )
                 if sources != {expected_source}:
@@ -393,7 +408,7 @@ def validate_frozen_operation_scope(
         str(operation.get("name", "")): {
             concept for selection in operation_feature_selections(operation)
             for concept in selection
-        }
+        } | _formula_stage_concepts(operation)
         for operation in architecture_contract.get("operations", [])
         if isinstance(operation, Mapping)
     }
@@ -589,11 +604,17 @@ def operation_plan_for_tests(
     from multigent.verifier_tool.operation.coverage.sampling import extract_operation_sampling_bindings
     from multigent.verifier_tool.operation.coverage.sampling import OperationSamplingError, operation_observer_views
     from multigent.verifier_tool.pool.operation_metadata import build_architect_operation_metadata
+    from multigent.verifier_tool.pool.operation_metadata import solver_compiled_formula_concepts
     from multigent.verifier_tool.pool.operation_metadata import supported_code_owned_concepts
-    from multigent.verifier_tool.operation.stimulus import canonical_bin_dispositions
+    from multigent.verifier_tool.operation.stimulus import (
+        CanonicalStimulusGenerationError,
+        canonical_bin_dispositions,
+        generate_solver_compiled_stimulus_for_bin,
+    )
 
     metadata = build_architect_operation_metadata(architecture, interface)
     code_owned = supported_code_owned_concepts(metadata)
+    formula_owned = solver_compiled_formula_concepts(metadata)
     metadata_by_operation = {
         str(item["operation_name"]): item for item in metadata["operations"]
     }
@@ -602,7 +623,10 @@ def operation_plan_for_tests(
         for spec in specs
         for point in spec["coverpoints"]
         if str(point.get("concept", ""))
-        in code_owned.get(str(spec.get("operation_name", "")), set())
+        in (
+            code_owned.get(str(spec.get("operation_name", "")), set())
+            | formula_owned.get(str(spec.get("operation_name", "")), set())
+        )
     }
     raw_bindings = extract_operation_sampling_bindings(contents)
     llm_bindings = [
@@ -617,6 +641,60 @@ def operation_plan_for_tests(
     for point in plan["obligations"]:
         operation_name = str(point["bindings"]["operation_name"])
         concept = str(point["bindings"]["concept"])
+        if concept in formula_owned.get(operation_name, set()):
+            resolved_bins: list[dict[str, Any]] = []
+            invalid_bins: list[dict[str, str]] = []
+            for item in point["bins"]:
+                try:
+                    witness = generate_solver_compiled_stimulus_for_bin(
+                        metadata_by_operation[operation_name], concept, item
+                    )
+                except CanonicalStimulusGenerationError as exc:
+                    invalid_bins.append(
+                        {
+                            "bin": str(item.get("name", "")),
+                            "status": exc.code,
+                            "reason": exc.reason,
+                        }
+                    )
+                    continue
+                resolved_bins.append(
+                    {
+                        **dict(item),
+                        "required": True,
+                        "minimum_hits": 1,
+                        "applicability": {
+                            "status": "required_reachable",
+                            "basis": (
+                                "Verifier predicate has a deterministic solver witness "
+                                "through the Contract Reviewer-compiled formula DAG"
+                            ),
+                            "witness": {
+                                "label": witness["label"],
+                                "digest_input": witness["stimulus"],
+                            },
+                        },
+                    }
+                )
+            if invalid_bins:
+                raise OperationSamplingError(
+                    "Verifier formula-stage coverage contains a bin without a legal "
+                    "solver witness; revise the bin predicate instead of declaring "
+                    "unreachable coverage required: "
+                    + repr(
+                        {
+                            "operation": operation_name,
+                            "concept": concept,
+                            "bins": invalid_bins,
+                        }
+                    )
+                )
+            point["bins"] = resolved_bins
+            point["bindings"]["sampling"] = {
+                "template": "canonical_job",
+                "origin": "verifier_tool_solver_compiled_formula",
+            }
+            continue
         if concept not in code_owned.get(operation_name, set()):
             continue
         dispositions = canonical_bin_dispositions(

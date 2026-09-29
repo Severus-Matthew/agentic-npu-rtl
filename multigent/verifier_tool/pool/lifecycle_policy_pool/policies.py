@@ -32,6 +32,7 @@ _IMPLEMENTED_CHOICES = {
     "error_timing": {"next_cycle_after_error_event"},
     "reset_behavior": {"abort_inflight"},
 }
+_IMPLEMENTED_CHANNEL_RESET_BEHAVIORS = {"valid_deasserted"}
 
 
 class LifecyclePolicyError(ValueError):
@@ -63,6 +64,18 @@ def _pool() -> dict[str, Any]:
         if unsupported:
             raise LifecyclePolicyError(
                 f"Lifecycle policy {name!r} exposes unimplemented choices {sorted(unsupported)!r}"
+            )
+    channel_reset = raw.get("channel_reset_behaviors")
+    if not isinstance(channel_reset, dict) or not channel_reset:
+        raise LifecyclePolicyError("Lifecycle policy pool needs channel_reset_behaviors")
+    if set(channel_reset) != _IMPLEMENTED_CHANNEL_RESET_BEHAVIORS:
+        raise LifecyclePolicyError(
+            "Lifecycle channel reset behaviors disagree with implemented checkers"
+        )
+    for name, spec in channel_reset.items():
+        if not isinstance(spec, dict) or not isinstance(spec.get("description"), str):
+            raise LifecyclePolicyError(
+                f"Lifecycle channel reset behavior {name!r} needs a description"
             )
     return raw
 
@@ -111,6 +124,180 @@ def lifecycle_policy_schema() -> dict[str, Any]:
             for name, spec in definitions.items()
         },
     }
+
+
+def reset_channel_policies_schema() -> dict[str, Any]:
+    """Return the interface-level schema for explicit reset channel behavior."""
+
+    return {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["channels", "behavior", "settle_cycles"],
+            "properties": {
+                "channels": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "behavior": {
+                    "type": "string",
+                    "enum": list(_pool()["channel_reset_behaviors"]),
+                },
+                "settle_cycles": {
+                    "type": "integer",
+                    "minimum": 0,
+                },
+            },
+        },
+    }
+
+
+def resolve_reset_channel_policies(
+    interface: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Validate and resolve explicit reset behavior for non-standard channels.
+
+    A plain ``ready_valid`` profile deliberately makes no reset assumption.  The
+    policy is therefore opt-in and channel-specific.  Standard AXI-family and
+    custom-MMIO channels are rejected here because their standards already emit
+    the same rule at protocol-group scope.
+    """
+
+    declarations = interface.get("reset_channel_policies", [])
+    if declarations in (None, []):
+        return []
+    if not isinstance(declarations, list):
+        raise LifecyclePolicyError(
+            "interface.reset_channel_policies must be a list",
+            reason_code="invalid_reset_channel_policy",
+        )
+
+    from multigent.verifier_tool.pool.role_pool.standard_protocols import (
+        STANDARD_PROFILES,
+    )
+
+    channels = {
+        str(item.get("name", "")): item
+        for item in interface.get("channels", [])
+        if isinstance(item, Mapping)
+    }
+    signals = [
+        item for item in interface.get("signals", []) if isinstance(item, Mapping)
+    ]
+    resets = [item for item in signals if item.get("role") == "reset"]
+    if len(resets) != 1:
+        raise LifecyclePolicyError(
+            "reset_channel_policies require exactly one reset-role signal",
+            reason_code="invalid_reset_channel_policy",
+        )
+    semantic = str(resets[0].get("semantic", "")).lower().replace("_", "-")
+    if not any(token in semantic for token in ("active-low", "active low", "active-high", "active high")):
+        raise LifecyclePolicyError(
+            "reset_channel_policies require explicit active-high or active-low reset semantics",
+            reason_code="invalid_reset_channel_policy",
+        )
+
+    resolved: list[dict[str, Any]] = []
+    claimed: set[str] = set()
+    supported = set(_pool()["channel_reset_behaviors"])
+    for index, declaration in enumerate(declarations):
+        location = f"interface.reset_channel_policies[{index}]"
+        if not isinstance(declaration, Mapping):
+            raise LifecyclePolicyError(
+                f"{location} must be an object",
+                reason_code="invalid_reset_channel_policy",
+            )
+        unknown = sorted(
+            set(declaration) - {"channels", "behavior", "settle_cycles"}
+        )
+        if unknown:
+            raise LifecyclePolicyError(
+                f"{location} has unknown fields {unknown}",
+                reason_code="invalid_reset_channel_policy",
+            )
+        names = declaration.get("channels")
+        behavior = declaration.get("behavior")
+        settle_cycles = declaration.get("settle_cycles")
+        if (
+            not isinstance(names, list)
+            or not names
+            or any(not isinstance(name, str) or not name for name in names)
+            or len(names) != len(set(names))
+        ):
+            raise LifecyclePolicyError(
+                f"{location}.channels must contain unique nonempty channel names",
+                reason_code="invalid_reset_channel_policy",
+            )
+        if behavior not in supported:
+            raise LifecyclePolicyError(
+                f"{location}.behavior={behavior!r} is unsupported; supported={sorted(supported)!r}",
+                reason_code="invalid_reset_channel_policy",
+            )
+        if (
+            not isinstance(settle_cycles, int)
+            or isinstance(settle_cycles, bool)
+            or settle_cycles < 0
+        ):
+            raise LifecyclePolicyError(
+                f"{location}.settle_cycles must be a nonnegative integer",
+                reason_code="invalid_reset_channel_policy",
+            )
+        for name in names:
+            if name in claimed:
+                raise LifecyclePolicyError(
+                    f"channel {name!r} has more than one reset channel policy",
+                    reason_code="invalid_reset_channel_policy",
+                )
+            channel = channels.get(name)
+            if channel is None:
+                raise LifecyclePolicyError(
+                    f"{location} references unknown channel {name!r}",
+                    reason_code="invalid_reset_channel_policy",
+                )
+            profile = str(channel.get("protocol_profile", ""))
+            if profile in STANDARD_PROFILES:
+                raise LifecyclePolicyError(
+                    f"channel {name!r} uses standard profile {profile!r}; its reset rule is standard-owned",
+                    reason_code="duplicate_reset_channel_policy",
+                )
+            valid_signals = [
+                str(signal.get("name", ""))
+                for signal in signals
+                if str(signal.get("channel", "")) == name
+                and signal.get("role") == "valid"
+            ]
+            if len(valid_signals) != 1:
+                raise LifecyclePolicyError(
+                    f"channel {name!r} needs exactly one valid-role signal for {behavior}",
+                    reason_code="invalid_reset_channel_policy",
+                )
+            claimed.add(name)
+            resolved.append(
+                {
+                    "channel": name,
+                    "protocol_profile": profile,
+                    "behavior": str(behavior),
+                    "settle_cycles": settle_cycles,
+                    "valid_signals": valid_signals,
+                }
+            )
+    return resolved
+
+
+def validate_interface_reset_channel_policies(
+    interface: Mapping[str, Any],
+) -> list[str]:
+    """Return deterministic contract errors for channel reset policies."""
+
+    try:
+        resolve_reset_channel_policies(interface)
+    except LifecyclePolicyError as exc:
+        return [str(exc)]
+    return []
 
 
 def render_lifecycle_policy_pool() -> str:
@@ -267,6 +454,39 @@ def resolve_lifecycle_policy(
             "completion_style selects control_plane_sequence",
             reason_code="control_plane_sequence_unused",
         )
+    # Validate tuple coherence after declaration presence/absence so a scalar
+    # policy edit that selects control_plane_sequence still receives the more
+    # actionable missing-declaration diagnostic first.
+    lifecycle_transport_fields = (
+        "job_acceptance",
+        "completion_style",
+        "completion_timing",
+    )
+    if not any(
+        policy_extension_request(policy[field]) is not None
+        for field in lifecycle_transport_fields
+    ):
+        transport_tuple = tuple(policy[field] for field in lifecycle_transport_fields)
+        supported_transport_tuples = {
+            (
+                "valid_ready_handshake",
+                "pulse",
+                "next_cycle_after_retirement",
+            ),
+            (
+                "control_plane_sequence",
+                "control_plane_sequence",
+                "observed_via_poll",
+            ),
+        }
+        if transport_tuple not in supported_transport_tuples:
+            raise LifecyclePolicyError(
+                "lifecycle policy contradicts its completion transport: "
+                "job_acceptance/completion_style/completion_timing must be "
+                "valid_ready_handshake/pulse/next_cycle_after_retirement or "
+                "control_plane_sequence/control_plane_sequence/observed_via_poll",
+                reason_code="lifecycle_metadata_contradiction",
+            )
     return result
 
 
@@ -276,7 +496,10 @@ __all__ = [
     "lifecycle_policy_schema",
     "load_lifecycle_policy_pool",
     "policy_extension_request",
+    "reset_channel_policies_schema",
     "render_lifecycle_policy_pool",
+    "resolve_reset_channel_policies",
     "resolve_lifecycle_policy",
+    "validate_interface_reset_channel_policies",
     "validate_lifecycle_policy",
 ]

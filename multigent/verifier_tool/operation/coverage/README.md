@@ -94,7 +94,7 @@ in the codebase — used by `validate_operation_coverage`,
 lookup (`attach_operation_sampling`, `effective_operation_coverage`,
 `operation_observer_views`, `OperationSamplingMonitor.bind_observers`). Also
 called directly from `multigent/agents/verifier.py` and tested in
-`multigent/tests/test_operation_coverage.py`.
+`multigent/verifier_tool/tool_regression/integration/test_operation_coverage.py`.
 
 ### `canonicalize_operation_obligation_claim(claim, operation_names) -> str`
 
@@ -162,9 +162,10 @@ structurally valid predicate (`eq`/`neq`/`lt`/`lte`/`gt`/`gte` take 1 arg;
 every declared bin must represent at least one legal, reachable transaction;
 no two bins under one coverpoint share byte-identical predicates. It then
 recomputes, per operation, the required concept set (`baseline ∪
-feature_extensions`) and checks every required concept is implemented by a
-coverpoint whose `source` field matches its expected origin (`baseline`,
-`architect_extension`, or `llm_extension` for anything else) — a concept
+feature_extensions ∪ solver-compiled formula-stage names`) and checks every
+required concept is implemented by a coverpoint whose `source` field matches
+its expected origin (`baseline`, `architect_extension`, or `llm_extension` for
+anything else) — a concept
 implemented with the wrong `source` label is an error even if the concept
 itself is present. Finally checks every contract operation has *some* coverage
 entry. Called by `multigent/agents/verifier.py` (gating `VERIFICATION_READY`,
@@ -234,7 +235,7 @@ function is only ever called from `operation/assertion/generator.py` (a
 sibling consumer in the assertion domain); operation coverage and operation
 assertion generation each derive their own coverage points independently, per
 the "sibling consumers, not layers" rule in [`../../README.md`](../../README.md).
-Called by `multigent/tests/test_operation_feature_groups.py`,
+Called by `multigent/verifier_tool/tool_regression/unit/test_operation_feature_groups.py`,
 `test_operation_sampling.py`, `test_operation_coverage.py` directly, and
 transitively (through `operation_plan_for_tests`) by all production callers.
 
@@ -242,8 +243,9 @@ transitively (through `operation_plan_for_tests`) by all production callers.
 
 The real production entry point (not `build_operation_coverage_plan` directly).
 Builds the canonical `metadata` via `operation_metadata.build_architect_operation_metadata`,
-computes `code_owned` concepts, and — critically — computes `canonical_ids`
-(the set of obligation ids whose concept is code-owned) so that
+computes `code_owned` concepts and solver-compiled formula concepts, and —
+critically — computes `canonical_ids` (the set of obligation ids whose concept
+is code-owned or formula-backed) so that
 `extract_operation_sampling_bindings(contents)` (static AST scan of the
 Verifier's generated test file sources) can be filtered down to `llm_bindings`:
 only bindings for **non**-code-owned points are passed through to
@@ -252,7 +254,12 @@ code-owned obligation, re-derives its bins from
 `stimulus.operation.canonical_bin_dispositions(metadata_by_operation[name],
 concept)` (raising `OperationSamplingError` if anything is unresolved) and
 stamps `bindings["sampling"] = {"template": "canonical_job", "origin":
-"verifier_tool"}` — this is the marker `InterfaceCoverageTracker.sample_operation`
+"verifier_tool"}`. For every formula-backed obligation it also calls
+`generate_solver_compiled_stimulus_for_bin` on **every Verifier-declared bin
+before the TB is accepted**. A satisfiable bin receives its concrete witness
+and canonical-job sampling binding; an unreachable, unsupported, or
+inconclusive bin rejects the plan immediately so failure cannot be deferred to
+simulation. These bindings are the markers `InterfaceCoverageTracker.sample_operation`
 and `OperationSamplingMonitor` use to recognize a point whose *value* comes
 from the checked-job classifier rather than a per-cycle DUT read. Also calls
 `sampling.py:operation_observer_views(contents, ignored_ids=canonical_ids)`

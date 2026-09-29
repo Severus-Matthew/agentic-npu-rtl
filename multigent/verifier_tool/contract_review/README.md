@@ -28,7 +28,21 @@ capability_notes:            # non-blocking: valid contracts the tool cannot ful
     message: ...
     resolution_hint: ...
     blocked_by: ["gemm:internal_data_object_not_channel_bound"]
+resolved_lifecycle_plans:    # the exact plans consumed by generated testbenches
+  assertion: {...}
+  coverage: {...}
+  stimulus: {...}
+automatic_campaign_support: # non-blocking capability report, or null if metadata failed
+  supported: true | false
+  operations: {...}
 ```
+
+After operation metadata compiles, the facade also compiles the lifecycle
+assertion, coverage, and stimulus plans. A plan-construction exception is a
+blocking finding because the same failure would prevent deterministic testbench
+generation. `automatic_campaign_support` is evaluated at the same boundary but
+is informational: an unsupported automatic campaign is a Verifier extension or
+tool-capability state, not evidence that the frozen contract is malformed.
 
 The `operation_compilation` check compiles every operation
 (`build_architect_operation_metadata`) and turns only the defects the Architect

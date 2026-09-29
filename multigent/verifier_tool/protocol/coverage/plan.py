@@ -314,17 +314,17 @@ def _append_standard_obligations(
                                 ),
                                 "protocol_capability.protection_bins",
                             )
-                        if template_name == "axi4_sideband_partition" and field == "id":
+                        if template_name == "axi4_sideband_partition":
                             allowed = _capability_bins(
-                                group.get("capabilities", {}).get("id_bins")
+                                group.get("capabilities", {}).get(f"{field}_bins")
                             )
                             if allowed is not None:
                                 if not allowed or not allowed <= {"zero", "nonzero"}:
                                     raise ValueError(
-                                        "AXI4 capability id_bins must select zero/nonzero"
+                                        f"AXI4 capability {field}_bins must select zero/nonzero"
                                     )
                                 _restrict_to_capability_bins(
-                                    item, allowed, "protocol_capability.id_bins",
+                                    item, allowed, f"protocol_capability.{field}_bins",
                                 )
                         obligations.append(item)
                     continue

@@ -23,12 +23,12 @@ As with `protocol/`, this folder splits cleanly into planning and execution:
 | `stimulus_generator.py` | No | Builds a declarative scenario list from a frozen interface + operation metadata. No `cocotb` import. |
 | `cocotb.py` | Yes | A small set of role-bound cocotb primitives, built on top of `protocol/stimulus/cocotb.py`, for driving one command channel, reading status signals, and (for `control_plane_sequence` operations) executing a register-mapped job start/completion sequence over an AXI4-Lite control bus. |
 
-**These two files are not a pipeline.** `build_lifecycle_stimulus_plan` never
-calls anything in `cocotb.py`, and — as detailed below —
-`../../orchestration/campaign.py::run_code_owned_verification_campaign` reads only one small
-piece of `build_lifecycle_stimulus_plan`'s output (the reset signal/polarity)
-and otherwise drives lifecycle coverage procedurally using `cocotb.py`'s
-primitives directly, without replaying the plan's `scenarios` list.
+**These two files are not a direct pipeline.** `build_lifecycle_stimulus_plan`
+never calls anything in `cocotb.py`. The automatic campaign consumes the
+resolved reset signal/polarity and the applicable `reset_abort` scenario
+phases, then drives those phases procedurally using `cocotb.py` primitives.
+Other scenario kinds remain declarative inputs for inspection/extensions; they
+are not generically interpreted one by one.
 
 ## Files
 
@@ -93,8 +93,11 @@ by hand from `feature_plan["bindings"]`:
   `"reset"` when `operation["policy"]["error_style"] ==
   "sticky_until_reset"`, else `"pulse_deassertion"` — this is the one place in
   this file that reads the resolved lifecycle policy).
-- Per operation, one `reset_abort` scenario per phase — `idle`, one
-  `input_<safe(data_object)>` per input, `compute`, `output` — each carrying a
+- Per operation, one `reset_abort` scenario per reachable phase — `idle`, one
+  `input_<safe(data_object)>` per input, `compute`, and `output` only when at
+  least two output transfers exist. A one-transfer result retires on its only
+  accepted beat, so it has no distinct “accepted output but still active”
+  phase. Each scenario carries a
   `requirements` list stating the two invariants a reset abort must uphold
   ("no completion is attributable to reset-aborted work",
   "no accepted pre-reset transfer is associated with a post-reset job").
@@ -122,12 +125,12 @@ It is also listed among the contract-level checks in
 checks `review_contract_deterministically` runs) — there it is
 called purely to see whether it raises (i.e. "is command/reset/status
 resolvable at all"), not for its scenario content. Directly unit-tested by
-`multigent/tests/test_lifecycle_automation.py` and
-`multigent/tests/test_lifecycle_policy_pool.py`.
+`multigent/verifier_tool/tool_regression/integration/test_lifecycle_automation.py` and
+`multigent/verifier_tool/tool_regression/integration/test_lifecycle_policy_pool.py`.
 
-**What does *not* call it: `../../orchestration/campaign.py`.** `run_code_owned_verification_campaign(dut,
-interface, operation_metadata, lifecycle_plan, ...)` takes this function's
-output as its `lifecycle_plan` argument, but reads exactly two fields from it:
+**How `../../orchestration/campaign.py` consumes it.**
+`run_code_owned_verification_campaign(dut, interface, operation_metadata,
+lifecycle_plan, ...)` reads the reset binding:
 
 ```python
 reset = lifecycle_plan.get("reset", {})
@@ -135,17 +138,16 @@ reset_name = str(reset.get("signal", ""))
 active_value = reset.get("active_value")
 ```
 
-Nothing else in `campaign.py` touches `lifecycle_plan`. The rich `scenarios`
-list above (reset-per-phase, illegal-command recovery, post-reset purity) is
-**not** iterated or replayed by the campaign — the campaign builds its own
-equivalent phase list (`abort_phases` in
-`run_code_owned_verification_campaign`) and its own illegal-command probe
-independently, using the primitives in `cocotb.py` directly. The `scenarios`
-list exists for the generated TB's embedded `CONTRACT_LIFECYCLE_STIMULUS_PLAN`
-literal (available to Verifier-authored `llm_extension` code and to the
-Contract Reviewer) and for direct testing/inspection, not as an instruction
-list the campaign consumes. Do not assume editing `scenarios` changes what the
-automatic campaign actually drives.
+It also selects this operation's `kind: reset_abort` scenarios and executes
+their resolved phase names. This keeps the driver aligned with reachability
+decisions made by the Lifecycle Feature Plan; in particular, it never creates
+an unrecorded completed job by attempting an impossible output-phase abort on
+a one-transfer result. For a `control_plane_sequence` operation, the generated
+campaign uses the same AXI4 memory driver as a normal checked job, stops only
+after observed read/write progress reaches each declared phase, applies the
+resolved reset, and requires the next accepted start to make clean progress.
+Illegal-command and recovery probes are still driven by the campaign's
+dedicated code rather than by a generic scenario interpreter.
 
 ## `cocotb.py` — role-bound execution primitives
 
@@ -220,7 +222,7 @@ arrival before its command-stall probes. The generic call is made from
 `run_code_owned_verification_campaign`, immediately after the per-phase
 reset-abort loop, specifically "to make command VALID and READY arrive
 together on reset release" and prove post-abort recovery. Confirmed by
-`multigent/tests/test_lifecycle_automation.py::test_automatic_campaign_executes_a_golden_checked_simultaneous_command_job`,
+`multigent/verifier_tool/tool_regression/integration/test_lifecycle_automation.py::test_automatic_campaign_executes_a_golden_checked_simultaneous_command_job`,
 which asserts the exact string
 `"command_reset_release=(reset_name, int(active_value))"` appears in
 `inspect.getsource(run_code_owned_verification_campaign)` and that
@@ -250,8 +252,8 @@ that driver does not apply here. Per action:
 - `poll_field` — reads the register, checks the declared bit against
   `expected`, and on a mismatch waits one rising clock edge and reads again,
   up to `timeout_cycles` attempts, then raises `LifecycleDriveError`. There is
-  no artificial delay beyond that one edge; completion is still only known to
-  the granularity of a register read (the RTL is a black box here).
+no artificial delay beyond that one edge; completion is still only known to
+the granularity of a register read (the RTL is a black box here).
 
 Anything else raises `LifecycleDriveError`. `response_stall_cycles > 0` pauses
 the master's B sink (if the list contains `write_reg`/`write_field`) and/or R

@@ -43,3 +43,10 @@ policies:
     description: Disposition of in-flight work when reset is active.
     choices:
       abort_inflight: Discard pending work, clear lifecycle state, and start a new accounting epoch.
+
+# Generic ready/valid and custom protocols do not define reset behavior by
+# themselves.  Architect may select one of these policies for explicit channel
+# names; standardized AXI-family channels continue to use their standard rules.
+channel_reset_behaviors:
+  valid_deasserted:
+    description: Every VALID signal bound to the selected channel remains low while reset is active.

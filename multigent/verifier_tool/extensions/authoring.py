@@ -81,10 +81,14 @@ def with_architect_extension_request_schema(
 
 
 def with_verifier_extension_bundle_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
-    """Add contract-local bundles to the Verifier response schema.
+    """Add an OpenAI-strict transport for contract-local Verifier bundles.
 
-    The property stays optional for contracts with no requests.  Semantic
-    validation requires an exact one-to-one response whenever requests exist.
+    Canonical bundles intentionally contain free-form JSON mappings for bindings,
+    parameters, and predicates. OpenAI strict structured outputs reject dynamic
+    object keys, so only the API boundary serializes those mappings as JSON
+    strings. :func:`decode_verifier_extension_transport` restores the canonical
+    bundle before any persistence or semantic validation. The internal bundle
+    schema and every saved artifact therefore remain unchanged.
     """
 
     result = deepcopy(dict(schema))
@@ -92,15 +96,231 @@ def with_verifier_extension_bundle_schema(schema: Mapping[str, Any]) -> dict[str
         properties = result["properties"]
     except (KeyError, TypeError) as exc:
         raise FeatureExtensionError("Verifier schema needs root properties") from exc
+    implementation = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["kind", "name", "file", "symbol"],
+        "properties": {
+            "kind": {
+                "type": "string",
+                "enum": ["verifier_python", "protocol_driver"],
+            },
+            "name": {"type": "string", "minLength": 1},
+            "file": {
+                "type": ["string", "null"],
+                "description": "Generated Python path, or null for a tool-owned primitive.",
+            },
+            "symbol": {
+                "type": ["string", "null"],
+                "description": "Generated module-level symbol, or null when not applicable.",
+            },
+        },
+    }
+    branch_properties = {
+        "implementation": implementation,
+        "parameters": {
+            "type": "string",
+            "description": "A JSON-encoded object of branch parameters; use '{}' when empty.",
+        },
+    }
+    branch_required = ["implementation", "parameters"]
+    assertion_properties = deepcopy(branch_properties)
+    assertion_properties["implementation"]["properties"]["kind"]["enum"] = [
+        "verifier_python"
+    ]
+    coverage_properties = deepcopy(assertion_properties)
+    stimulus_properties = deepcopy(branch_properties)
+    stimulus_properties["implementation"]["properties"]["kind"]["enum"] = [
+        "verifier_python", "protocol_driver"
+    ]
     properties["feature_extensions"] = {
         "type": "array",
-        "items": extension_bundle_schema(),
+        "items": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "schema_version", "request_id", "id", "domain", "feature_name",
+                "target", "description", "bindings", "reuse", "assertion",
+                "coverage", "stimulus",
+            ],
+            "properties": {
+                "schema_version": {"type": "integer", "const": 1},
+                "request_id": {"type": "string", "minLength": 1},
+                "id": {"type": "string", "minLength": 1},
+                "domain": {
+                    "type": "string",
+                    "enum": ["protocol", "lifecycle", "operation"],
+                },
+                "feature_name": {"type": "string", "minLength": 1},
+                "target": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["scope", "name"],
+                    "properties": {
+                        "scope": {"type": "string", "minLength": 1},
+                        "name": {"type": "string", "minLength": 1},
+                    },
+                },
+                "description": {"type": "string", "minLength": 1},
+                "bindings": {
+                    "type": "string",
+                    "description": (
+                        "A JSON-encoded non-empty object mapping every Architect-required "
+                        "observation name to its concrete binding."
+                    ),
+                },
+                "reuse": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["based_on_features", "helpers"],
+                    "properties": {
+                        "based_on_features": {
+                            "type": "array", "items": {"type": "string"},
+                        },
+                        "helpers": {
+                            "type": "array", "items": {"type": "string"},
+                        },
+                    },
+                },
+                "assertion": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": branch_required,
+                    "properties": assertion_properties,
+                },
+                "coverage": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [*branch_required, "bins"],
+                    "properties": {
+                        **coverage_properties,
+                        "bins": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": ["name", "intent", "predicate"],
+                                "properties": {
+                                    "name": {"type": "string", "minLength": 1},
+                                    "intent": {"type": "string", "minLength": 1},
+                                    "predicate": {
+                                        "type": "string",
+                                        "description": "A JSON-encoded non-empty predicate object.",
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                "stimulus": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [*branch_required, "scenarios"],
+                    "properties": {
+                        **stimulus_properties,
+                        "scenarios": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": ["name", "intent", "parameters"],
+                                "properties": {
+                                    "name": {"type": "string", "minLength": 1},
+                                    "intent": {"type": "string", "minLength": 1},
+                                    "parameters": {
+                                        "type": "string",
+                                        "description": "A JSON-encoded scenario parameter object.",
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
         "description": (
             "Verifier-authored, contract-local implementations for Architect extension "
-            "requests. These are not promoted pool entries."
+            "requests. Dynamic mappings use JSON strings only in this API transport; "
+            "the runtime decodes them before validation and persistence."
         ),
     }
+    required = list(result.get("required", []))
+    if "feature_extensions" not in required:
+        required.append("feature_extensions")
+    result["required"] = required
     return result
+
+
+def _decode_json_object(value: object, *, location: str, nonempty: bool = False) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        decoded = dict(value)
+    elif isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise FeatureExtensionError(
+                f"{location} must be a JSON-encoded object: {exc.msg}"
+            ) from exc
+        if not isinstance(decoded, dict):
+            raise FeatureExtensionError(f"{location} must decode to an object")
+    else:
+        raise FeatureExtensionError(f"{location} must be an object or JSON-object string")
+    if nonempty and not decoded:
+        raise FeatureExtensionError(f"{location} must not be empty")
+    return decoded
+
+
+def decode_verifier_extension_transport(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Decode strict-API bundle strings into the canonical internal shape.
+
+    The operation is idempotent so locally authored canonical results and review
+    drafts can pass through the same Verifier code path safely.
+    """
+
+    decoded_result = deepcopy(dict(result))
+    bundles = decoded_result.get("feature_extensions", [])
+    if not isinstance(bundles, list):
+        raise FeatureExtensionError("feature_extensions must be a list")
+    for bundle_index, bundle in enumerate(bundles):
+        if not isinstance(bundle, dict):
+            raise FeatureExtensionError(
+                f"feature_extensions[{bundle_index}] must be an object"
+            )
+        prefix = f"feature_extensions[{bundle_index}]"
+        bundle["bindings"] = _decode_json_object(
+            bundle.get("bindings"), location=f"{prefix}.bindings", nonempty=True
+        )
+        for branch_name in ("assertion", "coverage", "stimulus"):
+            branch = bundle.get(branch_name)
+            if not isinstance(branch, dict):
+                raise FeatureExtensionError(f"{prefix}.{branch_name} must be an object")
+            branch["parameters"] = _decode_json_object(
+                branch.get("parameters"),
+                location=f"{prefix}.{branch_name}.parameters",
+            )
+            implementation_spec = branch.get("implementation")
+            if isinstance(implementation_spec, dict):
+                for optional in ("file", "symbol"):
+                    if implementation_spec.get(optional) is None:
+                        implementation_spec.pop(optional, None)
+        coverage = bundle.get("coverage", {})
+        for bin_index, item in enumerate(coverage.get("bins", [])):
+            if isinstance(item, dict):
+                item["predicate"] = _decode_json_object(
+                    item.get("predicate"),
+                    location=f"{prefix}.coverage.bins[{bin_index}].predicate",
+                    nonempty=True,
+                )
+        stimulus = bundle.get("stimulus", {})
+        for scenario_index, item in enumerate(stimulus.get("scenarios", [])):
+            if isinstance(item, dict):
+                item["parameters"] = _decode_json_object(
+                    item.get("parameters"),
+                    location=f"{prefix}.stimulus.scenarios[{scenario_index}].parameters",
+                )
+    return decoded_result
 
 
 def _errors(value: object, schema: Mapping[str, Any], location: str) -> list[str]:
@@ -939,6 +1159,13 @@ and real stimulus. A verifier_python/protocol_driver branch names the exact gene
 file and module-level symbol. Coverage predicates classify observed DUT evidence;
 stimulus labels never create hits.
 
+An extension branch may call and compose the helpers listed by deterministic reuse,
+but it may not claim that a helper alone is a new ``existing_primitive``. There is no
+runtime dispatch registry for such a claim. Put the residual logic in a reachable
+verifier_python wrapper (or a reachable protocol_driver stimulus wrapper) and call
+the reusable helper from there. This prevents an inert manifest from masquerading as
+an implemented extension.
+
 Reusable built-in examples:
 {examples}
 """
@@ -950,6 +1177,7 @@ __all__ = [
     "FeatureExtensionError",
     "REQUEST_SCHEMA_PATH",
     "build_feature_extension_manifest",
+    "decode_verifier_extension_transport",
     "extension_bundle_schema",
     "extension_request_schema",
     "extension_requests",

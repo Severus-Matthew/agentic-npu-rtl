@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import atexit
 import ast
+from copy import deepcopy
 import functools
 import hashlib
 import itertools
@@ -339,6 +340,38 @@ class InterfaceCoverageTracker:
     def _hit(self, obligation_id: str, bin_name: str) -> None:
         self.coverage_model.sample_bin(obligation_id, bin_name)
 
+    def _sample_protocol_failure_diagnostics(
+        self, snapshot: ContractSnapshot
+    ) -> None:
+        """Record diagnostic-only protocol bins for an assertion-failing edge.
+
+        Required coverage describes legal behavior and is never credited from
+        an illegal edge. Explicitly optional bins may classify the violation
+        itself, such as an AXI burst that would cross a 4-KiB boundary. Sample
+        the monitor transactionally so the failing edge cannot advance later
+        temporal coverage state.
+        """
+
+        saved_state = deepcopy(self.protocol_coverage_monitor.state)
+        saved_cycle = self.protocol_coverage_monitor.cycle
+        try:
+            hits = self.protocol_coverage_monitor.sample(snapshot)
+        except ValueError:
+            return
+        finally:
+            self.protocol_coverage_monitor.state = saved_state
+            self.protocol_coverage_monitor.cycle = saved_cycle
+
+        for obligation_id, bin_name in hits:
+            obligation = self.obligations.get(obligation_id, {})
+            diagnostic_bins = {
+                str(spec.get("name", ""))
+                for spec in obligation.get("bins", [])
+                if isinstance(spec, Mapping) and spec.get("required", True) is False
+            }
+            if bin_name in diagnostic_bins:
+                self._hit(obligation_id, bin_name)
+
     @staticmethod
     def _signal(snapshot: ContractSnapshot, name: str) -> int:
         if name not in snapshot:
@@ -394,6 +427,8 @@ class InterfaceCoverageTracker:
             try:
                 completed_stalls = protocol_assertions(snapshot) or {}
             except AssertionError as exc:
+                if not self._reset_is_active(snapshot):
+                    self._sample_protocol_failure_diagnostics(snapshot)
                 self._assertion_failure(
                     "tb.contract_generated_protocol", str(exc), snapshot=snapshot
                 )

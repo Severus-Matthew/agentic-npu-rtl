@@ -96,16 +96,17 @@ Unlike `../../protocol/coverage/plan.py`, where the `obligations` list is built 
 **Feature Plan builder itself** (`feature_plans/lifecycle.py:build_lifecycle_feature_plan`
 → `_coverage_obligations`) is the only place these three obligations are ever
 assembled — there is no parallel direct-instantiation path. `_coverage_obligations`
-skips exactly one kind of operation: one that does not have exactly one command
-channel with `legal_values`. It does **not** look at `classifier_profile`
+requires either exactly one command channel with machine-readable `legal_values`
+or a resolved `control_plane_sequence`; an operation with neither executable
+start source is skipped. It does **not** look at `classifier_profile`
 (source comment: lifecycle coverage depends on observable command/job/status
 behavior, not on whether the mathematics has a golden model), so an
-`llm_extension` operation with a resolved command path still gets these three
-obligations. Consequently an operation started through a
-`control_plane_sequence` (no command channel, see
+`llm_extension` operation with a resolved start path still gets these three
+obligations. An operation started through a `control_plane_sequence` (no
+command channel, see
 [`../../pool/lifecycle_policy_pool/README.md`](../../pool/lifecycle_policy_pool/README.md))
-currently receives **no** `job_lifecycle` / `reset_abort_phase` /
-`post_reset_purity` obligations.
+therefore receives the same `job_lifecycle`, `reset_abort_phase`, and
+`post_reset_purity` obligations when the sequence is fully resolved.
 `reset_abort_phase` additionally gets dynamic bins: one `input_<data_object>`
 bin per declared input binding, inserted between its fixed `idle` and `output`
 bins (`dynamic_bins: input_phases` in YAML, expanded in
@@ -122,7 +123,7 @@ Called only by `operation/coverage/plan.py:merge_coverage_plans(interface_plan,
 operation_plan)`, which supplies `interface_plan["interface_contract"]` and
 `operation_plan["operation_metadata"]`. Not called directly by any agent or
 orchestration file — they all reach it transitively through `merge_coverage_plans`.
-Exercised directly in tests by `multigent/tests/test_lifecycle_automation.py`.
+Exercised directly in tests by `multigent/verifier_tool/tool_regression/integration/test_lifecycle_automation.py`.
 
 ## `runtime.py`
 
@@ -150,13 +151,16 @@ by `operation_name` for the three operation-scoped templates.
   declared `job_accept_channels` entry for a fired transfer, classifies the
   payload against `legal_values` to hit the matching `command_legality`
   obligation's `legal`/`illegal` bin, and on a legal command hits
-  `job_lifecycle`'s `accepted`+`active` bins and marks the operation `active`;
+  `job_lifecycle`'s `accepted`+`active` bins and marks the operation `active`.
+  For a register-started operation, the same transition comes from the
+  resolved control-plane sequence tracker's observed `JOB_START` event;
   (3) counts accepted input/output transfers per declared channel (first
   channel with remaining expected transfers wins ties, via `_expected_transfers`);
   a post-recovery output with the operation not `active` sets `ghost_output`;
-  (4) on any declared completion signal rising, hits `job_lifecycle`'s `retired`
-  bin and marks the operation inactive; a completion seen before a recovery job
-  actually started sets `ghost_completion`.
+  (4) on any declared completion signal rising, or an observed control-plane
+  `JOB_COMPLETE` event, hits `job_lifecycle`'s `retired` bin and marks the
+  operation inactive; a completion seen before a recovery job actually started
+  sets `ghost_completion`.
 - **`record_checked_job(self, operation_name: str) -> list[tuple[str, str]]`** —
   called only from `orchestration/runtime.py:InterfaceCoverageTracker.record_stimulus`,
   once per checked job, immediately after that job's independent oracle check

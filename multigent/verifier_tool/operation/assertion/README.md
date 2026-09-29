@@ -51,7 +51,7 @@ about that feature's intended correctness property.
   `applies_when` and `check` strings. Raises `ValueError` on any violation —
   this runs at import/first-call time, so a malformed catalog fails fast
   rather than producing an empty prompt section. Exported from the facade;
-  called directly in `multigent/tests/test_operation_coverage.py` (asserts the
+  called directly in `multigent/verifier_tool/tool_regression/integration/test_operation_coverage.py` (asserts the
   `matrix_multiply` family and its `feature_checks`/`required_properties`
   shape) and internally by `render_operation_assertion_catalog` below.
 
@@ -125,7 +125,7 @@ silently inserted into the built-in Operation Feature Plan.
 
   **Called only from** `../../orchestration/instrumentation.py:render_contract_generated_block`.
   Not called directly by any agent or test; its output is exercised indirectly
-  by every test in `multigent/tests/test_canonical_operation.py`,
+  by every test in `multigent/verifier_tool/tool_regression/unit/test_canonical_operation.py`,
   `test_operation_sampling.py`, and `test_tb_instrumentation.py` that execs a
   rendered block and then invokes `_contract_record_checked_stimulus`.
 
@@ -195,7 +195,7 @@ the actual code-owned ID.
   `render_operation_assertion_catalog` (prompt text), never
   `known_operation_features` or `render_operation_assertion_lines` directly —
   those stay behind the instrumentation boundary.
-- `multigent/tests/test_operation_coverage.py` exercises `catalog.py` directly.
+- `multigent/verifier_tool/tool_regression/integration/test_operation_coverage.py` exercises `catalog.py` directly.
   `test_canonical_operation.py`, `test_operation_sampling.py`, and
   `test_tb_instrumentation.py` exercise `generator.py` only indirectly, through
   `render_contract_generated_block`/`install_contract_generated_block`.

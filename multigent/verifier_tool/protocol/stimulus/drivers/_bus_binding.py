@@ -47,7 +47,12 @@ def bind_signal_bus(dut: Any, signals: Mapping[str, Any]) -> Bus:
     return bus
 
 
-def bind_channel_bus(dut: Any, channel: Mapping[str, Any]) -> Bus:
+def bind_channel_bus(
+    dut: Any,
+    channel: Mapping[str, Any],
+    *,
+    omit_fields: tuple[str, ...] = (),
+) -> Bus:
     """Wrap one compiled channel's exact field->signal names as a cocotbext-axi Bus.
 
     `name=None`/`bus_separator=""` make `cocotb_bus.bus.Bus` bind each dict
@@ -67,7 +72,18 @@ def bind_channel_bus(dut: Any, channel: Mapping[str, Any]) -> Bus:
     fields = channel.get("fields", {})
     if not isinstance(fields, Mapping):
         raise BusBindingError(f"channel {channel.get('name')!r} fields must be a mapping")
-    signals = {f"{prefix}{field}": str(name) for field, name in fields.items()}
+    omitted = set(map(str, omit_fields))
+    unknown_omissions = omitted - set(map(str, fields))
+    if unknown_omissions:
+        raise BusBindingError(
+            f"channel {channel.get('name')!r} cannot omit absent fields "
+            f"{sorted(unknown_omissions)!r}"
+        )
+    signals = {
+        f"{prefix}{field}": str(name)
+        for field, name in fields.items()
+        if str(field) not in omitted
+    }
     signals[f"{prefix}valid"] = str(channel["valid"])
     if not channel.get("ready"):
         raise BusBindingError(f"channel {channel.get('name')!r} needs a bound ready signal")

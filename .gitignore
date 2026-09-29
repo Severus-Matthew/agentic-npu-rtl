@@ -43,6 +43,8 @@ obj_dir/
 
 # Locally packaged handoff/presentation bundles
 *.zip
+*.ppt
+*.pptx
 slide/
 
 # Local review and external reference projects

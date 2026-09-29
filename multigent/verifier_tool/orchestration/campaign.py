@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+import re
 from typing import Any, Mapping, Sequence
 
 from multigent.verifier_tool.orchestration.runtime import (
@@ -24,6 +25,7 @@ from multigent.verifier_tool.protocol.stimulus import (
     default_axi_lite_memory_bases,
     drive_protocol_reset,
     drive_protocol_transfers,
+    Axi4OutstandingDriveError,
     execute_axi4_memory_job,
     execute_axi_lite_memory_job,
     execute_custom_mmio_read_job,
@@ -302,9 +304,16 @@ def automatic_campaign_support(
         if isinstance(item, Mapping)
     }
     if architecture_contract is not None:
-        from multigent.verifier_tool.pool.operation_metadata import supported_code_owned_concepts
+        from multigent.verifier_tool.pool.operation_metadata import (
+            solver_compiled_formula_concepts,
+            supported_code_owned_concepts,
+        )
 
         supported_concepts = supported_code_owned_concepts(operation_metadata)
+        for operation_name, concepts in solver_compiled_formula_concepts(
+            operation_metadata
+        ).items():
+            supported_concepts.setdefault(operation_name, set()).update(concepts)
     else:
         supported_concepts = {}
     if not operations:
@@ -611,7 +620,7 @@ async def run_code_owned_axi4_operation_case(
     It does prove the one thing AXI4-Lite structurally cannot: that a
     concurrently-issued, out-of-order-completing exchange is captured
     correctly, using the same `RandomCompletionScheduler` verified against
-    real RTL in `multigent/tests/test_axi4_outstanding_drive.py`.
+    real RTL in `multigent/verifier_tool/tool_regression/rtl/test_axi4_outstanding_drive.py`.
 
     `record=False` drives `case["stimulus"]` and waits for completion
     exactly as usual, but skips the final golden-model check/coverage
@@ -771,7 +780,10 @@ async def run_code_owned_axi4_operation_case_via_control_plane_sequence(
     first_transfer_simultaneous: bool = False,
     control_response_stall_cycles: int = 0,
     control_probe_plan: Mapping[str, bool] | None = None,
+    reset_abort_phase: str | None = None,
+    post_reset_recovery: bool = False,
     timeout_cycles: int = 262_144,
+    start_progress_timeout_cycles: int | None = None,
     record: bool = True,
 ) -> str | None:
     """Execute one full-AXI4 memory job whose command is a register-mapped
@@ -786,17 +798,33 @@ async def run_code_owned_axi4_operation_case_via_control_plane_sequence(
     its own concurrent `execute_axi4_memory_job` call, narrowed to just that
     one object.
 
-    Deliberately the basic happy-path case only -- matching
-    `run_code_owned_axi4_operation_case`'s own scope note, this does not yet
-    replay the deeper reset-abort/error-injection sweep for this command
-    source; see `control_plane_sequence_design.md`.
+    With ``reset_abort_phase`` the same setup stops only after observed wire
+    evidence reaches the requested input/compute/output phase, then applies
+    the contract reset. This keeps control-plane lifecycle qualification on
+    the same driver/adapter path as the normal checked job. When
+    ``post_reset_recovery`` is true, failure of the next accepted start to
+    produce memory activity is attributed to the declared reset-abort policy
+    instead of being misreported as an ordinary start failure.
     """
 
-    from multigent.verifier_tool.lifecycle.stimulus import drive_control_plane_sequence
+    from multigent.verifier_tool.lifecycle.stimulus import (
+        LifecycleDriveError,
+        drive_control_plane_sequence,
+    )
 
     import cocotb
 
     clock_name = str(interface["clock"])
+    reset_signal = next(
+        item
+        for item in interface.get("signals", [])
+        if isinstance(item, Mapping) and item.get("role") == "reset"
+    )
+    reset_name = str(reset_signal["name"])
+    reset_semantic = str(reset_signal.get("semantic", "")).lower().replace("_", "-")
+    reset_active_value = (
+        0 if "active-low" in reset_semantic or "active low" in reset_semantic else 1
+    )
     control_group = _control_plane_group(interface)
     bases = default_axi_lite_memory_bases(
         operation, variant=base_variant, aligned_tail_beats=aligned_tail_beats,
@@ -823,16 +851,76 @@ async def run_code_owned_axi4_operation_case_via_control_plane_sequence(
         (binding, "outputs") for binding in operation.get("outputs", [])
     ]
     memory_tasks = {}
-    for binding, direction in memory_bindings:
-        protocol_group_name = str(binding["memory_mapping"]["protocol_group"])
-        group = _axi4_group_by_name(interface, protocol_group_name)
-        narrowed_operation = {
-            **operation,
-            "inputs": [binding] if direction == "inputs" else [],
-            "outputs": [binding] if direction == "outputs" else [],
-        }
-        memory_tasks[str(binding["data_object"])] = cocotb.start_soon(
-            execute_axi4_memory_job(
+    memory_progress: dict[str, dict[str, int]] = {}
+
+    def _phase_name(value: object) -> str:
+        return re.sub(r"[^a-zA-Z0-9_]+", "_", str(value)).strip("_").lower()
+
+    def _no_memory_activity_failure() -> AutomaticCampaignError:
+        if post_reset_recovery:
+            return AutomaticCampaignError(
+                f"feature=lifecycle.{operation['operation_name']}.reset_aborts_pending_job; "
+                "the first accepted post-reset start produced no AXI4 memory activity"
+            )
+        return AutomaticCampaignError(
+            f"feature=lifecycle.{operation['operation_name']}.accepted_command_starts_job; "
+            "accepted control-plane start produced no AXI4 memory activity"
+        )
+
+    selected_bindings = list(memory_bindings)
+    stop_by_object: dict[str, tuple[str, int]] = {}
+    if reset_abort_phase is not None:
+        input_bindings = list(operation.get("inputs", []))
+        output_bindings = list(operation.get("outputs", []))
+        if reset_abort_phase.startswith("input_"):
+            target_index = next(
+                (
+                    index
+                    for index, binding in enumerate(input_bindings)
+                    if f"input_{_phase_name(binding.get('data_object', ''))}"
+                    == reset_abort_phase
+                ),
+                None,
+            )
+            if target_index is None:
+                raise AutomaticCampaignError(
+                    f"unknown control-plane reset-abort phase {reset_abort_phase!r}"
+                )
+            selected_bindings = [
+                (binding, "inputs") for binding in input_bindings[: target_index + 1]
+            ]
+            target_name = str(input_bindings[target_index]["data_object"])
+            stop_by_object[target_name] = ("read_response", 1)
+        elif reset_abort_phase == "compute":
+            selected_bindings = [
+                (binding, "inputs") for binding in input_bindings
+            ]
+        elif reset_abort_phase == "output":
+            if not output_bindings:
+                raise AutomaticCampaignError(
+                    "output reset-abort phase requires one resolved output binding"
+                )
+            selected_bindings = [
+                *[(binding, "inputs") for binding in input_bindings],
+                (output_bindings[0], "outputs"),
+            ]
+            stop_by_object[str(output_bindings[0]["data_object"])] = (
+                "write_data",
+                1,
+            )
+        else:
+            raise AutomaticCampaignError(
+                f"unsupported control-plane reset-abort phase {reset_abort_phase!r}"
+            )
+
+    async def _run_memory_job_with_lifecycle_diagnostic(
+        group: Mapping[str, Any],
+        narrowed_operation: Mapping[str, Any],
+        progress: dict[str, int],
+        stop_after: tuple[str, int] | None,
+    ) -> list[dict[str, int]]:
+        try:
+            return await execute_axi4_memory_job(
                 dut, clock_name, group, narrowed_operation, case, bases,
                 seed=seed, max_extra_cycles=max_extra_cycles,
                 initial_sink_stall_cycles=initial_sink_stall_cycles,
@@ -840,27 +928,146 @@ async def run_code_owned_axi4_operation_case_via_control_plane_sequence(
                 if write_data_stall_cycles else None,
                 write_address_one_cycle_probe=write_address_one_cycle_probe,
                 first_transfer_simultaneous=first_transfer_simultaneous,
+                progress_state=progress,
+                stop_after=stop_after,
+                reset_signal_name=reset_name,
+                reset_active_value=reset_active_value,
                 timeout_cycles=timeout_cycles,
             )
+        except Axi4OutstandingDriveError as exc:
+            if (
+                "timed out" in str(exc).lower()
+                and int(progress.get("write_requests", 0)) > 0
+                and int(progress.get("write_words", 0)) == 0
+            ):
+                group_name = re.sub(
+                    r"[^a-zA-Z0-9_]+", "_", str(group["name"])
+                ).strip("_")
+                raise AutomaticCampaignError(
+                    f"feature=protocol.{group_name}.write_address_and_data_are_independent; "
+                    "one or more AW requests were accepted but no W data transfer followed"
+                ) from exc
+            activity = sum(map(int, progress.values()))
+            if "timed out" in str(exc).lower() and activity == 0:
+                raise _no_memory_activity_failure() from exc
+            raise
+
+    for binding, direction in selected_bindings:
+        protocol_group_name = str(binding["memory_mapping"]["protocol_group"])
+        group = _axi4_group_by_name(interface, protocol_group_name)
+        narrowed_operation = {
+            **operation,
+            "inputs": [binding] if direction == "inputs" else [],
+            "outputs": [binding] if direction == "outputs" else [],
+        }
+        object_name = str(binding["data_object"])
+        progress: dict[str, int] = {}
+        memory_progress[object_name] = progress
+        memory_tasks[object_name] = cocotb.start_soon(
+            _run_memory_job_with_lifecycle_diagnostic(
+                group,
+                narrowed_operation,
+                progress,
+                stop_by_object.get(object_name),
+            )
         )
-    # Start polling as soon as the start transaction completes. Polling only
-    # after the memory coroutines finish hides a falsely early ap_done: by
-    # then the final write response has already retired. The generated
-    # lifecycle monitor compares each successful poll with that retirement.
+    # A completed start write must cause observable job progress within a
+    # separate bounded window. Otherwise an ignored command degenerates into
+    # a generic per-driver simulation timeout and loses its contract feature
+    # diagnosis. Designs with intentionally long initialization may raise it.
     await start_task
-    completion_task = cocotb.start_soon(
-        drive_control_plane_sequence(
-            dut, clock_name, control_group, sequence, sequence["job_complete"]["actions"],
-            resolve_value_from=_resolve,
-            response_stall_cycles=control_response_stall_cycles,
-            timeout_cycles=timeout_cycles,
-        )
+    from cocotb.triggers import RisingEdge
+
+    progress_limit = (
+        min(int(timeout_cycles), 4096)
+        if start_progress_timeout_cycles is None
+        else int(start_progress_timeout_cycles)
     )
+    if progress_limit <= 0:
+        raise AutomaticCampaignError("start_progress_timeout_cycles must be positive")
+
+    def _memory_activity() -> int:
+        return sum(
+            int(counters.get(key, 0))
+            for counters in memory_progress.values()
+            for key in (
+                "read_words", "write_words", "write_bytes",
+                "write_requests", "write_responses",
+            )
+        )
+
+    for _ in range(progress_limit):
+        if _memory_activity() > 0:
+            break
+        for task in memory_tasks.values():
+            if task.done():
+                await task
+        await RisingEdge(getattr(dut, clock_name))
+    else:
+        for task in memory_tasks.values():
+            if not task.done():
+                task.cancel()
+        raise _no_memory_activity_failure()
+
+    # Poll as soon as initial progress is proven. Polling only after all
+    # memory coroutines finish would hide a falsely early ap_done.
+    if reset_abort_phase is not None:
+        try:
+            # Await exactly the selected, observed phase boundary. Early-stop
+            # counters are updated from real R/W handshakes by the reusable
+            # AXI4 driver; no planned scenario label receives credit here.
+            for binding, _direction in selected_bindings:
+                await memory_tasks[str(binding["data_object"])]
+        finally:
+            for task in memory_tasks.values():
+                if not task.done():
+                    task.cancel()
+        await drive_protocol_reset(
+            dut,
+            clock_name,
+            reset_name,
+            reset_active_value,
+            asserted_cycles=5,
+        )
+        return None
+
+    async def _poll_completion_with_lifecycle_diagnostic() -> None:
+        try:
+            await drive_control_plane_sequence(
+                dut, clock_name, control_group, sequence, sequence["job_complete"]["actions"],
+                resolve_value_from=_resolve,
+                response_stall_cycles=control_response_stall_cycles,
+                timeout_cycles=timeout_cycles,
+            )
+        except LifecycleDriveError as exc:
+            if "poll_field" in str(exc) and "did not reach" in str(exc):
+                raise AutomaticCampaignError(
+                    f"feature=lifecycle.{operation['operation_name']}.completion_matches_final_output; "
+                    "control-plane completion was not observed before the bounded poll expired"
+                ) from exc
+            raise
+
+    completion_task = cocotb.start_soon(_poll_completion_with_lifecycle_diagnostic())
     observed_beats: list[dict[str, int]] = []
-    for binding in operation.get("outputs", []):
-        observed_beats = await memory_tasks[str(binding["data_object"])]
-    for binding in operation.get("inputs", []):
-        await memory_tasks[str(binding["data_object"])]
+    try:
+        for binding in operation.get("outputs", []):
+            observed_beats = await memory_tasks[str(binding["data_object"])]
+        for binding in operation.get("inputs", []):
+            await memory_tasks[str(binding["data_object"])]
+    except BaseException as exc:
+        if not completion_task.done():
+            completion_task.cancel()
+        for task in memory_tasks.values():
+            if not task.done():
+                task.cancel()
+        activity = _memory_activity()
+        if (
+            isinstance(exc, Axi4OutstandingDriveError)
+            and "timed out" in str(exc).lower()
+            and activity == 0
+        ):
+            raise _no_memory_activity_failure() from exc
+        raise
 
     await completion_task
     result = (
@@ -986,6 +1193,7 @@ async def _run_axi4_control_plane_operation_campaign(
     operation: Mapping[str, Any],
     cases: Sequence[Mapping[str, Any]],
     *,
+    reset_abort_phases: Sequence[str] = (),
     timeout_cycles: int,
 ) -> int:
     """Run supported multi-port AXI4 jobs via their AXI4-Lite start/done sequence.
@@ -1019,6 +1227,25 @@ async def _run_axi4_control_plane_operation_campaign(
     control_group = _control_plane_group(interface)
     control_probe_plan = resolved_control_plane_probe_plan(interface, str(control_group["name"]))
     completed = 0
+    reset_abort_was_exercised = False
+    for phase in reset_abort_phases:
+        if phase == "idle":
+            # The campaign's initial reset already supplies observed idle-reset
+            # evidence before any start sequence is accepted.
+            continue
+        await run_code_owned_axi4_operation_case_via_control_plane_sequence(
+            dut,
+            interface,
+            operation,
+            cases[0],
+            reset_abort_phase=phase,
+            post_reset_recovery=reset_abort_was_exercised,
+            timeout_cycles=timeout_cycles,
+            record=False,
+        )
+        reset_abort_was_exercised = True
+        for _ in range(5):
+            await RisingEdge(getattr(dut, clock_name))
     for index in range(max(len(cases), len(variants))):
         case = cases[index % len(cases)]
         variant = variants[index] if index < len(variants) else variants[0]
@@ -1032,6 +1259,7 @@ async def _run_axi4_control_plane_operation_campaign(
             first_transfer_simultaneous=bool(variant["simultaneous"]),
             control_response_stall_cycles=stall_cycles,
             control_probe_plan=control_probe_plan if index == 0 else None,
+            post_reset_recovery=reset_abort_was_exercised,
             timeout_cycles=timeout_cycles,
         )
         completed += 1
@@ -2210,13 +2438,18 @@ async def _abort_operation_at_phase(
             object_name = str(binding["data_object"])
             values = list(stimulus[object_name])
             if object_name.lower() == target:
-                await drive_protocol_transfers(
-                    dut,
-                    clock_name,
-                    _channel(binding),
-                    _beats(binding, values[:1]),
-                    timeout_cycles=timeout_cycles,
-                )
+                # Leave the selected input incomplete. For a one-transfer
+                # object, accepting its sole beat advances the DUT to compute
+                # before reset and therefore credits the wrong phase.
+                partial_values = values[: min(1, max(0, len(values) - 1))]
+                if partial_values:
+                    await drive_protocol_transfers(
+                        dut,
+                        clock_name,
+                        _channel(binding),
+                        _beats(binding, partial_values),
+                        timeout_cycles=timeout_cycles,
+                    )
                 found = True
                 break
             await drive_protocol_transfers(
@@ -2558,19 +2791,35 @@ async def run_code_owned_verification_campaign(
                 )
                 continue
             if io_profiles == {"axi4"}:
-                axi4_campaign = (
-                    _run_axi4_control_plane_operation_campaign
-                    if operation.get("lifecycle", {}).get("policy", {}).get("job_acceptance")
+                uses_control_plane = (
+                    operation.get("lifecycle", {})
+                    .get("policy", {})
+                    .get("job_acceptance")
                     == "control_plane_sequence"
-                    else _run_axi4_operation_campaign
                 )
-                completed += await axi4_campaign(
-                    dut,
-                    interface,
-                    operation,
-                    cases,
-                    timeout_cycles=timeout_cycles,
-                )
+                if uses_control_plane:
+                    reset_abort_phases = [
+                        str(scenario["phase"])
+                        for scenario in lifecycle_plan.get("scenarios", [])
+                        if scenario.get("kind") == "reset_abort"
+                        and str(scenario.get("operation_name", "")) == operation_name
+                    ]
+                    completed += await _run_axi4_control_plane_operation_campaign(
+                        dut,
+                        interface,
+                        operation,
+                        cases,
+                        reset_abort_phases=reset_abort_phases,
+                        timeout_cycles=timeout_cycles,
+                    )
+                else:
+                    completed += await _run_axi4_operation_campaign(
+                        dut,
+                        interface,
+                        operation,
+                        cases,
+                        timeout_cycles=timeout_cycles,
+                    )
                 continue
             if io_profiles == {"custom_mmio"}:
                 completed += await _run_custom_mmio_operation_campaign(
@@ -2584,13 +2833,10 @@ async def run_code_owned_verification_campaign(
             extension_fields = _lifecycle_extension_fields(operation)
             if "reset_behavior" not in extension_fields:
                 abort_phases = [
-                    "idle",
-                    *[
-                        f"input_{str(binding.get('data_object', '')).lower()}"
-                        for binding in operation.get("inputs", [])
-                    ],
-                    "compute",
-                    "output",
+                    str(scenario["phase"])
+                    for scenario in lifecycle_plan.get("scenarios", [])
+                    if scenario.get("kind") == "reset_abort"
+                    and str(scenario.get("operation_name", "")) == operation_name
                 ]
                 for phase in abort_phases:
                     await _abort_operation_at_phase(
@@ -2694,7 +2940,11 @@ async def run_code_owned_verification_campaign(
                     timeout_cycles=timeout_cycles,
                 )
                 completed += 1
-            if "job_overlap" not in extension_fields:
+            output_transfer_count = sum(
+                _expected_elements(binding, operation.get("dimensions", {}))
+                for binding in operation.get("outputs", [])
+            )
+            if "job_overlap" not in extension_fields and output_transfer_count >= 2:
                 for stall_cycles in (1, 3, 6):
                     await _probe_command_stall(
                         dut,

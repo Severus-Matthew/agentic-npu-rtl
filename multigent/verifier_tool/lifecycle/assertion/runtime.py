@@ -80,15 +80,26 @@ def check_lifecycle_assertions(
         # consecutive pulse cycles.
         operation_state = state.get("operations", {})
         preserved: dict[str, dict[str, Any]] = {}
+        aborted_operations: set[str] = set()
         if isinstance(operation_state, Mapping):
             for operation in plan.get("operations", []):
                 if not isinstance(operation, Mapping):
                     continue
+                name = str(operation.get("operation_name", ""))
+                current = operation_state.get(name)
+                enabled = set(plan.get("enabled_by_operation", {}).get(name, ()))
+                if (
+                    name
+                    and isinstance(current, Mapping)
+                    and current.get("active")
+                    and "reset_aborts_pending_job" in enabled
+                    and operation.get("policy", {}).get("reset_behavior")
+                    == "abort_inflight"
+                ):
+                    aborted_operations.add(name)
                 reset_behavior = operation.get("policy", {}).get("reset_behavior")
                 if policy_extension_request(reset_behavior) is None:
                     continue
-                name = str(operation.get("operation_name", ""))
-                current = operation_state.get(name)
                 if not name or not isinstance(current, Mapping):
                     continue
                 preserved[name] = dict(current)
@@ -98,6 +109,8 @@ def check_lifecycle_assertions(
         state.clear()
         state["_reset_active_samples"] = active_samples
         state["reset_seen"] = True
+        if aborted_operations:
+            state["_reset_aborted_operations"] = tuple(sorted(aborted_operations))
         if preserved:
             state["operations"] = preserved
         return

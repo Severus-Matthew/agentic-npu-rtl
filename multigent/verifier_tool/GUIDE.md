@@ -95,6 +95,9 @@ from the Lifecycle Policy Pool, including:
 - illegal-command behavior;
 - error style and timing;
 - reset behavior;
+- optional per-channel reset behavior for generic `ready_valid`/`custom`
+  producers (for example, `valid_deasserted`); standard AXI-family reset rules
+  remain protocol-owned;
 - a control-plane register sequence when start and completion are accessed by
   reads and writes rather than direct pins.
 
@@ -199,6 +202,14 @@ bindings and the selected Lifecycle Policy Pool values. It checks temporal facts
 such as accepted start, completion timing, overlap, reset abort, and sticky or
 pulsed status behavior.
 
+For a generic channel, the interface can additionally select
+`reset_channel_policies[].behavior: valid_deasserted` plus explicit
+`settle_cycles`. The policy supplies the
+missing behavioral fact, the role binding supplies the real VALID signal, and
+the shared reset sampler/checker supplies execution. Merely seeing a ready/valid
+pair never creates this assumption. AXI-family protocols continue to receive the
+equivalent rule from their standards without duplicating the channel policy.
+
 This is why lifecycle cannot be derived only from `start`, `busy`, `done`, and
 `error` roles. The policy states what those signals or control registers are
 supposed to mean over time.
@@ -283,9 +294,11 @@ For a requested accumulator boundary, the solver:
 This final forward check prevents a solver witness from receiving credit when a
 later conversion or post-operation changes its meaning.
 
-Z3 is currently used for specific integer-reduction constraints. It is not a
-universal symbolic executor for every arbitrary new formula. Unsupported inverse
-problems still need a new reusable strategy or an extension implementation.
+Z3 is currently used for integer-reduction constraints and as the canonical IR
+for formula-defined scalar DAG stages. A formula is tried by the compiler rather
+than accepted from a fixed contract-level operator list. This is not a universal
+symbolic executor for stateful, temporal, or externally defined behavior;
+unsupported inverse problems still need a reusable strategy or an extension.
 Generation failure, unreachable conditions, and missing metadata are represented
 explicitly; they are not converted into false coverage hits.
 
@@ -293,15 +306,24 @@ explicitly; they are not converted into false coverage hits.
 
 There are two extension levels.
 
-### Closed-form post-operation
+### Solver-compiled post-operation
 
-If a new operation stage can be expressed as a pure scalar formula, the Architect
-can declare an `llm_defined` post-operation stage in the DAG. The formula uses a
-closed grammar (`value`, integer literals, arithmetic, comparisons, `min`, `max`,
-`abs`, and `clip`). It is parsed through an AST whitelist, never Python `eval` or
-`exec`.
+The Architect declares an `llm_defined` post-operation stage and its location in
+the DAG. The Contract Reviewer attempts real solver compilation. If it succeeds,
+the same compiled expression is used by solving and golden evaluation. If it
+fails, the Architect revises the expression or explicitly selects a full
+operation extension. Python `eval` and `exec` are never used.
 
-After validation, the stage runs inside the same tool-owned golden event walk.
+The Architect does not provide coverage bins in this metadata. After validation,
+the stage runs inside the same tool-owned golden event walk, while the Verifier
+defines the relevant bins and predicates. Formula-stage outputs are exposed as
+canonical trace evidence under the stage name. The Verifier can call
+`generate_solver_compiled_stimulus_for_bin` with one of its declarative bins;
+the tool solves for legal operands and forward-checks the witness. Plan
+validation performs that solve for every Verifier-declared formula bin before
+accepting the generated TB. An unsatisfiable or inconclusive bin is returned for
+Verifier revision instead of being mislabeled reachable and failing later in a
+simulation campaign.
 This preserves the existing GEMM, serialization, protocol, lifecycle, and trace
 logic instead of asking the Verifier to rewrite all of them.
 
@@ -386,6 +408,8 @@ status: PASS | BLOCKED
 findings[]
 resolved_extension_reuse
 capability_notes[]
+resolved_lifecycle_plans: assertion / coverage / stimulus
+automatic_campaign_support
 ```
 
 Each blocking finding contains:
@@ -407,6 +431,12 @@ The report also carries two non-error outputs:
 - `capability_notes` records valid contract behavior that the present
   deterministic tool cannot automate. A capability note does not justify asking
   the Architect to change a correct design.
+- `resolved_lifecycle_plans` proves that the contract can be compiled into the
+  exact assertion, coverage, and stimulus plans consumed by the generated
+  testbench. A plan-construction failure is blocking.
+- `automatic_campaign_support` reports which operations the code-owned campaign
+  can execute. `supported: false` is non-blocking and routes the residual work to
+  an extension instead of mislabeling a valid contract as defective.
 
 The reviewer never edits the contract. The pipeline may send Architect-owned
 findings into a contract-revision step, but tool-capability gaps must remain owned
@@ -655,12 +685,12 @@ features omitted from a pool.
 - The post-operation representation is DAG-shaped, but supported stages are unary
   and every stage must lie on the single chain ending at `post_output`. Branches
   and merges are not executable yet.
-- The `llm_defined` formula grammar intentionally excludes division, modulo,
-  bitwise operations, exponentiation, lookup tables, transcendental functions,
-  state, and arbitrary calls. Such behavior remains a full extension.
-- Z3 currently solves bounded integer reduction/product-sum witnesses and selected
-  preimages. It is not general symbolic inversion for every extension formula or
-  stateful/temporal operation.
+- Formula-defined stages are accepted by actual integer solver compilation, not
+  by a feature-name or contract-level operator allowlist. A failed compilation
+  requires an Architect revision or an explicit full extension.
+- Z3 currently solves bounded integer reduction/product-sum witnesses and
+  solver-compiled scalar expressions. It is not general symbolic inversion for
+  stateful, temporal, or externally defined operation behavior.
 - If an operation uses `classifier_profile: llm_extension`, end-to-end golden
   output is unknown. The tool can preserve supported sibling protocol/lifecycle
   work, but it cannot award operation correctness or trace-derived coverage until
@@ -674,18 +704,24 @@ features omitted from a pool.
 - Extensions remain local artifacts. Automatic mutation of global pools,
   automatic promotion after successful runs, and trust transfer from one contract
   to another are deliberately not implemented.
-- A declared pool/catalog value is not automatically qualified. Strict support
-  requires a generated-TB negative/positive RTL pair with the intended named
-  diagnostic. Many inventory rows still await that evidence.
+- A declared pool/catalog value is not automatically qualified. Assertion and
+  checker support requires a generated-TB negative/positive RTL pair with the
+  intended named diagnostic. Coverage support instead requires real observed
+  DUT hits and exact rejection of each missing required-bin witness; it must not
+  be mislabeled as an RTL correctness mutant. Many all-pool inventory rows still
+  await the evidence appropriate to their class.
 - The real HLS benchmark tests require the external local `gemm_golden/` RTL tree.
   It is intentionally not part of this verifier-tool commit, and those tests skip
   when the tree is absent.
 
-The qualification rule is intentionally strict: a feature is qualified only when
-a frozen contract generates the testbench, an intentionally faulty RTL or
-environment fails for the intended feature-specific reason, and the corrected RTL
-passes all required assertions, bins, and ledger checks. A unit test or an
-unclassified timeout is useful evidence, but not full feature qualification.
+The qualification rule is intentionally strict. For an assertion/checker, a
+frozen contract must generate the testbench, an intentionally faulty RTL or
+environment must fail for the intended feature-specific reason, and the
+corrected RTL must pass all required assertions, bins, and ledger checks. For a
+coverage bin, the generated TB must produce a real observed DUT witness and the
+coverage gate must reject removal of that exact witness even if aggregate status
+fields still claim PASS. A unit test or an unclassified timeout is useful
+evidence, but not full feature qualification.
 
 ## 12. Practical integration checklist
 
@@ -729,6 +765,7 @@ unclassified timeout is useful evidence, but not full feature qualification.
   and resolved-plan compilation.
 - [`orchestration/README.md`](orchestration/README.md) — automatic campaign,
   generated block, runtime monitor, reports, and ledger.
-- [`FULL_POOL_QUALIFICATION_MATRIX.md`](FULL_POOL_QUALIFICATION_MATRIX.md) and
-  [`HLS_GOLDEN_BENCHMARK_MATRIX.md`](HLS_GOLDEN_BENCHMARK_MATRIX.md) — current
-  qualification inventory and benchmark evidence.
+- [`tool_regression/qualification/ledger.json`](tool_regression/qualification/ledger.json)
+  and the
+  [`HLS benchmark qualification matrix`](tool_regression/qualification/hls_benchmark_qualification_matrix.md)
+  — current qualification inventory and benchmark evidence.

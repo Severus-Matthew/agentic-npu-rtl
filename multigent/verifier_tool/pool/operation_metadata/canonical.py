@@ -56,6 +56,34 @@ def supported_code_owned_concepts(metadata: Mapping[str, Any]) -> dict[str, set[
     return result
 
 
+def solver_compiled_formula_concepts(
+    metadata: Mapping[str, Any],
+) -> dict[str, set[str]]:
+    """Formula-stage concepts sampled from the canonical golden trace.
+
+    Their arithmetic observation is tool-owned, but their coverage bins and
+    predicates are Verifier-owned.  Keeping this separate from
+    :func:`supported_code_owned_concepts` prevents deterministic synthesis from
+    inventing coverage intent for a new mathematical feature.
+    """
+
+    result: dict[str, set[str]] = {}
+    for operation in metadata.get("operations", []):
+        if not isinstance(operation, Mapping):
+            continue
+        stages = operation.get("arithmetic", {}).get("post_operations", {})
+        if not isinstance(stages, Mapping):
+            continue
+        concepts = {
+            str(name)
+            for name, stage in stages.items()
+            if isinstance(stage, Mapping) and stage.get("kind") == "llm_defined"
+        }
+        if concepts:
+            result[str(operation.get("operation_name", ""))] = concepts
+    return result
+
+
 def _flatten(value: Any, path: str) -> tuple[int, ...]:
     result: list[int] = []
 
@@ -299,6 +327,7 @@ def integer_matrix_multiply_events(
             # relu itself received, wherever it sits.
             activation_value = value
             quantization_trace: dict[str, Any] | None = None
+            formula_stage_values: dict[str, dict[str, int]] = {}
             for name in resolved_stage_order:
                 stage = post_operations[name]
                 kind = stage.get("kind")
@@ -333,13 +362,18 @@ def integer_matrix_multiply_events(
                     )
                 elif kind == "llm_defined":
                     # An Architect-declared post-op this file has no built-in
-                    # kind for, expressed in formula.py's closed grammar --
+                    # kind for, accepted by formula.py's solver compiler --
                     # see its module docstring for why this, rather than a
                     # blanket llm_extension fallback, is what keeps every
                     # concept that never looks past this stage (accumulation,
                     # dimensions, operand_values, and bias/activation if they
                     # sit earlier in the chain) fully code-owned.
+                    stage_input = value
                     value = evaluate_formula(str(stage["formula"]), value)
+                    formula_stage_values[str(name)] = {
+                        "input": stage_input,
+                        "output": value,
+                    }
             result_value = value
             if result_conversion == "wrap_twos_complement":
                 result_value = _wrap(result_value, result_dtype or accumulator_dtype)
@@ -357,6 +391,7 @@ def integer_matrix_multiply_events(
                     "bias_excursion": bias_excursion,
                     "pre_activation": activation_value,
                     "quantization": quantization_trace,
+                    "formula_stages": formula_stage_values,
                     "result_value": result_value,
                 }
             )
@@ -479,6 +514,15 @@ def _classify_integer_matrix_multiply(job: CanonicalOperationJob) -> dict[str, l
         ]
     if has_quantization:
         result["quantization"] = quantization_classes
+    formula_stage_names = [
+        str(name)
+        for name in resolved_order
+        if post_operations.get(name, {}).get("kind") == "llm_defined"
+    ]
+    for stage_name in formula_stage_names:
+        result[stage_name] = [
+            event["formula_stages"][stage_name]["output"] for event in events
+        ]
     return result
 
 

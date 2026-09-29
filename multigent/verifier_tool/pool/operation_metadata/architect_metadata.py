@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from copy import deepcopy
+from math import prod
 from pathlib import Path
 import re
 from textwrap import indent
@@ -652,14 +653,31 @@ def _bind_objects(
             )
         except ArchitectMetadataError as exc:
             errors.append(exc)
-            bound.append(
-                {
-                    "data_object": name,
-                    "direction": direction,
-                    "bound": False,
-                    "reason_code": exc.reason_code,
-                }
-            )
+            placeholder: dict[str, Any] = {
+                "data_object": name,
+                "direction": direction,
+                "bound": False,
+                "reason_code": exc.reason_code,
+            }
+            # Preserve transport-independent object shape in a failed shell.
+            # Downstream obligation planning may still decide whether a phase
+            # exists, but it must never infer a real channel from this record.
+            obj = objects.get(name)
+            if isinstance(obj, Mapping):
+                placeholder.update(
+                    {
+                        "object_role": str(obj.get("role", "")),
+                        "external": bool(obj.get("external", True)),
+                        "dimensions": list(map(str, obj.get("dimensions", []))),
+                    }
+                )
+                fixed = _fixed_dimensions(architecture)
+                extents = [fixed.get(axis) for axis in placeholder["dimensions"]]
+                if all(isinstance(value, int) and value > 0 for value in extents):
+                    placeholder["expected_elements"] = (
+                        prod(map(int, extents)) if extents else 1
+                    )
+            bound.append(placeholder)
     return bound, errors
 
 

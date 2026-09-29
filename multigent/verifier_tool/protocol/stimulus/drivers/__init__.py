@@ -24,13 +24,6 @@ from .axi_lite import (
     execute_axi_lite_memory_job,
 )
 from ._completion_scheduler import RandomCompletionScheduler
-from .fault_injection import (
-    AXI4_RESPONSE_FAULTS,
-    FAULT_PLAN_ENV,
-    ProtocolFaultPlanError,
-    resolved_axi4_fault,
-    validate_protocol_fault_plan,
-)
 from .axi4_outstanding import Axi4OutstandingDriveError, execute_axi4_memory_job
 from .custom_mmio import (
     CustomMmioDriveError,
@@ -43,11 +36,6 @@ __all__ = [
     "Axi4OutstandingDriveError",
     "CustomMmioDriveError",
     "RandomCompletionScheduler",
-    "AXI4_RESPONSE_FAULTS",
-    "FAULT_PLAN_ENV",
-    "ProtocolFaultPlanError",
-    "resolved_axi4_fault",
-    "validate_protocol_fault_plan",
     "default_axi_lite_memory_bases",
     "execute_axi4_memory_job",
     "execute_axi_lite_memory_job",

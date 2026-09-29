@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping, MutableMapping
 
+from multigent.verifier_tool.pool.role_pool.standard_protocols import standard_field_width
+
 from .axi import axi_burst_crosses_4k, axi_lane_mask, axi_transfer_windows
 
 
@@ -136,8 +138,35 @@ def _check_address(
             snapshot,
         )
     beats = length + 1
-    lock = _field(snapshot, channel, "lock")
+    raw_lock = _field(snapshot, channel, "lock")
+    lock_metadata = channel.get("field_metadata", {}).get("lock", {})
+    lock_encoding = (
+        str(lock_metadata.get("physical_encoding", ""))
+        if isinstance(lock_metadata, Mapping)
+        else ""
+    )
+    if lock_encoding == "legacy_hls_2bit":
+        logical_bit = int(lock_metadata.get("logical_bit", 0))
+        reserved_bits = tuple(int(bit) for bit in lock_metadata.get("reserved_zero_bits", ()))
+        invalid_reserved = tuple(bit for bit in reserved_bits if raw_lock & (1 << bit))
+        if invalid_reserved:
+            _fail(
+                f"{feature_root}.exclusive_access_restrictions",
+                f"legacy two-bit AxLOCK={raw_lock:#b} sets reserved-zero bits {invalid_reserved!r}",
+                [*signals, channel["fields"]["lock"]],
+                snapshot,
+            )
+        lock = (raw_lock >> logical_bit) & 1
+    else:
+        lock = int(bool(raw_lock))
     if lock:
+        if group.get("capabilities", {}).get("exclusive_access") is False:
+            _fail(
+                f"{feature_root}.exclusive_access_restrictions",
+                "exclusive access is disabled by the interface contract",
+                [*signals, channel["fields"]["lock"]],
+                snapshot,
+            )
         total_bytes = beats * bytes_per_beat
         if (
             beats > 16
@@ -237,15 +266,16 @@ def check_standard_signal_widths(
     if not widths:
         return
     profile = str(group["profile"])
-    root = f"protocol.{_safe(group['name'])}.standard_signal_widths"
-    fixed = {
-        "axi4": {"len": 8, "size": 3, "burst": 2, "lock": 1, "cache": 4, "prot": 3, "qos": 4, "region": 4, "resp": 2, "last": 1},
-        "axi4_lite": {"prot": 3, "resp": 2},
-        "axi4_stream": {"last": 1},
+    feature_root = f"protocol.{_safe(group['name'])}"
+    root = f"{feature_root}.standard_signal_widths"
+    fixed_fields = {
+        "axi4": ("len", "size", "burst", "lock", "cache", "prot", "qos", "region", "resp", "last"),
+        "axi4_lite": ("prot", "resp"),
+        "axi4_stream": ("last",),
         # custom_mmio imposes no fixed field widths -- the LLM defines its
         # own field widths for a protocol this tool does not natively know.
-        "custom_mmio": {},
-    }.get(profile, {})
+        "custom_mmio": (),
+    }.get(profile, ())
     data_widths: list[tuple[str, int]] = []
     for channel in group["channels"].values():
         for control in ("valid", "ready"):
@@ -257,8 +287,10 @@ def check_standard_signal_widths(
                 _fail(root, f"{name} must be one bit, got {widths.get(name)!r}", [name], snapshot)
         for field, name in channel["fields"].items():
             width = int(widths.get(name, 0))
-            if field in fixed and width != fixed[field]:
-                _fail(root, f"{field} must be {fixed[field]} bits, got {width}", [name], snapshot)
+            if field in fixed_fields:
+                expected = standard_field_width(profile, group, field, channel=channel)
+                if expected is not None and width != expected:
+                    _fail(root, f"{field} must be {expected} bits, got {width}", [name], snapshot)
             if field == "data":
                 if profile == "axi4_stream":
                     if width <= 0 or width % 8:
@@ -269,12 +301,27 @@ def check_standard_signal_widths(
                 for mask in ("strb", "keep"):
                     mask_name = channel["fields"].get(mask)
                     if mask_name and int(widths.get(mask_name, 0)) * 8 != width:
-                        _fail(root, f"{mask} width must equal data bytes {width // 8}", [name, mask_name], snapshot)
+                        feature = (
+                            f"{feature_root}.strobe_width_matches_data_bytes"
+                            if profile == "axi4_lite" and mask == "strb"
+                            else root
+                        )
+                        _fail(
+                            feature,
+                            f"{mask} width must equal data bytes {width // 8}",
+                            [name, mask_name],
+                            snapshot,
+                        )
     memory_widths = [width for kind, width in data_widths if kind in {"write_data", "read_data"}]
     if profile in {"axi4", "axi4_lite"} and len(set(memory_widths)) > 1:
         _fail(root, f"read/write data widths differ: {memory_widths}", [], snapshot)
     if profile == "axi4_lite" and any(width not in {32, 64} for width in memory_widths):
-        _fail(root, f"AXI4-Lite data width must be 32 or 64: {memory_widths}", [], snapshot)
+        _fail(
+            f"{feature_root}.data_width_is_32_or_64",
+            f"AXI4-Lite data width must be 32 or 64: {memory_widths}",
+            [],
+            snapshot,
+        )
     state["widths_checked"] = True
 
 
@@ -294,8 +341,6 @@ def check_axi4(
     # Responses may depend only on transfers completed on earlier active edges.
     if b and _presented(snapshot, b):
         response = _field(snapshot, b, "resp")
-        if response not in {0, 1, 2, 3}:
-            _fail(f"{root}.legal_response_encoding", f"BRESP={response} is reserved", [b["fields"]["resp"]], snapshot)
         bid = _field(snapshot, b, "id")
         index = _matching_index(pending_b, bid, "id" in b["fields"])
         if index is None:
@@ -325,8 +370,6 @@ def check_axi4(
             pending_b.pop(index)
     if r and _presented(snapshot, r):
         response = _field(snapshot, r, "resp")
-        if response not in {0, 1, 2, 3}:
-            _fail(f"{root}.legal_response_encoding", f"RRESP={response} is reserved", [r["fields"]["resp"]], snapshot)
         rid = _field(snapshot, r, "id")
         index = _matching_index(reads, rid, "id" in r["fields"])
         if index is None:

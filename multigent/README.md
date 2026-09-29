@@ -177,7 +177,12 @@ RTL is identified separately from the latest working candidate.
 - `reports/final.json` and `reports/final.md`: status, selected artifact, errors and limitations.
 
 ```bash
-python -m pytest multigent/tests -q
+# Fast tool checks
+python -m multigent.verifier_tool.tool_regression.run_all --quick
+
+# Complete regression, including generated-TB RTL fixtures, the HLS baseline,
+# all named HLS RTL mutants, and all HLS driver faults
+python -m multigent.verifier_tool.tool_regression.run_all
 ```
 
 Fixtures cover non-GEMM roles, negative adapter/report/provenance cases, independent

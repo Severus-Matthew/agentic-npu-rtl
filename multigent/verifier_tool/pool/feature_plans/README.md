@@ -147,7 +147,12 @@ function). Produces four kinds of protocol features:
    from a coverage-template name existing, only from the taxonomy tag.
 3. One `valid_low_during_reset` feature per compiled standard protocol group,
    if a reset signal with a resolved active value exists.
-4. One `standard_protocol_rule` feature per rule name in each standard
+4. One channel-scoped `valid_low_during_reset` feature per non-standard channel
+   explicitly selected by `interface.reset_channel_policies` with
+   `behavior: valid_deasserted`. A plain `ready_valid` declaration alone makes
+   no reset assumption, and standard-group channels are rejected from this path
+   to avoid duplicate ownership.
+5. One `standard_protocol_rule` feature per rule name in each standard
    group's catalog `rules` list (from `role_pool/standard_protocols.yaml`),
    excluding `valid_low_during_reset` (already emitted with richer bindings in
    step 3).

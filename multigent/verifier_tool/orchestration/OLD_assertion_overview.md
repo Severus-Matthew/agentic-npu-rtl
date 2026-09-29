@@ -122,7 +122,7 @@ trusted behavior a Verifier must not import directly and wrap/monkeypatch;
   `STIMULUS_COVERAGE_INTENTS`, strips any existing audit block and any
   `STIMULUS_SECTION`/`# STIMULUS [...]` lines left over in the body, then
   rebuilds and appends a fresh audit block: the literal preamble comment
-  (`"This literal and the following comments are emitted by my_v."`), the
+  (`"This literal and the following comments are emitted by the deterministic verification tool."`), the
   `STIMULUS_SECTION` header, the re-serialized `STIMULUS_COVERAGE_INTENTS`
   literal, and one `# STIMULUS [<label>] targets=(...)` comment inserted
   directly above every matching `_contract_record_checked_stimulus(...,
@@ -145,7 +145,7 @@ trusted behavior a Verifier must not import directly and wrap/monkeypatch;
 - `render_contract_generated_block(interface_plan, architecture_contract=None, *, include_automatic_campaign=False, randomized_transactions_minimum=0) -> str`
   — the actual renderer; see "Anatomy of a rendered block" below. **Called
   from** `install_contract_generated_block` and `validate_contract_generated_block`
-  (both below), and directly by most of `multigent/tests/test_tb_instrumentation.py`,
+  (both below), and directly by most of `multigent/verifier_tool/tool_regression/integration/test_tb_instrumentation.py`,
   `test_runtime_coverage.py`, `test_lifecycle_automation.py`,
   `test_operation_sampling.py`, `test_standard_axi_protocols.py`, and
   `test_canonical_operation.py` to `exec()` a block in isolation.
@@ -179,7 +179,7 @@ trusted behavior a Verifier must not import directly and wrap/monkeypatch;
   `multigent/agents/verifier.py:VerifierAgent._apply_review_patch` (to read
   the current intents before applying a Verifier-proposed stimulus-intent
   edit) and from `install_pipeline_generated_annotations` above; also called
-  directly in `multigent/tests/test_verifier_revision_patch.py`.
+  directly in `multigent/verifier_tool/tool_regression/integration/test_verifier_revision_patch.py`.
 - `validate_verifier_authored_structure(sources, required_obligations, architecture_contract=None, interface_contract=None, *, randomized_transactions_minimum=0, code_owned_obligations=frozenset()) -> None`
   — the structural audit gate; see below. **Called from**
   `multigent/agents/verifier.py:VerifierAgent._validate_prepared_result`,
@@ -349,7 +349,7 @@ globals after the `@cocotb.test()` body returns — this is how the generated
 block's finalizers actually run inside a simulation, without `coverage/`
 importing anything from `assertion/` at import time.
 
-Tests exercising this file directly: `multigent/tests/test_tb_instrumentation.py`
+Tests exercising this file directly: `multigent/verifier_tool/tool_regression/integration/test_tb_instrumentation.py`
 (the primary suite — marker installation/validation, every structural-audit
 rejection case), plus `test_runtime_coverage.py`, `test_lifecycle_automation.py`,
 `test_operation_sampling.py`, `test_standard_axi_protocols.py`,

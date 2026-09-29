@@ -15,20 +15,20 @@ payload), and [`CONTRACT_REVIEWER_INTEGRATION.md`](CONTRACT_REVIEWER_INTEGRATION
 its own `README.md` with function-level detail; this file only gives the map and the
 cross-cutting rules.
 
-Qualification status is tracked in
-[`SUPPORT_VALIDATION_MATRIX.md`](SUPPORT_VALIDATION_MATRIX.md), which now only
-explains the policy and points to two matrices:
-[`FULL_POOL_QUALIFICATION_MATRIX.md`](FULL_POOL_QUALIFICATION_MATRIX.md) (an
-exhaustive, unqualified inventory of the tag, protocol, lifecycle, and
-operation pools) and
-[`HLS_GOLDEN_BENCHMARK_MATRIX.md`](HLS_GOLDEN_BENCHMARK_MATRIX.md) (features
-resolved from one real-HLS benchmark contract). A passing unit test or one
-passing RTL run is not treated as a strict qualification: that needs a
-frozen-contract/generated-TB mutant failing for the intended reason plus
-corrected RTL passing every required bin, assertion, and ledger check. Rows
-earn that mark one at a time, so read the matrices for the current state rather
-than this file. `benchmark/README.md` describes the local runners and benchmark
-fixtures.
+Qualification status is tracked by the executable
+[`tool_regression/qualification/ledger.json`](tool_regression/qualification/ledger.json)
+(the exhaustive protocol, lifecycle, and operation inventory) and the tracked
+[`HLS benchmark qualification matrix`](tool_regression/qualification/hls_benchmark_qualification_matrix.md).
+Historical working reports live under the ignored `tool_regression/local_reports/`
+directory and are not sources of shared truth. A passing unit test or one
+passing RTL run is not treated as a strict assertion/checker qualification:
+that needs a frozen-contract/generated-TB mutant failing for the intended
+reason plus corrected RTL passing every required bin, assertion, and ledger
+check. Coverage uses a separate evidence class: real observed DUT hits plus
+exact per-bin rejection when an individual hit is removed. Rows earn the
+appropriate mark one at a time, so read the matrices for the current state
+rather than this file. [`tool_regression/benchmarks/README.md`](tool_regression/benchmarks/README.md)
+describes the local runners and benchmark fixtures.
 
 ```text
 verifier_tool/
@@ -69,7 +69,7 @@ verifier_tool/
 │   │   ├── arithmetic_metadata.schema.json arithmetic API-facing schema fragment
 │   │   ├── io_metadata.py                  explicit object serialization declarations
 │   │   ├── packed_encoding.py              packed_encoding serialization: validation + encode engine
-│   │   ├── formula.py                      closed-grammar llm_defined post-op formula evaluator
+│   │   ├── formula.py                      solver compiler shared by formula post-ops and golden evaluation
 │   │   ├── protocol.py                     role-bound accepted-value capture adapter (ready/valid, AXI, custom_mmio)
 │   │   └── canonical.py                    canonical jobs and classifiers
 │   └── feature_plans/
@@ -88,11 +88,11 @@ verifier_tool/
 │   ├── examples.yaml                 reusable built-in feature examples
 │   └── authoring.py                  schema composition, validation, inert manifest
 ├── contract_review/           deterministic contract preflight + extension reuse resolution
-├── deterministic/
-│   ├── review.py             stable code-only TB validation
-│   └── patch.py              bounded local repair application
+├── tb_validation/
+│   ├── validator.py          stable code-only generated-TB validation
+│   └── repair.py             bounded local repair application
 ├── feedback_to_debugger/      Verifier-owned evidence payload for the Debugger handoff
-├── benchmark/                 frozen-contract benchmark fixtures + local qualification runners
+├── tool_regression/           unit, integration, RTL, extension, and benchmark regressions
 ├── manifest.py               frozen verification manifests and taxonomy release gates
 ├── qualification.py + qualification_catalog.yaml   finite released-checker catalog
 └── feature_plan.py           stable facade re-exporting the three pool/feature_plans/ builders
@@ -218,7 +218,11 @@ in-flight job, busy tracking the active job, completion either on the next
 sample after retirement or `observed_via_poll` (only for the register path,
 where the completion wire is a black box), reset abort, and pulse or
 sticky-until-reset errors. It does not claim arbitrary completion timing or job
-overlap. See [`lifecycle_policy_pool/README.md`](pool/lifecycle_policy_pool/README.md)
+overlap. For generic `ready_valid`/`custom` channels, the same pool also exposes
+an optional interface-level `valid_deasserted` reset policy; without that explicit
+selection, the tool makes no reset assumption from the handshake alone. Standard
+AXI-family channels keep their standard-owned reset rule. See
+[`lifecycle_policy_pool/README.md`](pool/lifecycle_policy_pool/README.md)
 for the selection format and the effective Architect schema integration. New
 Architect outputs must select these policies explicitly; the schema is composed
 from the pool rather than maintaining a second copy of the enums.
@@ -239,7 +243,8 @@ The effective Architect response schema requires `operations[].arithmetic`,
 `dense_tensor`, `scalar`, `llm_extension`, and the generic `packed_encoding`),
 and optionally accepts `verification_extensions` and `verification_vocabulary`.
 Tool-owned schema composers add these fields without duplicating enums in the
-pipeline's base schema. The register-sequence declaration
+pipeline's base schema. The same composed schema optionally accepts
+`interface_contract.reset_channel_policies`. The register-sequence declaration
 (`operations[].lifecycle_control_plane_sequence`) is an optional property of that
 schema (required exactly when a lifecycle policy field is `control_plane_sequence`,
 enforced by the compile); a reset signal's `reset_settle_cycles` is honored by the

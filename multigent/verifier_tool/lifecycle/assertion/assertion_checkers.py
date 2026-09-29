@@ -87,12 +87,18 @@ def check_lifecycle_operations(
                 "completion_matches_final_output",
                 "illegal_command_errors_without_start",
                 "response_error_follows_nonokay",
-                "legal_command_starts_one_job",
+                "accepted_command_starts_job",
+                "single_inflight_job_enforced",
                 "no_output_without_active_job",
                 "reset_aborts_pending_job",
                 "status_pulses_are_one_cycle",
             }
         )
+        # Preserve execution of already-generated TBs while giving the legacy
+        # feature its precise implemented meaning: overlap rejection.
+        if "legal_command_starts_one_job" in enabled_checkers:
+            enabled_checkers.discard("legal_command_starts_one_job")
+            enabled_checkers.add("single_inflight_job_enforced")
 
         def enabled(checker: str) -> bool:
             return checker in enabled_checkers
@@ -107,9 +113,12 @@ def check_lifecycle_operations(
                 "error_due_sources": set(),
                 "error_seen": False,
                 "last_error_source": "",
+                "start_pending": False,
                 "retirement_count": 0,
                 "outstanding_write_requests": 0,
                 "final_output_retired": False,
+                "reset_aborted_pending": name
+                in set(state.get("_reset_aborted_operations", ())),
                 "enabled_checkers": tuple(sorted(enabled_checkers)),
         }.items():
             current.setdefault(key, default)
@@ -193,7 +202,8 @@ def check_lifecycle_operations(
         job_start_fired = bool((job_start_by_operation or {}).get(name, False))
         job_complete_fired = bool((job_complete_by_operation or {}).get(name, False))
         command_tracking_enabled = bool(enabled_checkers & {
-            "legal_command_starts_one_job",
+            "accepted_command_starts_job",
+            "single_inflight_job_enforced",
             "illegal_command_errors_without_start",
             "no_output_without_active_job",
             "busy_tracks_active_job",
@@ -205,8 +215,14 @@ def check_lifecycle_operations(
                 continue
             value = _read(snapshot, str(signals["payload"]))
             legal = set(map(int, command.get("legal_values", [])))
-            if not legal and enabled("legal_command_starts_one_job"):
-                _fail(f"{root}.legal_command_starts_one_job", "command legal values are unresolved")
+            if not legal and (
+                enabled("accepted_command_starts_job")
+                or enabled("single_inflight_job_enforced")
+            ):
+                _fail(
+                    f"{root}.accepted_command_starts_job",
+                    "command legal values are unresolved",
+                )
             if value in legal:
                 invalid_addresses = [
                     item
@@ -220,8 +236,11 @@ def check_lifecycle_operations(
                     current["error_due"] |= bool(error_name) and enabled("illegal_command_errors_without_start")
                     current["error_due_sources"].add("illegal")
                     current["active"] = False
-                elif active_before and enabled("legal_command_starts_one_job"):
-                    _fail(f"{root}.legal_command_starts_one_job", "a second legal command was accepted while a job was active")
+                elif active_before and enabled("single_inflight_job_enforced"):
+                    _fail(
+                        f"{root}.single_inflight_job_enforced",
+                        "a second legal command was accepted while a job was active",
+                    )
                 else:
                     accepted_legal = True
             else:
@@ -230,6 +249,12 @@ def check_lifecycle_operations(
                 current["error_due"] |= bool(error_name) and enabled("illegal_command_errors_without_start")
                 current["error_due_sources"].add("illegal")
 
+        any_input = False
+        for operation_input in operation.get("inputs", []):
+            signals = operation_input.get("signals", {})
+            if {"valid", "ready"} <= set(signals):
+                any_input |= _transfer(snapshot, signals)
+
         any_output = False
         for output in operation.get("outputs", []):
             signals = output.get("signals", {})
@@ -237,6 +262,7 @@ def check_lifecycle_operations(
                 continue
             transfer = _transfer(snapshot, signals)
             any_output |= transfer
+        retirement_activity = False
         for retirement in operation.get("retirements", []):
             count_mode = retirement.get("count_mode")
             if count_mode not in {
@@ -245,10 +271,12 @@ def check_lifecycle_operations(
             }:
                 continue
             if _transfer(snapshot, retirement.get("request_signals", {})):
+                retirement_activity = True
                 current["outstanding_write_requests"] = int(
                     current.get("outstanding_write_requests", 0)
                 ) + 1
             if _transfer(snapshot, retirement.get("data_signals", {})):
+                retirement_activity = True
                 increment = 1
                 if count_mode == "accepted_data_bytes_after_all_write_responses":
                     strobe_name = str(retirement.get("data_signals", {}).get("strobe", ""))
@@ -306,10 +334,19 @@ def check_lifecycle_operations(
                 final_transfer |= last
             elif isinstance(expected_count, int):
                 final_transfer |= current["retirement_count"] == expected_count
+        if (
+            enabled("reset_aborts_pending_job")
+            and current.get("reset_aborted_pending")
+            and (any_output or final_transfer or completion or job_complete_fired)
+        ):
+            _fail(
+                f"{root}.reset_aborts_pending_job",
+                "work aborted by reset produced output or completion before a new legal job",
+            )
         if enabled("no_output_without_active_job") and any_output and not active_before:
             _fail(f"{root}.no_output_without_active_job", "accepted output has no active legal job")
+        busy = bool(_read(snapshot, busy_name)) if busy_name else False
         if busy_name and enabled("busy_tracks_active_job"):
-            busy = bool(_read(snapshot, busy_name))
             if active_before and not busy:
                 _fail(f"{root}.busy_tracks_active_job", "busy is low while a legal job is active")
             if not active_before and busy:
@@ -318,6 +355,15 @@ def check_lifecycle_operations(
             current["retirement_count"] = 0
             current["outstanding_write_requests"] = 0
             current["final_output_retired"] = False
+            current["reset_aborted_pending"] = False
+            remaining = set(state.get("_reset_aborted_operations", ()))
+            remaining.discard(name)
+            if remaining:
+                state["_reset_aborted_operations"] = tuple(sorted(remaining))
+            else:
+                state.pop("_reset_aborted_operations", None)
+        if accepted_legal and enabled("accepted_command_starts_job"):
+            current["start_pending"] = True
         current["active"] = active_before or accepted_legal or job_start_fired
         for response in operation.get("error_responses", []):
             if not _transfer(snapshot, response):
@@ -345,6 +391,16 @@ def check_lifecycle_operations(
         if (final_transfer and not uses_control_plane) or job_complete_fired:
             current["active"] = False
             current["completion_due"] = bool(completion_name) and enabled("completion_matches_final_output")
+        if current.get("start_pending") and (
+            busy
+            or any_input
+            or any_output
+            or retirement_activity
+            or final_transfer
+            or completion
+            or job_complete_fired
+        ):
+            current["start_pending"] = False
         current["previous_completion"] = int(bool(completion))
         current["previous_error"] = int(bool(error))
 
@@ -355,8 +411,14 @@ def finalize_lifecycle_checker_state(
     pending = []
     for name, current in state.get("operations", {}).items():
         enabled = set(current.get("enabled_checkers", ()))
+        if current.get("start_pending") and "accepted_command_starts_job" in enabled:
+            _fail(
+                f"lifecycle.{name}.accepted_command_starts_job",
+                "an accepted legal command produced no observable job progress",
+            )
         if current.get("active") and enabled & {
-            "legal_command_starts_one_job", "no_output_without_active_job",
+            "accepted_command_starts_job", "single_inflight_job_enforced",
+            "no_output_without_active_job",
             "busy_tracks_active_job", "completion_matches_final_output",
             "reset_aborts_pending_job",
         }:

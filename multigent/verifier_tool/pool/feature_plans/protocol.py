@@ -7,6 +7,9 @@ from typing import Any, Mapping
 from multigent.verifier_tool.pool.role_pool.interface_semantics import (
     derive_interface_coverage_seed,
 )
+from multigent.verifier_tool.pool.lifecycle_policy_pool import (
+    resolve_reset_channel_policies,
+)
 
 from .catalog import load_protocol_feature_catalog
 from .common import (
@@ -17,6 +20,32 @@ from .common import (
     safe_id,
 )
 from .schema import validate_resolved_feature_plan
+
+
+def _standard_rule_applies(group: Mapping[str, Any], rule_name: str) -> bool:
+    """Reject topology-inapplicable or channel-checker-alias group rules."""
+
+    channels = group.get("channels", {})
+    if not isinstance(channels, Mapping):
+        return False
+    present = set(map(str, channels))
+    if rule_name.startswith("write_"):
+        required = {"write_address", "write_data"}
+        if rule_name == "write_response_after_address_and_data":
+            required.add("write_response")
+        if not required <= present:
+            return False
+    if rule_name.startswith("read_") and not {
+        "read_address", "read_data"
+    } <= present:
+        return False
+    if rule_name == "optional_id_return_and_in_order_completion":
+        return any(
+            "id" in channels.get(kind, {}).get("fields", {})
+            for kind in ("write_response", "read_data")
+            if isinstance(channels.get(kind), Mapping)
+        )
+    return True
 
 
 def build_protocol_feature_plan(interface_plan: Mapping[str, Any]) -> dict[str, Any]:
@@ -35,6 +64,7 @@ def build_protocol_feature_plan(interface_plan: Mapping[str, Any]) -> dict[str, 
         if isinstance(item, Mapping)
     }
     feature_catalog = load_protocol_feature_catalog()
+    reset_channel_policies = resolve_reset_channel_policies(interface)
     declared_features = feature_catalog["features"]
     stall_spec = declared_features["stall_stability"]
     stall_match = stall_spec["match"]
@@ -167,6 +197,42 @@ def build_protocol_feature_plan(interface_plan: Mapping[str, Any]) -> dict[str, 
                 )
             )
 
+        # Generic ready/valid and custom profiles have no universal reset
+        # semantics.  Instantiate the same checker only for channels explicitly
+        # selected by the lifecycle reset-channel policy.  Standard groups above
+        # remain the sole owner for AXI-family/custom-MMIO diagnostics.
+        for policy in reset_channel_policies:
+            if policy["behavior"] != "valid_deasserted":
+                continue
+            channel_name = str(policy["channel"])
+            feature_id = (
+                f"channel.{safe_id(channel_name)}.valid_low_during_reset"
+            )
+            features.append(
+                feature_record(
+                    feature_id=feature_id,
+                    domain="protocol",
+                    kind="valid_low_during_reset",
+                    scope="channel",
+                    scope_name=channel_name,
+                    bindings={
+                        "reset": dict(reset),
+                        "valid_signals": tuple(policy["valid_signals"]),
+                        "settle_cycles": int(policy["settle_cycles"]),
+                    },
+                    tags=("reset",),
+                    assertion_checker=reset_feature["assertion"].get("checker"),
+                    coverage={
+                        **reset_feature["coverage"],
+                        "obligation_ids": (),
+                    },
+                    stimulus_strategy=str(
+                        reset_feature["stimulus"]["strategy"]
+                    ),
+                    stimulus=reset_feature["stimulus"],
+                )
+            )
+
     standard_rule_feature = feature_catalog["derived_features"][
         "standard_protocol_rule"
     ]
@@ -177,6 +243,8 @@ def build_protocol_feature_plan(interface_plan: Mapping[str, Any]) -> dict[str, 
             # Reset-valid is already emitted above with the concrete reset and
             # complete VALID bindings required by its checker.
             if rule_name == "valid_low_during_reset":
+                continue
+            if not _standard_rule_applies(group, rule_name):
                 continue
             features.append(
                 feature_record(

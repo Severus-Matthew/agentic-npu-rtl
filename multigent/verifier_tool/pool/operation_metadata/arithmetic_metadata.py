@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from jsonschema import Draft202012Validator
-from .formula import FormulaError, parse_formula
+from .formula import FormulaError, compile_formula
 from .io_metadata import declared_serialization, serialization_schema
 
 
@@ -210,6 +210,26 @@ def compile_operation_arithmetic(
     stages = deepcopy(declaration["post_operations"])
     order = _resolve_post_operation_order(stages, declaration["post_output"])
     kinds = [stages[name]["kind"] for name in order]
+    reserved_coverage_concepts = {
+        "dimensions",
+        "operand_values",
+        "accumulation",
+        "numeric_stage_events",
+        "bias",
+        "activation",
+        "quantization",
+    }
+    formula_name_conflicts = sorted(
+        name
+        for name in order
+        if stages[name]["kind"] == "llm_defined"
+        and name in reserved_coverage_concepts
+    )
+    if formula_name_conflicts:
+        raise ArithmeticMetadataError(
+            "formula-defined post-operation stage names collide with reserved "
+            f"coverage concepts: {formula_name_conflicts}"
+        )
     # bias_add/wrap/relu/affine_quantize are each singular by construction (there is only one
     # sensible "the" bias add); llm_defined has no such constraint -- a
     # contract may declare several distinct llm_defined stages, disambiguated
@@ -252,9 +272,15 @@ def compile_operation_arithmetic(
                 )
         elif stage["kind"] == "llm_defined":
             try:
-                parse_formula(stage["formula"])
+                compile_formula(stage["formula"])
             except FormulaError as exc:
-                raise ArithmeticMetadataError(f"post-operation {name!r}: {exc}") from exc
+                raise ArithmeticMetadataError(
+                    f"post-operation {name!r} failed deterministic solver "
+                    f"compilation: {exc}. Revise the formula, or explicitly "
+                    "select classifier_profile='llm_extension' with an "
+                    "operation-domain extension_request when the behavior is "
+                    "not solver-representable"
+                ) from exc
     if {item["name"] for item in inputs} != modeled or len(outputs) != 1:
         raise ArithmeticMetadataError("integer_matrix_multiply has unmodeled input/output objects; use llm_extension")
     if "bias_add" not in kinds and declaration["bias_conversion"] != "exact":
@@ -398,8 +424,97 @@ def validate_architecture_operation_arithmetic(
     return errors
 
 
+def operation_formula_compilation_report(
+    architecture: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Report the Contract Reviewer's solver decision for every operation.
+
+    Coverage goals are intentionally absent: the Architect declares operation
+    semantics, while the Verifier owns bins and predicates after the formula
+    has crossed this compilation gate.
+    """
+
+    entries: list[dict[str, Any]] = []
+    for operation in architecture.get("operations", []):
+        if not isinstance(operation, Mapping):
+            continue
+        operation_name = str(operation.get("name", ""))
+        declaration = operation.get("arithmetic")
+        if not isinstance(declaration, Mapping):
+            entries.append(
+                {
+                    "operation": operation_name,
+                    "status": "missing_arithmetic",
+                    "stages": [],
+                }
+            )
+            continue
+        if declaration.get("classifier_profile") == "llm_extension":
+            entries.append(
+                {
+                    "operation": operation_name,
+                    "status": "architect_declared_llm_extension",
+                    "reason": str(declaration.get("reason", "")),
+                    "extension_request": declaration.get("extension_request"),
+                    "stages": [],
+                }
+            )
+            continue
+        stages: list[dict[str, Any]] = []
+        failed = False
+        post_operations = declaration.get("post_operations", {})
+        if isinstance(post_operations, Mapping):
+            for stage_name, stage in post_operations.items():
+                if not isinstance(stage, Mapping) or stage.get("kind") != "llm_defined":
+                    continue
+                formula = str(stage.get("formula", ""))
+                try:
+                    compiled = compile_formula(formula)
+                except FormulaError as exc:
+                    failed = True
+                    stages.append(
+                        {
+                            "stage": str(stage_name),
+                            "status": "solver_compile_failed",
+                            "formula": formula,
+                            "diagnostic": str(exc),
+                        }
+                    )
+                else:
+                    stages.append(
+                        {
+                            "stage": str(stage_name),
+                            "status": "solver_compiled",
+                            "formula": formula,
+                            "solver_ir": str(compiled.expression),
+                            "domain_constraints": [
+                                str(item) for item in compiled.constraints
+                            ],
+                        }
+                    )
+        entries.append(
+            {
+                "operation": operation_name,
+                "status": "solver_compile_failed" if failed else "solver_ready",
+                "stages": stages,
+            }
+        )
+    return {
+        "schema_version": 1,
+        "owner": "contract_reviewer",
+        "coverage_owner": "verifier",
+        "status": (
+            "BLOCKED"
+            if any(item["status"] in {"missing_arithmetic", "solver_compile_failed"} for item in entries)
+            else "PASS"
+        ),
+        "operations": entries,
+    }
+
+
 __all__ = [
     "OPERATION_ARITHMETIC_SCHEMA_PATH", "ArithmeticMetadataError",
     "compile_operation_arithmetic", "operation_arithmetic_schema",
+    "operation_formula_compilation_report",
     "validate_architecture_operation_arithmetic", "with_operation_arithmetic_schema",
 ]

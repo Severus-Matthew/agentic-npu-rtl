@@ -1,0 +1,289 @@
+schema_version: 1
+
+# These are Verifier-only challenge cases. They start from one frozen, locally
+# validated contract and stop after TB/reference generation. They never invoke
+# Architect, RTL Generator, simulation, or Debugger.
+scenarios:
+  - id: operation.affine_triple_plus_one
+    domain: operation
+    kind: solver_formula
+    stage_name: triple_plus_one
+    formula: value * 3 + 1
+    intent: Affine post-operation after ReLU.
+
+  - id: operation.negative_shift
+    domain: operation
+    kind: solver_formula
+    stage_name: negative_shift
+    formula: value - 17
+    intent: Signed offset with reachable negative and positive regions.
+
+  - id: operation.absolute_value
+    domain: operation
+    kind: solver_formula
+    stage_name: absolute_value
+    formula: abs(value)
+    intent: Nonnegative piecewise scalar transform.
+
+  - id: operation.symmetric_clip
+    domain: operation
+    kind: solver_formula
+    stage_name: symmetric_clip
+    formula: clip(value, -8, 8)
+    intent: Bounded saturating scalar transform.
+
+  - id: operation.relu6
+    domain: operation
+    kind: solver_formula
+    stage_name: relu6
+    formula: clip(value, 0, 6)
+    intent: Piecewise activation with lower and upper saturation.
+
+  - id: operation.square
+    domain: operation
+    kind: solver_formula
+    stage_name: square
+    formula: value ** 2
+    intent: Nonlinear but bounded integer expression.
+
+  - id: operation.modulo_seven
+    domain: operation
+    kind: solver_formula
+    stage_name: modulo_seven
+    formula: value % 7
+    intent: Integer remainder classes.
+
+  - id: operation.floor_scale
+    domain: operation
+    kind: solver_formula
+    stage_name: floor_scale
+    formula: value // 3
+    intent: Integer scale-down with explicit floor semantics.
+
+  - id: operation.sign_dependent_gain
+    domain: operation
+    kind: solver_formula
+    stage_name: sign_dependent_gain
+    formula: value * 2 if value >= 0 else value * 3
+    intent: Conditional gain selected by sign.
+
+  - id: operation.dead_zone
+    domain: operation
+    kind: solver_formula
+    stage_name: dead_zone
+    formula: 0 if abs(value) < 4 else value
+    intent: Piecewise dead-zone transform.
+
+  - id: protocol.bounded_ready_recovery
+    domain: protocol
+    kind: extension_request
+    feature_name: bounded_ready_recovery
+    target: {scope: channel, name: y}
+    summary: READY must recover within seven cycles after VALID is presented.
+    trigger: VALID is asserted while READY is low.
+    required_behavior: [READY is observed within seven sampled cycles.]
+    end_condition: The transfer is accepted or the seventh cycle expires.
+    forbidden_behavior: [READY remains low for eight sampled cycles.]
+    parameters: {maximum_cycles: 7}
+    observations: [valid, ready]
+    related_builtin_features: [channel.y.stall_stability]
+
+  - id: protocol.exact_two_cycle_backpressure
+    domain: protocol
+    kind: extension_request
+    feature_name: exact_two_cycle_backpressure
+    target: {scope: channel, name: y}
+    summary: Observe a transfer stalled for exactly two complete cycles.
+    trigger: VALID is asserted and READY becomes low.
+    required_behavior: [Content stays stable and READY recovers on the third sample.]
+    end_condition: The transfer is accepted after exactly two stalled cycles.
+    forbidden_behavior: [The scenario is credited at any other stall length.]
+    parameters: {stall_cycles: 2}
+    observations: [valid, ready, payload]
+    related_builtin_features: [channel.y.stall_stability]
+
+  - id: protocol.transfer_gap_limit
+    domain: protocol
+    kind: extension_request
+    feature_name: transfer_gap_limit
+    target: {scope: channel, name: y}
+    summary: Consecutive output transfers must be separated by at most five cycles.
+    trigger: One output transfer is accepted while another output remains pending.
+    required_behavior: [The next output transfer is accepted within five cycles.]
+    end_condition: The next transfer is accepted or the limit expires.
+    forbidden_behavior: [A pending transfer waits more than five cycles.]
+    parameters: {maximum_gap_cycles: 5}
+    observations: [valid, ready]
+    related_builtin_features: [channel.y.handshake_states]
+
+  - id: protocol.minimum_ready_window
+    domain: protocol
+    kind: extension_request
+    feature_name: minimum_ready_window
+    target: {scope: channel, name: y}
+    summary: Once READY rises it remains asserted for at least three sampled cycles.
+    trigger: READY changes from low to high.
+    required_behavior: [READY stays high for three consecutive samples.]
+    end_condition: Three high samples are observed or READY drops early.
+    forbidden_behavior: [READY produces a one-cycle or two-cycle pulse.]
+    parameters: {minimum_cycles: 3}
+    observations: [ready]
+    related_builtin_features: [channel.y.handshake_states]
+
+  - id: protocol.payload_parity_observation
+    domain: protocol
+    kind: extension_request
+    feature_name: payload_parity_observation
+    target: {scope: channel, name: y}
+    summary: Classify accepted output payloads by even and odd parity.
+    trigger: An output transfer is accepted.
+    required_behavior: [Compute parity from the accepted payload and cover both classes.]
+    end_condition: The accepted payload is classified.
+    forbidden_behavior: [Planned stimulus is counted without a real accepted transfer.]
+    parameters: {}
+    observations: [valid, ready, payload]
+    related_builtin_features: [channel.y.handshake_states]
+
+  - id: protocol.backpressure_duty_cycle
+    domain: protocol
+    kind: extension_request
+    feature_name: backpressure_duty_cycle
+    target: {scope: channel, name: y}
+    summary: Measure the fraction of valid cycles spent under backpressure.
+    trigger: An output transaction first asserts VALID.
+    required_behavior: [Count valid cycles and stalled valid cycles until acceptance.]
+    end_condition: The transfer is accepted.
+    forbidden_behavior: [Idle cycles are included in the ratio.]
+    parameters: {window_cycles: 16}
+    observations: [valid, ready]
+    related_builtin_features: [channel.y.stall_stability]
+
+  - id: protocol.post_reset_first_transfer_deadline
+    domain: protocol
+    kind: extension_request
+    feature_name: post_reset_first_transfer_deadline
+    target: {scope: channel, name: y}
+    summary: The first legal output transfer after reset must occur within a declared window.
+    trigger: Reset is released and a legal job is accepted.
+    required_behavior: [Observe the first accepted output within twenty cycles.]
+    end_condition: The first output is accepted or the deadline expires.
+    forbidden_behavior: [A pre-reset or unaccepted output satisfies the deadline.]
+    parameters: {maximum_cycles: 20}
+    observations: [valid, ready]
+    related_builtin_features: [channel.y.handshake_arrival_order]
+
+  - id: lifecycle.busy_watchdog_observation
+    domain: lifecycle
+    kind: extension_request
+    feature_name: busy_watchdog_observation
+    target: {scope: operation, name: gemm}
+    summary: Observe whether an accepted job remains busy for twelve sampled cycles.
+    trigger: A legal command is accepted and busy becomes asserted.
+    required_behavior: [Count consecutive busy cycles and record the twelve-cycle threshold.]
+    end_condition: The job retires, resets, errors, or reaches twelve busy cycles.
+    forbidden_behavior: [The observation weakens built-in lifecycle checkers.]
+    parameters: {threshold_cycles: 12}
+    observations: [busy]
+    related_builtin_features: [lifecycle.gemm.busy_tracks_active_job]
+
+  - id: lifecycle.minimum_busy_duration
+    domain: lifecycle
+    kind: extension_request
+    feature_name: minimum_busy_duration
+    target: {scope: operation, name: gemm}
+    summary: Every accepted job remains busy for at least four sampled cycles.
+    trigger: A legal job is accepted.
+    required_behavior: [Busy remains asserted for four consecutive samples.]
+    end_condition: Four busy cycles are observed or busy drops early.
+    forbidden_behavior: [A shorter busy interval passes.]
+    parameters: {minimum_cycles: 4}
+    observations: [busy]
+    related_builtin_features: [lifecycle.gemm.busy_tracks_active_job]
+
+  - id: lifecycle.maximum_completion_latency
+    domain: lifecycle
+    kind: extension_request
+    feature_name: maximum_completion_latency
+    target: {scope: operation, name: gemm}
+    summary: Completion follows legal job acceptance within forty cycles.
+    trigger: A legal job is accepted.
+    required_behavior: [Observe completion within forty sampled cycles.]
+    end_condition: Completion is observed or the deadline expires.
+    forbidden_behavior: [An unrelated error or reset is counted as completion.]
+    parameters: {maximum_cycles: 40}
+    observations: [command_accept, completion]
+    related_builtin_features: [lifecycle.gemm.completion_matches_final_output]
+
+  - id: lifecycle.completion_to_idle_deadline
+    domain: lifecycle
+    kind: extension_request
+    feature_name: completion_to_idle_deadline
+    target: {scope: operation, name: gemm}
+    summary: Busy deasserts within two cycles after completion.
+    trigger: Completion is observed.
+    required_behavior: [Busy becomes low no later than the second following sample.]
+    end_condition: Busy deasserts or two cycles expire.
+    forbidden_behavior: [Busy remains high for a third cycle after completion.]
+    parameters: {maximum_cycles: 2}
+    observations: [completion, busy]
+    related_builtin_features: [lifecycle.gemm.busy_tracks_active_job]
+
+  - id: lifecycle.error_recovery_window
+    domain: lifecycle
+    kind: extension_request
+    feature_name: error_recovery_window
+    target: {scope: operation, name: gemm}
+    summary: A clean legal job can be accepted within six cycles after an error pulse.
+    trigger: The operation error signal is observed.
+    required_behavior: [Drive and accept a clean legal job within six cycles.]
+    end_condition: The recovery job is accepted or the deadline expires.
+    forbidden_behavior: [The original failing job is mistaken for recovery.]
+    parameters: {maximum_cycles: 6}
+    observations: [error, command_accept]
+    related_builtin_features: [lifecycle.gemm.illegal_command_errors_without_start]
+
+  - id: lifecycle.reset_recovery_window
+    domain: lifecycle
+    kind: extension_request
+    feature_name: reset_recovery_window
+    target: {scope: operation, name: gemm}
+    summary: A clean legal job can start within five cycles after reset release.
+    trigger: Reset is released after aborting or idling the operation.
+    required_behavior: [Accept one clean command within five cycles.]
+    end_condition: The recovery command is accepted or the deadline expires.
+    forbidden_behavior: [Pre-reset pending work is treated as the recovery job.]
+    parameters: {maximum_cycles: 5}
+    observations: [reset_release, command_accept]
+    related_builtin_features: [lifecycle.gemm.reset_aborts_pending_job]
+
+  - id: lifecycle.inter_job_cooldown
+    domain: lifecycle
+    kind: extension_request
+    feature_name: inter_job_cooldown
+    target: {scope: operation, name: gemm}
+    summary: Two completed jobs are separated by at least two idle cycles.
+    trigger: One job completes and no reset or error intervenes.
+    required_behavior: [Observe two idle cycles before the next command acceptance.]
+    end_condition: The next command is accepted after the cooldown.
+    forbidden_behavior: [A command is accepted during either cooldown cycle.]
+    parameters: {minimum_cycles: 2}
+    observations: [completion, command_accept, busy]
+    related_builtin_features: [lifecycle.gemm.single_inflight_job_enforced]
+
+  - id: mixed.affine_and_busy_watchdog
+    domain: mixed
+    kind: composition
+    components: [operation.affine_triple_plus_one, lifecycle.busy_watchdog_observation]
+    intent: Solver-owned operation formula plus one lifecycle extension bundle.
+
+  - id: mixed.absolute_and_ready_recovery
+    domain: mixed
+    kind: composition
+    components: [operation.absolute_value, protocol.bounded_ready_recovery]
+    intent: Solver-owned absolute-value stage plus bounded protocol liveness.
+
+  - id: mixed.clip_and_reset_recovery
+    domain: mixed
+    kind: composition
+    components: [operation.symmetric_clip, lifecycle.reset_recovery_window]
+    intent: Solver-owned saturation plus post-reset lifecycle recovery.
