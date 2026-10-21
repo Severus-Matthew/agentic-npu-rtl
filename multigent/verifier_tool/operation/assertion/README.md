@@ -1,9 +1,10 @@
 # Assertion / Operation
 
 Code-owned generation of the **one** central golden-result comparison for a
-catalog-recognized operation (currently the `matrix_multiply` family — GEMM),
+catalog-recognized operation (currently matrix multiply, QK, scale, binary
+mask, and restricted sparse attention),
 plus the classification comments that attach a catalog feature ID to that
-already-checked transaction. This subfolder does not implement the GEMM oracle
+already-checked transaction. This subfolder does not implement either oracle
 itself (that lives in `pool/operation_metadata/canonical.py` and
 `operation/stimulus/`); it only renders the runtime wrapper that calls the
 oracle comparison and stamps it with taxonomy evidence.
@@ -51,8 +52,9 @@ about that feature's intended correctness property.
   `applies_when` and `check` strings. Raises `ValueError` on any violation —
   this runs at import/first-call time, so a malformed catalog fails fast
   rather than producing an empty prompt section. Exported from the facade;
-  called directly in `multigent/verifier_tool/tool_regression/integration/test_operation_coverage.py` (asserts the
-  `matrix_multiply` family and its `feature_checks`/`required_properties`
+  called directly in `multigent/verifier_tool/tool_regression/integration/test_operation_coverage.py` and
+  `tool_regression/unit/test_sparse_attention_operation.py` (asserts the
+  recognized families and their `feature_checks`/`required_properties`
   shape) and internally by `render_operation_assertion_catalog` below.
 
 - `render_operation_assertion_catalog() -> str` — flattens the loaded catalog
@@ -131,8 +133,9 @@ silently inserted into the built-in Operation Feature Plan.
 
 ## `assertions.yaml`
 
-One taxonomy, currently one family (`matrix_multiply`), under
-`taxonomy: {name: accelerator_operation_predefined_assertions, version: "0.1", ...}`.
+One taxonomy, currently two families (`matrix_multiply` and
+`sparse_attention`), under
+`taxonomy: {name: accelerator_operation_predefined_assertions, version: "0.2", ...}`.
 Its `required_properties` are prose guidance, not separately executable
 checkers or evidence that an unsupported GEMM option has automatic support.
 The executable concept catalog is the narrowed
@@ -212,5 +215,5 @@ the actual code-owned ID.
 - [`../../feature_plans/README.md`](../../pool/feature_plans/README.md) — the
   Operation Feature Plan matcher and the shared resolved-feature-plan shape.
 - [`../../operation_metadata/README.md`](../../pool/operation_metadata/README.md) —
-  where the GEMM arithmetic classification and golden semantics this oracle
-  ultimately checks against are actually defined.
+  where the GEMM and sparse-attention classification and golden semantics this
+  oracle ultimately checks against are actually defined.

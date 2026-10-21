@@ -78,15 +78,15 @@ scenarios:
     domain: protocol
     kind: extension_request
     feature_name: bounded_ready_recovery
-    target: {scope: channel, name: y}
-    summary: READY must recover within seven cycles after VALID is presented.
-    trigger: VALID is asserted while READY is low.
-    required_behavior: [READY is observed within seven sampled cycles.]
-    end_condition: The transfer is accepted or the seventh cycle expires.
+    target: {scope: channel, name: a}
+    summary: DUT-owned operand-A READY must recover within seven cycles after A VALID is presented and a legal command opens the input channel.
+    trigger: While the DUT is idle and A READY is low, the test presents and holds A VALID with stable payload, then issues a legal command and observes its accepted handshake.
+    required_behavior: [Monitor A READY concurrently before issuing the command; after the command handshake, A READY is observed within seven sampled cycles while A VALID remains asserted.]
+    end_condition: The A transfer is accepted or the seventh post-command cycle expires; deassert A VALID only after its handshake.
     forbidden_behavior: [READY remains low for eight sampled cycles.]
     parameters: {maximum_cycles: 7}
     observations: [valid, ready]
-    related_builtin_features: [channel.y.stall_stability]
+    related_builtin_features: [channel.a.stall_stability]
 
   - id: protocol.exact_two_cycle_backpressure
     domain: protocol

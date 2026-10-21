@@ -1,0 +1,34 @@
+schema_version: 1
+case_id: u04_balanced_a
+unknown_feature_count: 4
+domains:
+- lifecycle
+- operation
+- protocol
+features:
+- id: operation.affine_triple_plus_one
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: triple_plus_one
+  intent: Affine post-operation after ReLU.
+- id: protocol.bounded_ready_recovery
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.bounded_ready_recovery
+  intent: DUT-owned operand-A READY must recover within seven cycles after A VALID
+    is presented and a legal command opens the input channel.
+- id: protocol.payload_parity_observation
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.payload_parity_observation
+  intent: Classify accepted output payloads by even and odd parity.
+- id: lifecycle.maximum_completion_latency
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.maximum_completion_latency
+  intent: Completion follows legal job acceptance within forty cycles.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

@@ -1,0 +1,12 @@
+{
+  "top": "obi_atop_resolver",
+  "modules": [
+    {
+      "name": "obi_atop_resolver",
+      "responsibility": "obi_atomic_resolver",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

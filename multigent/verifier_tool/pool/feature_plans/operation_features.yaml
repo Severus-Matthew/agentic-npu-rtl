@@ -1,7 +1,7 @@
 taxonomy:
   name: accelerator_operation_features
-  version: "0.4"
-  scope: code-owned functional-coverage concepts for integer matrix multiplication
+  version: "0.8"
+  scope: code-owned functional-coverage concepts for supported integer accelerator operations
   rules:
     - A recognized operation kind must implement every baseline concept for its family.
     - Baseline concepts may not be removed or renamed by the Verifier.
@@ -39,3 +39,48 @@ families:
           quantization:
             applies_when: One per-tensor fixed-point affine requantization stage is declared in the arithmetic DAG.
             starter_bins: [exact, rounded, nonzero_zero_point, negative_saturation, positive_saturation]
+  sparse_attention:
+    aliases: [sparse_attention, masked_sparse_attention, integer_sparse_attention]
+    optional_concepts: {}
+    baseline_concepts: [dimensions, operand_values, sparsity_patterns, attention_scores, stage_handoffs, output_values]
+    starter_bins:
+      dimensions: [fixed_shape]
+      operand_values: [zero, positive, negative, minimum, maximum]
+      sparsity_patterns: [empty_row, singleton_row, partial_row, dense_row]
+      attention_scores: [zero_score, positive_score, negative_score]
+      stage_handoffs: [qk_to_scale_forwarded, active_mask_preserved, inactive_mask_zeroed, normalization_bypass_forwarded, value_reduction_consumed]
+      output_values: [zero_output, positive_output, negative_output]
+    feature_groups: {}
+  attention_qk:
+    aliases: [attention_qk, qk_score, query_key_score]
+    optional_concepts: {}
+    baseline_concepts: [dimensions, operand_values, accumulation, attention_scores]
+    starter_bins:
+      dimensions: [fixed_shape]
+      operand_values: [zero, positive, negative, minimum, maximum]
+      accumulation: [ordinary, positive_boundary, negative_boundary, positive_overflow, negative_overflow]
+      attention_scores: [zero_score, positive_score, negative_score]
+    feature_groups: {}
+  attention_scale:
+    aliases: [attention_scale, scaled_attention_score, qk_scale]
+    optional_concepts: {}
+    baseline_concepts: [dimensions, score_values, rounding, scaled_values, attenuation]
+    starter_bins:
+      dimensions: [fixed_shape]
+      score_values: [zero, positive, negative, minimum, maximum]
+      rounding: [exact, positive_fraction_discarded, negative_fraction_discarded]
+      scaled_values: [zero_scaled, positive_scaled, negative_scaled]
+      attenuation: [zero_preserved, magnitude_reduced]
+    feature_groups: {}
+  attention_mask:
+    aliases: [attention_mask, masked_attention_score, binary_attention_mask]
+    optional_concepts: {}
+    baseline_concepts: [dimensions, score_values, mask_values, sparsity_patterns, masked_values, mask_effects]
+    starter_bins:
+      dimensions: [fixed_shape]
+      score_values: [zero, positive, negative, minimum, maximum]
+      mask_values: [drop, keep]
+      sparsity_patterns: [empty_row, singleton_row, partial_row, dense_row]
+      masked_values: [zero_masked, positive_masked, negative_masked]
+      mask_effects: [active_score_preserved, inactive_nonzero_zeroed]
+    feature_groups: {}

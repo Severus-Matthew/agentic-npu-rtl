@@ -1,0 +1,150 @@
+design:
+  name: opentitan_hmac_context_switch
+  description: External benchmark L04 over OpenTitan at exact revision dd8b1ab44e4da9929976ddbd47586518d1b850ec,
+    target hw/ip/hmac/rtl.
+operations:
+- name: opentitan_hmac_context_switch
+  kind: opentitan_hmac_context_switch
+  coverage_family: opentitan_hmac_context_switch
+  coverage_family_source: novel
+  features:
+  - start_process_stop_continue
+  feature_extensions:
+  - context_save_restore_window
+  - active_command_errors
+  semantics: Source-backed lifecycle scope for opentitan_hmac_context_switch; exact
+    behavior is owned by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  lifecycle_policy:
+    job_acceptance: valid_ready_handshake
+    job_overlap: single_inflight
+    busy_behavior: tracks_active_job
+    completion_style: pulse
+    completion_timing: next_cycle_after_retirement
+    illegal_command_behavior: error_without_start
+    error_style: pulse
+    error_timing: next_cycle_after_error_event
+    reset_behavior: abort_inflight
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Digest math remains upstream-owned; command sequencing is targeted.
+open_assumptions: []
+verification_extensions:
+- id: lifecycle.l04_start_process_stop_continue
+  domain: lifecycle
+  feature_name: start_process_stop_continue
+  target:
+    scope: operation
+    name: opentitan_hmac_context_switch
+  semantics:
+    summary: Verify start process stop continue exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible start process stop continue behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: start_process_stop_continue is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - command_legality
+  - completion_interrupt
+  - fifo_backpressure
+- id: lifecycle.l04_context_save_restore_window
+  domain: lifecycle
+  feature_name: context_save_restore_window
+  target:
+    scope: operation
+    name: opentitan_hmac_context_switch
+  semantics:
+    summary: Verify context save restore window exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible context save restore window behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: context_save_restore_window is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - command_legality
+  - completion_interrupt
+  - fifo_backpressure
+- id: lifecycle.l04_active_command_errors
+  domain: lifecycle
+  feature_name: active_command_errors
+  target:
+    scope: operation
+    name: opentitan_hmac_context_switch
+  semantics:
+    summary: Verify active command errors exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible active command errors behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: active_command_errors is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - command_legality
+  - completion_interrupt
+  - fifo_backpressure

@@ -1,0 +1,39 @@
+schema_version: 1
+case_id: u05_protocol_heavy
+unknown_feature_count: 5
+domains:
+- operation
+- protocol
+features:
+- id: protocol.bounded_ready_recovery
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.bounded_ready_recovery
+  intent: DUT-owned operand-A READY must recover within seven cycles after A VALID
+    is presented and a legal command opens the input channel.
+- id: protocol.minimum_ready_window
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.minimum_ready_window
+  intent: Once READY rises it remains asserted for at least three sampled cycles.
+- id: protocol.backpressure_duty_cycle
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.backpressure_duty_cycle
+  intent: Measure the fraction of valid cycles spent under backpressure.
+- id: protocol.post_reset_first_transfer_deadline
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.post_reset_first_transfer_deadline
+  intent: The first legal output transfer after reset must occur within a declared
+    window.
+- id: operation.symmetric_clip
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: symmetric_clip
+  intent: Bounded saturating scalar transform.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

@@ -3,7 +3,8 @@
 This is the `operation` leg of the three-domain stimulus taxonomy described in
 [`../README.md`](../README.md) and [`../../README.md`](../../README.md). It is
 the canonical, code-owned directed/randomized vector generator and golden-model
-evaluator for the "known" integer-GEMM operation profile. It is a sibling of
+evaluator for the known integer-GEMM, raw integer-QK-score, and restricted
+integer sparse-attention profiles. It is a sibling of
 `operation/assertion/` and `operation/coverage/`. All three select features
 independently from the Operation Feature Plan built by
 `build_operation_feature_plan()` (see
@@ -52,12 +53,10 @@ fail with a `CanonicalStimulusGenerationError` instead of silently returning a
 vector that does not test what it claims to.
 
 The module reaches three packages up to import both public and private names
-from `pool/operation_metadata/canonical.py`, including
-`integer_matrix_multiply_events` — the one product -> reduction -> post-op
-DAG -> result-conversion walk this file's `evaluate_canonical_operation` and
-`canonical.py`'s own `_classify_integer_matrix_multiply` both call, so the
-golden-value and classification-evidence computations can never drift apart
-into two independent copies of the same arithmetic:
+from `pool/operation_metadata/canonical.py`, including the shared
+`integer_matrix_multiply_events` and `integer_sparse_attention_events` trace
+engines. Each profile uses one trace for both golden evaluation and coverage
+classification, so those computations cannot drift into independent copies:
 
 ```python
 from ...pool.operation_metadata.canonical import (
@@ -68,6 +67,7 @@ from ...pool.operation_metadata.canonical import (
     assemble_canonical_job,
     canonical_bins_for_concept,
     classify_operation_job,
+    integer_sparse_attention_events,
     integer_matrix_multiply_events,
     supported_code_owned_concepts,
 )
@@ -129,9 +129,11 @@ code means, from how the file actually raises it:
   this is a genuine "no witness" result, not "the search didn't happen to try
   the right combination" the way the constructive `_distribute_sum`/
   `_factor_pair` search it replaced could produce.
-- `llm_extension_required` — `arithmetic.classifier_profile` is not
-  `integer_matrix_multiply` at all; this generator has no code-owned model for
-  the operation.
+- `llm_extension_required` — `arithmetic.classifier_profile` is neither
+`integer_matrix_multiply`, `integer_qk_score`,
+`fixed_point_attention_scale`, `binary_attention_mask`, nor
+`integer_sparse_attention`; this generator has
+  no code-owned model for the operation.
 
 ### `_GemmModel` and `_gemm_model(operation)` (private, load-bearing)
 
@@ -155,6 +157,47 @@ rejects any input/output object not accounted for by left/right/bias/result.
 Every public function below calls this first, so every failure mode documented
 here is a failure mode of all of them.
 
+### `_SparseAttentionModel` and `_sparse_attention_model(operation)`
+
+The second code-owned model resolves exactly one `query_matrix`, `key_matrix`,
+`value_matrix`, `attention_mask`, and `attention_result`. It accepts fixed
+rank-2 shapes `Q[Q,D]`, `K[S,D]`, `V[S,DV]`, `mask[Q,S]`, `Y[Q,DV]` and the
+`integer_sparse_attention` arithmetic profile. The supported formula is exact
+unnormalized binary-masked attention assembled from explicit stage boundaries:
+
+```text
+score[q,s] = sum_d Q[q,d] * K[s,d]
+Y[q,v]     = sum_s (mask[q,s] ? score[q,s] * V[s,v] : 0)
+```
+
+The stage order is shared QK, identity scale, binary mask, normalization bypass,
+then weighted V reduction. The mask must contain only `0` and `1`. Softmax,
+non-identity score scaling, top-k pruning,
+approximate arithmetic, and runtime-variable shapes are deliberately outside
+this base profile; a contract must select a separate supported profile or an
+explicit extension rather than silently inheriting guessed semantics.
+
+### `_AttentionScaleModel` and `_attention_scale_model(operation)`
+
+The scale-only model resolves `attention_score_matrix[Q,S]` to
+`scaled_attention_score_matrix[Q,S]` for the
+`fixed_point_attention_scale` profile. Directed bins are solved by Z3 over one
+representative signed score and then checked through the concrete canonical
+event trace. The trace performs exact multiplication by the contract-derived
+coefficient, positive-power-of-two floor division (matching signed `>>>`), and
+the declared result conversion. Coverage includes score extrema, positive and
+negative discarded fractions, output sign, zero preservation, and attenuation.
+
+### `_AttentionMaskModel` and `_attention_mask_model(operation)`
+
+The mask-only model resolves matching
+`scaled_attention_score_matrix[Q,S]`, `attention_mask[Q,S]`, and
+`masked_attention_score_matrix[Q,S]` tensors for the
+`binary_attention_mask` profile. Z3 generates witnesses for both mask values,
+all four row sparsity patterns, score extrema/sign, masked output sign, active
+preservation, and inactive nonzero zeroing. The concrete golden trace remains
+the final authority for every witness.
+
 ### `evaluate_canonical_operation(operation_metadata, stimulus, *, operation_name=None) -> dict[str, list[int]]`
 
 The golden reference implementation. Assembles a `CanonicalOperationJob` via
@@ -163,7 +206,12 @@ The golden reference implementation. Assembles a `CanonicalOperationJob` via
 (honoring `reduction_conversion`), the resolved post-op DAG walk (`bias_add`
 honoring `bias_conversion`, `wrap`, `relu`, and per-tensor affine
 quantization), and the output's
-`result_conversion` — to `operation_metadata.canonical.integer_matrix_multiply_events`
+`result_conversion` — to the matching shared event engine in
+`operation_metadata.canonical`. Sparse attention similarly evaluates score
+reductions, binary mask filtering, score×V reduction, and result conversion
+through `integer_sparse_attention_events`, which calls the same
+`integer_qk_score_events` evaluator used by the standalone QK profile and then
+records every downstream handoff.
 
 ### `generate_solver_compiled_stimulus_for_bin(operation_metadata, concept, bin_spec, *, operation_name=None)`
 
@@ -208,15 +256,20 @@ oracle.
 Generates and self-checks one directed vector for a target `(concept,
 bin_name)` pair. Rejects a `concept` that names a feature group rather than
 an implemented leaf (`canonical_bins_for_concept(...) is None`) with
-`unsupported_known_feature`. Delegates to the private
-`_target_stimulus(model, concept, bin_name)` constructor, then the private
+`unsupported_known_feature`. GEMM delegates to the private
+`_target_stimulus(model, concept, bin_name)` path, whose arithmetic targets use
+the bounded Z3 reduction solver. Sparse attention delegates to
+`_target_sparse_attention_stimulus`, which symbolically compiles one complete
+representative output trace (all keys and all feature-axis terms), constrains
+the requested bin, and asks Z3 for a legal Q/K/V/mask witness. Then the private
 `_case(...)` evaluates the vector, classifies it with
 `operation_metadata.canonical.classify_operation_job`, and checks the
 classifier's evidence for `concept` actually satisfies the bin's declared
 `predicate` (`eq`/`between`/`one_of`), raising `generation_inconclusive` if
 not. Returns `{operation_name, kind: "directed", label:
 f"canonical_{concept}_{bin_name}", target: {concept, bin}, stimulus, expected,
-evidence}`.
+evidence}`. Sparse-attention directed cases also carry
+`solver_origin: code_owned_predicate_over_symbolic_sparse_attention_trace`.
 
 Activation vectors follow the resolved DAG order. When affine quantization
 precedes ReLU, the generator approximately inverts the declared scale and

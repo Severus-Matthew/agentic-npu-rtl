@@ -1,0 +1,17 @@
+schema_version: 1
+case_id: P10
+status: blocked
+freeze_blockers:
+- manual_source_port_binding_audit
+- deterministic_contract_reviewer_pass
+- upstream_build_dependency_audit
+source:
+  project: PULP AXI Stream
+  revision: ce1547861f99ab3d8834d04aa36d2d4184a28df7
+  target: src/axi_stream_dw_downsizer.sv
+unknown_features:
+- stream_width_conversion
+- keep_lane_projection
+- last_on_final_split_beat
+preflight_status: BLOCKED
+preflight_finding_count: 2

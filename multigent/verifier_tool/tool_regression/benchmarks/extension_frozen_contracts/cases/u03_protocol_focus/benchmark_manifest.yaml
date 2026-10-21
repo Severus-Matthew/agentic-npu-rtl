@@ -1,0 +1,27 @@
+schema_version: 1
+case_id: u03_protocol_focus
+unknown_feature_count: 3
+domains:
+- protocol
+features:
+- id: protocol.bounded_ready_recovery
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.bounded_ready_recovery
+  intent: DUT-owned operand-A READY must recover within seven cycles after A VALID
+    is presented and a legal command opens the input channel.
+- id: protocol.payload_parity_observation
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.payload_parity_observation
+  intent: Classify accepted output payloads by even and odd parity.
+- id: protocol.transfer_gap_limit
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.transfer_gap_limit
+  intent: Consecutive output transfers must be separated by at most five cycles.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

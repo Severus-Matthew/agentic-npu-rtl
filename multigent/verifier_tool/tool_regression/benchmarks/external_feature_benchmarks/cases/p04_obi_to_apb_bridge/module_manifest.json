@@ -1,0 +1,19 @@
+{
+  "top": "obi_to_apb_flat_wrapper",
+  "modules": [
+    {
+      "name": "obi_to_apb_flat_wrapper",
+      "responsibility": "transparent_flattened_verification_harness",
+      "dependencies": ["obi_to_apb"],
+      "parameters": [],
+      "stateful": false
+    },
+    {
+      "name": "obi_to_apb",
+      "responsibility": "obi_to_apb_bridge",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

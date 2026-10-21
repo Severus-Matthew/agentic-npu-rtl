@@ -1,0 +1,12 @@
+{
+  "top": "axi_stream_dw_downsizer",
+  "modules": [
+    {
+      "name": "axi_stream_dw_downsizer",
+      "responsibility": "axi_stream_width_downsizer",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

@@ -68,10 +68,16 @@ def _gemm_spec() -> list[dict]:
     ]
 
 
-def test_operation_catalog_only_advertises_the_code_owned_family() -> None:
+def test_operation_catalog_only_advertises_code_owned_families() -> None:
     families = load_operation_coverage_families()["families"]
-    assert set(families) == {"matrix_multiply"}
+    assert set(families) == {
+        "matrix_multiply", "sparse_attention", "attention_qk", "attention_scale",
+        "attention_mask",
+    }
     assert operation_family("GEMM") == "matrix_multiply"
+    assert operation_family("qk_score") == "attention_qk"
+    assert operation_family("qk_scale") == "attention_scale"
+    assert operation_family("binary_attention_mask") == "attention_mask"
     assert operation_family("depthwise-convolution") is None
     assert operation_family("invented accelerator") is None
 

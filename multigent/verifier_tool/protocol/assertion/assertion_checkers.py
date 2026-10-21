@@ -6,6 +6,10 @@ import re
 from typing import Any, Mapping, MutableMapping
 
 from multigent.verifier_tool.pool.role_pool.standard_protocols import standard_field_width
+from multigent.verifier_tool.pool.role_pool.protocol_semantics import (
+    evaluate_protocol_expression,
+    expression_signals,
+)
 
 from .axi import axi_burst_crosses_4k, axi_lane_mask, axi_transfer_windows
 
@@ -18,6 +22,21 @@ def _read(snapshot: Mapping[str, Any], name: str) -> int:
     if name not in snapshot:
         raise AssertionError(f"protocol snapshot is missing bound signal {name!r}")
     return int(snapshot[name])
+
+
+def _event(
+    snapshot: Mapping[str, Any],
+    binding: Mapping[str, Any],
+    name_key: str,
+    expression_key: str,
+) -> bool:
+    expression = binding.get(expression_key)
+    if isinstance(expression, Mapping):
+        return evaluate_protocol_expression(expression, snapshot)
+    name = str(binding.get(name_key, ""))
+    if not name:
+        return False
+    return bool(_read(snapshot, name))
 
 
 def _transfer(snapshot: Mapping[str, Any], channel: Mapping[str, Any]) -> bool:
@@ -53,11 +72,36 @@ def check_stall_stability(
         valid_name = str(obligation["valid"])
         ready_name = str(obligation["ready"])
         content_names = tuple(map(str, obligation.get("content", ())))
-        valid = int(bool(_read(snapshot, valid_name)))
-        ready = int(bool(_read(snapshot, ready_name)))
+        valid = int(_event(snapshot, obligation, "valid", "valid_expression"))
+        ready = int(_event(snapshot, obligation, "ready", "ready_expression"))
+        stalled_expression = obligation.get("stalled_expression")
+        stalled = (
+            evaluate_protocol_expression(stalled_expression, snapshot)
+            if isinstance(stalled_expression, Mapping)
+            else bool(valid and not ready)
+        )
         content = tuple(_read(snapshot, name) for name in content_names)
         previous = stalls.get(feature)
-        related = [valid_name, ready_name, *content_names]
+        abort_expression = obligation.get("abort_expression")
+        if isinstance(abort_expression, Mapping) and evaluate_protocol_expression(
+            abort_expression, snapshot
+        ):
+            stalls.pop(feature, None)
+            continue
+        related = [
+            *(
+                expression_signals(obligation["valid_expression"])
+                if isinstance(obligation.get("valid_expression"), Mapping)
+                else (valid_name,)
+            ),
+            *(
+                expression_signals(obligation["ready_expression"])
+                if isinstance(obligation.get("ready_expression"), Mapping)
+                else (ready_name,)
+            ),
+            *content_names,
+        ]
+        related = list(dict.fromkeys(filter(None, related)))
         if previous is not None:
             if not valid:
                 _fail(feature, "valid was withdrawn before a stalled transfer completed", related, snapshot)
@@ -68,7 +112,7 @@ def check_stall_stability(
                     related,
                     snapshot,
                 )
-        if valid and not ready:
+        if stalled:
             if previous is None:
                 stalls[feature] = {"content": content, "length": 1}
             else:
@@ -78,6 +122,155 @@ def check_stall_stability(
                 completed[feature] = int(previous["length"])
             stalls.pop(feature, None)
     return completed
+
+
+def check_transaction_accounting(
+    snapshot: Mapping[str, Any], plan: Mapping[str, Any], state: MutableMapping[str, Any]
+) -> None:
+    """Check generic accepted/completed accounting for compiled custom protocols."""
+
+    accounting = state.setdefault("transaction_accounting", {})
+    for binding in plan.get("transaction_accounting", []):
+        feature = str(binding["id"])
+        local = accounting.setdefault(feature, {"outstanding": 0})
+        accepted = evaluate_protocol_expression(binding["accepted_expression"], snapshot)
+        completed = evaluate_protocol_expression(binding["completed_expression"], snapshot)
+        success_expr = binding.get("success_expression")
+        error_expr = binding.get("error_expression")
+        success = (
+            evaluate_protocol_expression(success_expr, snapshot)
+            if isinstance(success_expr, Mapping) else False
+        )
+        error = (
+            evaluate_protocol_expression(error_expr, snapshot)
+            if isinstance(error_expr, Mapping) else False
+        )
+        related = sorted({
+            name
+            for key in (
+                "accepted_expression", "completed_expression",
+                "success_expression", "error_expression",
+                "cancellation_expression",
+            )
+            if isinstance(binding.get(key), Mapping)
+            for name in expression_signals(binding[key])
+        })
+        if success and error:
+            _fail(feature, "success and error completion asserted together", related, snapshot)
+        if (success or error) and not completed:
+            _fail(feature, "success/error asserted without completion", related, snapshot)
+        cancel_expr = binding.get("cancellation_expression")
+        cancelled = (
+            evaluate_protocol_expression(cancel_expr, snapshot)
+            if isinstance(cancel_expr, Mapping) else False
+        )
+        outstanding = int(local["outstanding"])
+        if cancelled and binding.get("cancellation_behavior") == "flush":
+            outstanding = 0
+        available = outstanding + int(accepted)
+        if completed and available <= 0:
+            _fail(feature, "completion occurred without an accepted outstanding request", related, snapshot)
+        outstanding = available - int(completed)
+        maximum = int(binding.get("maximum_outstanding", 1))
+        if outstanding > maximum:
+            _fail(
+                feature,
+                f"outstanding depth {outstanding} exceeds declared maximum {maximum}",
+                related,
+                snapshot,
+            )
+        local["outstanding"] = outstanding
+
+
+def check_event_correlations(
+    snapshot: Mapping[str, Any], plan: Mapping[str, Any], state: MutableMapping[str, Any]
+) -> None:
+    """Check Architect-declared cause/effect timing without protocol-specific code."""
+
+    cycle = int(state.get("_protocol_cycle", 0))
+    relation_state = state.setdefault("event_correlations", {})
+    for binding in plan.get("event_correlations", []):
+        feature = str(binding["feature_id"])
+        local = relation_state.setdefault(feature, {"pending": []})
+        pending = local.setdefault("pending", [])
+        cancellation = binding.get("cancellation", {})
+        cancellation_event = (
+            cancellation.get("event") if isinstance(cancellation, Mapping) else None
+        )
+        if isinstance(cancellation_event, Mapping) and evaluate_protocol_expression(
+            cancellation_event["expression"], snapshot
+        ):
+            if cancellation.get("pending_behavior") == "flush":
+                pending.clear()
+                continue
+
+        cause = evaluate_protocol_expression(
+            binding["cause"]["expression"], snapshot
+        )
+        effect = evaluate_protocol_expression(
+            binding["effect"]["expression"], snapshot
+        )
+        related = list(dict.fromkeys(
+            [
+                *map(str, binding["cause"].get("signals", ())),
+                *map(str, binding["effect"].get("signals", ())),
+                *(
+                    map(str, cancellation_event.get("signals", ()))
+                    if isinstance(cancellation_event, Mapping)
+                    else ()
+                ),
+            ]
+        ))
+        if cause:
+            pending.append(cycle)
+        maximum_outstanding = int(binding.get("maximum_outstanding", 1))
+        if len(pending) > maximum_outstanding:
+            _fail(
+                feature,
+                f"pending cause depth {len(pending)} exceeds declared maximum "
+                f"{maximum_outstanding}",
+                related,
+                snapshot,
+            )
+        if effect:
+            if pending:
+                cause_cycle = int(pending.pop(0))
+                latency = cycle - cause_cycle
+                minimum = int(binding.get("minimum_latency_cycles", 0))
+                maximum = binding.get("maximum_latency_cycles")
+                if latency < minimum or (
+                    maximum is not None and latency > int(maximum)
+                ):
+                    expected = (
+                        f"[{minimum}, unbounded]"
+                        if maximum is None
+                        else f"[{minimum}, {int(maximum)}]"
+                    )
+                    _fail(
+                        feature,
+                        f"effect latency {latency} cycles is outside {expected}",
+                        related,
+                        snapshot,
+                    )
+            elif binding.get("unmatched_effect") == "error":
+                _fail(
+                    feature,
+                    "effect occurred without a pending causal event",
+                    related,
+                    snapshot,
+                )
+
+        maximum = binding.get("maximum_latency_cycles")
+        if pending and maximum is not None:
+            oldest_latency = cycle - int(pending[0])
+            if oldest_latency > int(maximum):
+                _fail(
+                    feature,
+                    f"oldest causal event has waited {oldest_latency} cycles; "
+                    f"maximum is {int(maximum)}",
+                    related,
+                    snapshot,
+                )
 
 
 def _data_bytes(
@@ -603,6 +796,25 @@ def finalize_protocol_checker_state(
     stalls = state.get("stalls", {})
     if stalls:
         pending.append(f"stalled_presentations={sorted(stalls)}")
+    accounting = {
+        feature: int(item.get("outstanding", 0))
+        for feature, item in state.get("transaction_accounting", {}).items()
+        if int(item.get("outstanding", 0))
+    }
+    if accounting:
+        pending.append(f"contract_transactions={accounting!r}")
+    unresolved_relations = {
+        feature: list(item.get("pending", ()))
+        for feature, item in state.get("event_correlations", {}).items()
+        if item.get("pending")
+        and any(
+            relation.get("feature_id") == feature
+            and relation.get("require_effect_before_test_end")
+            for relation in plan.get("event_correlations", [])
+        )
+    }
+    if unresolved_relations:
+        pending.append(f"protocol_event_relations={unresolved_relations!r}")
     for group in plan.get("standard_groups", []):
         name = str(group["name"])
         profile = str(group["profile"])
@@ -656,6 +868,8 @@ __all__ = [
     "check_axi4_lite",
     "check_axi4_stream",
     "check_stall_stability",
+    "check_event_correlations",
+    "check_transaction_accounting",
     "check_standard_signal_widths",
     "check_valid_low_during_reset",
     "finalize_protocol_checker_state",

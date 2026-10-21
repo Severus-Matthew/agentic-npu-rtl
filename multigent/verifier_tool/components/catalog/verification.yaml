@@ -1,0 +1,161 @@
+schema_version: 1
+components:
+  - id: protocol.assertion.stall_stability
+    component_type: assertion_checker
+    abi: snapshot_checker_v1
+    entrypoint: multigent.verifier_tool.protocol.assertion.assertion_checkers:check_stall_stability
+    domains: [protocol]
+    execution_owner: pipeline
+    supported_profiles: ['*']
+    required_roles: [valid, ready]
+    description: Check that VALID and producer-owned content remain stable through backpressure.
+    capabilities: [stall_stability, backpressure]
+    tags: [stall_stability]
+    match_terms: [remain stable, hold content, wait state, backpressure, stalled transfer]
+    limitations: [Needs a cycle-by-cycle snapshot and resolved content bindings.]
+    auto_reuse: true
+
+  - id: protocol.assertion.standard_runtime
+    component_type: assertion_checker
+    abi: snapshot_checker_v1
+    entrypoint: multigent.verifier_tool.protocol.assertion.runtime:check_protocol_assertions
+    domains: [protocol]
+    execution_owner: pipeline
+    description: Execute the compiled standard-protocol assertion plan on one observed snapshot.
+    supported_profiles: [axi4, axi4_lite, axi4_stream, custom_mmio, ready_valid]
+    capabilities: [standard_rules, handshake, ordering, response_correlation]
+    tags: [protocol_assertion]
+    match_terms: [protocol rule, legal response, ordering, request response]
+    limitations: [Only checks rules represented by the compiled code-owned plan.]
+    auto_reuse: true
+
+  - id: protocol.assertion.transaction_accounting
+    component_type: assertion_checker
+    abi: snapshot_checker_v1
+    entrypoint: multigent.verifier_tool.protocol.assertion.assertion_checkers:check_transaction_accounting
+    domains: [protocol]
+    execution_owner: pipeline
+    description: Check accepted/completed counts, completion exclusivity, bounded outstanding work, and declared cancellation flushes from compiled protocol events.
+    supported_profiles: ['*']
+    capabilities: [transaction_accounting, outstanding, reset_abort]
+    tags: [transaction_accounting, ordering, cancellation]
+    match_terms: [accepted request, completed response, outstanding, in order, reset abort, cancellation flush]
+    limitations: [Aggregate counts do not prove payload identity; use a declared event relation for bounded causal timing and a residual extension when data or key identity must also be checked.]
+    auto_reuse: true
+    requires_protocol_semantics: true
+
+  - id: protocol.assertion.event_correlation
+    component_type: event_correlation_checker
+    abi: snapshot_checker_v1
+    entrypoint: multigent.verifier_tool.protocol.assertion.assertion_checkers:check_event_correlations
+    domains: [protocol]
+    execution_owner: pipeline
+    description: Correlate an Architect-declared causal event with its FIFO-ordered effect and enforce bounded cycle latency, outstanding depth, and cancellation disposal.
+    supported_profiles: ['*']
+    capabilities: [cross_protocol_causality, response_correlation, bounded_latency, cancellation]
+    tags: [correlation, ordering]
+    match_terms: [cause effect, registered response, cross protocol timing, bounded latency, fifo correlation]
+    limitations: [Checks observable event causality only; payload transformation and keyed identity still require separately declared support.]
+    auto_reuse: true
+    requires_protocol_event_relations: true
+
+  - id: protocol.assertion.transaction_completion_payload
+    component_type: transaction_completion_checker
+    abi: transaction_completion_payload_v1
+    entrypoint: multigent.verifier_tool.protocol.assertion.completion_payload:check_transaction_completion_payloads
+    domains: [protocol]
+    execution_owner: verifier_extension
+    description: Match accepted requests to successful completions by FIFO or optional transaction key and compare the payload sampled in each completion cycle against independent expected payloads.
+    supported_profiles: ['*']
+    capabilities: [completion_data, response_data, response_payload, transaction_completion]
+    tags: [transaction_accounting, data_integrity, correlation]
+    match_terms: [ack data, completion payload, response data, same cycle data, request completion]
+    limitations: [Expected payloads must come from an independent reference or memory model; out-of-order protocols must bind request_key_signal and completion_key_signal; error completions without semantic data should use transaction accounting instead.]
+    auto_reuse: true
+    requires_protocol_semantics: true
+
+  - id: protocol.coverage.temporal_monitor
+    component_type: coverage_sampler
+    abi: plan_coverage_monitor_v1
+    entrypoint: multigent.verifier_tool.protocol.coverage.runtime:ProtocolCoverageMonitor
+    domains: [protocol]
+    execution_owner: pipeline
+    required_roles: [valid, ready]
+    description: Classify observed protocol snapshots into handshake and standard-protocol bins.
+    supported_profiles: [axi4, axi4_lite, axi4_stream, custom_mmio, ready_valid, custom]
+    capabilities: [handshake, stall_schedule, arrival_order, protocol_bins]
+    tags: [coverage, temporal]
+    match_terms: [cycle trace, handshake state, arrival order, stall length, coverage bin]
+    limitations: [An extension-only bin still needs its own observed-evidence classifier.]
+    auto_reuse: true
+
+  - id: protocol.monitor.interface_runtime
+    component_type: runtime_monitor
+    abi: runtime_monitor_v1
+    entrypoint: multigent.verifier_tool.orchestration.runtime:InterfaceCoverageTracker
+    domains: [protocol, lifecycle, operation]
+    execution_owner: pipeline
+    description: Own protocol/lifecycle state and sample real interface snapshots during simulation.
+    supported_profiles: ['*']
+    capabilities: [assertion_runtime, coverage_runtime]
+    tags: [runtime_evidence]
+    match_terms: [observed trace, runtime evidence, transaction trace, cycle trace]
+    limitations: [The pipeline-generated cocotb monitor must sample real DUT signals.]
+    auto_reuse: true
+
+  - id: protocol.monitor.contract_event_trace
+    component_type: runtime_monitor
+    abi: contract_event_traces_v1
+    entrypoint: multigent.verifier_tool.protocol.evidence:capture_protocol_event_traces
+    domains: [protocol]
+    execution_owner: verifier_extension
+    description: Capture one or more simulator-derived cycle and transaction traces concurrently while one contract-local stimulus executes.
+    supported_profiles: ['*']
+    capabilities: [cycle_trace, transaction_trace, runtime_evidence]
+    tags: [runtime_evidence, temporal]
+    match_terms: [cycle trace, transaction trace, observed runtime evidence, concurrent monitor]
+    limitations: [The generated test must start the clock and supply any extra cross-protocol signal names needed by the residual rule.]
+    auto_reuse: true
+    requires_protocol_semantics: true
+
+  - id: lifecycle.assertion.runtime
+    component_type: assertion_checker
+    abi: snapshot_checker_v1
+    entrypoint: multigent.verifier_tool.lifecycle.assertion.runtime:check_lifecycle_assertions
+    domains: [lifecycle]
+    execution_owner: pipeline
+    description: Check code-owned lifecycle policies using observed protocol and status events.
+    supported_profiles: ['*']
+    capabilities: [job_acceptance, busy_tracking, completion, reset_abort, error_response]
+    tags: [lifecycle_assertion]
+    match_terms: [job starts, busy, completion, reset abort, error pulse]
+    limitations: [Extension-owned lifecycle policy fields remain outside this checker.]
+    auto_reuse: true
+
+  - id: lifecycle.coverage.runtime
+    component_type: coverage_sampler
+    abi: plan_coverage_monitor_v1
+    entrypoint: multigent.verifier_tool.lifecycle.coverage.runtime:LifecycleCoverageMonitor
+    domains: [lifecycle]
+    execution_owner: pipeline
+    description: Classify observed lifecycle events and phases into required bins.
+    supported_profiles: ['*']
+    capabilities: [job_acceptance, completion, reset_phase, error_recovery]
+    tags: [lifecycle_coverage]
+    match_terms: [reset phase, completion timing, error recovered, legal command]
+    limitations: [Needs real observed lifecycle events from the runtime tracker.]
+    auto_reuse: true
+
+  - id: operation.coverage.sampling_monitor
+    component_type: coverage_sampler
+    abi: operation_sampling_monitor_v1
+    entrypoint: multigent.verifier_tool.operation.coverage.sampling:OperationSamplingMonitor
+    domains: [operation]
+    execution_owner: pipeline
+    description: Sample canonical accepted operation values and golden trace concepts.
+    supported_profiles: ['*']
+    capabilities: [golden_trace, operation_bins, accepted_values]
+    tags: [operation_coverage]
+    match_terms: [golden trace, operation coverage, accepted input, bin hit]
+    limitations: [Only concepts compiled into the resolved operation feature plan are code-owned.]
+    auto_reuse: true

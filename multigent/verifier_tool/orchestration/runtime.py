@@ -35,6 +35,9 @@ from multigent.verifier_tool.pool.operation_metadata import (
     assemble_canonical_job,
     classify_checked_operations,
 )
+from multigent.verifier_tool.pool.role_pool.protocol_semantics import (
+    evaluate_protocol_expression,
+)
 from multigent.verifier_tool.operation.stimulus import evaluate_canonical_operation
 _TRACKER_IDS = itertools.count()
 
@@ -216,6 +219,8 @@ class InterfaceCoverageTracker:
             )
             for item in self.plan.get("obligations", [])
             if item.get("template") == "stall_stability"
+            and item.get("bindings", {}).get("valid")
+            and item.get("bindings", {}).get("ready")
         }
         missing_stall_pairs = sorted(
             {
@@ -341,7 +346,9 @@ class InterfaceCoverageTracker:
         self.coverage_model.sample_bin(obligation_id, bin_name)
 
     def _sample_protocol_failure_diagnostics(
-        self, snapshot: ContractSnapshot
+        self,
+        snapshot: ContractSnapshot,
+        obligation_ids: set[str] | frozenset[str] | None = None,
     ) -> None:
         """Record diagnostic-only protocol bins for an assertion-failing edge.
 
@@ -355,7 +362,7 @@ class InterfaceCoverageTracker:
         saved_state = deepcopy(self.protocol_coverage_monitor.state)
         saved_cycle = self.protocol_coverage_monitor.cycle
         try:
-            hits = self.protocol_coverage_monitor.sample(snapshot)
+            hits = self.protocol_coverage_monitor.sample(snapshot, obligation_ids)
         except ValueError:
             return
         finally:
@@ -407,8 +414,22 @@ class InterfaceCoverageTracker:
         self,
         snapshot: ContractSnapshot,
         protocol_assertions: Callable[[Mapping[str, int]], Mapping[str, int]] | None,
+        *,
+        protocol_obligation_ids: Sequence[str] | None = None,
+        sample_shared_domains: bool = True,
     ) -> None:
-        """Sample every obligation from one immutable TB-captured observation."""
+        """Sample one clock domain from an immutable TB-captured observation.
+
+        ``protocol_obligation_ids`` partitions protocol state for multi-clock
+        interfaces. ``sample_shared_domains`` is true only for the primary clock,
+        which owns lifecycle and operation sampling.
+        """
+
+        selected_protocol_ids = (
+            None
+            if protocol_obligation_ids is None
+            else frozenset(map(str, protocol_obligation_ids))
+        )
 
         self.samples += 1
         self._last_snapshot = snapshot
@@ -417,7 +438,11 @@ class InterfaceCoverageTracker:
         )
         if protocol_assertions is None and any(
             item.get("template") == "stall_stability"
-            for item in self.obligations.values()
+            and (
+                selected_protocol_ids is None
+                or identity in selected_protocol_ids
+            )
+            for identity, item in self.obligations.items()
         ):
             raise CoverageRuntimeError(
                 "TB did not provide its contract-generated protocol assertion function"
@@ -428,7 +453,9 @@ class InterfaceCoverageTracker:
                 completed_stalls = protocol_assertions(snapshot) or {}
             except AssertionError as exc:
                 if not self._reset_is_active(snapshot):
-                    self._sample_protocol_failure_diagnostics(snapshot)
+                    self._sample_protocol_failure_diagnostics(
+                        snapshot, selected_protocol_ids
+                    )
                 self._assertion_failure(
                     "tb.contract_generated_protocol", str(exc), snapshot=snapshot
                 )
@@ -437,27 +464,29 @@ class InterfaceCoverageTracker:
                     "TB protocol assertion callback must return completed stall lengths"
                 )
         reset_active = self._reset_is_active(snapshot)
-        if reset_active and not self._reset_active_previous:
+        if sample_shared_domains and reset_active and not self._reset_active_previous:
             self.reset_epoch += 1
-        self._reset_active_previous = reset_active
-        try:
-            for obligation_id, bin_name in self.lifecycle_coverage_monitor.sample(
-                snapshot, reset_active=reset_active
-            ):
-                self._hit(obligation_id, bin_name)
-        except ValueError as exc:
-            self._assertion_failure(
-                "runtime.lifecycle_coverage_sampling", str(exc), snapshot=snapshot
-            )
+        if sample_shared_domains:
+            self._reset_active_previous = reset_active
+            try:
+                for obligation_id, bin_name in self.lifecycle_coverage_monitor.sample(
+                    snapshot, reset_active=reset_active
+                ):
+                    self._hit(obligation_id, bin_name)
+            except ValueError as exc:
+                self._assertion_failure(
+                    "runtime.lifecycle_coverage_sampling", str(exc), snapshot=snapshot
+                )
         if reset_active:
             # Ready/valid assertions are conventionally disabled during reset.
             # The frozen reset contract may abort an in-flight transaction, so a
             # source is allowed to withdraw valid and payload without completing
             # the pre-reset handshake.
-            self.operation_monitor.reset()
-            self.protocol_adapter.reset()
+            if sample_shared_domains:
+                self.operation_monitor.reset()
+                self.protocol_adapter.reset()
             self.protocol_coverage_monitor.reset()
-        else:
+        elif sample_shared_domains:
             self.protocol_adapter.observe(
                 snapshot,
                 event_sequence=self.samples,
@@ -471,15 +500,33 @@ class InterfaceCoverageTracker:
             for obligation_id, length in completed_stalls.items()
             if obligation_id in self.obligations
             and self.obligations[obligation_id].get("template") == "stall_stability"
+            and self.obligations[obligation_id].get("bindings", {}).get("valid")
+            and self.obligations[obligation_id].get("bindings", {}).get("ready")
         }
         for obligation_id, obligation in self.obligations.items():
+            if selected_protocol_ids is not None:
+                if obligation_id.startswith("protocol_transaction."):
+                    if obligation_id not in selected_protocol_ids:
+                        continue
+                elif not sample_shared_domains:
+                    continue
             template = str(obligation["template"])
             bindings = obligation.get("bindings", {})
             if reset_active and template in {"handshake_states", "stall_stability"}:
                 continue
             if template == "handshake_states":
-                valid = int(bool(self._signal(snapshot, str(bindings["valid"]))))
-                ready = int(bool(self._signal(snapshot, str(bindings["ready"]))))
+                valid_expression = bindings.get("valid_expression")
+                ready_expression = bindings.get("ready_expression")
+                valid = int(
+                    evaluate_protocol_expression(valid_expression, snapshot)
+                    if isinstance(valid_expression, Mapping)
+                    else bool(self._signal(snapshot, str(bindings["valid"])))
+                )
+                ready = int(
+                    evaluate_protocol_expression(ready_expression, snapshot)
+                    if isinstance(ready_expression, Mapping)
+                    else bool(self._signal(snapshot, str(bindings["ready"])))
+                )
                 self.coverage_model.sample_handshake(obligation_id, valid, ready)
             elif template == "stall_stability":
                 if obligation_id in completed_stalls:
@@ -500,21 +547,24 @@ class InterfaceCoverageTracker:
                 self._sample_address(snapshot, obligation_id, bindings)
         if not reset_active:
             try:
-                for obligation_id, bin_name in self.protocol_coverage_monitor.sample(snapshot):
+                for obligation_id, bin_name in self.protocol_coverage_monitor.sample(
+                    snapshot, selected_protocol_ids
+                ):
                     self._hit(obligation_id, bin_name)
             except ValueError as exc:
                 self._assertion_failure(
                     "runtime.protocol_coverage_sampling", str(exc), snapshot=snapshot
                 )
-        try:
-            self.operation_monitor.sample(
-                snapshot,
-                self.coverage_model.sample_operation,
-                reset_active=reset_active,
-                completed_stalls=completed_by_channel,
-            )
-        except OperationSamplingError as exc:
-            self._assertion_failure("runtime.operation_sampling", str(exc), snapshot=snapshot)
+        if sample_shared_domains:
+            try:
+                self.operation_monitor.sample(
+                    snapshot,
+                    self.coverage_model.sample_operation,
+                    reset_active=reset_active,
+                    completed_stalls=completed_by_channel,
+                )
+            except OperationSamplingError as exc:
+                self._assertion_failure("runtime.operation_sampling", str(exc), snapshot=snapshot)
 
     def observe_reset_snapshot(
         self,
@@ -663,6 +713,39 @@ class InterfaceCoverageTracker:
             )
             self._bin_hits_at_last_stimulus = self._bin_hit_counts()
             self.write_stimulus_ledger()
+
+    def sample_extension_coverage(
+        self, request_id: str, hits: Sequence[str] | set[str]
+    ) -> tuple[str, ...]:
+        """Credit extension bins classified from simulator-derived evidence.
+
+        The extension classifier decides which named bins the observed evidence
+        satisfies.  This trusted boundary only accepts names declared by the
+        validated extension plan and samples them into the shared denominator.
+        """
+
+        if isinstance(hits, (str, bytes)) or not isinstance(hits, (list, tuple, set)):
+            raise CoverageRuntimeError(
+                "extension coverage hits must be a list, tuple, or set of bin names"
+            )
+        obligation_id = f"extension.{str(request_id).strip()}"
+        obligation = self.obligations.get(obligation_id)
+        if not obligation or obligation.get("template") != "extension_coverpoint":
+            raise CoverageRuntimeError(
+                f"No required extension coverage obligation for {request_id!r}"
+            )
+        names = tuple(dict.fromkeys(map(str, hits)))
+        declared = {
+            str(item.get("name", "")) for item in obligation.get("bins", [])
+        }
+        unknown = sorted(set(names) - declared)
+        if unknown:
+            raise CoverageRuntimeError(
+                f"Extension {request_id!r} reported undeclared coverage bin(s) {unknown}"
+            )
+        for name in names:
+            self.coverage_model.sample_bin(obligation_id, name)
+        return names
 
     def record_stimulus(
         self,
@@ -1293,6 +1376,9 @@ def get_coverage_tracker() -> InterfaceCoverageTracker:
 def sample_contract_snapshot(
     snapshot: ContractSnapshot,
     protocol_assertions: Callable[[Mapping[str, int]], Mapping[str, int]],
+    *,
+    protocol_obligation_ids: Sequence[str] | None = None,
+    sample_shared_domains: bool = True,
 ) -> None:
     """Apply visible TB assertions and functional coverage to one observation."""
 
@@ -1300,7 +1386,12 @@ def sample_contract_snapshot(
         raise CoverageRuntimeError("sample_contract_snapshot requires ContractSnapshot")
     if not callable(protocol_assertions):
         raise CoverageRuntimeError("TB protocol assertion callback is missing")
-    get_coverage_tracker().sample_snapshot(snapshot, protocol_assertions)
+    get_coverage_tracker().sample_snapshot(
+        snapshot,
+        protocol_assertions,
+        protocol_obligation_ids=protocol_obligation_ids,
+        sample_shared_domains=sample_shared_domains,
+    )
 
 
 def observe_contract_reset_snapshot(
@@ -1333,6 +1424,14 @@ def sample_operation(
     get_coverage_tracker().sample_operation(
         str(operation_name), fields, str(stimulus_kind), stimulus_id
     )
+
+
+def sample_extension_coverage(
+    request_id: str, hits: Sequence[str] | set[str]
+) -> tuple[str, ...]:
+    """Record observed extension-bin names in the shared coverage model."""
+
+    return get_coverage_tracker().sample_extension_coverage(str(request_id), hits)
 
 
 def record_stimulus(

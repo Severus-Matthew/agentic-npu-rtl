@@ -1,0 +1,9 @@
+clock: null
+reset: null
+channels: []
+signals: []
+global_handshake_rules: No rule is inferred before source-port audit.
+source_boundary:
+  top: axi_cdc
+  target: src/axi_cdc.sv
+  binding_status: requires_manual_port_audit

@@ -1,0 +1,145 @@
+schema_version: 1
+components:
+  - id: protocol.driver.contract_event_source
+    component_type: protocol_source_driver
+    abi: contract_event_source_v1
+    entrypoint: multigent.verifier_tool.protocol.stimulus.cocotb:drive_protocol_event_transactions
+    domains: [protocol]
+    description: Drive a DUT-input transaction whose presentation and acceptance are compiled boolean events.
+    execution_owner: verifier_extension
+    supported_profiles: ['*']
+    supported_directions: [input]
+    capabilities: [handshake, backpressure, stall_schedule, accepted_requests]
+    tags: [handshake, backpressure, stall_stability]
+    match_terms: [composed event, custom protocol, transaction trace, request acceptance, backpressure]
+    limitations: [Requires source_drive bindings and a rising-edge compiled accepted event.]
+    auto_reuse: true
+    requires_protocol_semantics: true
+
+  - id: protocol.driver.role_bound_source
+    component_type: protocol_source_driver
+    abi: role_bound_channel_source_v1
+    entrypoint: multigent.verifier_tool.protocol.stimulus.cocotb:drive_protocol_transfers
+    domains: [protocol, lifecycle]
+    description: Drive a DUT-input channel from exact valid, ready, and field bindings.
+    supported_profiles: ['*']
+    required_roles: [valid, ready]
+    supported_directions: [input]
+    capabilities: [handshake, request_grant, backpressure, stall_schedule, multi_beat]
+    tags: [handshake, backpressure, stall_stability]
+    match_terms: [request grant, request acceptance, ready valid, backpressure, wait cycles, hold valid]
+    limitations: [The contract must bind every driven field; split responses need a separate monitor or extension.]
+    auto_reuse: true
+
+  - id: protocol.driver.role_bound_sink
+    component_type: protocol_sink_driver
+    abi: role_bound_channel_sink_v1
+    entrypoint: multigent.verifier_tool.protocol.stimulus.cocotb:collect_protocol_transfers
+    domains: [protocol, lifecycle]
+    description: Apply READY schedules and collect only DUT-output transfers accepted on active edges.
+    supported_profiles: ['*']
+    required_roles: [valid, ready]
+    supported_directions: [output]
+    capabilities: [handshake, response_collection, backpressure, stall_schedule, multi_beat]
+    tags: [handshake, backpressure, stall_stability]
+    match_terms: [response valid, collect response, output transfer, delayed response, ready pattern]
+    limitations: [Completion must be bounded by an expected count or a bound last field.]
+    auto_reuse: true
+
+  - id: protocol.driver.axi4_memory
+    component_type: protocol_memory_driver
+    abi: axi4_memory_job_v1
+    entrypoint: multigent.verifier_tool.protocol.stimulus.drivers.axi4_outstanding:execute_axi4_memory_job
+    domains: [protocol, operation]
+    description: Serve full AXI4 memory traffic with bursts, IDs, and multiple outstanding transactions.
+    supported_profiles: [axi4]
+    required_architecture_sections: [operations]
+    capabilities: [memory_read, memory_write, bursts, outstanding, response_correlation, error_injection]
+    tags: [burst_length, burst_type, outstanding_ids, ordering, response_partition]
+    match_terms: [axi4, burst, outstanding, transaction id, read response, write response]
+    limitations: [Requires a complete standard AXI4 protocol-group binding.]
+    auto_reuse: true
+
+  - id: protocol.driver.axi4_protocol_responder
+    component_type: protocol_memory_driver
+    abi: axi4_protocol_responder_v1
+    entrypoint: multigent.verifier_tool.protocol.stimulus.drivers.axi4_outstanding:serve_axi4_protocol_transactions
+    domains: [protocol]
+    description: Serve bounded full-AXI4 manager requests without requiring accelerator operation metadata.
+    execution_owner: verifier_extension
+    supported_profiles: [axi4]
+    capabilities: [memory_read, memory_write, bursts, outstanding, response_correlation, error_injection, transaction_trace]
+    tags: [burst_length, outstanding_ids, ordering, response_partition]
+    match_terms: [axi4 bridge, protocol translation, read response, write response, transaction trace]
+    limitations: [Requires a complete standard AXI4 manager protocol-group binding and explicit bounded request counts.]
+    auto_reuse: true
+
+  - id: protocol.driver.axi4_lite_memory
+    component_type: protocol_memory_driver
+    abi: axi4_lite_memory_job_v1
+    entrypoint: multigent.verifier_tool.protocol.stimulus.drivers.axi_lite:execute_axi_lite_memory_job
+    domains: [protocol, operation]
+    description: Serve AXI4-Lite memory transactions using the shared operation memory adapter.
+    supported_profiles: [axi4_lite]
+    required_architecture_sections: [operations]
+    capabilities: [memory_read, memory_write, single_outstanding, response_correlation, error_injection]
+    tags: [alignment, byte_enable, response_partition, ordering]
+    match_terms: [axi4 lite, register access, single beat, read response, write response]
+    limitations: [Does not implement AXI4 bursts or multiple outstanding IDs.]
+    auto_reuse: true
+
+  - id: protocol.driver.custom_mmio_read
+    component_type: protocol_memory_driver
+    abi: custom_mmio_read_job_v1
+    entrypoint: multigent.verifier_tool.protocol.stimulus.drivers.custom_mmio:execute_custom_mmio_read_job
+    domains: [protocol, operation]
+    description: Serve a role-bound custom-MMIO request/data read protocol.
+    supported_profiles: [custom_mmio]
+    required_architecture_sections: [operations]
+    capabilities: [memory_read, outstanding, response_correlation, multi_beat]
+    tags: [handshake, outstanding_ids, ordering]
+    match_terms: [custom mmio, address request, read data, response id, last beat]
+    limitations: [Requires the standard custom_mmio request/data field vocabulary.]
+    auto_reuse: true
+
+  - id: protocol.driver.custom_mmio_write
+    component_type: protocol_memory_driver
+    abi: custom_mmio_write_job_v1
+    entrypoint: multigent.verifier_tool.protocol.stimulus.drivers.custom_mmio:execute_custom_mmio_write_job
+    domains: [protocol, operation]
+    description: Capture a role-bound custom-MMIO write stream and optional response.
+    supported_profiles: [custom_mmio]
+    required_architecture_sections: [operations]
+    capabilities: [memory_write, outstanding, response_correlation, byte_enable, multi_beat]
+    tags: [handshake, byte_enable, outstanding_ids, ordering]
+    match_terms: [custom mmio, write data, byte strobe, write response, last beat]
+    limitations: [Requires the standard custom_mmio request/data field vocabulary.]
+    auto_reuse: true
+
+  - id: lifecycle.driver.accepted_command
+    component_type: lifecycle_driver
+    abi: accepted_command_v1
+    entrypoint: multigent.verifier_tool.lifecycle.stimulus.cocotb:drive_accepted_command
+    domains: [lifecycle]
+    description: Drive one role-bound command and return only after actual acceptance.
+    supported_profiles: ['*']
+    required_roles: [valid, ready]
+    supported_directions: [input]
+    capabilities: [job_acceptance, command_legality, configuration_snapshot]
+    tags: [command, handshake]
+    match_terms: [start job, command accepted, opcode, configuration snapshot]
+    limitations: [The command channel and legal values must be frozen in lifecycle metadata.]
+    auto_reuse: true
+
+  - id: lifecycle.driver.axi4_lite_control_sequence
+    component_type: lifecycle_driver
+    abi: control_plane_sequence_v1
+    entrypoint: multigent.verifier_tool.lifecycle.stimulus.cocotb:drive_control_plane_sequence
+    domains: [lifecycle]
+    description: Execute Architect-declared AXI4-Lite register writes, reads, and completion polling.
+    supported_profiles: [axi4_lite]
+    capabilities: [job_start, register_control, completion_poll, response_stall]
+    tags: [control_plane, completion]
+    match_terms: [control register, start bit, done bit, completion poll, address pointer]
+    limitations: [Requires a machine-readable control_plane_sequence declaration.]
+    auto_reuse: true

@@ -1,0 +1,17 @@
+schema_version: 1
+case_id: O02
+status: blocked
+freeze_blockers:
+- manual_source_port_binding_audit
+- deterministic_contract_reviewer_pass
+- upstream_build_dependency_audit
+source:
+  project: Koios accelerator benchmarks in the SLDB-pinned VTR fork
+  revision: 0812786f103b63b6db679eab163c3d4ab8b5cf1a
+  target: vtr_flow/benchmarks/verilog/koios/bnn.v
+unknown_features:
+- binary_dense_arithmetic
+- binary_weight_encoding
+- multi_layer_bnn_graph
+preflight_status: BLOCKED
+preflight_finding_count: 3

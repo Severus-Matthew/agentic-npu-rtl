@@ -1,0 +1,12 @@
+{
+  "top": null,
+  "modules": [
+    {
+      "name": null,
+      "responsibility": "opentitan_dma_abort_and_chunking",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

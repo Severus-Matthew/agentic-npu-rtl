@@ -751,7 +751,11 @@ def operation_plan_for_tests(
     return plan
 
 
-def merge_coverage_plans(interface_plan: Mapping[str, Any], operation_plan: Mapping[str, Any]) -> dict[str, Any]:
+def merge_coverage_plans(
+    interface_plan: Mapping[str, Any],
+    operation_plan: Mapping[str, Any],
+    extension_plan: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     from multigent.verifier_tool.manifest import compile_verification_manifest
     from multigent.verifier_tool.lifecycle.coverage import build_lifecycle_coverage_plan
 
@@ -760,21 +764,33 @@ def merge_coverage_plans(interface_plan: Mapping[str, Any], operation_plan: Mapp
         operation_plan.get("operation_metadata", {}),
     )
 
+    has_extension_coverage = bool((extension_plan or {}).get("obligations"))
     obligations = [
         *[dict(item) for item in interface_plan.get("obligations", [])],
         *[dict(item) for item in operation_plan.get("obligations", [])],
         *[dict(item) for item in lifecycle_plan.get("obligations", [])],
+        *[
+            dict(item)
+            for item in (extension_plan or {}).get("obligations", [])
+        ],
     ]
     ids = [str(item["id"]) for item in obligations]
     if len(ids) != len(set(ids)):
         raise ValueError("Combined coverage plan contains duplicate obligation IDs")
     obligations.sort(key=lambda item: str(item["id"]))
     manifest = compile_verification_manifest(
-        interface_plan, operation_plan, lifecycle_plan
+        interface_plan, operation_plan, lifecycle_plan, extension_plan
     )
     return {
         "schema_version": 3,
-        "source": "interface taxonomy + verifier operation coverage",
+        "source": (
+            "interface taxonomy + verifier operation coverage"
+            + (
+                " + contract-local extension coverage"
+                if has_extension_coverage
+                else ""
+            )
+        ),
         "interface_contract": dict(interface_plan.get("interface_contract", {})),
         "standard_protocol_plan": dict(
             interface_plan.get("standard_protocol_plan", {})
@@ -783,6 +799,7 @@ def merge_coverage_plans(interface_plan: Mapping[str, Any], operation_plan: Mapp
             operation_plan.get("operation_metadata", {})
         ),
         "lifecycle_plan": lifecycle_plan,
+        "extension_coverage_plan": dict(extension_plan or {}),
         "verification_manifest": manifest,
         "verification_manifest_hash": manifest["manifest_hash"],
         "monitor": dict(interface_plan.get("monitor", {})),

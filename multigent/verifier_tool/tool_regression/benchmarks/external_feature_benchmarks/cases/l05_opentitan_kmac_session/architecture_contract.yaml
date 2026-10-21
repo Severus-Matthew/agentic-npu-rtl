@@ -1,0 +1,152 @@
+design:
+  name: opentitan_kmac_session
+  description: External benchmark L05 over OpenTitan at exact revision dd8b1ab44e4da9929976ddbd47586518d1b850ec,
+    target hw/ip/kmac/rtl.
+operations:
+- name: opentitan_kmac_session
+  kind: opentitan_kmac_session
+  coverage_family: opentitan_kmac_session
+  coverage_family_source: novel
+  features:
+  - message_process_run_done_close_session
+  feature_extensions:
+  - xof_repeated_run
+  - termination_after_partial_or_empty_last
+  semantics: Source-backed lifecycle scope for opentitan_kmac_session; exact behavior
+    is owned by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  lifecycle_policy:
+    job_acceptance: valid_ready_handshake
+    job_overlap: single_inflight
+    busy_behavior: tracks_active_job
+    completion_style: pulse
+    completion_timing: next_cycle_after_retirement
+    illegal_command_behavior: error_without_start
+    error_style: pulse
+    error_timing: next_cycle_after_error_event
+    reset_behavior: abort_inflight
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Keccak output is not the target; session and response lifecycle are targeted.
+open_assumptions: []
+verification_extensions:
+- id: lifecycle.l05_message_process_run_done_close_session
+  domain: lifecycle
+  feature_name: message_process_run_done_close_session
+  target:
+    scope: operation
+    name: opentitan_kmac_session
+  semantics:
+    summary: Verify message process run done close session exactly as implemented
+      by the pinned upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible message process run done close session
+      behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: message_process_run_done_close_session is intentionally absent from the
+    current verifier_tool pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - ready_valid
+  - response_backpressure
+  - error_status
+- id: lifecycle.l05_xof_repeated_run
+  domain: lifecycle
+  feature_name: xof_repeated_run
+  target:
+    scope: operation
+    name: opentitan_kmac_session
+  semantics:
+    summary: Verify xof repeated run exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible xof repeated run behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: xof_repeated_run is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - ready_valid
+  - response_backpressure
+  - error_status
+- id: lifecycle.l05_termination_after_partial_or_empty_last
+  domain: lifecycle
+  feature_name: termination_after_partial_or_empty_last
+  target:
+    scope: operation
+    name: opentitan_kmac_session
+  semantics:
+    summary: Verify termination after partial or empty last exactly as implemented
+      by the pinned upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible termination after partial or empty
+      last behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: termination_after_partial_or_empty_last is intentionally absent from the
+    current verifier_tool pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - ready_valid
+  - response_backpressure
+  - error_status

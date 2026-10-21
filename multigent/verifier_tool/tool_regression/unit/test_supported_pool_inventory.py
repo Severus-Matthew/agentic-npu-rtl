@@ -151,3 +151,35 @@ def test_axi4_declared_single_beat_capabilities_limit_only_applicable_bins() -> 
 
     with pytest.raises(ValueError, match="must select known"):
         build_interface_coverage_plan(broken)
+
+
+def test_axi4_sideband_bins_can_be_restricted_per_channel() -> None:
+    interface = _axi4_with_ids()
+    interface["channels"][0]["protocol_capabilities"] = {
+        "sideband_bins_by_channel": {
+            "write_address": {"id": ["zero"]},
+            "write_response": {"id": ["zero"]},
+            "read_address": {"id": ["nonzero"]},
+            "read_data": {"id": ["nonzero"]},
+        }
+    }
+    obligations = {
+        item["bindings"]["protocol_channel"]: item
+        for item in build_interface_coverage_plan(interface)["obligations"]
+        if item["template"] == "axi4_sideband_partition"
+        and item["bindings"]["protocol_field"] == "id"
+    }
+    assert set(obligations) == {
+        "write_address", "write_response", "read_address", "read_data"
+    }
+    for channel_kind, expected in {
+        "write_address": "zero",
+        "write_response": "zero",
+        "read_address": "nonzero",
+        "read_data": "nonzero",
+    }.items():
+        assert {
+            bin_spec["name"]
+            for bin_spec in obligations[channel_kind]["bins"]
+            if bin_spec["required"]
+        } == {expected}

@@ -1,0 +1,109 @@
+design:
+  name: koios_gemm_layer
+  description: External benchmark O05 over Koios accelerator benchmarks in the SLDB-pinned
+    VTR fork at exact revision 0812786f103b63b6db679eab163c3d4ab8b5cf1a, target vtr_flow/benchmarks/verilog/koios/gemm_layer.v.
+operations:
+- name: koios_gemm_layer
+  kind: koios_gemm_layer
+  coverage_family: koios_gemm_layer
+  coverage_family_source: novel
+  features:
+  - bram_banked_gemm_mapping
+  feature_extensions:
+  - fixed_shape_20x20_schedule
+  semantics: Source-backed operation scope for koios_gemm_layer; exact behavior is
+    owned by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  arithmetic:
+    classifier_profile: llm_extension
+    reason: The selected upstream arithmetic is not a current code-owned profile.
+    extension_request: operation.o05_bram_banked_gemm_mapping
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- GEMM arithmetic is tool-owned; banked memory mapping and fixed schedule are extended.
+open_assumptions: []
+verification_extensions:
+- id: operation.o05_bram_banked_gemm_mapping
+  domain: operation
+  feature_name: bram_banked_gemm_mapping
+  target:
+    scope: operation
+    name: koios_gemm_layer
+  semantics:
+    summary: Verify bram banked gemm mapping exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible bram banked gemm mapping behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: bram_banked_gemm_mapping is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - matrix_multiply
+  - accumulation
+  - golden_equivalence_shell
+- id: operation.o05_fixed_shape_20x20_schedule
+  domain: operation
+  feature_name: fixed_shape_20x20_schedule
+  target:
+    scope: operation
+    name: koios_gemm_layer
+  semantics:
+    summary: Verify fixed shape 20x20 schedule exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible fixed shape 20x20 schedule behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: fixed_shape_20x20_schedule is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - matrix_multiply
+  - accumulation
+  - golden_equivalence_shell

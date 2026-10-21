@@ -1,0 +1,39 @@
+schema_version: 1
+case_id: u05_mixed_a
+unknown_feature_count: 5
+domains:
+- lifecycle
+- operation
+- protocol
+features:
+- id: operation.relu6
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: relu6
+  intent: Piecewise activation with lower and upper saturation.
+- id: operation.floor_scale
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: floor_scale
+  intent: Integer scale-down with explicit floor semantics.
+- id: protocol.bounded_ready_recovery
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.bounded_ready_recovery
+  intent: DUT-owned operand-A READY must recover within seven cycles after A VALID
+    is presented and a legal command opens the input channel.
+- id: protocol.payload_parity_observation
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.payload_parity_observation
+  intent: Classify accepted output payloads by even and odd parity.
+- id: lifecycle.reset_recovery_window
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.reset_recovery_window
+  intent: A clean legal job can start within five cycles after reset release.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

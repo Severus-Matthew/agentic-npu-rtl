@@ -21,8 +21,12 @@ from ...pool.operation_metadata.canonical import (
     _dtype,
     _integer_bounds,
     assemble_canonical_job,
+    binary_attention_mask_events,
     canonical_bins_for_concept,
     classify_operation_job,
+    fixed_point_attention_scale_events,
+    integer_qk_score_events,
+    integer_sparse_attention_events,
     integer_matrix_multiply_events,
     supported_code_owned_concepts,
 )
@@ -94,8 +98,63 @@ class _GemmModel:
     k: int
 
 
+@dataclass(frozen=True)
+class _SparseAttentionModel:
+    operation: Mapping[str, Any]
+    operation_name: str
+    dimensions: Mapping[str, int]
+    query: Mapping[str, Any]
+    key: Mapping[str, Any]
+    value: Mapping[str, Any]
+    mask: Mapping[str, Any]
+    result: Mapping[str, Any]
+    score_accumulator_dtype: Mapping[str, Any]
+    output_accumulator_dtype: Mapping[str, Any]
+    query_count: int
+    key_count: int
+    feature_count: int
+    value_count: int
+
+
+@dataclass(frozen=True)
+class _QKScoreModel:
+    operation: Mapping[str, Any]
+    operation_name: str
+    dimensions: Mapping[str, int]
+    query: Mapping[str, Any]
+    key: Mapping[str, Any]
+    result: Mapping[str, Any]
+    score_accumulator_dtype: Mapping[str, Any]
+    query_count: int
+    key_count: int
+    feature_count: int
+
+
+@dataclass(frozen=True)
+class _AttentionScaleModel:
+    operation: Mapping[str, Any]
+    operation_name: str
+    dimensions: Mapping[str, int]
+    score: Mapping[str, Any]
+    result: Mapping[str, Any]
+    query_count: int
+    key_count: int
+
+
+@dataclass(frozen=True)
+class _AttentionMaskModel:
+    operation: Mapping[str, Any]
+    operation_name: str
+    dimensions: Mapping[str, int]
+    score: Mapping[str, Any]
+    mask: Mapping[str, Any]
+    result: Mapping[str, Any]
+    query_count: int
+    key_count: int
+
+
 def _generation_error(
-    model_or_operation: _GemmModel | Mapping[str, Any],
+    model_or_operation: _GemmModel | _SparseAttentionModel | _QKScoreModel | _AttentionScaleModel | _AttentionMaskModel | Mapping[str, Any],
     code: str,
     reason: str,
     *,
@@ -104,7 +163,7 @@ def _generation_error(
 ) -> CanonicalStimulusGenerationError:
     operation = (
         model_or_operation.operation
-        if isinstance(model_or_operation, _GemmModel)
+        if isinstance(model_or_operation, (_GemmModel, _SparseAttentionModel, _QKScoreModel, _AttentionScaleModel, _AttentionMaskModel))
         else model_or_operation
     )
     return CanonicalStimulusGenerationError(
@@ -333,7 +392,330 @@ def _gemm_model(operation: Mapping[str, Any]) -> _GemmModel:
     )
 
 
-def _base_stimulus(model: _GemmModel) -> dict[str, list[int]]:
+def _sparse_attention_model(
+    operation: Mapping[str, Any],
+) -> _SparseAttentionModel:
+    profile = operation.get("arithmetic", {}).get("classifier_profile")
+    if profile != "integer_sparse_attention":
+        raise _generation_error(
+            operation,
+            "llm_extension_required",
+            f"classifier profile {profile!r} has no sparse-attention generator",
+        )
+    try:
+        query = _binding_by_role(operation, "query_matrix")
+        key = _binding_by_role(operation, "key_matrix")
+        value = _binding_by_role(operation, "value_matrix")
+        mask = _binding_by_role(operation, "attention_mask")
+        result = _binding_by_role(operation, "attention_result")
+        dimensions = {
+            str(name): int(extent)
+            for name, extent in operation.get("dimensions", {}).items()
+            if isinstance(extent, int) and not isinstance(extent, bool)
+        }
+        query_shape = _shape(query, dimensions)
+        key_shape = _shape(key, dimensions)
+        value_shape = _shape(value, dimensions)
+        mask_shape = _shape(mask, dimensions)
+        result_shape = _shape(result, dimensions)
+        arithmetic = operation.get("arithmetic", {})
+        score_accumulator = _dtype(
+            operation, str(arithmetic["score_accumulator_data_type"])
+        )
+        output_accumulator = _dtype(
+            operation, str(arithmetic["output_accumulator_data_type"])
+        )
+    except (CanonicalOperationError, KeyError, TypeError, ValueError) as exc:
+        raise _generation_error(
+            operation,
+            "metadata_missing",
+            f"incomplete sparse-attention metadata: {exc}",
+        ) from exc
+    if any(
+        len(shape) != 2
+        for shape in (query_shape, key_shape, value_shape, mask_shape, result_shape)
+    ):
+        raise _generation_error(
+            operation,
+            "unsupported_known_feature",
+            "the code-owned sparse-attention generator supports rank-2 tensors only",
+        )
+    query_count, feature_count = query_shape
+    key_count, key_features = key_shape
+    value_keys, value_count = value_shape
+    if (
+        feature_count != key_features
+        or key_count != value_keys
+        or mask_shape != (query_count, key_count)
+        or result_shape != (query_count, value_count)
+    ):
+        raise _generation_error(
+            operation,
+            "metadata_missing",
+            "sparse-attention Q/K/V/mask/result shapes do not agree",
+        )
+    if sum(
+        map(prod, (query_shape, key_shape, value_shape, mask_shape, result_shape))
+    ) > _MAX_CANONICAL_ELEMENTS_PER_CASE:
+        raise _generation_error(
+            operation,
+            "unsupported_known_feature",
+            "canonical sparse-attention tensor size exceeds the bounded generator limit",
+        )
+    known_inputs = {
+        str(query["data_object"]),
+        str(key["data_object"]),
+        str(value["data_object"]),
+        str(mask["data_object"]),
+    }
+    unknown_inputs = sorted(
+        str(item.get("data_object", ""))
+        for item in operation.get("inputs", [])
+        if str(item.get("data_object", "")) not in known_inputs
+    )
+    unknown_outputs = sorted(
+        str(item.get("data_object", ""))
+        for item in operation.get("outputs", [])
+        if str(item.get("data_object", "")) != str(result["data_object"])
+    )
+    if unknown_inputs or unknown_outputs:
+        raise _generation_error(
+            operation,
+            "unsupported_known_feature",
+            f"unmodeled sparse-attention objects inputs={unknown_inputs}, outputs={unknown_outputs}",
+        )
+    return _SparseAttentionModel(
+        operation=operation,
+        operation_name=str(operation["operation_name"]),
+        dimensions=dimensions,
+        query=query,
+        key=key,
+        value=value,
+        mask=mask,
+        result=result,
+        score_accumulator_dtype=score_accumulator,
+        output_accumulator_dtype=output_accumulator,
+        query_count=query_count,
+        key_count=key_count,
+        feature_count=feature_count,
+        value_count=value_count,
+    )
+
+
+def _qk_score_model(operation: Mapping[str, Any]) -> _QKScoreModel:
+    profile = operation.get("arithmetic", {}).get("classifier_profile")
+    if profile != "integer_qk_score":
+        raise _generation_error(
+            operation,
+            "llm_extension_required",
+            f"classifier profile {profile!r} has no QK-score generator",
+        )
+    try:
+        query = _binding_by_role(operation, "query_matrix")
+        key = _binding_by_role(operation, "key_matrix")
+        result = _binding_by_role(operation, "attention_score_matrix")
+        dimensions = {
+            str(name): int(extent)
+            for name, extent in operation.get("dimensions", {}).items()
+            if isinstance(extent, int) and not isinstance(extent, bool)
+        }
+        query_shape = _shape(query, dimensions)
+        key_shape = _shape(key, dimensions)
+        result_shape = _shape(result, dimensions)
+        accumulator = _dtype(
+            operation,
+            str(operation.get("arithmetic", {})["score_accumulator_data_type"]),
+        )
+    except (CanonicalOperationError, KeyError, TypeError, ValueError) as exc:
+        raise _generation_error(
+            operation, "metadata_missing", f"incomplete QK-score metadata: {exc}"
+        ) from exc
+    if any(len(shape) != 2 for shape in (query_shape, key_shape, result_shape)):
+        raise _generation_error(
+            operation,
+            "unsupported_known_feature",
+            "the code-owned QK-score generator supports rank-2 tensors only",
+        )
+    query_count, feature_count = query_shape
+    key_count, key_features = key_shape
+    if feature_count != key_features or result_shape != (query_count, key_count):
+        raise _generation_error(
+            operation, "metadata_missing", "QK-score Q/K/result shapes do not agree"
+        )
+    if sum(map(prod, (query_shape, key_shape, result_shape))) > _MAX_CANONICAL_ELEMENTS_PER_CASE:
+        raise _generation_error(
+            operation,
+            "unsupported_known_feature",
+            "canonical QK-score tensor size exceeds the bounded generator limit",
+        )
+    known_inputs = {str(query["data_object"]), str(key["data_object"])}
+    unknown_inputs = sorted(
+        str(item.get("data_object", ""))
+        for item in operation.get("inputs", [])
+        if str(item.get("data_object", "")) not in known_inputs
+    )
+    unknown_outputs = sorted(
+        str(item.get("data_object", ""))
+        for item in operation.get("outputs", [])
+        if str(item.get("data_object", "")) != str(result["data_object"])
+    )
+    if unknown_inputs or unknown_outputs:
+        raise _generation_error(
+            operation,
+            "unsupported_known_feature",
+            f"unmodeled QK-score objects inputs={unknown_inputs}, outputs={unknown_outputs}",
+        )
+    return _QKScoreModel(
+        operation=operation,
+        operation_name=str(operation["operation_name"]),
+        dimensions=dimensions,
+        query=query,
+        key=key,
+        result=result,
+        score_accumulator_dtype=accumulator,
+        query_count=query_count,
+        key_count=key_count,
+        feature_count=feature_count,
+    )
+
+
+def _attention_scale_model(operation: Mapping[str, Any]) -> _AttentionScaleModel:
+    profile = operation.get("arithmetic", {}).get("classifier_profile")
+    if profile != "fixed_point_attention_scale":
+        raise _generation_error(
+            operation,
+            "llm_extension_required",
+            f"classifier profile {profile!r} has no attention-scale generator",
+        )
+    try:
+        score = _binding_by_role(operation, "attention_score_matrix")
+        result = _binding_by_role(operation, "scaled_attention_score_matrix")
+        dimensions = {
+            str(name): int(extent)
+            for name, extent in operation.get("dimensions", {}).items()
+            if isinstance(extent, int) and not isinstance(extent, bool)
+        }
+        score_shape = _shape(score, dimensions)
+        result_shape = _shape(result, dimensions)
+    except (CanonicalOperationError, KeyError, TypeError, ValueError) as exc:
+        raise _generation_error(
+            operation,
+            "metadata_missing",
+            f"incomplete attention-scale metadata: {exc}",
+        ) from exc
+    if len(score_shape) != 2 or result_shape != score_shape:
+        raise _generation_error(
+            operation,
+            "unsupported_known_feature",
+            "the code-owned attention-scale generator requires matching rank-2 score tensors",
+        )
+    if sum(map(prod, (score_shape, result_shape))) > _MAX_CANONICAL_ELEMENTS_PER_CASE:
+        raise _generation_error(
+            operation,
+            "unsupported_known_feature",
+            "canonical attention-scale tensor size exceeds the bounded generator limit",
+        )
+    if len(operation.get("inputs", [])) != 1 or len(operation.get("outputs", [])) != 1:
+        raise _generation_error(
+            operation,
+            "unsupported_known_feature",
+            "attention-scale operation has unmodeled input/output objects",
+        )
+    return _AttentionScaleModel(
+        operation=operation,
+        operation_name=str(operation["operation_name"]),
+        dimensions=dimensions,
+        score=score,
+        result=result,
+        query_count=score_shape[0],
+        key_count=score_shape[1],
+    )
+
+
+def _attention_mask_model(operation: Mapping[str, Any]) -> _AttentionMaskModel:
+    profile = operation.get("arithmetic", {}).get("classifier_profile")
+    if profile != "binary_attention_mask":
+        raise _generation_error(
+            operation,
+            "llm_extension_required",
+            f"classifier profile {profile!r} has no attention-mask generator",
+        )
+    try:
+        score = _binding_by_role(operation, "scaled_attention_score_matrix")
+        mask = _binding_by_role(operation, "attention_mask")
+        result = _binding_by_role(operation, "masked_attention_score_matrix")
+        dimensions = {
+            str(name): int(extent)
+            for name, extent in operation.get("dimensions", {}).items()
+            if isinstance(extent, int) and not isinstance(extent, bool)
+        }
+        score_shape = _shape(score, dimensions)
+        mask_shape = _shape(mask, dimensions)
+        result_shape = _shape(result, dimensions)
+    except (CanonicalOperationError, KeyError, TypeError, ValueError) as exc:
+        raise _generation_error(
+            operation,
+            "metadata_missing",
+            f"incomplete attention-mask metadata: {exc}",
+        ) from exc
+    if (
+        len(score_shape) != 2
+        or mask_shape != score_shape
+        or result_shape != score_shape
+    ):
+        raise _generation_error(
+            operation,
+            "unsupported_known_feature",
+            "the code-owned attention-mask generator requires matching rank-2 score, mask, and result tensors",
+        )
+    if sum(map(prod, (score_shape, mask_shape, result_shape))) > _MAX_CANONICAL_ELEMENTS_PER_CASE:
+        raise _generation_error(
+            operation,
+            "unsupported_known_feature",
+            "canonical attention-mask tensor size exceeds the bounded generator limit",
+        )
+    if len(operation.get("inputs", [])) != 2 or len(operation.get("outputs", [])) != 1:
+        raise _generation_error(
+            operation,
+            "unsupported_known_feature",
+            "attention-mask operation has unmodeled input/output objects",
+        )
+    return _AttentionMaskModel(
+        operation=operation,
+        operation_name=str(operation["operation_name"]),
+        dimensions=dimensions,
+        score=score,
+        mask=mask,
+        result=result,
+        query_count=score_shape[0],
+        key_count=score_shape[1],
+    )
+
+
+def _operation_model(
+    operation: Mapping[str, Any],
+) -> _GemmModel | _SparseAttentionModel | _QKScoreModel | _AttentionScaleModel | _AttentionMaskModel:
+    profile = operation.get("arithmetic", {}).get("classifier_profile")
+    if profile == "integer_matrix_multiply":
+        return _gemm_model(operation)
+    if profile == "integer_sparse_attention":
+        return _sparse_attention_model(operation)
+    if profile == "integer_qk_score":
+        return _qk_score_model(operation)
+    if profile == "fixed_point_attention_scale":
+        return _attention_scale_model(operation)
+    if profile == "binary_attention_mask":
+        return _attention_mask_model(operation)
+    raise _generation_error(
+        operation,
+        "llm_extension_required",
+        f"classifier profile {profile!r} has no code-owned stimulus generator",
+    )
+
+
+def _base_stimulus(
+    model: _GemmModel | _SparseAttentionModel | _QKScoreModel | _AttentionScaleModel | _AttentionMaskModel,
+) -> dict[str, list[int]]:
     return {
         str(binding["data_object"]): [0] * prod(_shape(binding, model.dimensions))
         for binding in model.operation.get("inputs", [])
@@ -346,10 +728,10 @@ def evaluate_canonical_operation(
     *,
     operation_name: str | None = None,
 ) -> dict[str, list[int]]:
-    """Evaluate the code-owned integer GEMM reference in canonical object order."""
+    """Evaluate a code-owned operation reference in canonical object order."""
 
     operation = _select_operation(operation_metadata, operation_name)
-    model = _gemm_model(operation)
+    model = _operation_model(operation)
     try:
         job = assemble_canonical_job(operation, stimulus, {}, {})
     except CanonicalOperationError as exc:
@@ -358,6 +740,112 @@ def evaluate_canonical_operation(
         ) from exc
     if job is None:
         raise _generation_error(model, "metadata_missing", "stimulus contains no operation input")
+    if isinstance(model, _SparseAttentionModel):
+        arithmetic = operation.get("arithmetic", {})
+        try:
+            events = integer_sparse_attention_events(
+                job.inputs[str(model.query["data_object"])],
+                job.inputs[str(model.key["data_object"])],
+                job.inputs[str(model.value["data_object"])],
+                job.inputs[str(model.mask["data_object"])],
+                query_count=model.query_count,
+                key_count=model.key_count,
+                feature_count=model.feature_count,
+                value_count=model.value_count,
+                score_accumulator_dtype=model.score_accumulator_dtype,
+                score_reduction_conversion=str(
+                    arithmetic["score_reduction_conversion"]
+                ),
+                scaling=str(arithmetic["scaling"]),
+                mask_mode=str(arithmetic["mask_mode"]),
+                normalization=str(arithmetic["normalization"]),
+                output_accumulator_dtype=model.output_accumulator_dtype,
+                output_reduction_conversion=str(
+                    arithmetic["output_reduction_conversion"]
+                ),
+                result_dtype=model.result["data_type"],
+                result_conversion=str(
+                    arithmetic.get("result_data_type", {}).get(
+                        "conversion", "exact"
+                    )
+                ),
+            )
+        except CanonicalOperationError as exc:
+            raise _generation_error(
+                model, "unsupported_known_feature", str(exc)
+            ) from exc
+        return {
+            str(model.result["data_object"]): [
+                int(event["result_value"]) for event in events
+            ]
+        }
+    if isinstance(model, _QKScoreModel):
+        arithmetic = operation.get("arithmetic", {})
+        events = integer_qk_score_events(
+            job.inputs[str(model.query["data_object"])],
+            job.inputs[str(model.key["data_object"])],
+            query_count=model.query_count,
+            key_count=model.key_count,
+            feature_count=model.feature_count,
+            score_accumulator_dtype=model.score_accumulator_dtype,
+            score_reduction_conversion=str(
+                arithmetic["score_reduction_conversion"]
+            ),
+            result_dtype=model.result["data_type"],
+            result_conversion=str(
+                arithmetic.get("result_data_type", {}).get("conversion", "exact")
+            ),
+        )
+        return {
+            str(model.result["data_object"]): [
+                int(event["result_value"]) for event in events
+            ]
+        }
+    if isinstance(model, _AttentionScaleModel):
+        arithmetic = operation.get("arithmetic", {})
+        events = fixed_point_attention_scale_events(
+            job.inputs[str(model.score["data_object"])],
+            query_count=model.query_count,
+            key_count=model.key_count,
+            scale_multiplier=int(arithmetic["scale_multiplier"]),
+            scale_shift=int(arithmetic["scale_shift"]),
+            rounding=str(arithmetic["rounding"]),
+            result_dtype=model.result["data_type"],
+            result_conversion=str(
+                arithmetic.get("result_data_type", {}).get("conversion", "exact")
+            ),
+        )
+        return {
+            str(model.result["data_object"]): [
+                int(event["result_value"]) for event in events
+            ]
+        }
+    if isinstance(model, _AttentionMaskModel):
+        arithmetic = operation.get("arithmetic", {})
+        try:
+            events = binary_attention_mask_events(
+                job.inputs[str(model.score["data_object"])],
+                job.inputs[str(model.mask["data_object"])],
+                query_count=model.query_count,
+                key_count=model.key_count,
+                mask_mode=str(arithmetic["mask_mode"]),
+                result_dtype=model.result["data_type"],
+                result_conversion=str(
+                    arithmetic.get("result_data_type", {}).get(
+                        "conversion", "exact"
+                    )
+                ),
+            )
+        except CanonicalOperationError as exc:
+            raise _generation_error(
+                model, "unsupported_known_feature", str(exc)
+            ) from exc
+        return {
+            str(model.result["data_object"]): [
+                int(event["result_value"]) for event in events
+            ]
+        }
+    assert isinstance(model, _GemmModel)
     a = job.inputs[str(model.left["data_object"])]
     b = job.inputs[str(model.right["data_object"])]
     bias = job.inputs[str(model.bias["data_object"])] if model.bias is not None else ()
@@ -419,7 +907,7 @@ def _predicate_matches(value: Any, predicate: Mapping[str, Any]) -> bool:
 
 
 def _case(
-    model: _GemmModel,
+    model: _GemmModel | _SparseAttentionModel | _QKScoreModel | _AttentionScaleModel | _AttentionMaskModel,
     concept: str,
     bin_name: str,
     stimulus: Mapping[str, Sequence[int]],
@@ -1136,6 +1624,698 @@ def _target_stimulus(
     )
 
 
+def _target_sparse_attention_stimulus(
+    model: _SparseAttentionModel, concept: str, bin_name: str
+) -> dict[str, list[int]]:
+    """Solve a sparse-attention bin over the symbolic code-owned golden trace.
+
+    Like the GEMM reduction solver, this models only one representative output
+    coordinate.  Sparse-attention rows and value columns are semantically
+    symmetric, so any witness for any coordinate can be renamed to row zero,
+    column zero without weakening reachability.  All keys and all feature-axis
+    terms for that coordinate remain symbolic; an ``unsat`` result therefore
+    proves the bin unreachable rather than merely failing a hand-written
+    candidate search.
+    """
+
+    bins = canonical_bins_for_concept(model.operation, concept) or []
+    matches = [item for item in bins if str(item.get("name", "")) == bin_name]
+    if len(matches) != 1:
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            "target is not a code-owned sparse-attention bin",
+            concept=concept,
+            bin_name=bin_name,
+        )
+
+    solver = z3.Solver()
+    solver.set(timeout=10_000)
+    q_low, q_high = _integer_bounds(model.query["data_type"])
+    k_low, k_high = _integer_bounds(model.key["data_type"])
+    v_low, v_high = _integer_bounds(model.value["data_type"])
+    query_vars = [
+        z3.Int(f"sparse_q_{depth}") for depth in range(model.feature_count)
+    ]
+    key_vars = [
+        [
+            z3.Int(f"sparse_k_{key_index}_{depth}")
+            for depth in range(model.feature_count)
+        ]
+        for key_index in range(model.key_count)
+    ]
+    value_vars = [
+        z3.Int(f"sparse_v_{key_index}")
+        for key_index in range(model.key_count)
+    ]
+    mask_vars = [
+        z3.Int(f"sparse_mask_{key_index}")
+        for key_index in range(model.key_count)
+    ]
+    for item in query_vars:
+        solver.add(item >= q_low, item <= q_high)
+    for row in key_vars:
+        for item in row:
+            solver.add(item >= k_low, item <= k_high)
+    for item in value_vars:
+        solver.add(item >= v_low, item <= v_high)
+    for item in mask_vars:
+        solver.add(z3.Or(item == 0, item == 1))
+
+    arithmetic = model.operation.get("arithmetic", {})
+    score_conversion = str(arithmetic.get("score_reduction_conversion", ""))
+    scores: list[z3.ArithRef] = []
+    for key_index in range(model.key_count):
+        score: z3.ArithRef = z3.IntVal(
+            int(arithmetic.get("score_accumulator_initialization", 0))
+        )
+        for depth in range(model.feature_count):
+            score = score + query_vars[depth] * key_vars[key_index][depth]
+            if score_conversion == "wrap_twos_complement_after_each_add":
+                score = _z3_wrap(score, model.score_accumulator_dtype)
+            elif score_conversion != "exact":
+                raise _generation_error(
+                    model,
+                    "unsupported_known_feature",
+                    f"cannot symbolically compile score reduction conversion {score_conversion!r}",
+                    concept=concept,
+                    bin_name=bin_name,
+                )
+        scores.append(score)
+
+    output_conversion = str(arithmetic.get("output_reduction_conversion", ""))
+    output: z3.ArithRef = z3.IntVal(
+        int(arithmetic.get("output_accumulator_initialization", 0))
+    )
+    weighted_terms: list[z3.ArithRef] = []
+    for key_index in range(model.key_count):
+        weighted = z3.If(
+            mask_vars[key_index] == 1,
+            scores[key_index] * value_vars[key_index],
+            0,
+        )
+        weighted_terms.append(weighted)
+        output = output + weighted
+        if output_conversion == "wrap_twos_complement_after_each_add":
+            output = _z3_wrap(output, model.output_accumulator_dtype)
+        elif output_conversion != "exact":
+            raise _generation_error(
+                model,
+                "unsupported_known_feature",
+                f"cannot symbolically compile output reduction conversion {output_conversion!r}",
+                concept=concept,
+                bin_name=bin_name,
+            )
+    result_conversion = str(
+        arithmetic.get("result_data_type", {}).get("conversion", "")
+    )
+    result_value = output
+    if result_conversion == "wrap_twos_complement":
+        result_value = _z3_wrap(result_value, model.result["data_type"])
+    elif result_conversion != "exact":
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            f"cannot symbolically compile result conversion {result_conversion!r}",
+            concept=concept,
+            bin_name=bin_name,
+        )
+
+    if concept == "dimensions" and bin_name == "fixed_shape":
+        solver.add(z3.BoolVal(True))
+    elif concept == "operand_values":
+        predicate = matches[0].get("predicate")
+        if not isinstance(predicate, Mapping):
+            raise _generation_error(
+                model,
+                "metadata_missing",
+                "operand bin needs a declarative predicate",
+                concept=concept,
+                bin_name=bin_name,
+            )
+        all_operands = [
+            *query_vars,
+            *(item for row in key_vars for item in row),
+            *value_vars,
+        ]
+        try:
+            solver.add(z3.Or(*[_z3_predicate(item, predicate) for item in all_operands]))
+        except (TypeError, ValueError) as exc:
+            raise _generation_error(
+                model,
+                "metadata_missing",
+                str(exc),
+                concept=concept,
+                bin_name=bin_name,
+            ) from exc
+    elif concept == "sparsity_patterns":
+        active_count = z3.Sum(mask_vars)
+        pattern_constraints = {
+            "empty_row": active_count == 0,
+            "singleton_row": active_count == 1,
+            "partial_row": z3.And(active_count > 1, active_count < model.key_count),
+            "dense_row": active_count == model.key_count,
+        }
+        if bin_name not in pattern_constraints:
+            raise _generation_error(
+                model,
+                "unsupported_known_feature",
+                "unknown sparse mask pattern",
+                concept=concept,
+                bin_name=bin_name,
+            )
+        solver.add(pattern_constraints[bin_name])
+    elif concept == "attention_scores":
+        score_predicates = {
+            "zero_score": lambda value: value == 0,
+            "positive_score": lambda value: value > 0,
+            "negative_score": lambda value: value < 0,
+        }
+        if bin_name not in score_predicates:
+            raise _generation_error(
+                model,
+                "unsupported_known_feature",
+                "unknown sparse attention score class",
+                concept=concept,
+                bin_name=bin_name,
+            )
+        predicate = score_predicates[bin_name]
+        solver.add(
+            z3.Or(
+                *[
+                    z3.And(mask_vars[index] == 1, predicate(scores[index]))
+                    for index in range(model.key_count)
+                ]
+            )
+        )
+    elif concept == "stage_handoffs":
+        handoff_constraints = {
+            # Identity scale and normalization are explicit composition stages;
+            # any legal job witnesses their producer/consumer boundaries.
+            "qk_to_scale_forwarded": z3.BoolVal(True),
+            "active_mask_preserved": z3.Or(
+                *[item == 1 for item in mask_vars]
+            ),
+            "inactive_mask_zeroed": z3.Or(
+                *[
+                    z3.And(mask_vars[index] == 0, scores[index] != 0)
+                    for index in range(model.key_count)
+                ]
+            ),
+            "normalization_bypass_forwarded": z3.BoolVal(True),
+            "value_reduction_consumed": z3.Or(
+                *[item != 0 for item in weighted_terms]
+            ),
+        }
+        if bin_name not in handoff_constraints:
+            raise _generation_error(
+                model,
+                "unsupported_known_feature",
+                "unknown sparse-attention stage handoff",
+                concept=concept,
+                bin_name=bin_name,
+            )
+        solver.add(handoff_constraints[bin_name])
+    elif concept == "output_values":
+        output_predicates = {
+            "zero_output": result_value == 0,
+            "positive_output": result_value > 0,
+            "negative_output": result_value < 0,
+        }
+        if bin_name not in output_predicates:
+            raise _generation_error(
+                model,
+                "unsupported_known_feature",
+                "unknown sparse attention output class",
+                concept=concept,
+                bin_name=bin_name,
+            )
+        solver.add(output_predicates[bin_name])
+    else:
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            "concept has no symbolic sparse-attention target",
+            concept=concept,
+            bin_name=bin_name,
+        )
+
+    status = solver.check()
+    if status == z3.unsat:
+        raise _generation_error(
+            model,
+            "unreachable",
+            "Z3 proved the sparse-attention bin has no legal witness under the contract",
+            concept=concept,
+            bin_name=bin_name,
+        )
+    if status != z3.sat:
+        raise _generation_error(
+            model,
+            "generation_inconclusive",
+            "Z3 did not finish the sparse-attention witness search",
+            concept=concept,
+            bin_name=bin_name,
+        )
+
+    witness = solver.model()
+    stimulus = _base_stimulus(model)
+    query_values = stimulus[str(model.query["data_object"])]
+    key_values = stimulus[str(model.key["data_object"])]
+    value_values = stimulus[str(model.value["data_object"])]
+    mask_values = stimulus[str(model.mask["data_object"])]
+    for depth, variable in enumerate(query_vars):
+        query_values[depth] = witness.eval(variable, model_completion=True).as_long()
+    for key_index, row in enumerate(key_vars):
+        for depth, variable in enumerate(row):
+            key_values[key_index * model.feature_count + depth] = witness.eval(
+                variable, model_completion=True
+            ).as_long()
+        value_values[key_index * model.value_count] = witness.eval(
+            value_vars[key_index], model_completion=True
+        ).as_long()
+        mask_values[key_index] = witness.eval(
+            mask_vars[key_index], model_completion=True
+        ).as_long()
+    return stimulus
+
+
+def _target_qk_score_stimulus(
+    model: _QKScoreModel, concept: str, bin_name: str
+) -> dict[str, list[int]]:
+    """Solve one QK score bin over a representative query/key coordinate."""
+
+    bins = canonical_bins_for_concept(model.operation, concept) or []
+    matches = [item for item in bins if str(item.get("name", "")) == bin_name]
+    if len(matches) != 1:
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            "target is not a code-owned QK-score bin",
+            concept=concept,
+            bin_name=bin_name,
+        )
+    solver = z3.Solver()
+    solver.set(timeout=10_000)
+    q_low, q_high = _integer_bounds(model.query["data_type"])
+    k_low, k_high = _integer_bounds(model.key["data_type"])
+    query_vars = [z3.Int(f"qk_q_{depth}") for depth in range(model.feature_count)]
+    key_vars = [z3.Int(f"qk_k_{depth}") for depth in range(model.feature_count)]
+    for item in query_vars:
+        solver.add(item >= q_low, item <= q_high)
+    for item in key_vars:
+        solver.add(item >= k_low, item <= k_high)
+
+    arithmetic = model.operation.get("arithmetic", {})
+    score: z3.ArithRef = z3.IntVal(
+        int(arithmetic.get("score_accumulator_initialization", 0))
+    )
+    mathematical_score: z3.ArithRef = score
+    mathematical_prefixes: list[z3.ArithRef] = []
+    conversion = str(arithmetic.get("score_reduction_conversion", ""))
+    for query_value, key_value in zip(query_vars, key_vars):
+        product = query_value * key_value
+        mathematical_score = mathematical_score + product
+        mathematical_prefixes.append(mathematical_score)
+        score = score + product
+        if conversion == "wrap_twos_complement_after_each_add":
+            score = _z3_wrap(score, model.score_accumulator_dtype)
+        elif conversion != "exact":
+            raise _generation_error(
+                model,
+                "unsupported_known_feature",
+                f"cannot symbolically compile QK reduction conversion {conversion!r}",
+                concept=concept,
+                bin_name=bin_name,
+            )
+    result_value = score
+    result_conversion = str(
+        arithmetic.get("result_data_type", {}).get("conversion", "")
+    )
+    if result_conversion == "wrap_twos_complement":
+        result_value = _z3_wrap(result_value, model.result["data_type"])
+    elif result_conversion != "exact":
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            f"cannot symbolically compile QK result conversion {result_conversion!r}",
+            concept=concept,
+            bin_name=bin_name,
+        )
+
+    if concept == "dimensions" and bin_name == "fixed_shape":
+        solver.add(z3.BoolVal(True))
+    elif concept == "operand_values":
+        predicate = matches[0].get("predicate")
+        if not isinstance(predicate, Mapping):
+            raise _generation_error(
+                model, "metadata_missing", "operand bin needs a declarative predicate",
+                concept=concept, bin_name=bin_name,
+            )
+        solver.add(
+            z3.Or(
+                *[
+                    _z3_predicate(item, predicate)
+                    for item in [*query_vars, *key_vars]
+                ]
+            )
+        )
+    elif concept == "attention_scores":
+        predicates = {
+            "zero_score": result_value == 0,
+            "positive_score": result_value > 0,
+            "negative_score": result_value < 0,
+        }
+        if bin_name not in predicates:
+            raise _generation_error(
+                model, "unsupported_known_feature", "unknown QK score class",
+                concept=concept, bin_name=bin_name,
+            )
+        solver.add(predicates[bin_name])
+    elif concept == "accumulation":
+        low, high = _integer_bounds(model.score_accumulator_dtype)
+        predicates = {
+            "ordinary": z3.And(
+                *[z3.And(item > low, item < high) for item in mathematical_prefixes]
+            ),
+            "positive_boundary": z3.Or(*[item == high for item in mathematical_prefixes]),
+            "negative_boundary": z3.Or(*[item == low for item in mathematical_prefixes]),
+            "positive_overflow": z3.Or(*[item > high for item in mathematical_prefixes]),
+            "negative_overflow": z3.Or(*[item < low for item in mathematical_prefixes]),
+        }
+        if bin_name not in predicates:
+            raise _generation_error(
+                model, "unsupported_known_feature", "unknown QK accumulation class",
+                concept=concept, bin_name=bin_name,
+            )
+        solver.add(predicates[bin_name])
+    else:
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            "concept has no symbolic QK-score target",
+            concept=concept,
+            bin_name=bin_name,
+        )
+
+    status = solver.check()
+    if status == z3.unsat:
+        raise _generation_error(
+            model,
+            "unreachable",
+            "Z3 proved the QK-score bin has no legal witness under the contract",
+            concept=concept,
+            bin_name=bin_name,
+        )
+    if status != z3.sat:
+        raise _generation_error(
+            model,
+            "generation_inconclusive",
+            "Z3 did not finish the QK-score witness search",
+            concept=concept,
+            bin_name=bin_name,
+        )
+    witness = solver.model()
+    stimulus = _base_stimulus(model)
+    query_values = stimulus[str(model.query["data_object"])]
+    key_values = stimulus[str(model.key["data_object"])]
+    for depth, variable in enumerate(query_vars):
+        query_values[depth] = witness.eval(variable, model_completion=True).as_long()
+    for depth, variable in enumerate(key_vars):
+        key_values[depth] = witness.eval(variable, model_completion=True).as_long()
+    return stimulus
+
+
+def _target_attention_scale_stimulus(
+    model: _AttentionScaleModel, concept: str, bin_name: str
+) -> dict[str, list[int]]:
+    """Solve one fixed-point scale bin over a representative score element."""
+
+    bins = canonical_bins_for_concept(model.operation, concept) or []
+    matches = [item for item in bins if str(item.get("name", "")) == bin_name]
+    if len(matches) != 1:
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            "target is not a code-owned attention-scale bin",
+            concept=concept,
+            bin_name=bin_name,
+        )
+    solver = z3.Solver()
+    solver.set(timeout=10_000)
+    low, high = _integer_bounds(model.score["data_type"])
+    score = z3.Int("attention_scale_score")
+    solver.add(score >= low, score <= high)
+    arithmetic = model.operation.get("arithmetic", {})
+    multiplier = int(arithmetic["scale_multiplier"])
+    denominator = 1 << int(arithmetic["scale_shift"])
+    product = score * multiplier
+    shifted = product / denominator
+    result_value: z3.ArithRef = shifted
+    result_conversion = str(
+        arithmetic.get("result_data_type", {}).get("conversion", "")
+    )
+    if result_conversion == "wrap_twos_complement":
+        result_value = _z3_wrap(result_value, model.result["data_type"])
+    elif result_conversion != "exact":
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            f"cannot symbolically compile attention-scale result conversion {result_conversion!r}",
+            concept=concept,
+            bin_name=bin_name,
+        )
+
+    if concept == "dimensions" and bin_name == "fixed_shape":
+        solver.add(z3.BoolVal(True))
+    elif concept == "score_values":
+        predicate = matches[0].get("predicate")
+        if not isinstance(predicate, Mapping):
+            raise _generation_error(
+                model,
+                "metadata_missing",
+                "score-value bin needs a declarative predicate",
+                concept=concept,
+                bin_name=bin_name,
+            )
+        solver.add(_z3_predicate(score, predicate))
+    elif concept == "rounding":
+        predicates = {
+            "exact": product % denominator == 0,
+            "positive_fraction_discarded": z3.And(
+                score > 0, product % denominator != 0
+            ),
+            "negative_fraction_discarded": z3.And(
+                score < 0, product % denominator != 0
+            ),
+        }
+        if bin_name not in predicates:
+            raise _generation_error(
+                model, "unsupported_known_feature", "unknown attention-scale rounding class",
+                concept=concept, bin_name=bin_name,
+            )
+        solver.add(predicates[bin_name])
+    elif concept == "scaled_values":
+        predicates = {
+            "zero_scaled": result_value == 0,
+            "positive_scaled": result_value > 0,
+            "negative_scaled": result_value < 0,
+        }
+        if bin_name not in predicates:
+            raise _generation_error(
+                model, "unsupported_known_feature", "unknown scaled-value class",
+                concept=concept, bin_name=bin_name,
+            )
+        solver.add(predicates[bin_name])
+    elif concept == "attenuation":
+        absolute_score = z3.If(score < 0, -score, score)
+        absolute_result = z3.If(result_value < 0, -result_value, result_value)
+        predicates = {
+            "zero_preserved": z3.And(score == 0, result_value == 0),
+            "magnitude_reduced": z3.And(
+                score != 0, absolute_result < absolute_score
+            ),
+        }
+        if bin_name not in predicates:
+            raise _generation_error(
+                model, "unsupported_known_feature", "unknown attenuation class",
+                concept=concept, bin_name=bin_name,
+            )
+        solver.add(predicates[bin_name])
+    else:
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            "concept has no symbolic attention-scale target",
+            concept=concept,
+            bin_name=bin_name,
+        )
+
+    status = solver.check()
+    if status == z3.unsat:
+        raise _generation_error(
+            model,
+            "unreachable",
+            "Z3 proved the attention-scale bin has no legal witness under the contract",
+            concept=concept,
+            bin_name=bin_name,
+        )
+    if status != z3.sat:
+        raise _generation_error(
+            model,
+            "generation_inconclusive",
+            "Z3 did not finish the attention-scale witness search",
+            concept=concept,
+            bin_name=bin_name,
+        )
+    witness = solver.model()
+    stimulus = _base_stimulus(model)
+    stimulus[str(model.score["data_object"])][0] = witness.eval(
+        score, model_completion=True
+    ).as_long()
+    return stimulus
+
+
+def _target_attention_mask_stimulus(
+    model: _AttentionMaskModel, concept: str, bin_name: str
+) -> dict[str, list[int]]:
+    """Solve one binary mask bin over a representative Q row."""
+
+    bins = canonical_bins_for_concept(model.operation, concept) or []
+    matches = [item for item in bins if str(item.get("name", "")) == bin_name]
+    if len(matches) != 1:
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            "target is not a code-owned attention-mask bin",
+            concept=concept,
+            bin_name=bin_name,
+        )
+    solver = z3.Solver()
+    solver.set(timeout=10_000)
+    low, high = _integer_bounds(model.score["data_type"])
+    score = z3.Int("attention_mask_score")
+    mask_vars = [
+        z3.Int(f"attention_mask_bit_{index}")
+        for index in range(model.key_count)
+    ]
+    solver.add(score >= low, score <= high)
+    for variable in mask_vars:
+        solver.add(variable >= 0, variable <= 1)
+    masked = z3.If(mask_vars[0] == 1, score, 0)
+    result_value: z3.ArithRef = masked
+    result_conversion = str(
+        model.operation.get("arithmetic", {})
+        .get("result_data_type", {})
+        .get("conversion", "")
+    )
+    if result_conversion == "wrap_twos_complement":
+        result_value = _z3_wrap(result_value, model.result["data_type"])
+    elif result_conversion != "exact":
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            f"cannot symbolically compile attention-mask result conversion {result_conversion!r}",
+            concept=concept,
+            bin_name=bin_name,
+        )
+
+    if concept == "dimensions" and bin_name == "fixed_shape":
+        solver.add(z3.BoolVal(True))
+    elif concept == "score_values":
+        predicate = matches[0].get("predicate")
+        if not isinstance(predicate, Mapping):
+            raise _generation_error(
+                model, "metadata_missing", "score-value bin needs a declarative predicate",
+                concept=concept, bin_name=bin_name,
+            )
+        solver.add(_z3_predicate(score, predicate))
+    elif concept == "mask_values":
+        predicates = {"drop": mask_vars[0] == 0, "keep": mask_vars[0] == 1}
+        if bin_name not in predicates:
+            raise _generation_error(
+                model, "unsupported_known_feature", "unknown binary mask value",
+                concept=concept, bin_name=bin_name,
+            )
+        solver.add(predicates[bin_name])
+    elif concept == "sparsity_patterns":
+        active_count = z3.Sum(mask_vars)
+        predicates = {
+            "empty_row": active_count == 0,
+            "singleton_row": active_count == 1,
+            "partial_row": z3.And(active_count >= 2, active_count < model.key_count),
+            "dense_row": active_count == model.key_count,
+        }
+        if bin_name not in predicates:
+            raise _generation_error(
+                model, "unsupported_known_feature", "unknown attention-mask sparsity pattern",
+                concept=concept, bin_name=bin_name,
+            )
+        solver.add(predicates[bin_name])
+    elif concept == "masked_values":
+        predicates = {
+            "zero_masked": result_value == 0,
+            "positive_masked": result_value > 0,
+            "negative_masked": result_value < 0,
+        }
+        if bin_name not in predicates:
+            raise _generation_error(
+                model, "unsupported_known_feature", "unknown masked-score value class",
+                concept=concept, bin_name=bin_name,
+            )
+        solver.add(predicates[bin_name])
+    elif concept == "mask_effects":
+        predicates = {
+            "active_score_preserved": z3.And(
+                mask_vars[0] == 1, score != 0, result_value == score
+            ),
+            "inactive_nonzero_zeroed": z3.And(
+                mask_vars[0] == 0, score != 0, result_value == 0
+            ),
+        }
+        if bin_name not in predicates:
+            raise _generation_error(
+                model, "unsupported_known_feature", "unknown attention-mask effect",
+                concept=concept, bin_name=bin_name,
+            )
+        solver.add(predicates[bin_name])
+    else:
+        raise _generation_error(
+            model,
+            "unsupported_known_feature",
+            "concept has no symbolic attention-mask target",
+            concept=concept,
+            bin_name=bin_name,
+        )
+
+    status = solver.check()
+    if status == z3.unsat:
+        raise _generation_error(
+            model,
+            "unreachable",
+            "Z3 proved the attention-mask bin has no legal witness under the contract",
+            concept=concept,
+            bin_name=bin_name,
+        )
+    if status != z3.sat:
+        raise _generation_error(
+            model,
+            "generation_inconclusive",
+            "Z3 did not finish the attention-mask witness search",
+            concept=concept,
+            bin_name=bin_name,
+        )
+    witness = solver.model()
+    stimulus = _base_stimulus(model)
+    stimulus[str(model.score["data_object"])][0] = witness.eval(
+        score, model_completion=True
+    ).as_long()
+    mask_values = stimulus[str(model.mask["data_object"])]
+    for index, variable in enumerate(mask_vars):
+        mask_values[index] = witness.eval(variable, model_completion=True).as_long()
+    return stimulus
+
+
 def generate_canonical_stimulus_for_bin(
     operation_metadata: Mapping[str, Any],
     concept: str,
@@ -1146,7 +2326,7 @@ def generate_canonical_stimulus_for_bin(
     """Generate and self-check one directed canonical vector for a target bin."""
 
     operation = _select_operation(operation_metadata, operation_name)
-    model = _gemm_model(operation)
+    model = _operation_model(operation)
     if canonical_bins_for_concept(operation, str(concept)) is None:
         raise _generation_error(
             model,
@@ -1156,8 +2336,42 @@ def generate_canonical_stimulus_for_bin(
             bin_name=str(bin_name),
         )
     try:
-        stimulus = _target_stimulus(model, str(concept), str(bin_name))
-        return _case(model, str(concept), str(bin_name), stimulus)
+        if isinstance(model, _GemmModel):
+            stimulus = _target_stimulus(model, str(concept), str(bin_name))
+        elif isinstance(model, _QKScoreModel):
+            stimulus = _target_qk_score_stimulus(
+                model, str(concept), str(bin_name)
+            )
+        elif isinstance(model, _AttentionScaleModel):
+            stimulus = _target_attention_scale_stimulus(
+                model, str(concept), str(bin_name)
+            )
+        elif isinstance(model, _AttentionMaskModel):
+            stimulus = _target_attention_mask_stimulus(
+                model, str(concept), str(bin_name)
+            )
+        else:
+            stimulus = _target_sparse_attention_stimulus(
+                model, str(concept), str(bin_name)
+            )
+        case = _case(model, str(concept), str(bin_name), stimulus)
+        if isinstance(model, _SparseAttentionModel):
+            case["solver_origin"] = (
+                "code_owned_predicate_over_symbolic_sparse_attention_trace"
+            )
+        elif isinstance(model, _QKScoreModel):
+            case["solver_origin"] = (
+                "code_owned_predicate_over_symbolic_qk_score_trace"
+            )
+        elif isinstance(model, _AttentionScaleModel):
+            case["solver_origin"] = (
+                "code_owned_predicate_over_symbolic_attention_scale_trace"
+            )
+        elif isinstance(model, _AttentionMaskModel):
+            case["solver_origin"] = (
+                "code_owned_predicate_over_symbolic_attention_mask_trace"
+            )
+        return case
     except CanonicalStimulusGenerationError as exc:
         if exc.concept and exc.bin_name:
             raise
@@ -1182,7 +2396,7 @@ def generate_random_canonical_stimuli(
     if not isinstance(count, int) or isinstance(count, bool) or count < 0:
         raise ValueError("count must be a non-negative integer")
     operation = _select_operation(operation_metadata, operation_name)
-    model = _gemm_model(operation)
+    model = _operation_model(operation)
     rng = Random(seed)
     result: list[dict[str, Any]] = []
     for index in range(count):
@@ -1223,7 +2437,7 @@ def generate_canonical_discriminating_stimuli(
     """Generate bounded G07 witnesses for indexing, sign, cancellation, and stale state."""
 
     operation = _select_operation(operation_metadata, operation_name)
-    model = _gemm_model(operation)
+    model = _operation_model(operation)
 
     def checked(label: str, stimulus: dict[str, list[int]], purpose: str) -> dict[str, Any]:
         expected = evaluate_canonical_operation(operation, stimulus)
@@ -1241,6 +2455,212 @@ def generate_canonical_discriminating_stimuli(
         }
 
     cases: list[dict[str, Any]] = []
+    if isinstance(model, _AttentionMaskModel):
+        low, high = _integer_bounds(model.score["data_type"])
+        polarity = _base_stimulus(model)
+        score_palette = [low, -3, 0, 5, high]
+        score_values = polarity[str(model.score["data_object"])]
+        mask_values = polarity[str(model.mask["data_object"])]
+        for index in range(len(score_values)):
+            score_values[index] = score_palette[index % len(score_palette)]
+            mask_values[index] = index & 1
+        cases.append(
+            checked(
+                "canonical_attention_mask_polarity_and_edges",
+                polarity,
+                "distinguish keep/drop polarity, signed extrema, coordinate alignment, and inactive nonzero leakage",
+            )
+        )
+        row_patterns = _base_stimulus(model)
+        pattern_scores = row_patterns[str(model.score["data_object"])]
+        pattern_masks = row_patterns[str(model.mask["data_object"])]
+        for index in range(len(pattern_scores)):
+            pattern_scores[index] = index + 1
+        if model.query_count >= 1:
+            pattern_masks[0 : model.key_count] = [0] * model.key_count
+        if model.query_count >= 2:
+            start = model.key_count
+            pattern_masks[start : start + model.key_count] = [1] * model.key_count
+        cases.append(
+            checked(
+                "canonical_attention_mask_row_patterns",
+                row_patterns,
+                "distinguish mask row boundaries, empty-row zeroing, and dense-row preservation",
+            )
+        )
+        cases.append(
+            checked(
+                "canonical_attention_mask_zero_after_nonzero",
+                _base_stimulus(model),
+                "run after nonzero mask traffic to expose stale score, mask, or output state",
+            )
+        )
+        return cases
+    if isinstance(model, _AttentionScaleModel):
+        low, high = _integer_bounds(model.score["data_type"])
+        denominator = 1 << int(
+            model.operation.get("arithmetic", {})["scale_shift"]
+        )
+        multiplier = int(model.operation.get("arithmetic", {})["scale_multiplier"])
+        signed_edges = _base_stimulus(model)
+        candidates = [low, high, 0, 1, -1]
+        for value in range(1, min(denominator, 64)):
+            if (value * multiplier) % denominator:
+                candidates.extend([value, -value])
+                break
+        target = signed_edges[str(model.score["data_object"])]
+        for index in range(len(target)):
+            target[index] = candidates[index % len(candidates)]
+        cases.append(
+            checked(
+                "canonical_attention_scale_signed_edges",
+                signed_edges,
+                "distinguish signed decode, coefficient, arithmetic shift, and coordinate ordering errors",
+            )
+        )
+        exact_and_fractional = _base_stimulus(model)
+        palette = [0, denominator, -denominator, 1, -1]
+        target = exact_and_fractional[str(model.score["data_object"])]
+        for index in range(len(target)):
+            value = palette[index % len(palette)]
+            target[index] = min(max(value, low), high)
+        cases.append(
+            checked(
+                "canonical_attention_scale_exact_and_fractional",
+                exact_and_fractional,
+                "distinguish exact products from positive and negative discarded fractions",
+            )
+        )
+        cases.append(
+            checked(
+                "canonical_attention_scale_zero_after_nonzero",
+                _base_stimulus(model),
+                "run after nonzero scale traffic to expose stale output state",
+            )
+        )
+        return cases
+    if isinstance(model, _QKScoreModel):
+        one_hot = _base_stimulus(model)
+        query_row = min(1, model.query_count - 1)
+        key_row = min(1, model.key_count - 1)
+        depth = min(1, model.feature_count - 1)
+        q_low, q_high = _integer_bounds(model.query["data_type"])
+        k_low, k_high = _integer_bounds(model.key["data_type"])
+        q_value = 2 if q_low <= 2 <= q_high else 1
+        k_value = 3 if k_low <= 3 <= k_high else 1
+        one_hot[str(model.query["data_object"])][
+            query_row * model.feature_count + depth
+        ] = q_value
+        one_hot[str(model.key["data_object"])][
+            key_row * model.feature_count + depth
+        ] = k_value
+        cases.append(
+            checked(
+                "canonical_qk_one_hot_coordinate",
+                one_hot,
+                "distinguish query row, key row, feature index, transpose, and score ordering errors",
+            )
+        )
+        asymmetric = _base_stimulus(model)
+        q_palette = [item for item in (-3, -1, 1, 2) if q_low <= item <= q_high]
+        k_palette = [item for item in (4, -2, 3, 1) if k_low <= item <= k_high]
+        if not q_palette:
+            q_palette = [q_low]
+        if not k_palette:
+            k_palette = [k_low]
+        asymmetric[str(model.query["data_object"])] = [
+            q_palette[index % len(q_palette)]
+            for index in range(model.query_count * model.feature_count)
+        ]
+        asymmetric[str(model.key["data_object"])] = [
+            k_palette[(index * 3 + 1) % len(k_palette)]
+            for index in range(model.key_count * model.feature_count)
+        ]
+        cases.append(
+            checked(
+                "canonical_qk_asymmetric",
+                asymmetric,
+                "distinguish K-transpose, neighbor swap, signed product, and job association errors",
+            )
+        )
+        if (
+            model.feature_count >= 2
+            and q_low <= 1 <= q_high
+            and k_low <= -1 <= k_high
+        ):
+            cancellation = _base_stimulus(model)
+            cancellation[str(model.query["data_object"])][0:2] = [1, 1]
+            cancellation[str(model.key["data_object"])][0:2] = [1, -1]
+            cases.append(
+                checked(
+                    "canonical_qk_exact_cancellation",
+                    cancellation,
+                    "distinguish signed QK reduction and exact cancellation",
+                )
+            )
+        cases.append(
+            checked(
+                "canonical_qk_zero_after_nonzero",
+                _base_stimulus(model),
+                "run after nonzero QK to expose stale score state",
+            )
+        )
+        return cases
+    if isinstance(model, _SparseAttentionModel):
+        isolated = _base_stimulus(model)
+        isolated[str(model.query["data_object"])][0] = 1
+        isolated[str(model.key["data_object"])][0] = 1
+        isolated[str(model.value["data_object"])][0] = 1
+        isolated[str(model.mask["data_object"])][0] = 1
+        if model.key_count >= 2:
+            key_low, key_high = _integer_bounds(model.key["data_type"])
+            value_low, value_high = _integer_bounds(model.value["data_type"])
+            isolated[str(model.key["data_object"])][model.feature_count] = (
+                5 if key_low <= 5 <= key_high else key_high
+            )
+            isolated[str(model.value["data_object"])][model.value_count] = (
+                7 if value_low <= 7 <= value_high else value_high
+            )
+        cases.append(
+            checked(
+                "canonical_masked_nonzero_isolation",
+                isolated,
+                "distinguish masked-key leakage from correct zero contribution",
+            )
+        )
+        asymmetric = _base_stimulus(model)
+        for binding, stride in (
+            (model.query, 2),
+            (model.key, 3),
+            (model.value, 2),
+        ):
+            low, high = _integer_bounds(binding["data_type"])
+            palette = [item for item in (-1, 1, 2) if low <= item <= high]
+            if not palette:
+                palette = [low]
+            target = asymmetric[str(binding["data_object"])]
+            for index in range(len(target)):
+                target[index] = palette[(index * stride + 1) % len(palette)]
+        for row in range(model.query_count):
+            asymmetric[str(model.mask["data_object"])][
+                row * model.key_count + (row % model.key_count)
+            ] = 1
+        cases.append(
+            checked(
+                "canonical_sparse_attention_asymmetric",
+                asymmetric,
+                "distinguish Q/K transpose, mask-row, key-index, and V-coordinate errors",
+            )
+        )
+        cases.append(
+            checked(
+                "canonical_sparse_attention_zero_after_nonzero",
+                _base_stimulus(model),
+                "run after nonzero attention to expose stale score/output state",
+            )
+        )
+        return cases
+    assert isinstance(model, _GemmModel)
     one_hot = _base_stimulus(model)
     row, depth, column = min(1, model.m - 1), min(1, model.k - 1), min(1, model.n - 1)
     a_low, a_high = _integer_bounds(model.left["data_type"])
@@ -1315,7 +2735,7 @@ def generate_canonical_stimulus_suite(
     """Return directed/randomized cases plus explicit per-bin exceptions."""
 
     operation = _select_operation(operation_metadata, operation_name)
-    model = _gemm_model(operation)
+    model = _operation_model(operation)
     supported = supported_code_owned_concepts({"operations": [operation]}).get(
         model.operation_name, set()
     )

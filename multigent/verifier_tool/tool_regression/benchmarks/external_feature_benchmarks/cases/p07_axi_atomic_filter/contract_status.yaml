@@ -1,0 +1,16 @@
+schema_version: 1
+case_id: P07
+status: blocked
+freeze_blockers:
+- manual_source_port_binding_audit
+- deterministic_contract_reviewer_pass
+- upstream_build_dependency_audit
+source:
+  project: PULP AXI
+  revision: 70b8e54fd460e3308e58be596ceb3566a6e3576e
+  target: src/axi_atop_filter.sv
+unknown_features:
+- axi4_atop_atomic_legality
+- atomic_read_write_response_coupling
+preflight_status: BLOCKED
+preflight_finding_count: 2

@@ -55,3 +55,9 @@ gemm_golden_hls/
 
 # Generated run output (regenerate by re-running the pipeline)
 multigent/runs/
+
+# External benchmark checkouts, simulation evidence, and evaluator-only faults
+multigent/verifier_tool/tool_regression/benchmarks/external_feature_benchmarks/.cache/
+multigent/verifier_tool/tool_regression/benchmarks/external_feature_benchmarks/results/
+multigent/verifier_tool/tool_regression/benchmarks/external_feature_benchmarks/private_holdouts/
+multigent/verifier_tool/tool_regression/benchmarks/external_feature_benchmarks/local_results/

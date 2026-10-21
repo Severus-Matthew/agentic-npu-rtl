@@ -10,6 +10,9 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import signal
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, cast
@@ -36,6 +39,47 @@ class AgentRuntimeError(RuntimeError):
 
 
 CodexRuntimeError = AgentRuntimeError
+
+
+class _AgentRequestDeadline(BaseException):
+    """Escape SDK/network retry handling when a total request deadline expires."""
+
+
+@contextmanager
+def _wall_clock_deadline(seconds: int):
+    """Enforce a total wall-clock deadline for a synchronous agent API call.
+
+    HTTP client timeouts are inactivity limits for individual socket operations;
+    they do not bound a request whose server keeps the connection active. On a
+    POSIX main thread, SIGALRM supplies the missing total deadline. Other
+    environments retain the transport timeout configured on the API client.
+    """
+
+    can_alarm = (
+        seconds > 0
+        and threading.current_thread() is threading.main_thread()
+        and hasattr(signal, "SIGALRM")
+        and hasattr(signal, "setitimer")
+    )
+    if not can_alarm:
+        yield
+        return
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+
+    def _deadline_expired(_signum, _frame):
+        raise _AgentRequestDeadline()
+
+    signal.signal(signal.SIGALRM, _deadline_expired)
+    signal.setitimer(signal.ITIMER_REAL, float(seconds))
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer != (0.0, 0.0):
+            signal.setitimer(signal.ITIMER_REAL, *previous_timer)
 
 
 @dataclass(frozen=True)
@@ -346,20 +390,31 @@ class APIAgent:
             prompt = base_prompt + retry_note
 
             try:
-                if self.config.api_mode == "responses":
-                    raw_output, metadata = self._responses_call(
-                        client=client,
-                        prompt=prompt,
-                        schema=schema,
-                        schema_name=f"{self.config.name}_output",
-                    )
-                else:
-                    raw_output, metadata = self._chat_call(
-                        client=client,
-                        prompt=prompt,
-                        schema=schema,
-                        schema_name=f"{self.config.name}_output",
-                    )
+                with _wall_clock_deadline(self.config.timeout_seconds):
+                    if self.config.api_mode == "responses":
+                        raw_output, metadata = self._responses_call(
+                            client=client,
+                            prompt=prompt,
+                            schema=schema,
+                            schema_name=f"{self.config.name}_output",
+                        )
+                    else:
+                        raw_output, metadata = self._chat_call(
+                            client=client,
+                            prompt=prompt,
+                            schema=schema,
+                            schema_name=f"{self.config.name}_output",
+                        )
+            except _AgentRequestDeadline as exc:
+                message = (
+                    f"{self.config.name} API request exceeded the total wall-clock "
+                    f"deadline of {self.config.timeout_seconds} seconds"
+                )
+                trace["attempts"].append(
+                    {"attempt": attempt, "api_timeout": message}
+                )
+                log_path.write_text(json.dumps(trace, indent=2) + "\n", encoding="utf-8")
+                raise AgentRuntimeError(message) from exc
             except OpenAIError as exc:
                 trace["attempts"].append(
                     {"attempt": attempt, "api_error": str(exc)}

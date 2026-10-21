@@ -1,0 +1,12 @@
+{
+  "top": "apbxclk",
+  "modules": [
+    {
+      "name": "apbxclk",
+      "responsibility": "apb_cross_clock",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+schema_version: 1
+case_id: u02_lifecycle_pair
+unknown_feature_count: 2
+domains:
+- lifecycle
+features:
+- id: lifecycle.minimum_busy_duration
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.minimum_busy_duration
+  intent: Every accepted job remains busy for at least four sampled cycles.
+- id: lifecycle.maximum_completion_latency
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.maximum_completion_latency
+  intent: Completion follows legal job acceptance within forty cycles.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

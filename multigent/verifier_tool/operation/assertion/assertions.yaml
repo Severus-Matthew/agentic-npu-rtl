@@ -1,7 +1,7 @@
 taxonomy:
   name: accelerator_operation_predefined_assertions
-  version: "0.1"
-  scope: reviewer-visible correctness guidance for the code-owned integer GEMM family; required_properties are not independent executable checkers
+  version: "0.4"
+  scope: reviewer-visible correctness guidance for code-owned integer GEMM, QK-score, fixed-point attention-scale, binary attention-mask, and restricted sparse-attention families; required_properties are not independent executable checkers
 
 families:
   matrix_multiply:
@@ -43,3 +43,121 @@ families:
       illegal_job_isolation:
         applies_when: illegal encodings or configurations have defined behavior
         check: An illegal job follows its error policy without corrupting preceding or following legal jobs.
+  sparse_attention:
+    feature_checks:
+      stage_handoffs: [each declared stage consumes the previous stage output without recomputing QK or silently changing bypassed scale and normalization values]
+    required_properties:
+      oracle_equivalence:
+        applies_when: always
+        check: Every transferred logical result element equals the independent masked sparse-attention oracle using the exact contract-declared reduction and conversion rules.
+      accepted_input_accounting:
+        applies_when: always
+        check: Count accepted Q, K, V, and mask elements independently; every accepted job consumes exactly its declared tensors with no loss, duplication, or cross-job mixing.
+      binary_mask_legality:
+        applies_when: always
+        check: Every mask element is either zero or one as required by binary_keep semantics.
+      masked_key_isolation:
+        applies_when: always
+        check: A key/value position whose mask entry is zero contributes exactly zero to that query row, even when its score or value is nonzero.
+      composed_stage_equivalence:
+        applies_when: always
+        check: The end-to-end result is produced by the declared QK, scale, mask, normalization, and value-stage composition, with every adjacent handoff matching its producer and consumer contracts.
+      empty_row_zero_result:
+        applies_when: a query row has no enabled key positions
+        check: Every result element for that query row is zero before the declared result conversion.
+      exact_result_accounting:
+        applies_when: always
+        check: Each accepted legal job produces exactly Q times DV logical results, with no missing or extra output.
+      result_coordinate_order:
+        applies_when: always
+        check: Each output is associated with the correct query/value coordinate and appears in the contract-defined order.
+      completion_association:
+        applies_when: completion or done status exists
+        check: Completion occurs once per accepted checked job and never substitutes for missing result transfers.
+      reset_abort_no_ghost_result:
+        applies_when: reset can interrupt work
+        check: Reset follows the contract and no partial pre-reset attention job leaks into a later result.
+  attention_qk:
+    feature_checks:
+      dimensions: [the score tensor contains exactly the declared fixed Q by S coordinates and each dot product reduces exactly D terms]
+      operand_values: [Q and K elements are decoded independently using their declared signed widths before multiplication]
+      accumulation: [every mathematical prefix and declared accumulator conversion follows the contract-defined increasing-D reduction order]
+      attention_scores: [each emitted score is associated with its query and key coordinate and has the expected zero positive or negative classification]
+    required_properties:
+      oracle_equivalence:
+        applies_when: always
+        check: Every transferred score equals the independent Q times K-transpose oracle using the exact declared reduction and result-conversion rules.
+      accepted_input_accounting:
+        applies_when: always
+        check: Count accepted Q and K elements independently; every accepted job consumes exactly its declared tensors with no loss, duplication, or cross-job mixing.
+      score_coordinate_order:
+        applies_when: always
+        check: Each score is associated with the correct query/key coordinate and appears in the contract-defined order.
+      exact_result_accounting:
+        applies_when: always
+        check: Each accepted legal job produces exactly Q times S score elements, with no missing or extra output.
+      completion_association:
+        applies_when: completion or done status exists
+        check: Completion occurs once per accepted checked job and never substitutes for missing score transfers.
+      reset_abort_no_ghost_result:
+        applies_when: reset can interrupt work
+        check: Reset follows the contract and no partial pre-reset QK job leaks into a later score result.
+  attention_scale:
+    feature_checks:
+      dimensions: [the scaled score tensor contains exactly the declared fixed Q by S coordinates]
+      score_values: [input scores are decoded as signed integers at the declared width, including both extrema]
+      rounding: [the exact signed product is shifted with arithmetic-floor semantics and discarded fractions are classified by input sign]
+      scaled_values: [each converted output is classified from the actual emitted signed value]
+      attenuation: [zero remains zero and nonzero magnitude reduction is observed when the declared reciprocal-square-root coefficient is below one]
+    required_properties:
+      oracle_equivalence:
+        applies_when: always
+        check: Every transferred scaled score equals the independent signed fixed-point multiplier and arithmetic-shift oracle using the contract-derived round(2^F/sqrt(D)) coefficient.
+      coefficient_derivation:
+        applies_when: always
+        check: The implemented coefficient equals round(2^scale_shift/sqrt(head_dimension)); a nearby hard-coded coefficient is not accepted.
+      arithmetic_shift_semantics:
+        applies_when: always
+        check: Negative non-divisible products round toward negative infinity exactly as a signed arithmetic right shift, never toward zero and never as a logical shift.
+      stage_order:
+        applies_when: always
+        check: Signed score decode precedes exact fixed-point multiplication, arithmetic power-of-two shift, and declared result conversion in that order.
+      accepted_input_accounting:
+        applies_when: always
+        check: Count accepted score elements independently; every accepted element produces exactly one associated output with no loss, duplication, or reordering.
+      output_stability_under_backpressure:
+        applies_when: output ready can be low
+        check: Once output valid is asserted, the scaled score and valid remain stable until the transfer is accepted.
+      reset_abort_no_ghost_result:
+        applies_when: reset can interrupt work
+        check: Reset discards any pending pre-reset score and no ghost scaled result appears after reset.
+  attention_mask:
+    feature_checks:
+      dimensions: [the score, binary mask, and masked-score tensors contain exactly the same declared fixed Q by S coordinates]
+      score_values: [scaled input scores are decoded independently using their declared signed width, including both extrema]
+      mask_values: [zero means drop and one means keep; no polarity inversion is accepted]
+      sparsity_patterns: [empty, singleton, partial, and dense rows are classified from accepted mask elements]
+      masked_values: [each emitted masked score is classified from the actual signed output]
+      mask_effects: [active scores are preserved bit-exactly and inactive nonzero scores are forced to zero]
+    required_properties:
+      oracle_equivalence:
+        applies_when: always
+        check: Every transferred masked score equals the independent binary-keep oracle for the corresponding accepted score and mask element.
+      binary_mask_legality:
+        applies_when: always
+        check: Every accepted mask element is exactly zero or one; the base profile uses an unsigned one-bit mask transport.
+      mask_polarity:
+        applies_when: always
+        check: Mask value one preserves the score and mask value zero drops it to zero.
+      coordinate_alignment:
+        applies_when: always
+        check: Score and mask elements are paired at the same Q by S coordinate even when their input channels stall independently.
+      accepted_input_accounting:
+        applies_when: always
+        check: Count accepted score and mask elements independently; every paired coordinate produces exactly one output with no loss, duplication, or cross-coordinate mixing.
+      output_stability_under_backpressure:
+        applies_when: output ready can be low
+        check: Once output valid is asserted, the masked score and valid remain stable until the transfer is accepted.
+      reset_abort_no_ghost_result:
+        applies_when: reset can interrupt work
+        check: Reset discards pending unpaired and paired pre-reset inputs and no ghost masked result appears after reset.

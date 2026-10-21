@@ -1,0 +1,17 @@
+schema_version: 1
+case_id: u01_protocol_ready_recovery
+unknown_feature_count: 1
+domains:
+- protocol
+features:
+- id: protocol.bounded_ready_recovery
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.bounded_ready_recovery
+  intent: DUT-owned operand-A READY must recover within seven cycles after A VALID
+    is presented and a legal command opens the input channel.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

@@ -1,0 +1,17 @@
+schema_version: 1
+case_id: P06
+status: blocked
+freeze_blockers:
+- manual_source_port_binding_audit
+- deterministic_contract_reviewer_pass
+- upstream_build_dependency_audit
+source:
+  project: OpenTitan
+  revision: dd8b1ab44e4da9929976ddbd47586518d1b850ec
+  target: hw/ip/tlul/rtl/tlul_adapter_sram.sv
+unknown_features:
+- tilelink_ul_a_d_opcode_rules
+- tilelink_source_response_binding
+- tilelink_integrity
+preflight_status: BLOCKED
+preflight_finding_count: 2

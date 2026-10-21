@@ -1,0 +1,258 @@
+design:
+  name: u04_lifecycle_heavy
+  description: Minimal hand-authored ready/valid GEMM (M=1,K=4,N=1) with bias-add
+    then ReLU, no memory-mapped transport at all -- a verifier_tool benchmark fixture
+    independent of the HLS Golden AXI4 fixture, built to qualify the ready_valid protocol
+    profile and the valid_ready_handshake/pulse lifecycle policy choices. Frozen extension
+    benchmark u04_lifecycle_heavy with 4 unknown features.
+operations:
+- name: gemm
+  kind: arithmetic
+  coverage_family: matrix_multiply
+  coverage_family_source: catalog
+  features:
+  - dimensions
+  - operand_values
+  - accumulation
+  - post_processing
+  feature_extensions:
+  - bias
+  - activation
+  semantics: Y = relu(sum_k A[k]*B[k] + bias), exact s16 product, wrapping s16 accumulator.
+    Then apply dead_zone(value) = 0 if abs(value) < 4 else value.
+  inputs:
+  - A_matrix
+  - B_matrix
+  - bias_vector
+  outputs:
+  - Y_matrix
+  arithmetic:
+    classifier_profile: integer_matrix_multiply
+    product_data_type: s16
+    accumulator_data_type: s16
+    accumulator_initialization: 0
+    reduction_dimensions:
+    - K
+    reduction_order: increasing_declared_reduction_coordinate
+    reduction_conversion: wrap_twos_complement_after_each_add
+    post_operations:
+      biased:
+        kind: bias_add
+        depends_on:
+        - accumulator
+        data_object: bias_vector
+        broadcast_dimensions:
+        - N
+      activated:
+        kind: relu
+        depends_on:
+        - biased
+      dead_zone:
+        kind: llm_defined
+        depends_on:
+        - activated
+        formula: 0 if abs(value) < 4 else value
+    post_output: dead_zone
+    bias_conversion: wrap_twos_complement_after_add
+    result_data_type: s16
+    result_conversion: wrap_twos_complement
+  lifecycle_policy:
+    job_acceptance: valid_ready_handshake
+    job_overlap: single_inflight
+    busy_behavior: tracks_active_job
+    completion_style: pulse
+    completion_timing: next_cycle_after_retirement
+    illegal_command_behavior: error_without_start
+    error_style: pulse
+    error_timing: next_cycle_after_error_event
+    reset_behavior: abort_inflight
+data_types:
+- name: s8
+  role: signed 8-bit GEMM operand
+  width_bits: 8
+  signed: true
+  representation: twos_complement
+  conversion_semantics: n/a
+  overflow_semantics: n/a
+  rounding_semantics: n/a
+- name: s16
+  role: signed 16-bit product/accumulator/bias/result
+  width_bits: 16
+  signed: true
+  representation: twos_complement
+  conversion_semantics: n/a
+  overflow_semantics: wrap_twos_complement
+  rounding_semantics: n/a
+data_objects:
+- name: A_matrix
+  role: left_operand_matrix
+  data_type: s8
+  dimensions:
+  - M
+  - K
+  producer: external
+  consumers:
+  - gemm
+  external: true
+  serialization:
+    kind: dense_tensor
+    index_order:
+    - M
+    - K
+    description: One element per transfer, K varies fastest.
+- name: B_matrix
+  role: right_operand_matrix
+  data_type: s8
+  dimensions:
+  - K
+  - N
+  producer: external
+  consumers:
+  - gemm
+  external: true
+  serialization:
+    kind: dense_tensor
+    index_order:
+    - K
+    - N
+    description: One element per transfer, N varies fastest.
+- name: bias_vector
+  role: per_output_column_bias
+  data_type: s16
+  dimensions:
+  - N
+  producer: external
+  consumers:
+  - gemm
+  external: true
+  serialization:
+    kind: dense_tensor
+    index_order:
+    - N
+    description: One element per transfer.
+- name: Y_matrix
+  role: result_matrix
+  data_type: s16
+  dimensions:
+  - M
+  - N
+  producer: gemm
+  consumers:
+  - external
+  external: true
+  serialization:
+    kind: dense_tensor
+    index_order:
+    - M
+    - N
+    description: One element per transfer.
+dimensions:
+- name: M
+  semantic: GEMM row count
+  minimum: 1
+  maximum: 1
+  runtime_configurable: false
+  bound_parameter: ''
+- name: K
+  semantic: GEMM reduction depth
+  minimum: 4
+  maximum: 4
+  runtime_configurable: false
+  bound_parameter: ''
+- name: N
+  semantic: GEMM column count
+  minimum: 1
+  maximum: 1
+  runtime_configurable: false
+  bound_parameter: ''
+parameters: []
+compute:
+  organization: sequential streaming load/compute/store FSM
+storage: []
+pipeline:
+  stages: load_a -> load_b -> load_bias -> output
+control:
+  style: single ready/valid command channel, valid_ready_handshake
+reset:
+  synchronous: true
+  active_low: true
+  behavior: aborts any in-flight job
+latency_model:
+  exact: false
+  note: No exact cycle count promised.
+architectural_invariants:
+- Exactly one GEMM job may be in flight at a time.
+open_assumptions: []
+verification_extensions:
+- id: lifecycle.busy_watchdog_observation
+  domain: lifecycle
+  feature_name: busy_watchdog_observation
+  target:
+    scope: operation
+    name: gemm
+  semantics:
+    summary: Observe whether an accepted job remains busy for twelve sampled cycles.
+    trigger: A legal command is accepted and busy becomes asserted.
+    required_behavior:
+    - Count consecutive busy cycles and record the twelve-cycle threshold.
+    end_condition: The job retires, resets, errors, or reaches twelve busy cycles.
+    forbidden_behavior:
+    - The observation weakens built-in lifecycle checkers.
+  reason: The built-in lifecycle pool does not represent this exact behavior.
+  parameters:
+    threshold_cycles: 12
+  required_observations:
+  - name: busy
+    kind: signal
+    description: Frozen-contract evidence required for busy.
+  related_builtin_features:
+  - lifecycle.gemm.busy_tracks_active_job
+- id: lifecycle.minimum_busy_duration
+  domain: lifecycle
+  feature_name: minimum_busy_duration
+  target:
+    scope: operation
+    name: gemm
+  semantics:
+    summary: Every accepted job remains busy for at least four sampled cycles.
+    trigger: A legal job is accepted.
+    required_behavior:
+    - Busy remains asserted for four consecutive samples.
+    end_condition: Four busy cycles are observed or busy drops early.
+    forbidden_behavior:
+    - A shorter busy interval passes.
+  reason: The built-in lifecycle pool does not represent this exact behavior.
+  parameters:
+    minimum_cycles: 4
+  required_observations:
+  - name: busy
+    kind: signal
+    description: Frozen-contract evidence required for busy.
+  related_builtin_features:
+  - lifecycle.gemm.busy_tracks_active_job
+- id: lifecycle.completion_to_idle_deadline
+  domain: lifecycle
+  feature_name: completion_to_idle_deadline
+  target:
+    scope: operation
+    name: gemm
+  semantics:
+    summary: Busy deasserts within two cycles after completion.
+    trigger: Completion is observed.
+    required_behavior:
+    - Busy becomes low no later than the second following sample.
+    end_condition: Busy deasserts or two cycles expire.
+    forbidden_behavior:
+    - Busy remains high for a third cycle after completion.
+  reason: The built-in lifecycle pool does not represent this exact behavior.
+  parameters:
+    maximum_cycles: 2
+  required_observations:
+  - name: completion
+    kind: signal
+    description: Frozen-contract evidence required for completion.
+  - name: busy
+    kind: signal
+    description: Frozen-contract evidence required for busy.
+  related_builtin_features:
+  - lifecycle.gemm.busy_tracks_active_job

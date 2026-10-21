@@ -1,5 +1,27 @@
 # Local frozen-contract qualification
 
+Standalone stage qualifications currently include raw QK, fixed-point scale,
+and the binary-keep mask benchmark in
+[`attention_mask_binary`](attention_mask_binary/). The mask benchmark exhausts
+all signed-16 score values under both legal mask values and independently
+stalls its score, mask, and output streams.
+
+The [`extension_frozen_contracts`](extension_frozen_contracts/) corpus contains
+30 API-free frozen inputs for later Verifier extension evaluation.  Five cases
+are provided at every unknown-feature count from one through six, spanning
+operation formulas, protocol behavior, lifecycle behavior, and mixed-domain
+compositions.  These cases validate the Architect-to-Verifier contract boundary;
+they are not counted as successful Verifier generations until generated code
+passes the deterministic gates and any required RTL fault/fix simulation.
+
+The synthetic 80-case leveled corpus was removed on 2026-10-14. It was useful
+for schema bring-up but did not provide independent real-RTL evidence. The new
+[`external_feature_benchmarks`](external_feature_benchmarks/) suite selects 30
+pinned public RTL cases: ten protocol, ten lifecycle, and ten operation cases.
+It separates pristine-design acceptance, legal positive controls, known
+mutants, and post-freeze held-out mutants. Selection in that manifest is not a
+qualification claim.
+
 `frozen_contract_qualification.py` executes the user-required sequence without
 an external API or a hand-written `test.py`: load four frozen Architect files,
 run deterministic preflight, generate the normal verifier-tool TB, test the
@@ -135,3 +157,17 @@ Some mutants are caught by named deterministic assertions, others by the
 memory driver, the golden-output comparison, or a finite simulation timeout;
 these are distinct detection strengths. Run them locally with
 `./.venv/bin/python -m pytest multigent/verifier_tool/tool_regression/rtl/test_int8_gemm_hls_mutations.py -q`.
+
+[`qk_systolic_attention_qk`](qk_systolic_attention_qk/) is the independent
+attention-QK real-RTL benchmark. It binds a pinned public output-stationary
+`Q*K^T` array to all 14 code-owned `attention_qk` bins, checks reset/completion/
+coordinate behavior, and runs the unchanged frozen TB against 35 structural
+mutants plus an optional exhaustive 384 single-bit input/output fault set.
+Compile failures and mathematically equivalent edits are not counted as kills.
+
+[`attention_scale_fixed`](attention_scale_fixed/) is the independent scale-only
+benchmark extracted from a public transformer's embedded softmax scale equation.
+It binds signed QK scores to all 14 `attention_scale` bins, checks every signed
+16-bit input, ready/valid stalls and reset abort, and rejects all 73 compile-valid
+coefficient, shift, rounding, signedness, data, protocol, and reset mutants.
+Mask, softmax, and V multiplication are deliberately outside this stage.

@@ -88,6 +88,70 @@
     },
     {
       "type": "object", "additionalProperties": false,
+      "required": ["classifier_profile", "score_product_data_type", "score_accumulator_data_type", "score_accumulator_initialization", "score_reduction_dimensions", "score_reduction_order", "score_reduction_conversion", "result_data_type", "result_conversion"],
+      "properties": {
+        "classifier_profile": {"type": "string", "enum": ["integer_qk_score"]},
+        "score_product_data_type": {"type": "string", "minLength": 1, "description": "Declared integer data type wide enough for every exact Q*K product."},
+        "score_accumulator_data_type": {"type": "string", "minLength": 1},
+        "score_accumulator_initialization": {"type": "integer", "enum": [0]},
+        "score_reduction_dimensions": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 1},
+        "score_reduction_order": {"type": "string", "enum": ["increasing_declared_reduction_coordinate"]},
+        "score_reduction_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement_after_each_add"]},
+        "result_data_type": {"type": "string", "minLength": 1},
+        "result_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement"]}
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["classifier_profile", "head_dimension", "coefficient_derivation", "scale_multiplier", "scale_shift", "rounding", "product_data_type", "result_data_type", "result_conversion"],
+      "properties": {
+        "classifier_profile": {"type": "string", "enum": ["fixed_point_attention_scale"]},
+        "head_dimension": {"type": "string", "minLength": 1, "description": "Declared fixed feature dimension D used to derive 1/sqrt(D)."},
+        "coefficient_derivation": {"type": "string", "enum": ["round_inverse_sqrt"], "description": "scale_multiplier must equal round(2^scale_shift/sqrt(D)), with positive half values rounded upward."},
+        "scale_multiplier": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "scale_shift": {"type": "integer", "minimum": 0, "maximum": 62},
+        "rounding": {"type": "string", "enum": ["arithmetic_floor"], "description": "Signed exact product is divided by 2^scale_shift using arithmetic-right-shift/floor semantics."},
+        "product_data_type": {"type": "string", "minLength": 1, "description": "Declared signed integer type wide enough for every exact score*scale_multiplier product."},
+        "result_data_type": {"type": "string", "minLength": 1},
+        "result_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement"]}
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["classifier_profile", "mask_mode", "result_data_type", "result_conversion"],
+      "properties": {
+        "classifier_profile": {"type": "string", "enum": ["binary_attention_mask"]},
+        "mask_mode": {"type": "string", "enum": ["binary_keep"], "description": "One preserves the coordinate's scaled score; zero replaces it with zero."},
+        "result_data_type": {"type": "string", "minLength": 1},
+        "result_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement"]}
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["classifier_profile", "score_product_data_type", "score_accumulator_data_type", "score_accumulator_initialization", "score_reduction_dimensions", "score_reduction_order", "score_reduction_conversion", "scaling", "mask_mode", "normalization", "output_product_data_type", "output_accumulator_data_type", "output_accumulator_initialization", "output_reduction_dimensions", "output_reduction_order", "output_reduction_conversion", "result_data_type", "result_conversion"],
+      "properties": {
+        "classifier_profile": {"type": "string", "enum": ["integer_sparse_attention"]},
+        "score_product_data_type": {"type": "string", "minLength": 1, "description": "Declared integer data type wide enough for every exact Q*K product."},
+        "score_accumulator_data_type": {"type": "string", "minLength": 1},
+        "score_accumulator_initialization": {"type": "integer", "enum": [0]},
+        "score_reduction_dimensions": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 1},
+        "score_reduction_order": {"type": "string", "enum": ["increasing_declared_reduction_coordinate"]},
+        "score_reduction_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement_after_each_add"]},
+        "scaling": {"type": "string", "enum": ["none"], "description": "Explicit identity scaling for this restricted composition. Reciprocal-square-root scaling belongs to a separate supported stage/profile."},
+        "mask_mode": {"type": "string", "enum": ["binary_keep"]},
+        "normalization": {"type": "string", "enum": ["none"], "description": "The first code-owned sparse-attention profile is exact unnormalized masked dot-product attention. Softmax, scaling, top-k selection, and approximate normalization require a separate supported profile or llm_extension."},
+        "output_product_data_type": {"type": "string", "minLength": 1, "description": "Declared integer data type wide enough for every exact score*V product."},
+        "output_accumulator_data_type": {"type": "string", "minLength": 1},
+        "output_accumulator_initialization": {"type": "integer", "enum": [0]},
+        "output_reduction_dimensions": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 1},
+        "output_reduction_order": {"type": "string", "enum": ["increasing_declared_reduction_coordinate"]},
+        "output_reduction_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement_after_each_add"]},
+        "result_data_type": {"type": "string", "minLength": 1},
+        "result_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement"]}
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
       "required": ["classifier_profile", "reason"],
       "properties": {
         "classifier_profile": {"type": "string", "enum": ["llm_extension"]},

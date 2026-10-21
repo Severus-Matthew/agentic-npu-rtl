@@ -1,0 +1,16 @@
+schema_version: 1
+case_id: u01_operation_dead_zone
+unknown_feature_count: 1
+domains:
+- operation
+features:
+- id: operation.dead_zone
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: dead_zone
+  intent: Piecewise dead-zone transform.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

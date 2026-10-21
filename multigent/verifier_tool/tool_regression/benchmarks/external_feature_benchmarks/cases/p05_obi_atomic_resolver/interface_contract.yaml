@@ -1,0 +1,9 @@
+clock: null
+reset: null
+channels: []
+signals: []
+global_handshake_rules: No rule is inferred before source-port audit.
+source_boundary:
+  top: obi_atop_resolver
+  target: src/obi_atop_resolver.sv
+  binding_status: requires_manual_port_audit

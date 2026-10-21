@@ -125,6 +125,17 @@ def _patchable_verifier_result(value):
     )
 
 
+def _requires_feature_extension_source_repair(validator_error):
+    """A bundle/source mismatch cannot be represented by the local patch schema."""
+
+    message = str(validator_error)
+    return any(marker in message for marker in (
+        "Invalid Verifier feature extensions:",
+        "Source completion must replace exactly the planned files",
+        "Source completion duplicates file:",
+    ))
+
+
 def _local_review(context):
     if not isinstance(context, dict):
         return None
@@ -188,6 +199,32 @@ def verification_repair_node(state):
             previous_hits = previous_context.get('coverage_closure_review')
             if isinstance(previous_hits, dict):
                 context['coverage_closure_review'] = previous_hits
+        if (
+            _patchable_verifier_result(previous_draft)
+            and _requires_feature_extension_source_repair(validator_error)
+        ):
+            context['semantic_validation_review'] = {
+                'validator_error': validator_error,
+                'missing_concepts': [],
+                'previous_verifier_output': previous_draft,
+                'instruction': (
+                    'Correct the Verifier-owned feature-extension bundle and only '
+                    'the source regions implicated by validator_error. Preserve all '
+                    'unaffected source, coverage, checks, and frozen-contract facts.'
+                ),
+            }
+            return {
+                'verification_context': context,
+                'verifier_revision': state.get('verifier_revision', 0) + 1,
+                'verifier_status': 'PENDING',
+                'verification_status': 'PENDING',
+                'needs_regression': True,
+                'history': [{
+                    'stage': 'verification_repair',
+                    'status': 'FEATURE_EXTENSION_SOURCE_CORRECTION',
+                    'validator_error': validator_error,
+                }],
+            }
         previous_assertion_review = _local_review(previous_context)
         if isinstance(previous_assertion_review, dict):
             # A malformed or incomplete local patch remains owned by Verifier. Keep

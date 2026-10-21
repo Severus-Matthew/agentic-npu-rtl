@@ -1,0 +1,78 @@
+schema_version: 1
+description: >-
+  Thirty frozen-contract challenges for evaluating how the Verifier handles
+  behavior absent from the closed pools.  There are five distinct cases at
+  each unknown-feature count from one through six.
+
+cases:
+  # One unknown feature: isolate each domain before testing compositions.
+  - id: u01_operation_affine
+    features: [operation.affine_triple_plus_one]
+  - id: u01_protocol_ready_recovery
+    features: [protocol.bounded_ready_recovery]
+  - id: u01_lifecycle_busy_watchdog
+    features: [lifecycle.busy_watchdog_observation]
+  - id: u01_operation_dead_zone
+    features: [operation.dead_zone]
+  - id: u01_protocol_payload_parity
+    features: [protocol.payload_parity_observation]
+
+  # Two unknown features: same-domain and cross-domain pairs.
+  - id: u02_protocol_pair
+    features: [protocol.exact_two_cycle_backpressure, protocol.minimum_ready_window]
+  - id: u02_lifecycle_pair
+    features: [lifecycle.minimum_busy_duration, lifecycle.maximum_completion_latency]
+  - id: u02_operation_pair
+    features: [operation.absolute_value, operation.negative_shift]
+  - id: u02_operation_protocol
+    features: [operation.symmetric_clip, protocol.transfer_gap_limit]
+  - id: u02_protocol_lifecycle
+    features: [protocol.post_reset_first_transfer_deadline, lifecycle.reset_recovery_window]
+
+  # Three unknown features: all-domain and concentrated stress cases.
+  - id: u03_all_domains
+    features: [operation.relu6, protocol.backpressure_duty_cycle, lifecycle.completion_to_idle_deadline]
+  - id: u03_protocol_focus
+    features: [protocol.bounded_ready_recovery, protocol.payload_parity_observation, protocol.transfer_gap_limit]
+  - id: u03_lifecycle_focus
+    features: [lifecycle.busy_watchdog_observation, lifecycle.error_recovery_window, lifecycle.inter_job_cooldown]
+  - id: u03_operation_focus
+    features: [operation.square, operation.modulo_seven, operation.floor_scale]
+  - id: u03_protocol_lifecycle
+    features: [protocol.exact_two_cycle_backpressure, protocol.minimum_ready_window, lifecycle.minimum_busy_duration]
+
+  # Four unknown features: varying domain ratios.
+  - id: u04_balanced_a
+    features: [operation.affine_triple_plus_one, protocol.bounded_ready_recovery, protocol.payload_parity_observation, lifecycle.maximum_completion_latency]
+  - id: u04_balanced_b
+    features: [operation.absolute_value, protocol.transfer_gap_limit, lifecycle.reset_recovery_window, lifecycle.inter_job_cooldown]
+  - id: u04_operation_heavy
+    features: [operation.negative_shift, operation.symmetric_clip, operation.sign_dependent_gain, protocol.minimum_ready_window]
+  - id: u04_protocol_heavy
+    features: [protocol.exact_two_cycle_backpressure, protocol.backpressure_duty_cycle, protocol.post_reset_first_transfer_deadline, lifecycle.error_recovery_window]
+  - id: u04_lifecycle_heavy
+    features: [lifecycle.busy_watchdog_observation, lifecycle.minimum_busy_duration, lifecycle.completion_to_idle_deadline, operation.dead_zone]
+
+  # Five unknown features: larger mixed contracts.
+  - id: u05_mixed_a
+    features: [operation.relu6, operation.floor_scale, protocol.bounded_ready_recovery, protocol.payload_parity_observation, lifecycle.reset_recovery_window]
+  - id: u05_mixed_b
+    features: [operation.square, protocol.exact_two_cycle_backpressure, protocol.transfer_gap_limit, lifecycle.maximum_completion_latency, lifecycle.inter_job_cooldown]
+  - id: u05_operation_heavy
+    features: [operation.affine_triple_plus_one, operation.absolute_value, operation.modulo_seven, operation.dead_zone, lifecycle.busy_watchdog_observation]
+  - id: u05_protocol_heavy
+    features: [protocol.bounded_ready_recovery, protocol.minimum_ready_window, protocol.backpressure_duty_cycle, protocol.post_reset_first_transfer_deadline, operation.symmetric_clip]
+  - id: u05_lifecycle_heavy
+    features: [lifecycle.minimum_busy_duration, lifecycle.maximum_completion_latency, lifecycle.completion_to_idle_deadline, lifecycle.error_recovery_window, protocol.payload_parity_observation]
+
+  # Six unknown features: maximum initial benchmark complexity.
+  - id: u06_mixed_a
+    features: [operation.affine_triple_plus_one, operation.negative_shift, protocol.bounded_ready_recovery, protocol.transfer_gap_limit, lifecycle.busy_watchdog_observation, lifecycle.reset_recovery_window]
+  - id: u06_mixed_b
+    features: [operation.absolute_value, operation.relu6, protocol.exact_two_cycle_backpressure, protocol.payload_parity_observation, lifecycle.maximum_completion_latency, lifecycle.error_recovery_window]
+  - id: u06_operation_heavy
+    features: [operation.square, operation.modulo_seven, operation.floor_scale, operation.sign_dependent_gain, protocol.minimum_ready_window, lifecycle.inter_job_cooldown]
+  - id: u06_protocol_heavy
+    features: [protocol.bounded_ready_recovery, protocol.exact_two_cycle_backpressure, protocol.transfer_gap_limit, protocol.backpressure_duty_cycle, operation.dead_zone, lifecycle.completion_to_idle_deadline]
+  - id: u06_lifecycle_heavy
+    features: [lifecycle.busy_watchdog_observation, lifecycle.minimum_busy_duration, lifecycle.maximum_completion_latency, lifecycle.error_recovery_window, lifecycle.reset_recovery_window, operation.symmetric_clip]

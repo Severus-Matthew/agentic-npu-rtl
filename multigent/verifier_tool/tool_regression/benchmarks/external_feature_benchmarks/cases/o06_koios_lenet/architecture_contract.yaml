@@ -1,0 +1,148 @@
+design:
+  name: koios_lenet
+  description: External benchmark O06 over Koios accelerator benchmarks in the SLDB-pinned
+    VTR fork at exact revision 0812786f103b63b6db679eab163c3d4ab8b5cf1a, target vtr_flow/benchmarks/verilog/koios/lenet.v.
+operations:
+- name: koios_lenet
+  kind: koios_lenet
+  coverage_family: koios_lenet
+  coverage_family_source: novel
+  features:
+  - lenet_layer_graph
+  feature_extensions:
+  - fixed_point_cast_boundaries
+  - streamed_layer_outputs
+  semantics: Source-backed operation scope for koios_lenet; exact behavior is owned
+    by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  arithmetic:
+    classifier_profile: llm_extension
+    reason: The selected upstream arithmetic is not a current code-owned profile.
+    extension_request: operation.o06_lenet_layer_graph
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Known primitives are reused; the complete LeNet graph and fixed-point boundaries
+  are extended.
+open_assumptions: []
+verification_extensions:
+- id: operation.o06_lenet_layer_graph
+  domain: operation
+  feature_name: lenet_layer_graph
+  target:
+    scope: operation
+    name: koios_lenet
+  semantics:
+    summary: Verify lenet layer graph exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible lenet layer graph behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: lenet_layer_graph is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - convolution
+  - matrix_multiply
+  - relu
+  - golden_equivalence_shell
+- id: operation.o06_fixed_point_cast_boundaries
+  domain: operation
+  feature_name: fixed_point_cast_boundaries
+  target:
+    scope: operation
+    name: koios_lenet
+  semantics:
+    summary: Verify fixed point cast boundaries exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible fixed point cast boundaries behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: fixed_point_cast_boundaries is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - convolution
+  - matrix_multiply
+  - relu
+  - golden_equivalence_shell
+- id: operation.o06_streamed_layer_outputs
+  domain: operation
+  feature_name: streamed_layer_outputs
+  target:
+    scope: operation
+    name: koios_lenet
+  semantics:
+    summary: Verify streamed layer outputs exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible streamed layer outputs behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: streamed_layer_outputs is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - convolution
+  - matrix_multiply
+  - relu
+  - golden_equivalence_shell

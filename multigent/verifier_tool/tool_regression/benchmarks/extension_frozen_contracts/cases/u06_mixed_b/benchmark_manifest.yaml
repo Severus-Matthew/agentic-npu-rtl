@@ -1,0 +1,43 @@
+schema_version: 1
+case_id: u06_mixed_b
+unknown_feature_count: 6
+domains:
+- lifecycle
+- operation
+- protocol
+features:
+- id: operation.absolute_value
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: absolute_value
+  intent: Nonnegative piecewise scalar transform.
+- id: operation.relu6
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: relu6
+  intent: Piecewise activation with lower and upper saturation.
+- id: protocol.exact_two_cycle_backpressure
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.exact_two_cycle_backpressure
+  intent: Observe a transfer stalled for exactly two complete cycles.
+- id: protocol.payload_parity_observation
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.payload_parity_observation
+  intent: Classify accepted output payloads by even and odd parity.
+- id: lifecycle.maximum_completion_latency
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.maximum_completion_latency
+  intent: Completion follows legal job acceptance within forty cycles.
+- id: lifecycle.error_recovery_window
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.error_recovery_window
+  intent: A clean legal job can be accepted within six cycles after an error pulse.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

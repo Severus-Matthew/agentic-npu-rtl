@@ -1,0 +1,12 @@
+{
+  "top": "conv_layer",
+  "modules": [
+    {
+      "name": "conv_layer",
+      "responsibility": "koios_convolution_layer",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

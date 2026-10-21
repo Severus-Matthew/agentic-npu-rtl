@@ -1,0 +1,18 @@
+schema_version: 1
+case_id: O10
+status: blocked
+freeze_blockers:
+- manual_source_port_binding_audit
+- deterministic_contract_reviewer_pass
+- upstream_build_dependency_audit
+source:
+  project: Koios accelerator benchmarks in the SLDB-pinned VTR fork
+  revision: 0812786f103b63b6db679eab163c3d4ab8b5cf1a
+  target: vtr_flow/benchmarks/verilog/koios/spmv.v
+unknown_features:
+- cisr_sparse_encoding
+- sparse_index_value_association
+- irregular_row_reduction
+- sparse_empty_row
+preflight_status: BLOCKED
+preflight_finding_count: 3

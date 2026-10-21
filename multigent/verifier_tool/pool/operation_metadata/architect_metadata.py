@@ -1315,3 +1315,81 @@ def validate_architect_operation_metadata(metadata: Mapping[str, Any]) -> None:
                 f"integer_matrix_multiply arithmetic metadata is missing {absent}",
                 reason_code="invalid_arithmetic_declaration",
             )
+    if arithmetic.get("classifier_profile") == "integer_qk_score":
+        exact_fields = {
+            "score_product_data_type",
+            "score_accumulator_data_type",
+            "score_accumulator_type",
+            "score_reduction_dimensions",
+            "score_reduction_order",
+            "score_reduction_conversion",
+            "result_data_type",
+            "stage_order",
+            "support_status",
+        }
+        absent = sorted(exact_fields - set(arithmetic))
+        if absent:
+            raise ArchitectMetadataError(
+                f"integer_qk_score arithmetic metadata is missing {absent}",
+                reason_code="invalid_arithmetic_declaration",
+            )
+    if arithmetic.get("classifier_profile") == "fixed_point_attention_scale":
+        exact_fields = {
+            "head_dimension",
+            "head_dimension_value",
+            "coefficient_derivation",
+            "scale_multiplier",
+            "scale_shift",
+            "rounding",
+            "product_data_type",
+            "result_data_type",
+            "stage_order",
+            "support_status",
+        }
+        absent = sorted(exact_fields - set(arithmetic))
+        if absent:
+            raise ArchitectMetadataError(
+                f"fixed_point_attention_scale arithmetic metadata is missing {absent}",
+                reason_code="invalid_arithmetic_declaration",
+            )
+    if arithmetic.get("classifier_profile") == "binary_attention_mask":
+        exact_fields = {
+            "mask_mode",
+            "result_data_type",
+            "stage_order",
+            "support_status",
+        }
+        absent = sorted(exact_fields - set(arithmetic))
+        if absent:
+            raise ArchitectMetadataError(
+                f"binary_attention_mask arithmetic metadata is missing {absent}",
+                reason_code="invalid_arithmetic_declaration",
+            )
+    if arithmetic.get("classifier_profile") == "integer_sparse_attention":
+        exact_fields = {
+            "score_product_data_type",
+            "score_accumulator_data_type",
+            "score_accumulator_type",
+            "score_reduction_dimensions",
+            "score_reduction_order",
+            "score_reduction_conversion",
+            "scaling",
+            "mask_mode",
+            "normalization",
+            "output_product_data_type",
+            "output_accumulator_data_type",
+            "output_accumulator_type",
+            "output_reduction_dimensions",
+            "output_reduction_order",
+            "output_reduction_conversion",
+            "result_data_type",
+            "stage_order",
+            "composition",
+            "support_status",
+        }
+        absent = sorted(exact_fields - set(arithmetic))
+        if absent:
+            raise ArchitectMetadataError(
+                f"integer_sparse_attention arithmetic metadata is missing {absent}",
+                reason_code="invalid_arithmetic_declaration",
+            )

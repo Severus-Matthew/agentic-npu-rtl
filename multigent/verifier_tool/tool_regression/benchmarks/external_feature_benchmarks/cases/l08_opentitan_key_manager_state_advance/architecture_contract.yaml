@@ -1,0 +1,148 @@
+design:
+  name: opentitan_key_manager_state_advance
+  description: External benchmark L08 over OpenTitan at exact revision dd8b1ab44e4da9929976ddbd47586518d1b850ec,
+    target hw/ip/keymgr_dpe/rtl.
+operations:
+- name: opentitan_key_manager_state_advance
+  kind: opentitan_key_manager_state_advance
+  coverage_family: opentitan_key_manager_state_advance
+  coverage_family_source: novel
+  features:
+  - state_advance
+  feature_extensions:
+  - generate_erase_disable
+  - invalid_terminal_state
+  semantics: Source-backed lifecycle scope for opentitan_key_manager_state_advance;
+    exact behavior is owned by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  lifecycle_policy:
+    job_acceptance: valid_ready_handshake
+    job_overlap: single_inflight
+    busy_behavior: tracks_active_job
+    completion_style: pulse
+    completion_timing: next_cycle_after_retirement
+    illegal_command_behavior: error_without_start
+    error_style: pulse
+    error_timing: next_cycle_after_error_event
+    reset_behavior: abort_inflight
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Derived key values are not evaluated; legal state transitions are targeted.
+open_assumptions: []
+verification_extensions:
+- id: lifecycle.l08_state_advance
+  domain: lifecycle
+  feature_name: state_advance
+  target:
+    scope: operation
+    name: opentitan_key_manager_state_advance
+  semantics:
+    summary: Verify state advance exactly as implemented by the pinned upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible state advance behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: state_advance is intentionally absent from the current verifier_tool pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - control_plane_sequence
+  - command_legality
+  - error_status
+- id: lifecycle.l08_generate_erase_disable
+  domain: lifecycle
+  feature_name: generate_erase_disable
+  target:
+    scope: operation
+    name: opentitan_key_manager_state_advance
+  semantics:
+    summary: Verify generate erase disable exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible generate erase disable behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: generate_erase_disable is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - control_plane_sequence
+  - command_legality
+  - error_status
+- id: lifecycle.l08_invalid_terminal_state
+  domain: lifecycle
+  feature_name: invalid_terminal_state
+  target:
+    scope: operation
+    name: opentitan_key_manager_state_advance
+  semantics:
+    summary: Verify invalid terminal state exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible invalid terminal state behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: invalid_terminal_state is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - control_plane_sequence
+  - command_legality
+  - error_status

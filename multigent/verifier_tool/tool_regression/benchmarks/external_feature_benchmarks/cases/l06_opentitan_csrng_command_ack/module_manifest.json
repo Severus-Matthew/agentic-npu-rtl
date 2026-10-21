@@ -1,0 +1,12 @@
+{
+  "top": null,
+  "modules": [
+    {
+      "name": null,
+      "responsibility": "opentitan_csrng_command_ack",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

@@ -1,0 +1,149 @@
+design:
+  name: opentitan_otbn_operational_states
+  description: External benchmark L01 over OpenTitan at exact revision dd8b1ab44e4da9929976ddbd47586518d1b850ec,
+    target hw/ip/otbn/rtl.
+operations:
+- name: opentitan_otbn_operational_states
+  kind: opentitan_otbn_operational_states
+  coverage_family: opentitan_otbn_operational_states
+  coverage_family_source: novel
+  features:
+  - pause_resume
+  feature_extensions:
+  - post_operation_secure_wipe
+  - recoverable_idle_vs_fatal_locked
+  semantics: Source-backed lifecycle scope for opentitan_otbn_operational_states;
+    exact behavior is owned by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  lifecycle_policy:
+    job_acceptance: valid_ready_handshake
+    job_overlap: single_inflight
+    busy_behavior: tracks_active_job
+    completion_style: pulse
+    completion_timing: next_cycle_after_retirement
+    illegal_command_behavior: error_without_start
+    error_style: pulse
+    error_timing: next_cycle_after_error_event
+    reset_behavior: abort_inflight
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- OTBN execution results are not evaluated; only documented state transitions are
+  targeted.
+open_assumptions: []
+verification_extensions:
+- id: lifecycle.l01_pause_resume
+  domain: lifecycle
+  feature_name: pause_resume
+  target:
+    scope: operation
+    name: opentitan_otbn_operational_states
+  semantics:
+    summary: Verify pause resume exactly as implemented by the pinned upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible pause resume behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: pause_resume is intentionally absent from the current verifier_tool pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - command_acceptance
+  - busy_status
+  - completion_interrupt
+- id: lifecycle.l01_post_operation_secure_wipe
+  domain: lifecycle
+  feature_name: post_operation_secure_wipe
+  target:
+    scope: operation
+    name: opentitan_otbn_operational_states
+  semantics:
+    summary: Verify post operation secure wipe exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible post operation secure wipe behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: post_operation_secure_wipe is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - command_acceptance
+  - busy_status
+  - completion_interrupt
+- id: lifecycle.l01_recoverable_idle_vs_fatal_locked
+  domain: lifecycle
+  feature_name: recoverable_idle_vs_fatal_locked
+  target:
+    scope: operation
+    name: opentitan_otbn_operational_states
+  semantics:
+    summary: Verify recoverable idle vs fatal locked exactly as implemented by the
+      pinned upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible recoverable idle vs fatal locked behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: recoverable_idle_vs_fatal_locked is intentionally absent from the current
+    verifier_tool pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - command_acceptance
+  - busy_status
+  - completion_interrupt

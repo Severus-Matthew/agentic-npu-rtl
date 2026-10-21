@@ -1,0 +1,122 @@
+design:
+  name: tilelink_ul_sram_adapter
+  description: External benchmark P06 over OpenTitan at exact revision dd8b1ab44e4da9929976ddbd47586518d1b850ec,
+    target hw/ip/tlul/rtl/tlul_adapter_sram.sv.
+operations: []
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- The SRAM transform is trivial; TL-UL request/response legality is the target.
+open_assumptions: []
+verification_extensions:
+- id: protocol.p06_tilelink_ul_a_d_opcode_rules
+  domain: protocol
+  feature_name: tilelink_ul_a_d_opcode_rules
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify tilelink ul a d opcode rules exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible tilelink ul a d opcode rules behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: tilelink_ul_a_d_opcode_rules is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - sram_memory_model
+  - single_clock_reset
+- id: protocol.p06_tilelink_source_response_binding
+  domain: protocol
+  feature_name: tilelink_source_response_binding
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify tilelink source response binding exactly as implemented by the
+      pinned upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible tilelink source response binding behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: tilelink_source_response_binding is intentionally absent from the current
+    verifier_tool pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - sram_memory_model
+  - single_clock_reset
+- id: protocol.p06_tilelink_integrity
+  domain: protocol
+  feature_name: tilelink_integrity
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify tilelink integrity exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible tilelink integrity behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: tilelink_integrity is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - sram_memory_model
+  - single_clock_reset
+verification_scope:
+  domains:
+  - protocol
+  operation_coverage_required: false
+  operation_stimulus_ledger_required: false
+  reason: This bridge benchmark isolates transport semantics and declares no accelerator
+    operation.

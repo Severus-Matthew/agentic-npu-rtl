@@ -1,0 +1,196 @@
+design:
+  name: u03_operation_focus
+  description: Minimal hand-authored ready/valid GEMM (M=1,K=4,N=1) with bias-add
+    then ReLU, no memory-mapped transport at all -- a verifier_tool benchmark fixture
+    independent of the HLS Golden AXI4 fixture, built to qualify the ready_valid protocol
+    profile and the valid_ready_handshake/pulse lifecycle policy choices. Frozen extension
+    benchmark u03_operation_focus with 3 unknown features.
+operations:
+- name: gemm
+  kind: arithmetic
+  coverage_family: matrix_multiply
+  coverage_family_source: catalog
+  features:
+  - dimensions
+  - operand_values
+  - accumulation
+  - post_processing
+  feature_extensions:
+  - bias
+  - activation
+  semantics: Y = relu(sum_k A[k]*B[k] + bias), exact s16 product, wrapping s16 accumulator.
+    Then apply square(value) = value ** 2. Then apply modulo_seven(value) = value
+    % 7. Then apply floor_scale(value) = value // 3.
+  inputs:
+  - A_matrix
+  - B_matrix
+  - bias_vector
+  outputs:
+  - Y_matrix
+  arithmetic:
+    classifier_profile: integer_matrix_multiply
+    product_data_type: s16
+    accumulator_data_type: s16
+    accumulator_initialization: 0
+    reduction_dimensions:
+    - K
+    reduction_order: increasing_declared_reduction_coordinate
+    reduction_conversion: wrap_twos_complement_after_each_add
+    post_operations:
+      biased:
+        kind: bias_add
+        depends_on:
+        - accumulator
+        data_object: bias_vector
+        broadcast_dimensions:
+        - N
+      activated:
+        kind: relu
+        depends_on:
+        - biased
+      square:
+        kind: llm_defined
+        depends_on:
+        - activated
+        formula: value ** 2
+      modulo_seven:
+        kind: llm_defined
+        depends_on:
+        - square
+        formula: value % 7
+      floor_scale:
+        kind: llm_defined
+        depends_on:
+        - modulo_seven
+        formula: value // 3
+    post_output: floor_scale
+    bias_conversion: wrap_twos_complement_after_add
+    result_data_type: s16
+    result_conversion: wrap_twos_complement
+  lifecycle_policy:
+    job_acceptance: valid_ready_handshake
+    job_overlap: single_inflight
+    busy_behavior: tracks_active_job
+    completion_style: pulse
+    completion_timing: next_cycle_after_retirement
+    illegal_command_behavior: error_without_start
+    error_style: pulse
+    error_timing: next_cycle_after_error_event
+    reset_behavior: abort_inflight
+data_types:
+- name: s8
+  role: signed 8-bit GEMM operand
+  width_bits: 8
+  signed: true
+  representation: twos_complement
+  conversion_semantics: n/a
+  overflow_semantics: n/a
+  rounding_semantics: n/a
+- name: s16
+  role: signed 16-bit product/accumulator/bias/result
+  width_bits: 16
+  signed: true
+  representation: twos_complement
+  conversion_semantics: n/a
+  overflow_semantics: wrap_twos_complement
+  rounding_semantics: n/a
+data_objects:
+- name: A_matrix
+  role: left_operand_matrix
+  data_type: s8
+  dimensions:
+  - M
+  - K
+  producer: external
+  consumers:
+  - gemm
+  external: true
+  serialization:
+    kind: dense_tensor
+    index_order:
+    - M
+    - K
+    description: One element per transfer, K varies fastest.
+- name: B_matrix
+  role: right_operand_matrix
+  data_type: s8
+  dimensions:
+  - K
+  - N
+  producer: external
+  consumers:
+  - gemm
+  external: true
+  serialization:
+    kind: dense_tensor
+    index_order:
+    - K
+    - N
+    description: One element per transfer, N varies fastest.
+- name: bias_vector
+  role: per_output_column_bias
+  data_type: s16
+  dimensions:
+  - N
+  producer: external
+  consumers:
+  - gemm
+  external: true
+  serialization:
+    kind: dense_tensor
+    index_order:
+    - N
+    description: One element per transfer.
+- name: Y_matrix
+  role: result_matrix
+  data_type: s16
+  dimensions:
+  - M
+  - N
+  producer: gemm
+  consumers:
+  - external
+  external: true
+  serialization:
+    kind: dense_tensor
+    index_order:
+    - M
+    - N
+    description: One element per transfer.
+dimensions:
+- name: M
+  semantic: GEMM row count
+  minimum: 1
+  maximum: 1
+  runtime_configurable: false
+  bound_parameter: ''
+- name: K
+  semantic: GEMM reduction depth
+  minimum: 4
+  maximum: 4
+  runtime_configurable: false
+  bound_parameter: ''
+- name: N
+  semantic: GEMM column count
+  minimum: 1
+  maximum: 1
+  runtime_configurable: false
+  bound_parameter: ''
+parameters: []
+compute:
+  organization: sequential streaming load/compute/store FSM
+storage: []
+pipeline:
+  stages: load_a -> load_b -> load_bias -> output
+control:
+  style: single ready/valid command channel, valid_ready_handshake
+reset:
+  synchronous: true
+  active_low: true
+  behavior: aborts any in-flight job
+latency_model:
+  exact: false
+  note: No exact cycle count promised.
+architectural_invariants:
+- Exactly one GEMM job may be in flight at a time.
+open_assumptions: []

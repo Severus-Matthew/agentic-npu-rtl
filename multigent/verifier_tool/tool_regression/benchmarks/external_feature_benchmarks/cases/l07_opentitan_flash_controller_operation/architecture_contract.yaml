@@ -1,0 +1,151 @@
+design:
+  name: opentitan_flash_controller_operation
+  description: External benchmark L07 over OpenTitan at exact revision dd8b1ab44e4da9929976ddbd47586518d1b850ec,
+    target hw/top_englishbreakfast/ip_autogen/flash_ctrl/rtl.
+operations:
+- name: opentitan_flash_controller_operation
+  kind: opentitan_flash_controller_operation
+  coverage_family: opentitan_flash_controller_operation
+  coverage_family_source: novel
+  features:
+  - mandatory_initialization
+  feature_extensions:
+  - fifo_driven_pause_resume
+  - rma_terminal_disable
+  semantics: Source-backed lifecycle scope for opentitan_flash_controller_operation;
+    exact behavior is owned by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  lifecycle_policy:
+    job_acceptance: valid_ready_handshake
+    job_overlap: single_inflight
+    busy_behavior: tracks_active_job
+    completion_style: pulse
+    completion_timing: next_cycle_after_retirement
+    illegal_command_behavior: error_without_start
+    error_style: pulse
+    error_timing: next_cycle_after_error_event
+    reset_behavior: abort_inflight
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Flash array content is modeled; initialization and controller operation lifecycle
+  are targeted.
+open_assumptions: []
+verification_extensions:
+- id: lifecycle.l07_mandatory_initialization
+  domain: lifecycle
+  feature_name: mandatory_initialization
+  target:
+    scope: operation
+    name: opentitan_flash_controller_operation
+  semantics:
+    summary: Verify mandatory initialization exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible mandatory initialization behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: mandatory_initialization is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - control_plane_sequence
+  - busy_completion
+  - error_status
+- id: lifecycle.l07_fifo_driven_pause_resume
+  domain: lifecycle
+  feature_name: fifo_driven_pause_resume
+  target:
+    scope: operation
+    name: opentitan_flash_controller_operation
+  semantics:
+    summary: Verify fifo driven pause resume exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible fifo driven pause resume behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: fifo_driven_pause_resume is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - control_plane_sequence
+  - busy_completion
+  - error_status
+- id: lifecycle.l07_rma_terminal_disable
+  domain: lifecycle
+  feature_name: rma_terminal_disable
+  target:
+    scope: operation
+    name: opentitan_flash_controller_operation
+  semantics:
+    summary: Verify rma terminal disable exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible rma terminal disable behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: rma_terminal_disable is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - control_plane_sequence
+  - busy_completion
+  - error_status

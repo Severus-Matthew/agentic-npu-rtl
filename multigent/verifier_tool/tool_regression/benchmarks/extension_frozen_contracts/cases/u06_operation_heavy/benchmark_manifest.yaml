@@ -1,0 +1,43 @@
+schema_version: 1
+case_id: u06_operation_heavy
+unknown_feature_count: 6
+domains:
+- lifecycle
+- operation
+- protocol
+features:
+- id: operation.square
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: square
+  intent: Nonlinear but bounded integer expression.
+- id: operation.modulo_seven
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: modulo_seven
+  intent: Integer remainder classes.
+- id: operation.floor_scale
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: floor_scale
+  intent: Integer scale-down with explicit floor semantics.
+- id: operation.sign_dependent_gain
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: sign_dependent_gain
+  intent: Conditional gain selected by sign.
+- id: protocol.minimum_ready_window
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.minimum_ready_window
+  intent: Once READY rises it remains asserted for at least three sampled cycles.
+- id: lifecycle.inter_job_cooldown
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.inter_job_cooldown
+  intent: Two completed jobs are separated by at least two idle cycles.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

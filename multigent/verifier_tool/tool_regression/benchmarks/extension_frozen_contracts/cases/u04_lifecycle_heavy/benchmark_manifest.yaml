@@ -1,0 +1,32 @@
+schema_version: 1
+case_id: u04_lifecycle_heavy
+unknown_feature_count: 4
+domains:
+- lifecycle
+- operation
+features:
+- id: lifecycle.busy_watchdog_observation
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.busy_watchdog_observation
+  intent: Observe whether an accepted job remains busy for twelve sampled cycles.
+- id: lifecycle.minimum_busy_duration
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.minimum_busy_duration
+  intent: Every accepted job remains busy for at least four sampled cycles.
+- id: lifecycle.completion_to_idle_deadline
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.completion_to_idle_deadline
+  intent: Busy deasserts within two cycles after completion.
+- id: operation.dead_zone
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: dead_zone
+  intent: Piecewise dead-zone transform.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

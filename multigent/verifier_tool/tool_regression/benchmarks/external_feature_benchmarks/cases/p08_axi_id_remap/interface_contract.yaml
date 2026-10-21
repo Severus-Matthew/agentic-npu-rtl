@@ -1,0 +1,9 @@
+clock: null
+reset: null
+channels: []
+signals: []
+global_handshake_rules: No rule is inferred before source-port audit.
+source_boundary:
+  top: axi_id_remap
+  target: src/axi_id_remap.sv
+  binding_status: requires_manual_port_audit

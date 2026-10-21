@@ -1,0 +1,122 @@
+design:
+  name: axi_id_remap
+  description: External benchmark P08 over PULP AXI at exact revision 70b8e54fd460e3308e58be596ceb3566a6e3576e,
+    target src/axi_id_remap.sv.
+operations: []
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Base AXI handshakes remain tool-owned; ID translation is extended.
+open_assumptions: []
+verification_extensions:
+- id: protocol.p08_axi_id_namespace_remapping
+  domain: protocol
+  feature_name: axi_id_namespace_remapping
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify axi id namespace remapping exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible axi id namespace remapping behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: axi_id_namespace_remapping is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - axi4
+  - axi4_response_id_matches_request
+- id: protocol.p08_remapped_response_association
+  domain: protocol
+  feature_name: remapped_response_association
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify remapped response association exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible remapped response association behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: remapped_response_association is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - axi4
+  - axi4_response_id_matches_request
+- id: protocol.p08_same_id_order_preservation
+  domain: protocol
+  feature_name: same_id_order_preservation
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify same id order preservation exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible same id order preservation behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: same_id_order_preservation is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - axi4
+  - axi4_response_id_matches_request
+verification_scope:
+  domains:
+  - protocol
+  operation_coverage_required: false
+  operation_stimulus_ledger_required: false
+  reason: This bridge benchmark isolates transport semantics and declares no accelerator
+    operation.

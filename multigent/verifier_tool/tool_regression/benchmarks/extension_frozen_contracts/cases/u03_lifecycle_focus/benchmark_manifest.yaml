@@ -1,0 +1,26 @@
+schema_version: 1
+case_id: u03_lifecycle_focus
+unknown_feature_count: 3
+domains:
+- lifecycle
+features:
+- id: lifecycle.busy_watchdog_observation
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.busy_watchdog_observation
+  intent: Observe whether an accepted job remains busy for twelve sampled cycles.
+- id: lifecycle.error_recovery_window
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.error_recovery_window
+  intent: A clean legal job can be accepted within six cycles after an error pulse.
+- id: lifecycle.inter_job_cooldown
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.inter_job_cooldown
+  intent: Two completed jobs are separated by at least two idle cycles.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

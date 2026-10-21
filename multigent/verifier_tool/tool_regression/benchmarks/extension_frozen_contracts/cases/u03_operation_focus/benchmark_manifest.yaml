@@ -1,0 +1,26 @@
+schema_version: 1
+case_id: u03_operation_focus
+unknown_feature_count: 3
+domains:
+- operation
+features:
+- id: operation.square
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: square
+  intent: Nonlinear but bounded integer expression.
+- id: operation.modulo_seven
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: modulo_seven
+  intent: Integer remainder classes.
+- id: operation.floor_scale
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: floor_scale
+  intent: Integer scale-down with explicit floor semantics.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

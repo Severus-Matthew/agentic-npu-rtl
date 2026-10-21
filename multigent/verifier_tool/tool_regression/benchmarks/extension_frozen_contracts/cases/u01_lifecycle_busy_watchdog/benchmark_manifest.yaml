@@ -1,0 +1,16 @@
+schema_version: 1
+case_id: u01_lifecycle_busy_watchdog
+unknown_feature_count: 1
+domains:
+- lifecycle
+features:
+- id: lifecycle.busy_watchdog_observation
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.busy_watchdog_observation
+  intent: Observe whether an accepted job remains busy for twelve sampled cycles.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

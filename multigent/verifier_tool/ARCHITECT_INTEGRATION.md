@@ -246,6 +246,43 @@ command channel the compiler derives the same facts from the declared
 [`pool/role_pool/README.md`](pool/role_pool/README.md) and
 [`pool/operation_metadata/README.md`](pool/operation_metadata/README.md#architect_metadatapy--the-compiler).
 
+### Contract-local protocol semantics
+
+When no selectable profile represents the interface, do not hide the protocol in
+`global_handshake_rules` or one giant prose extension. Add one
+`interface_contract.protocol_semantics[]` profile and select its `name` as the
+affected channels' `protocol_profile`. The declaration must contain:
+
+- exact clock signal and edge;
+- named boolean events over exact signal/event identifiers;
+- transaction bindings for presentation, readiness, acceptance, stall,
+  completion, success and error;
+- producer-owned fields and optional condition-specific `stability_rules`;
+- `source_drive` presented/post-accept/idle assignments, per-beat fields, and
+  whether the source waits for all compiled completions before returning idle;
+- maximum outstanding count, ordering, and cancellation behavior;
+- `custom_rules` only for residual semantics, each linked by
+  `extension_request_id` to one protocol `verification_extensions[]` request.
+
+The event language is not Python. It accepts only `!`, `&&`, `||`, `==`, `!=`,
+boolean constants, and declared signal/event names. Contract Review rejects
+unknown references and dependency cycles. Description fields are useful context
+but never replace the structured declaration. The tool turns representable facts
+into code-owned handshake, stall-stability, and transaction-accounting features;
+the Verifier LLM receives only residual rules.
+
+For cross-protocol adapters, place representable causal timing in
+`interface_contract.protocol_event_relations[]`. A relation binds one `cause`
+and one `effect` to either a named contract-local event, an accepted standard
+channel transfer, or a restricted boolean signal expression. It also freezes the
+minimum/maximum cycle latency, FIFO ordering, maximum outstanding causes,
+unmatched-effect policy, finite-test disposal requirement, and cancellation
+behavior. Contract Review compiles these bindings and the generated monitor calls
+the reusable event-correlation checker. Do not leave a registered response delay
+inside extension prose or replace it with a same-cycle assertion. Only facts the
+relation cannot express—such as payload transformation or keyed data identity—
+remain in a narrowly scoped protocol extension.
+
 ## Known gaps between the tool and the current Architect schema/prompt
 
 - `validate_standard_protocol_bindings` is not called from
@@ -253,7 +290,9 @@ command channel the compiler derives the same facts from the declared
   `compile_standard_protocol_plan` (or the preflight's `standard_protocol_bindings`
   check). `render_standard_protocol_metadata_format` is not rendered into the
   prompt.
-- The effective Architect response schema exposes `lifecycle_policy` and the optional
+- The effective Architect response schema exposes `lifecycle_policy`, optional
+  `interface_contract.protocol_semantics`, optional
+  `interface_contract.protocol_event_relations`, and the optional
   `operations[].lifecycle_control_plane_sequence` property, but has no
   `reset_settle_cycles` signal property and no native `protocol_group` /
   `protocol_channel` / `protocol_field` properties. The metadata compiler honors

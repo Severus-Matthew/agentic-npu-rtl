@@ -1,0 +1,80 @@
+design:
+  name: wishbone_pipelined_to_axi4
+  description: External benchmark P01 over ZipCPU wb2axip at exact revision 2e8d3bc2d26ddc33d1881022a2a2b9d3f0c16b9b,
+    target rtl/wbm2axisp.v.
+operations: []
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: pipelined Wishbone slave bridged to AXI4 master
+reset:
+  signal: i_reset
+  active_level: high
+  sampling: synchronous_to_i_clk
+  behavior: reject requests, clear response visibility, and flush tracked Wishbone
+    work
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Known AXI4 side; only the Wishbone-facing behavior is an extension.
+open_assumptions: []
+verification_extensions:
+- id: protocol.p01_wishbone_axi_translation_residuals
+  domain: protocol
+  feature_name: wishbone_axi_translation_residuals
+  target:
+    scope: protocol_group
+    name: wishbone
+  semantics:
+    summary: Residual cross-protocol mapping and abort-edge behavior not represented by the reusable Wishbone event model.
+    trigger: After the tool-owned protocol_semantics model accepts or completes a Wishbone transaction.
+    required_behavior:
+    - For a read request, o_wb_data is valid in the o_wb_ack retirement cycle and
+      equals the selected 32-bit lane of the matching AXI read response. Write acknowledgements
+      do not assign semantic value to o_wb_data.
+    - At default C_AXI_DATA_WIDTH=128, DW=32, and OPT_LITTLE_ENDIAN=1, save accepted
+      i_wb_addr[1:0] in FIFO order. For the matching AXI R response, lane_index is
+      that saved two-bit value and o_wb_data is i_axi_rdata[(lane_index*32)+:32].
+      AXI ARADDR is i_wb_addr shifted left by two byte-address bits.
+    - Read requests use fixed AXI ID 1 and write requests fixed AXI ID 0. The bridge
+      never mixes read and write directions while requests are pending; within a direction
+      the saved lane FIFO and AXI same-ID ordering associate the nth response with
+      the nth accepted request.
+    - Active i_reset accepts no request, clears the tracked queue, and forces o_wb_ack
+      and o_wb_err low. If i_wb_cyc is low, the default width-conversion implementation
+      forces ACK and ERR low on that edge. Any outstanding AXI response coincident
+      with or after the drop is consumed only by the internal flush and must not create
+      Wishbone ACK, ERR, or data credit in the aborted or next cycle.
+    end_condition: The cross-protocol mapping is observed, or cancellation/reset flushes the abandoned work without stale source-visible credit.
+    forbidden_behavior:
+    - Return the wrong 32-bit AXI read lane or use an incorrect translated address or fixed ID.
+    - Expose a stale response after reset or cycle-cancellation flush.
+  reason: Cross-protocol data association and abort-edge data-credit behavior remain outside the generic event/accounting checker; registered response timing is declared separately as tool-owned event relations.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - axi4
+  - stall_stability
+  - transaction_accounting
+  parameters:
+    read_lane_width: 32
+verification_scope:
+  domains:
+  - protocol
+  operation_coverage_required: false
+  operation_stimulus_ledger_required: false
+  reason: This bridge benchmark isolates transport semantics and declares no accelerator
+    operation.

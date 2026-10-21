@@ -1,0 +1,16 @@
+schema_version: 1
+case_id: u01_operation_affine
+unknown_feature_count: 1
+domains:
+- operation
+features:
+- id: operation.affine_triple_plus_one
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: triple_plus_one
+  intent: Affine post-operation after ReLU.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

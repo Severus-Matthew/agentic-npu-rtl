@@ -1,0 +1,28 @@
+schema_version: 1
+case_id: u03_all_domains
+unknown_feature_count: 3
+domains:
+- lifecycle
+- operation
+- protocol
+features:
+- id: operation.relu6
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: relu6
+  intent: Piecewise activation with lower and upper saturation.
+- id: protocol.backpressure_duty_cycle
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.backpressure_duty_cycle
+  intent: Measure the fraction of valid cycles spent under backpressure.
+- id: lifecycle.completion_to_idle_deadline
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.completion_to_idle_deadline
+  intent: Busy deasserts within two cycles after completion.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

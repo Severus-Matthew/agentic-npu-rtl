@@ -1,0 +1,12 @@
+{
+  "top": "attention_layer",
+  "modules": [
+    {
+      "name": "attention_layer",
+      "responsibility": "koios_self_attention_layer",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

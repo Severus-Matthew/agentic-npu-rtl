@@ -1,5 +1,21 @@
 # Verifier-authored feature extensions
 
+## Structure-aware RAG
+
+Unsupported features receive same-domain analogues retrieved from the checked-in
+protocol, lifecycle, operation, and lifecycle-policy pools. Exact ID/tag matching
+still runs first. Retrieval ranks only the residual extension by scope, temporal
+behavior, evidence terminology, and reusable implementation shape. Retrieved
+entries are advisory and cannot change the frozen contract or earn coverage credit.
+See [`retrieval/README.md`](retrieval/README.md).
+
+Executable reuse is resolved separately by the checked-in
+[`components/`](../components/README.md) registry. The extension worklist names
+the compatible driver, adapter, monitor, golden, or solver entrypoints that must
+be called, the capabilities they cover, and the residual behavior that remains
+Verifier-authored. This makes partial reuse explicit instead of regenerating a
+whole testbench or accepting a YAML-only reuse claim.
+
 This folder is the contract-local authoring boundary for behavior absent from the
 closed Protocol, Lifecycle, or Operation pools. It does **not** implement mutation
 testing, qualification, pool promotion, or automatic promotion.
@@ -18,6 +34,25 @@ request: stable identity, owning domain, exact target, parameters, observable
 semantics, and why existing pools cannot express it. The Verifier answers each
 request with exactly one `feature_extensions[]` bundle containing three sibling
 branches: assertion, coverage, and stimulus.
+
+Extension coverage is part of the normal verification closure. After bundle
+validation, `extensions.coverage.build_extension_coverage_plan(...)` converts
+every declared bin into the required obligation `extension.<request_id>` with a
+minimum hit count of one. The generated classifier must pass the exact observed
+bin names to
+`_contract_record_extension_coverage("<request_id>", hits)`. The trusted runtime
+rejects undeclared names and samples accepted names into the same
+`cocotb-coverage` model and required denominator as protocol, lifecycle, and
+operation coverage. Merely asserting a local Python return value no longer earns
+extension coverage credit.
+
+The reachable classifier may be factored into a generated `reference/*.py`
+module and called through a thin `tests/*.py` wrapper. Structural review follows
+that cross-file call graph when checking exact declared bin names, so reusable
+reference semantics do not need duplicated string literals in the cocotb file.
+The reachable test must still assert real trigger/activity evidence and record
+the returned hits into the shared required denominator; helper separation does
+not relax the anti-vacuity rules.
 
 `extension_request.schema.json` and `extension_bundle.schema.json` are the stable
 formats. `examples.yaml` renders existing built-in protocol/lifecycle/operation
@@ -57,13 +92,97 @@ interface contract supplied, bundle validation requires those resolved feature
 IDs in `reuse.based_on_features`; the persisted extension manifest includes the
 same tool-owned resolution.
 
-The authoring validator also applies a deliberately small anti-placeholder
-gate to `verifier_python` implementations. A custom assertion must contain an
-observable decision, a coverage sampler must return data-dependent evidence,
-and stimulus must be async and await executable work. This catches
-`return None`/constant-coverage/no-await bundles at the request boundary. It is
-not a correctness proof: actual simulation, observed evidence, and negative
+The authoring validator also applies an anti-placeholder gate to
+`verifier_python` and `protocol_driver` implementations. A custom assertion must
+contain an observable decision, a coverage sampler must return data-dependent
+evidence, and stimulus must be async and await executable work. For actual Verifier
+output, the stricter `require_runtime_evidence` mode additionally rejects fabricated
+literal observations, ignored Boolean checker returns, discarded coverage samples,
+unused behavior-shaping parameters, and stimulus that only waits on a trigger without
+driving the DUT or delegating to a real driver. Temporal requests must consume a
+simulator-derived cycle trace/counter or implement a stateful monitor; reading one
+instantaneous snapshot is insufficient. Coverage code must classify the exact bin
+names declared in the bundle, and a reachable test must require a declared bin from
+observed evidence rather than merely checking the sampler's return type. Temporal
+stimulus must use its declared cycle/window parameter to shape a schedule; assigning a
+parameter to `_` is treated as unused. Every declared scenario must be called with its
+exact parameter values. A temporal DUT monitor must start concurrently before the
+stimulus, and an output-channel extension must start a code-owned campaign/driver (or
+drive the required non-target inputs) so the DUT can produce the observed VALID. A
+standalone cocotb extension test must start every independently driven Clock it uses
+(directly or through a reachable helper), and temporal bin credit requires
+explicit trigger/nonzero-event evidence so an idle trace cannot pass vacuously.
+Driver delegation may be either a direct `await driver(...)` or the normal concurrent
+cocotb form `task = cocotb.start_soon(driver(...)); await task`; a scheduled passive
+trigger alone is not stimulus. When an assigned reusable background driver remains
+alive across multiple checked scenarios, its declared transport directions remain
+eligible evidence only between its scheduling line and an explicit `kill`, `cancel`,
+or await boundary. This prevents both losing real responder activity at the second
+record and crediting traffic after the task has ended. Checker enforcement may unpack a returned decision and
+assert that decision, and named-bin enforcement may use a statically literal scenario
+table whose loop variable resolves to exact declared bin names.
+`capture_protocol_event_trace(...)` is the one intentional coroutine-delegation
+boundary: pass its stimulus coroutine unawaited so the helper can start observation
+before it awaits the stimulus. The structural validator recognizes that exact awaited
+capture call without treating the stimulus as dropped work. It also validates reusable
+trace access in ordinary loops and comprehensions across both `tests/*.py` and called
+`reference/*.py` support code. Transaction records expose `event` and `signals`; cycle
+records expose `events` and `signals`. Invented top-level fields such as `kind`, a DUT
+signal name, or a derived payload field are rejected before simulation. Transaction
+`event` has the closed code-owned vocabulary `accepted`, `success`, `error`,
+`completed`, and `cancelled`; compound aliases such as `request_accepted` or
+`response_success` are not emitted and are rejected statically. Because capture ends
+after its observer's final Cocotb `ReadOnly` sample, a caller must await a writable
+scheduling boundary (for example `FallingEdge(clock)` or `Timer(...)`) before directly
+assigning another DUT input.
+For a multi-clock interface, one source-clock trace is not evidence for events
+in another clock domain. The component worklist therefore exposes every exact
+contract-local profile/transaction binding selected for the extension, including
+DUT-output transactions. Generated verification must start a separate capture
+on each declared clock and may correlate the traces only afterward. If a
+DUT-output transaction completes through testbench-owned ACK/ERR-style inputs,
+the reachable stimulus must also contain a responder that can assert at least
+one of those completion inputs; initializing all of them to zero is rejected as
+a guaranteed timeout.
+Decorator names must be imported before decorated tests are defined. This catches `return None`, constant coverage,
+vacuous self-tests, generic `sampled=True` markers, and Timer-only bundles before persistence.
+It is not a correctness proof: actual simulation, observed evidence, and negative
 controls remain necessary.
+
+The generated authoring prompt also gives the Verifier a mechanical pre-return
+checklist for the most common integration failures: bind every required observation
+by exact name, use three distinct executable branch functions, declare only parameters
+that the corresponding function consumes, execute every scenario exactly, and
+consume/assert runtime results from one reachable cocotb test. This is general
+extension guidance; it contains no benchmark-specific feature names or signal maps.
+Exact scenario parameters may be written inline or assigned once to a literal
+local variable, including inside a `try` block, before the reachable stimulus
+call. The validator resolves that safe local constant form but still rejects
+dynamic, ambiguous, or branch-dependent substitutions.
+Source repair must preserve the single non-empty literal
+`STIMULUS_COVERAGE_INTENTS` list when an unrelated extension branch changes; mapping,
+empty, and omitted forms are rejected with the canonical list shape in feedback.
+For assertion wrappers, that checklist recommends a direct `assert` plus a `True`
+return that the cocotb entry point also asserts. A mapping such as
+`{"passed": ok}` is evidence data, not enforcement. Coverage has the analogous rule:
+the entry point must require an exact declared bin and explicit trigger/nonempty
+evidence rather than merely consuming a returned object.
+
+When `capture_protocol_event_trace` supplies extension evidence, pass the stimulus
+coroutine itself; do not await the stimulus inside that argument. The capture helper
+starts its observer first and awaits the coroutine internally. Its stable trace schema
+is also code-owned: transaction records expose `event`, `signals`, `cycle`, and
+outstanding counts, while cycle records expose `events`, `signals`, and `cycle`.
+Signal values are nested under `record["signals"]`; generated extensions may not
+invent top-level `kind` or signal fields. The structural validator follows direct
+dictionary access, comprehensions, and small accessor helpers such as
+`_get(record, key)`, including Verifier-owned reference files. When a frozen
+interface contract is available, nested `record["signals"]` access is also limited
+to actual captured DUT signal names; semantic correlation state must be derived
+from the canonical event/cycle timeline rather than inserted as virtual signals.
+Local repair removes pipeline-owned audit
+syntax but restores the exact prior `STIMULUS_COVERAGE_INTENTS` mapping so an
+unrelated source correction cannot silently erase semantic coverage intent.
 
 The three residual branches cannot be satisfied by merely naming an
 `existing_primitive`. Built-in helpers may be reused inside generated code, but
@@ -88,7 +207,10 @@ that stage is outside the current scope.
 4. The bundle separates assertion, measured coverage, and real stimulus. New code
    is written only in Verifier-owned `reference/*.py` or `tests/*.py`; a bundle
    names each exact module-level symbol, and deterministic validation confirms the
-   symbol exists and is wired into the generated test call path.
+   symbol exists and is wired into the generated test call path. The path must
+   pass simulator-derived observations, enforce the assertion result, consume
+   the coverage result through `_contract_record_extension_coverage`, and execute
+   stimulus with a real effect.
 5. The runtime persists `feature_extensions.yaml` and
    `feature_extension_manifest.yaml`. The latter keeps the immutable Architect
    request beside the Verifier implementation for later review.

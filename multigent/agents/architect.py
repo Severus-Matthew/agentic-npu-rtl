@@ -35,6 +35,9 @@ from multigent.verifier_tool import (
     validate_architect_extension_requests,
     validate_operation_compilation,
     with_architect_extension_request_schema,
+    validate_protocol_event_relations,
+    with_protocol_event_relations_schema,
+    with_protocol_semantics_schema,
 )
 from multigent.intake.request_builder import build_architect_intake, persist_intake
 
@@ -77,7 +80,13 @@ class ArchitectAgent(APIAgent):
         schema = super().load_output_schema(schema_path)
         if schema_path.resolve() == ARCHITECT_OUTPUT_SCHEMA.resolve():
             return with_architect_extension_request_schema(
-                with_operation_arithmetic_schema(with_lifecycle_policy_schema(schema))
+                with_protocol_event_relations_schema(
+                    with_protocol_semantics_schema(
+                        with_operation_arithmetic_schema(
+                            with_lifecycle_policy_schema(schema)
+                        )
+                    )
+                )
             )
         return schema
 
@@ -195,6 +204,7 @@ class ArchitectAgent(APIAgent):
                 semantic_class_extensions=semantic_extensions,
             )
         )
+        errors.extend(validate_protocol_event_relations(interface))
         errors.extend(validate_architecture_operation_features(arch))
         errors.extend(validate_architecture_lifecycle_policies(
             arch, require_policy=require_lifecycle_policy
@@ -509,6 +519,28 @@ Required design work:
     object dimension order, object-to-channel mapping, channel protocol profile,
     and channel signal role exact enough that this compilation is unambiguous.
     Do not encode a second hidden mapping in prose or infer semantics from names.
+    When the design uses a protocol profile absent from the pool, declare that
+    profile in ``interface_contract.protocol_semantics``. Give every externally
+    observable event a boolean expression over exact declared signal names, then
+    bind request presentation, readiness, acceptance, stall, completion, success,
+    error, content stability, outstanding depth, ordering, and cancellation in the
+    structured transaction fields. Contract Review compiles this small expression
+    language and the Verifier reuses its existing handshake, stall, and transaction
+    accounting checkers. ``description`` is explanatory only. Put only semantics
+    that cannot be expressed by those fields in ``custom_rules`` and request a
+    matching protocol ``verification_extension`` for that residual behavior. The
+    custom rule is the escape hatch, not permission to restate the whole protocol
+    in prose or replace reusable rules.
+    When correctness depends on an observable event in one protocol causing an
+    event in another protocol after a defined number of cycles, declare that fact
+    in ``interface_contract.protocol_event_relations``. Bind each cause/effect to
+    either a compiled ``protocol_event``, a ``standard_channel_transfer``, or a
+    safe signal ``expression``; declare minimum/maximum cycle latency, FIFO order,
+    maximum outstanding causes, unmatched-effect behavior, end-of-test disposal,
+    and cancellation flush/preserve behavior. Do not replace a registered adapter
+    relation with a same-cycle assertion. Use this field only for externally
+    observable causality; data transformation or identity matching that is not
+    represented by it remains a narrowly scoped verification extension.
 11. Define module decomposition with explicit responsibilities, dependencies,
     parameters, and statefulness. All dependencies and parameters must resolve.
     Every state transition or output decision must be implementable from the

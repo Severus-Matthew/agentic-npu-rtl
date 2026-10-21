@@ -1,0 +1,21 @@
+schema_version: 1
+case_id: u02_protocol_pair
+unknown_feature_count: 2
+domains:
+- protocol
+features:
+- id: protocol.exact_two_cycle_backpressure
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.exact_two_cycle_backpressure
+  intent: Observe a transfer stalled for exactly two complete cycles.
+- id: protocol.minimum_ready_window
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.minimum_ready_window
+  intent: Once READY rises it remains asserted for at least three sampled cycles.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

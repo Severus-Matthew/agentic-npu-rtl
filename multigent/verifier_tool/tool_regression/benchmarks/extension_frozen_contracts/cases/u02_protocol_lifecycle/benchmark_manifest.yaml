@@ -1,0 +1,23 @@
+schema_version: 1
+case_id: u02_protocol_lifecycle
+unknown_feature_count: 2
+domains:
+- lifecycle
+- protocol
+features:
+- id: protocol.post_reset_first_transfer_deadline
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.post_reset_first_transfer_deadline
+  intent: The first legal output transfer after reset must occur within a declared
+    window.
+- id: lifecycle.reset_recovery_window
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.reset_recovery_window
+  intent: A clean legal job can start within five cycles after reset release.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

@@ -1,0 +1,12 @@
+{
+  "top": "softmax",
+  "modules": [
+    {
+      "name": "softmax",
+      "responsibility": "koios_softmax",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

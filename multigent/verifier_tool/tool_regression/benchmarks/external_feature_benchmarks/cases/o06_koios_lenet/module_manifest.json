@@ -1,0 +1,12 @@
+{
+  "top": "lenet",
+  "modules": [
+    {
+      "name": "lenet",
+      "responsibility": "koios_lenet",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "top": null,
+  "modules": [
+    {
+      "name": null,
+      "responsibility": "opentitan_otbn_operational_states",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+schema_version: 1
+case_id: P02
+status: reviewer_pass_candidate
+freeze_blockers:
+- upstream_build_dependency_audit
+source:
+  project: ZipCPU wb2axip
+  revision: 2e8d3bc2d26ddc33d1881022a2a2b9d3f0c16b9b
+  target: rtl/wbxclk.v
+unknown_features:
+- wishbone_outstanding_cdc
+- wishbone_cycle_cancellation
+preflight_status: PASS
+preflight_finding_count: 0

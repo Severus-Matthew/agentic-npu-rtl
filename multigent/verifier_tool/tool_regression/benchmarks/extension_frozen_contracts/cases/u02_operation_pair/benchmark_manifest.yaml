@@ -1,0 +1,21 @@
+schema_version: 1
+case_id: u02_operation_pair
+unknown_feature_count: 2
+domains:
+- operation
+features:
+- id: operation.absolute_value
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: absolute_value
+  intent: Nonnegative piecewise scalar transform.
+- id: operation.negative_shift
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: negative_shift
+  intent: Signed offset with reachable negative and positive regions.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

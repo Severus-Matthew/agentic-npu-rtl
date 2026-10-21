@@ -1,0 +1,8 @@
+functional:
+- Every accepted output equals the frozen arithmetic DAG.
+verification:
+- Exercise all built-in obligations and every declared unknown feature.
+rtl:
+- No generated RTL is visible to the independent Verifier.
+fpga_handoff:
+- Outside this Verifier-only benchmark.

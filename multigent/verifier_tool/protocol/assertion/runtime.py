@@ -13,7 +13,9 @@ from .assertion_checkers import (
     check_axi4,
     check_axi4_lite,
     check_axi4_stream,
+    check_event_correlations,
     check_stall_stability,
+    check_transaction_accounting,
     check_standard_signal_widths,
     check_valid_low_during_reset,
     finalize_protocol_checker_state,
@@ -30,12 +32,35 @@ def build_protocol_assertion_plan(interface_plan: Mapping[str, Any]) -> dict[str
             "id": str(item["id"]),
             "valid": str(item.get("bindings", {}).get("valid", "")),
             "ready": str(item.get("bindings", {}).get("ready", "")),
+            **{
+                key: item.get("bindings", {})[key]
+                for key in (
+                    "valid_expression",
+                    "ready_expression",
+                    "stalled_expression",
+                    "abort_expression",
+                )
+                if item.get("bindings", {}).get(key) is not None
+            },
             "content": tuple(
                 map(str, item.get("bindings", {}).get("content", ()))
             ),
         }
         for item in compiled_assertions["entries"]
         if item.get("implementation") == "stall_stability"
+    ]
+    transaction_accounting = [
+        {"id": str(item["id"]), **dict(item.get("bindings", {}))}
+        for item in compiled_assertions["entries"]
+        if item.get("implementation") == "transaction_accounting"
+    ]
+    event_correlations = [
+        {
+            "feature_id": str(item["id"]),
+            **dict(item.get("bindings", {})),
+        }
+        for item in compiled_assertions["entries"]
+        if item.get("implementation") == "event_correlation"
     ]
     reset_binding = feature_plan.get("bindings", {}).get("reset", {})
     reset = str(reset_binding.get("signal", ""))
@@ -69,6 +94,8 @@ def build_protocol_assertion_plan(interface_plan: Mapping[str, Any]) -> dict[str
         "valid_reset_features": valid_reset_features,
         "valid_reset_settle_cycles": valid_reset_settle_cycles,
         "stalls": stalls,
+        "transaction_accounting": transaction_accounting,
+        "event_correlations": event_correlations,
         "standard_groups": standard_groups,
         "features": tuple(dict.fromkeys(features)),
     }
@@ -119,8 +146,13 @@ def check_protocol_assertions(
         return {}
 
     state.pop("_reset_active_samples", None)
+    if plan.get("event_correlations"):
+        state["_protocol_cycle"] = int(state.get("_protocol_cycle", -1)) + 1
 
     completed = check_stall_stability(snapshot, plan, state)
+    check_transaction_accounting(snapshot, plan, state)
+    if plan.get("event_correlations"):
+        check_event_correlations(snapshot, plan, state)
     group_states = state.setdefault("groups", {})
     for group in plan.get("standard_groups", []):
         group_state = group_states.setdefault(str(group["name"]), {})
@@ -136,6 +168,8 @@ def check_protocol_assertions(
         state.pop("stalls", None)
     if not state.get("groups"):
         state.pop("groups", None)
+    if not state.get("transaction_accounting"):
+        state.pop("transaction_accounting", None)
     return completed
 
 

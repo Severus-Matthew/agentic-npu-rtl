@@ -11,6 +11,7 @@ from .cocotb import (
     ProtocolDriveError,
     collect_protocol_field_values,
     collect_protocol_transfers,
+    drive_protocol_event_transactions,
     drive_protocol_field_values,
     drive_protocol_reset,
     drive_protocol_transfers,
@@ -31,6 +32,11 @@ from .adapter import (
     OperationMemoryAdapterError,
 )
 from .memory import Memory
+from ..evidence import (
+    ProtocolEvidenceError,
+    ProtocolEventTraceRecorder,
+    capture_protocol_event_trace,
+)
 
 __all__ = [
     "AxiLiteMemoryDriveError",
@@ -46,9 +52,13 @@ __all__ = [
     "resolved_control_plane_probe_plan",
     "resolved_operation_transport_variants",
     "ProtocolDriveError",
+    "ProtocolEvidenceError",
+    "ProtocolEventTraceRecorder",
+    "capture_protocol_event_trace",
     "collect_protocol_field_values",
     "collect_protocol_transfers",
     "default_axi_lite_memory_bases",
+    "drive_protocol_event_transactions",
     "drive_protocol_field_values",
     "drive_protocol_reset",
     "drive_protocol_transfers",

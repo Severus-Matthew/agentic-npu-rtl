@@ -502,6 +502,70 @@ def test_review_patch_cannot_edit_pipeline_generated_blocks() -> None:
         )
 
 
+def test_review_patch_can_insert_authored_extension_between_generated_blocks() -> None:
+    context, draft = _context()
+    prepared = VerifierAgent._with_contract_generated_blocks(draft, context)
+    audit_end = "# === END PIPELINE-GENERATED VERIFIER ANNOTATIONS ==="
+    monitor_begin = "# === BEGIN CONTRACT-GENERATED PROTOCOL MONITOR ==="
+    old = f"{audit_end}\n\n{monitor_begin}\n"
+    helper = (
+        "def residual_extension_checker(observed):\n"
+        "    assert observed\n\n"
+    )
+    new = f"{audit_end}\n\n{helper}{monitor_begin}\n"
+    repaired = VerifierAgent._apply_review_patch(
+        context, prepared, _patch(old, new),
+    )
+    content = repaired["test_files"][0]["content"]
+    assert helper in content
+    assert content.count(audit_end) == 1
+    assert content.count(monitor_begin) == 1
+
+
+def test_review_patch_can_rewrite_authored_prefix_while_preserving_generated_boundary() -> None:
+    monitor_begin = "# === BEGIN CONTRACT-GENERATED PROTOCOL MONITOR ==="
+    monitor_end = "# === END CONTRACT-GENERATED PROTOCOL MONITOR ==="
+    old = f"COVERAGE_OBLIGATIONS = set()\n\n{monitor_begin}"
+    helper = "import cocotb\n\ndef residual_driver(dut):\n    return dut\n\n"
+    new = f"{helper}COVERAGE_OBLIGATIONS = set()\n\n{monitor_begin}"
+    content = f"{old}\n# protected\n{monitor_end}\n"
+    assert not VerifierAgent._patch_touches_generated_block(
+        content,
+        old,
+        new_text=new,
+        start=0,
+    )
+
+
+def test_review_patch_can_replace_entire_invalid_llm_owned_python_file() -> None:
+    context, draft = _context()
+    invalid = "COVERAGE_OBLIGATIONS = set()\\n"
+    draft["test_files"][0]["content"] = invalid
+    valid = (
+        "COVERAGE_OBLIGATIONS = set()\n\n"
+        "def repaired_checker(value):\n"
+        "    assert value\n"
+    )
+    repaired = VerifierAgent._apply_review_patch(
+        context,
+        draft,
+        _patch(invalid, valid),
+    )
+    assert repaired["test_files"][0]["content"] == valid
+
+
+def test_review_patch_still_rejects_entire_valid_python_file_replacement() -> None:
+    context, draft = _context()
+    valid = "COVERAGE_OBLIGATIONS = set()\n"
+    draft["test_files"][0]["content"] = valid
+    with pytest.raises(AgentRuntimeError, match="replace the entire file"):
+        VerifierAgent._apply_review_patch(
+            context,
+            draft,
+            _patch(valid, valid + "\ndef extra():\n    return True\n"),
+        )
+
+
 def test_patch_validation_failure_retries_patch_not_full_replacement(tmp_path, monkeypatch) -> None:
     context, draft = _context()
     hits = {
@@ -532,6 +596,66 @@ def test_patch_validation_failure_retries_patch_not_full_replacement(tmp_path, m
     assert 'channel.a.idle: 7' in task
     assert 'channel.a.transfer: 0' in task
     assert update["history"][0]["status"] == "SOURCE_PATCH_CORRECTION"
+
+
+def test_extension_bundle_failure_routes_to_source_and_bundle_correction(
+    tmp_path, monkeypatch
+) -> None:
+    _, draft = _context()
+    monkeypatch.setattr(
+        artifacts, "build_verification_context", lambda **kwargs: generic_fir_context()
+    )
+    error = (
+        "Invalid Verifier feature extensions: feature_extensions[0].bindings "
+        "omits required observation(s) ['cycle_trace']"
+    )
+    update = artifacts.verification_repair_node({
+        "user_request": "fir",
+        "architecture_dir": str(tmp_path),
+        "verifier_status": "SEMANTIC_VALIDATION_FAILED",
+        "verification_context": generic_fir_context(),
+        "verifier_draft": draft,
+        "verifier_revision": 2,
+        "errors": [error],
+    })
+    assert "deterministic_validation_review" not in update["verification_context"]
+    review = update["verification_context"]["semantic_validation_review"]
+    assert review["previous_verifier_output"] == draft
+    assert review["validator_error"] == error
+    assert update["history"][0]["status"] == "FEATURE_EXTENSION_SOURCE_CORRECTION"
+
+
+def test_incomplete_source_completion_does_not_fall_back_to_local_patch(
+    tmp_path, monkeypatch
+) -> None:
+    _, draft = _context()
+    monkeypatch.setattr(
+        artifacts, "build_verification_context", lambda **kwargs: generic_fir_context()
+    )
+    error = (
+        "Source completion must replace exactly the planned files; "
+        "missing=['tests/test_fir_contract.py'], unknown=[]"
+    )
+    update = artifacts.verification_repair_node({
+        "user_request": "fir",
+        "architecture_dir": str(tmp_path),
+        "verifier_status": "SEMANTIC_VALIDATION_FAILED",
+        "verification_context": {
+            **generic_fir_context(),
+            "semantic_validation_review": {
+                "validator_error": "Invalid Verifier feature extensions: stale bundle",
+                "previous_verifier_output": draft,
+            },
+        },
+        "verifier_draft": draft,
+        "verifier_revision": 3,
+        "errors": [error],
+    })
+    assert "deterministic_validation_review" not in update["verification_context"]
+    assert update["verification_context"]["semantic_validation_review"][
+        "validator_error"
+    ] == error
+    assert update["history"][0]["status"] == "FEATURE_EXTENSION_SOURCE_CORRECTION"
 
 
 def test_missing_coverage_report_never_requests_stimulus_from_fake_hits() -> None:
@@ -591,6 +715,31 @@ def test_response_capacity_is_not_an_architecture_conflict() -> None:
     })
     with pytest.raises(AgentRuntimeError, match="response-capacity"):
         VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
+def test_process_scope_delivery_limit_is_not_an_architecture_conflict() -> None:
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT",
+        "reference_files": [],
+        "test_files": [],
+        "architecture_conflict": {
+            "category": "process_scope",
+            "affected_modules": ["filter_top"],
+            "issue": (
+                "The full executable sources and obligation mapping exceed the "
+                "response transport budget."
+            ),
+            "evidence": "The frozen contract is internally consistent.",
+            "requested_architect_decision": (
+                "Permit split delivery across multiple response turns."
+            ),
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="response-capacity"):
+        VerifierAgent._validate_prepared_result(
+            result=result, context=generic_fir_context()
+        )
 
 
 def test_patch_input_mismatch_is_not_an_architecture_conflict() -> None:

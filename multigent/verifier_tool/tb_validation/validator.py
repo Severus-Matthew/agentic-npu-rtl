@@ -44,16 +44,127 @@ def _canonical_validator(
 
 
 _FINDING_BOUNDARY = re.compile(
-    r"; (?=(?:test source \d+|Test source|Every _contract_|Stimulus intent|"
+    r"; (?=(?:test source \d+|Test source|A new capture_protocol_event_trace|"
+    r"cycle_trace record|transaction_trace record|Ready/valid handshake output|"
+    r"component |"
+    r"Every _contract_|Stimulus intent|"
     r"Stimulus |Every Verifier-authored|Verifier must|Stimulus coverage intent|"
     r"STIMULUS_COVERAGE_INTENTS|Verifier-authored operation|Missing |Unknown |"
-    r"Operation |Coverage ))"
+    r"Operation |Coverage |feature_extensions\[\d+\]))"
 )
 
 
 def _finding_for(evidence: str) -> dict[str, str]:
     evidence = evidence.strip() or "unknown deterministic validation error"
     lowered = evidence.lower()
+    if (
+        "resolves multiple runtime bindings" in lowered
+        and "capture_protocol_event_traces" in lowered
+    ):
+        return {
+            "category": "INVALID_STIMULUS_MAPPING",
+            "requirement": "Cross-domain evidence observes one shared transaction window",
+            "evidence": evidence,
+            "recommended_change": (
+                "Import capture_protocol_event_traces, resolve every exact binding "
+                "named in the finding, and pass them together with one shared unawaited "
+                "stimulus coroutine. Consume the returned evidence for every binding. "
+                "Do not replay the stimulus through sequential single-binding captures"
+            ),
+        }
+    if any(
+        phrase in lowered
+        for phrase in (
+            "protocol.monitor.contract_event_trace' bindings must be a dict",
+            "must be indexed by one of its literal string binding keys",
+            "evidence binding use is incomplete",
+            "never consumed by an assertion or coverage classifier",
+        )
+    ):
+        return {
+            "category": "INVALID_ASSERTION",
+            "requirement": "Every concurrently captured protocol binding supplies consumed evidence",
+            "evidence": evidence,
+            "recommended_change": (
+                "Pass bindings as a literal dict whose nonempty string keys map to "
+                "(profile, transaction) tuples. Index the returned mapping with those "
+                "same literal string keys and feed every binding's trace into a "
+                "reachable assertion or coverage classifier; do not create an unused "
+                "destination-domain trace"
+            ),
+        }
+    if "test source is missing # === llm-generated operation assertions ===" in lowered:
+        return {
+            "category": "MISSING_ASSERTION",
+            "requirement": "Generated tests retain the canonical assertion-section marker",
+            "evidence": evidence,
+            "recommended_change": (
+                "Restore the exact line '# === LLM-GENERATED OPERATION ASSERTIONS ===' "
+                "once in the generated test source. Keep all existing executable "
+                "assertions and place their verifier-authored assertion block after it"
+            ),
+        }
+    if (
+        "a new capture_protocol_event_trace stimulus is started immediately" in lowered
+        and "readonly phase" in lowered
+    ):
+        return {
+            "category": "INVALID_STIMULUS_MAPPING",
+            "requirement": "Each trace capture starts from a Cocotb writable scheduling phase",
+            "evidence": evidence,
+            "recommended_change": (
+                "Before starting the named next capture, await a writable boundary such "
+                "as FallingEdge on that capture's contract-declared clock or Timer(...). "
+                "Do not merely add ReadOnly. If two clock-domain traces must observe the "
+                "same transaction, start both monitors before the one shared stimulus "
+                "instead of replaying that stimulus sequentially"
+            ),
+        }
+    if (
+        "ready/valid handshake output is read after risingedge" in lowered
+        and "too late to decide" in lowered
+    ):
+        return {
+            "category": "INVALID_STIMULUS_MAPPING",
+            "requirement": "Handshake acceptance is decided from the values presented at the active edge",
+            "evidence": evidence,
+            "recommended_change": (
+                "Drive inputs on the inactive edge, allow them to settle, and snapshot "
+                "the request/ready values before RisingEdge. Cross RisingEdge and use "
+                "only that saved pre-edge snapshot to decide whether the transfer was "
+                "accepted. A post-edge Timer or ReadOnly cannot recover the old values"
+            ),
+        }
+    if "stimulus coverage intent must target every exact coverage obligation" in lowered:
+        return {
+            "category": "COVERAGE_DEFINITION",
+            "requirement": "Stimulus intent names every exact required coverage obligation",
+            "evidence": evidence,
+            "recommended_change": (
+                "Add each exact ID listed under missing to a reachable "
+                "STIMULUS_COVERAGE_INTENTS target list and to the matching STIMULUS "
+                "record. Preserve existing targets. The corresponding scenario must "
+                "actually create the named condition; do not add a target only to "
+                "silence validation"
+            ),
+        }
+    if (
+        "stimulus_coverage_intents must be a non-empty list" in lowered
+        or "every test file needs exactly one literal stimulus_coverage_intents declaration"
+        in lowered
+    ):
+        return {
+            "category": "COVERAGE_DEFINITION",
+            "requirement": "Stimulus-to-coverage intent metadata has one canonical literal form",
+            "evidence": evidence,
+            "recommended_change": (
+                "Restore exactly one non-empty literal list: "
+                "STIMULUS_COVERAGE_INTENTS = [{\"label\": \"case_id\", "
+                "\"targets\": [\"exact.obligation.id\", ...]}]. Preserve each "
+                "existing label and target unless the finding explicitly changes it. "
+                "Do not use a dict keyed by label, an empty list, or omit the declaration"
+            ),
+        }
     if "no await since stimulus" in lowered:
         stall_targets = "stall_stability" in lowered
         return {
@@ -120,6 +231,170 @@ def _finding_for(evidence: str) -> dict[str, str]:
                 "Create stalls by presenting future-channel valid/payload before "
                 "its ready phase and holding both stable until the real handshake; "
                 "let measured coverage hits determine which stall lengths occurred"
+            ),
+        }
+    if "not called with simulator-derived evidence" in lowered:
+        return {
+            "category": "INVALID_ASSERTION",
+            "requirement": (
+                "Extension assertions and coverage must consume observations "
+                "captured from the running DUT"
+            ),
+            "evidence": evidence,
+            "recommended_change": (
+                "Start the reusable capture_protocol_event_trace monitor before "
+                "the extension stimulus, then pass evidence['cycle_trace'] and "
+                "evidence['transaction_trace'] directly to the named assertion "
+                "and coverage functions. Do not reconstruct either trace from "
+                "planned inputs, scenario labels, constants, or returned markers"
+            ),
+        }
+    if "capture_protocol_event_trace must receive the unawaited stimulus" in lowered:
+        return {
+            "category": "INVALID_STIMULUS_MAPPING",
+            "requirement": "Runtime observation must start before extension stimulus",
+            "evidence": evidence,
+            "recommended_change": (
+                "Pass the stimulus coroutine object directly as the fourth "
+                "capture_protocol_event_trace argument, without awaiting it there. "
+                "Await capture_protocol_event_trace itself; it starts the observer "
+                "and then awaits the stimulus internally"
+            ),
+        }
+    if "record has no top-level field" in lowered and "record['signals']" in lowered:
+        return {
+            "category": "INVALID_ASSERTION",
+            "requirement": "Extension checkers must consume the reusable trace schema exactly",
+            "evidence": evidence,
+            "recommended_change": (
+                "Use transaction records' top-level event/cycle/outstanding fields "
+                "and read sampled DUT values from record['signals']. Use cycle "
+                "record['events'] for compiled protocol predicates. Do not invent "
+                "top-level kind or signal fields; derive residual cross-protocol "
+                "events from the real nested signals and event timeline"
+            ),
+        }
+    if "omits exact contract runtime binding(s)" in lowered:
+        return {
+            "category": "MISSING_ASSERTION",
+            "requirement": (
+                "Every resolved protocol clock domain must be observed on its "
+                "own contract-declared clock"
+            ),
+            "evidence": evidence,
+            "recommended_change": (
+                "Use each exact profile/transaction accessor named in the finding. "
+                "Run a separate capture_protocol_event_trace for each binding and "
+                "combine the observed traces only after capture. Do not infer a "
+                "destination-clock event by sampling its signal level on the source clock"
+            ),
+        }
+    if "has no reachable responder that can assert completion input(s)" in lowered:
+        return {
+            "category": "MISSING_STIMULUS",
+            "requirement": (
+                "A monitored DUT-output request path needs a reachable testbench "
+                "responder capable of completing it"
+            ),
+            "evidence": evidence,
+            "recommended_change": (
+                "Start a responder concurrently with the source stimulus. Observe "
+                "the destination request on its declared clock, apply any requested "
+                "stall schedule, and assert exactly one declared completion input "
+                "such as ACK or ERR with the corresponding response payload. "
+                "Initializing all completion inputs to zero is not a responder"
+            ),
+        }
+    if "ignores declared parameter(s)" in lowered:
+        return {
+            "category": "INVALID_STIMULUS_MAPPING",
+            "requirement": (
+                "Every branch parameter must shape that branch's executable behavior"
+            ),
+            "evidence": evidence,
+            "recommended_change": (
+                "For the named assertion, coverage, or stimulus branch, either "
+                "consume each listed parameter in the actual checker, classifier, "
+                "or driver behavior, or remove it from that branch's parameters. "
+                "Request-level parameters are not copied into every branch"
+            ),
+        }
+    if "never executes declared scenario(s)" in lowered:
+        return {
+            "category": "MISSING_STIMULUS",
+            "requirement": "Every declared extension scenario must execute real DUT traffic",
+            "evidence": evidence,
+            "recommended_change": (
+                "Invoke each named scenario from a reachable cocotb test with its "
+                "exact declared parameter values and check the resulting DUT "
+                "evidence. If a scenario is not required by the residual feature, "
+                "remove it from the bundle instead of leaving an unexecuted claim"
+            ),
+        }
+    if "claims channel" in lowered and "never drives its dut-input" in lowered:
+        return {
+            "category": "MISSING_STIMULUS",
+            "requirement": "Claimed channel coverage must execute that channel direction",
+            "evidence": evidence,
+            "recommended_change": (
+                "Exercise the named channel before its checked-stimulus record. "
+                "When a required reusable protocol responder is already selected, "
+                "keep that responder call and give its literal request_counts a "
+                "nonzero read or write count for the missing direction; do not "
+                "replace it with a duplicate manual valid loop. Otherwise drive "
+                "the listed DUT-input valid and await the observed handshake. "
+                "If this label does not execute that direction, move the target "
+                "to a separate label that does instead of overclaiming it"
+            ),
+        }
+    if "does not use a declared cycle/window parameter" in lowered:
+        return {
+            "category": "INVALID_STIMULUS_MAPPING",
+            "requirement": "Temporal stimulus must contain a real parameterized schedule",
+            "evidence": evidence,
+            "recommended_change": (
+                "Declare one real cycle/window parameter and use it to control a "
+                "driver stall, repeated clock-edge wait, or other observable "
+                "multi-cycle DUT schedule. Do not add an unused timing parameter "
+                "only to satisfy metadata"
+            ),
+        }
+    if "only waits; it must drive a dut signal or await a reusable driver" in lowered:
+        return {
+            "category": "INVALID_STIMULUS_MAPPING",
+            "requirement": "The declared extension stimulus function must execute the scenario",
+            "evidence": evidence,
+            "recommended_change": (
+                "Inside the named stimulus function itself, drive the required DUT "
+                "input or await an exact required reusable component from the supplied "
+                "extension_worklist call_contract. A driver call made only by the parent "
+                "test does not make a passive declared stimulus implementation executable"
+            ),
+        }
+    if "returns a decision that no generated test asserts" in lowered:
+        return {
+            "category": "INVALID_ASSERTION",
+            "requirement": "Every extension checker decision must be enforced",
+            "evidence": evidence,
+            "recommended_change": (
+                "At the reachable cocotb call site, assert the named checker result "
+                "directly (for example `assert checker(observed_trace) is True`), or "
+                "make the checker raise/assert internally. Assigning or ignoring the "
+                "returned decision is not enforcement"
+            ),
+        }
+    if (
+        "can earn a temporal bin without a reachable assertion" in lowered
+        or "can earn declared temporal bin(s)" in lowered
+    ):
+        return {
+            "category": "COVERAGE_DEFINITION",
+            "requirement": "Temporal coverage requires explicit observed-trigger evidence",
+            "evidence": evidence,
+            "recommended_change": (
+                "Return trigger evidence derived from the simulator trace and, at the "
+                "reachable test call site, assert that the trigger/event count is nonzero "
+                "before asserting an exact declared bin. Empty or idle traces must fail"
             ),
         }
     category = (

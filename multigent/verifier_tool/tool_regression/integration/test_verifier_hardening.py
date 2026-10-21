@@ -269,6 +269,205 @@ def test_truncated_previous_content_is_not_an_architecture_conflict() -> None:
         VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
 
 
+@pytest.mark.parametrize(
+    ("category", "issue", "evidence"),
+    [
+        (
+            "tooling_contract_gap",
+            "The verifier_tool automatic_reuse payload does not provide a callable API contract.",
+            "The Verifier could not determine the verifier_tool API signature.",
+        ),
+        (
+            "missing_previous_artifact_for_targeted_correction",
+            "The previous artifact required for targeted correction is missing.",
+            "No previous Verifier test file was supplied to this repair attempt.",
+        ),
+    ],
+)
+def test_verifier_owned_reuse_or_repair_gap_is_not_architecture_conflict(
+    category: str, issue: str, evidence: str
+) -> None:
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT", "reference_files": [], "test_files": [],
+        "architecture_conflict": {
+            "category": category,
+            "affected_modules": ["filter_top"],
+            "issue": issue,
+            "evidence": evidence,
+            "requested_architect_decision": "Specify the missing Verifier process artifact.",
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="invalidates itself"):
+        VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
+def test_required_observation_record_shape_is_verifier_owned() -> None:
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT", "reference_files": [], "test_files": [],
+        "architecture_conflict": {
+            "category": "missing_observation_binding",
+            "affected_modules": ["filter_top"],
+            "issue": "required_observations transaction_trace and cycle_trace lack a Python schema.",
+            "evidence": "Raw contract signals and clock edges are declared.",
+            "requested_architect_decision": "Define the observation binding record fields.",
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="Verifier owns the local record shape"):
+        VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
+def test_missing_verifier_source_skeleton_is_not_architecture_conflict() -> None:
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT", "reference_files": [], "test_files": [],
+        "architecture_conflict": {
+            "category": "missing_executable_contract_artifacts",
+            "affected_modules": ["filter_top"],
+            "issue": "No verifier source skeleton or helper insertion contract is available.",
+            "evidence": "The pipeline-generated code shape is not a frozen RTL artifact.",
+            "requested_architect_decision": "Provide a metadata-only extension manifest mode.",
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="author complete independent Python files"):
+        VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
+def test_coverage_bin_applicability_is_not_architecture_conflict() -> None:
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT", "reference_files": [], "test_files": [],
+        "architecture_conflict": {
+            "category": "coverage_contract_conflict",
+            "affected_modules": ["filter_top"],
+            "issue": "One obligation mixes required_reachable and inapplicable bins.",
+            "evidence": "Some bins are diagnostic-only while others are required.",
+            "requested_architect_decision": "Choose whether all listed bins need hits.",
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="only bins with required=true"):
+        VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
+def test_constrained_axi_bins_are_not_architecture_conflict() -> None:
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT", "reference_files": [], "test_files": [],
+        "architecture_conflict": {
+            "category": "coverage_contract_inconsistency",
+            "affected_modules": ["filter_top"],
+            "issue": "single_beat framing cannot reach 4K-boundary or write-channel ordering bins.",
+            "evidence": "Required sideband nonzero bins coexist with fixed-value constraints.",
+            "requested_architect_decision": "Relax the AXI capabilities.",
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="single-beat transfer can end"):
+        VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
+def test_coverage_id_and_helper_bindings_are_not_architecture_conflict() -> None:
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT", "reference_files": [], "test_files": [],
+        "architecture_conflict": {
+            "category": "missing_contract_bindings",
+            "affected_modules": ["filter_top"],
+            "issue": "The reduced required-ID manifest and helper binding objects are missing.",
+            "evidence": "No concrete channel binding maps were provided.",
+            "requested_architect_decision": "Authorize Verifier-owned derivation.",
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="coverage_obligation_ids_to_declare"):
+        VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
+def test_operation_scope_flags_do_not_disable_protocol_extension_tests() -> None:
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT", "reference_files": [], "test_files": [],
+        "architecture_conflict": {
+            "category": "contract_integration_conflict",
+            "affected_modules": ["filter_top"],
+            "issue": "No extension test attachment contract exists for standalone cocotb tests.",
+            "evidence": "operation_stimulus_ledger_required=false and pipeline callback API is absent.",
+            "requested_architect_decision": "Enable a protocol extension pipeline callback API.",
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="operation-domain scope flag"):
+        VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
+def test_empty_operation_scope_is_not_a_contract_rule_conflict() -> None:
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT", "reference_files": [], "test_files": [],
+        "architecture_conflict": {
+            "category": "contract_rule_conflict",
+            "affected_modules": ["filter_top"],
+            "issue": "operations is empty but checked-stimulus operation linkage is required.",
+            "evidence": "operation_coverage_required=false and operation_stimulus_ledger_required=false.",
+            "requested_architect_decision": "Add an operation or waive checked-stimulus linkage.",
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="vacuous/no-operation requirement"):
+        VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
+def test_bridge_trace_and_required_bin_controllability_are_verifier_owned() -> None:
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT", "reference_files": [], "test_files": [],
+        "architecture_conflict": {
+            "category": "missing_observable_contract_detail",
+            "affected_modules": ["filter_top"],
+            "issue": "Cannot distinguish an already-registered response from flush-only abort-edge behavior.",
+            "evidence": "Required bins may not be forceable under DUT-controlled stall.",
+            "requested_architect_decision": "Guarantee required bridge bins are forceable.",
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="observable temporal history"):
+        VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
+def test_axi_write_order_ready_scheduling_is_not_an_architecture_conflict() -> None:
+    result = verification_ready_result()
+    result.update({
+        "status": "ARCHITECTURE_CONFLICT", "reference_files": [], "test_files": [],
+        "architecture_conflict": {
+            "category": "coverage-contract contradiction",
+            "affected_modules": ["filter_top"],
+            "issue": (
+                "Required axi4_write_channel_order bins address_first and data_first "
+                "appear unreachable when AW and W valids are emitted together."
+            ),
+            "evidence": (
+                "The Verifier cannot directly drive DUT output AWVALID/WVALID timing."
+            ),
+            "requested_architect_decision": (
+                "Clarify whether address_first and data_first are guaranteed reachable."
+            ),
+        },
+    })
+    with pytest.raises(AgentRuntimeError, match="Independent AWREADY/WREADY schedules"):
+        VerifierAgent._validate_prepared_result(result=result, context=generic_fir_context())
+
+
+def test_explicit_source_roots_route_files_to_their_owned_collection() -> None:
+    result = verification_ready_result()
+    reference = result["reference_files"][0]
+    test = result["test_files"][0]
+    reference["path"] = "reference/model.py"
+    test["path"] = "tests/test_filter.py"
+    result["reference_files"] = [test]
+    result["test_files"] = [reference]
+
+    normalized = VerifierAgent._normalize_owned_source_collections(result)
+
+    assert [item["path"] for item in normalized["reference_files"]] == ["reference/model.py"]
+    assert [item["path"] for item in normalized["test_files"]] == ["tests/test_filter.py"]
+
+
 def test_missing_operation_sampling_bindings_is_not_an_architecture_conflict() -> None:
     from multigent.verifier_tool.tool_regression.integration.test_verifier import generic_fir_context, verification_ready_result
     result = verification_ready_result()

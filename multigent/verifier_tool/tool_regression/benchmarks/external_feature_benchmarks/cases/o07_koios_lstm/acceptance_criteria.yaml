@@ -1,0 +1,5 @@
+contract:
+- All declared behavior is supported by the pinned upstream specification.
+verification:
+- The generated TB passes pristine RTL and legal positive controls.
+- Known and held-out mutants fail for the intended diagnostic cause.

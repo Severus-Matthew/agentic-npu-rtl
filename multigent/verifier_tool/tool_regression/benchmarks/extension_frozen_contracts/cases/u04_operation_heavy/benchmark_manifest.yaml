@@ -1,0 +1,32 @@
+schema_version: 1
+case_id: u04_operation_heavy
+unknown_feature_count: 4
+domains:
+- operation
+- protocol
+features:
+- id: operation.negative_shift
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: negative_shift
+  intent: Signed offset with reachable negative and positive regions.
+- id: operation.symmetric_clip
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: symmetric_clip
+  intent: Bounded saturating scalar transform.
+- id: operation.sign_dependent_gain
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: sign_dependent_gain
+  intent: Conditional gain selected by sign.
+- id: protocol.minimum_ready_window
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.minimum_ready_window
+  intent: Once READY rises it remains asserted for at least three sampled cycles.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

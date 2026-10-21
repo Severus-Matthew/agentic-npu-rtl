@@ -1,0 +1,17 @@
+schema_version: 1
+case_id: L04
+status: blocked
+freeze_blockers:
+- manual_source_port_binding_audit
+- deterministic_contract_reviewer_pass
+- upstream_build_dependency_audit
+source:
+  project: OpenTitan
+  revision: dd8b1ab44e4da9929976ddbd47586518d1b850ec
+  target: hw/ip/hmac/rtl
+unknown_features:
+- start_process_stop_continue
+- context_save_restore_window
+- active_command_errors
+preflight_status: BLOCKED
+preflight_finding_count: 2

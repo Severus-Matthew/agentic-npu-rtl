@@ -22,7 +22,13 @@ The evaluation asks whether the Verifier:
 4. produces reachable stimulus and coverage (every formula bin needs a solver
    witness before the TB is accepted);
 5. emits assertion/coverage/stimulus functions that are reachable from the
-   generated test; and
+   generated test, operate on simulator-derived evidence, enforce/consume their
+   results, consume all declared behavior parameters, use multi-cycle evidence for
+   temporal rules, classify every declared bin name, require an observed named-bin
+   result, execute every declared scenario parameterization, overlap temporal monitors
+   with their stimulus, start the test clock, require explicit observed trigger
+   evidence, establish an activation path for DUT-produced outputs, and
+   drive or delegate real parameter-shaped stimulus; and
 6. avoids inventing an operation extension when a formula compiles into the
    tool-owned solver DAG.
 
@@ -67,6 +73,19 @@ RUN_VERIFIER_API_EVALUATION=1 PYTHONPATH=. .venv/bin/python -m \
   multigent.verifier_tool.tool_regression.api_evaluation.runner \
   --domain lifecycle --max-cases 3
 ```
+
+Allow each selected case to receive deterministic local feedback and retry until
+approval, with a hard per-case API limit:
+
+```bash
+RUN_VERIFIER_API_EVALUATION=1 PYTHONPATH=. .venv/bin/python -m \
+  multigent.verifier_tool.tool_regression.api_evaluation.runner \
+  --domain lifecycle --max-cases 3 --max-attempts 10
+```
+
+Each outer attempt makes exactly one structured API request. Schema-valid semantic
+failures reuse the rejected candidate and feed the exact deterministic findings into
+the next local-patch request. A case stops immediately on approval or at the limit.
 
 Raw generated files and `attempt_summary.json` go to ignored
 `local_results/<scenario>/`. They must not be committed. After human review,

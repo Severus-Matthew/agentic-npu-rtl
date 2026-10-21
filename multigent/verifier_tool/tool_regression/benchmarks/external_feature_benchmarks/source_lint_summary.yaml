@@ -1,0 +1,19 @@
+schema_version: 1
+tool: Verilator 5.050 lint-only
+cases:
+  P01:
+    top: wbm2axisp
+    sources: [rtl/wbm2axisp.v, rtl/sfifo.v, rtl/skidbuffer.v]
+    result: PASS
+  P02:
+    top: wbxclk
+    sources: [rtl/wbxclk.v, rtl/afifo.v]
+    result: PASS
+  P03:
+    top: apbxclk
+    sources: [rtl/apbxclk.v]
+    result: PASS
+scope_note: >-
+  Lint proves that the pinned pilot RTL elaborates with the recorded local
+  dependencies. It is not an upstream functional regression and does not freeze
+  a contract or qualify a generated testbench.

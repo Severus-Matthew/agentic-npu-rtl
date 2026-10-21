@@ -107,8 +107,29 @@ uses) back every public function below.
   mid-packet, every non-terminal beat must present full TKEEP, TSTRB must
   equal TKEEP (no position bytes), and the terminal TKEEP must be a
   contiguous low-byte prefix.
+- `check_event_correlations(snapshot, plan, state)` — evaluates compiled
+  Architect-declared cause/effect events, queues cause cycles in FIFO order,
+  enforces minimum/maximum latency and outstanding depth, applies declared
+  cancellation flushes, and optionally rejects an effect with no pending cause.
+  It is protocol-name independent: event bindings were already resolved by
+  `pool/role_pool/protocol_event_relations.py`.
+- `completion_payload.py::check_transaction_completion_payloads(...)` — reusable,
+  protocol-name-independent reconciliation for extension behavior. It FIFO-pairs
+  `accepted` transaction records with success/completion records (FIFO by default,
+  or by optional request/completion key bindings for out-of-order protocols) and compares a
+  contract-bound payload signal from the exact completion record/cycle against an
+  independent expected-payload sequence. It also rejects empty evidence,
+  unmatched/spurious completion, missing payload, count mismatch, and incomplete
+  accepted requests. Mixed read/write streams use the optional
+  `payload_required` mask: every request must still complete, while only
+  payload-bearing requests require and compare the completion payload. The
+  expected sequence and mask remain aligned to accepted-request order; they may
+  not be reconstructed from whichever request signals happen to be visible in a
+  later response cycle. It deliberately does not replace the existing simulation
+  timeout; its job is to prove that the response that did arrive belongs to an
+  accepted request and carries the correct data at completion.
 - `finalize_protocol_checker_state(plan, state)` — end-of-test gate. Raises if
-  any stall is still open, or (per profile) any AXI4 `aw`/`w_current`/
+  any stall or required causal relation is still open, or (per profile) any AXI4 `aw`/`w_current`/
   `w_bursts`/`pending_b`/`reads`, AXI4-Lite `aw_ids`/`pending_b`/`pending_r`/
   `w_count`, or AXI4-Stream `open_packets` bookkeeping is non-empty — a
   finite cocotb test may not end mid-transaction.
@@ -212,27 +233,38 @@ optional-ID rule when no response ID is physically bound.
   — thin wrapper: `(build_protocol_assertion_plan(interface_plan),
   plan["features"])`. **Called only from**
   `../../orchestration/instrumentation.py:render_contract_generated_block`.
-- `render_protocol_assertion_lines(interface_plan, *, reset, obligations) -> list[str]`
+- `render_protocol_assertion_lines(interface_plan, *, reset, obligations,
+  clock_domains=None) -> list[str]`
   — renders `CONTRACT_PROTOCOL_ASSERTION_PLAN = <literal dict>`, one
   `# PROTOCOL ASSERTION [<feature>]` comment per obligation feature (audit
   trail only), and the two module-level wrapper functions
   `_check_contract_protocol_assertions(snapshot)` /
   `_finalize_contract_protocol_assertions()` that delegate straight into
   `check_protocol_assertions`/`finalize_protocol_assertions` imported from the
-  facade. `interface_plan` and `reset` are accepted but unused (`del`d
+  facade. For a multi-clock custom protocol, `clock_domains` also embeds the
+  exact assertion-plan and obligation subset owned by each contract-declared
+  clock; checker state is kept separately per clock. `interface_plan` and
+  `reset` are accepted but unused (`del`d
   immediately) — the obligations mapping already carries everything needed;
   the parameters exist so the call site in
   `../../orchestration/instrumentation.py:render_contract_generated_block` can pass the same
   shape it passes to the lifecycle equivalent.
-- `render_protocol_monitor_lines(*, clock, reset, assertion_callback="_check_contract_protocol_assertions") -> list[str]`
-  — renders `_contract_generated_monitor(dut)`, the **single** cocotb
-  coroutine that samples the interface once per clock edge and feeds both
-  assertions and coverage from that one snapshot (the top-level README's "one
-  clock observer shared by assertions and coverage"). On a falling/non-rising
-  edge it takes a reset-only snapshot and calls
+- `render_protocol_monitor_lines(*, clock, reset,
+  assertion_callback="_check_contract_protocol_assertions",
+  clock_domains=None) -> list[str]`
+  — for a single-clock interface, renders one
+  `_contract_generated_monitor(dut)` coroutine that samples the interface once
+  per clock edge and feeds assertions and coverage from that snapshot. For a
+  multi-clock interface it starts one `_contract_generated_clock_monitor` per
+  exact frozen-contract clock binding. Each observer receives only its protocol
+  obligation subset; the primary interface clock alone samples lifecycle,
+  operation, and other shared domains. This prevents destination-domain state
+  from being interpreted as changing within a source-domain stall. On a
+  falling/non-rising
+  primary-clock edge it takes a reset-only snapshot and calls
   `observe_contract_reset_snapshot`; on a rising edge it takes the full
   `CONTRACT_SIGNAL_NAMES` snapshot via `capture_contract_snapshot` and calls
-  `sample_contract_snapshot(snapshot, assertion_callback)`. In the generated
+  `sample_contract_snapshot` with the domain's obligation IDs. In the generated
   block, `assertion_callback` is bound to the combined
   `_check_contract_assertions` (protocol **and** lifecycle), not to this
   module's own `_check_contract_protocol_assertions` — the default parameter

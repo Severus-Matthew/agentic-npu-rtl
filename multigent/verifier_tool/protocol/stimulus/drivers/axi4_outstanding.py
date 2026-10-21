@@ -33,7 +33,8 @@ not AXI4-Lite.
 """
 from __future__ import annotations
 
-from typing import Any, Mapping, MutableMapping
+from itertools import cycle
+from typing import Any, Mapping, MutableMapping, Sequence
 
 from ...assertion.axi import axi_lane_mask, axi_transfer_windows
 from ..adapter import OperationMemoryAdapter, word_count
@@ -95,6 +96,328 @@ def _burst_addresses(addr: int, length: int, num_bytes: int, burst: int) -> list
         ]
     except ValueError as exc:
         raise Axi4OutstandingDriveError(str(exc)) from exc
+
+
+async def serve_axi4_protocol_transactions(
+    dut: Any,
+    clock_name: str,
+    group: Mapping[str, Any],
+    request_counts: Mapping[str, int],
+    *,
+    read_data: int | Any = 0,
+    read_response: int | Any = 0,
+    write_response: int | Any = 0,
+    request_pause_patterns: Mapping[str, Sequence[bool]] | None = None,
+    seed: int | None = 0,
+    max_extra_cycles: int = 0,
+    timeout_cycles: int = 4096,
+) -> dict[str, Any]:
+    """Serve a bounded full-AXI4 protocol scenario without operation metadata.
+
+    This is the protocol-only counterpart of :func:`execute_axi4_memory_job`.
+    It reuses the same compiled group binding and same-ID completion scheduler,
+    but deliberately knows nothing about tensors, object address windows, or a
+    golden operation.  A bridge extension can therefore drive its custom-side
+    request with another reusable driver and use this responder for the AXI
+    participant.
+
+    ``request_counts`` has exact ``read`` and ``write`` keys and makes bounded
+    termination part of the component ABI rather than a hidden optional
+    requirement. ``read_data`` may be an integer or
+    ``callable(request, beat_index)``.
+    ``read_response`` and ``write_response`` may be integers or
+    ``callable(request)``.  Each request mapping contains the accepted wire
+    address, ID, burst fields, and a one-based sequence number.  The function
+    returns only handshake-derived evidence and stops after the explicitly
+    bounded request counts have completed on the real response channels.
+
+    ``request_pause_patterns`` optionally maps ``read_address``,
+    ``write_address``, and/or ``write_data`` to a nonempty repeating boolean
+    schedule.  True pauses the responder's READY for that cycle.  This is the
+    protocol-independent way for a test to exercise manager-side request
+    backpressure and independent AXI write-channel ordering without directly
+    fighting the cocotbext-axi channel drivers for signal ownership.
+    """
+
+    import cocotb
+    from cocotb.triggers import RisingEdge
+    from cocotbext.axi.axi_channels import (
+        AxiARSink,
+        AxiAWSink,
+        AxiBSource,
+        AxiRSource,
+        AxiWSink,
+    )
+
+    unknown_count_keys = set(request_counts) - {"read", "write"}
+    if unknown_count_keys:
+        raise Axi4OutstandingDriveError(
+            f"unknown AXI4 request count keys {sorted(unknown_count_keys)}"
+        )
+    expected_read_requests = int(request_counts.get("read", 0))
+    expected_write_requests = int(request_counts.get("write", 0))
+    if expected_read_requests < 0 or expected_write_requests < 0:
+        raise Axi4OutstandingDriveError("expected AXI4 request counts must be nonnegative")
+    if not expected_read_requests and not expected_write_requests:
+        raise Axi4OutstandingDriveError(
+            "protocol-only AXI4 responder requires at least one bounded request"
+        )
+    if timeout_cycles <= 0:
+        raise Axi4OutstandingDriveError("AXI4 responder timeout must be positive")
+
+    needs_read = expected_read_requests > 0
+    needs_write = expected_write_requests > 0
+    channels = _require_channels(
+        group, needs_read=needs_read, needs_write=needs_write
+    )
+    clock = getattr(dut, clock_name)
+
+    def driver_bus(kind: str) -> Any:
+        channel = channels[kind]
+        lock_metadata = channel.get("field_metadata", {}).get("lock", {})
+        omit = (
+            ("lock",)
+            if isinstance(lock_metadata, Mapping)
+            and lock_metadata.get("physical_encoding") == "legacy_hls_2bit"
+            and "lock" in channel.get("fields", {})
+            else ()
+        )
+        return _bind_channel_bus(dut, channel, omit_fields=omit)
+
+    aw_channel = AxiAWSink(driver_bus("write_address"), clock) if needs_write else None
+    w_channel = (
+        AxiWSink(_bind_channel_bus(dut, channels["write_data"]), clock)
+        if needs_write
+        else None
+    )
+    b_bus = _bind_channel_bus(dut, channels["write_response"]) if needs_write else None
+    b_channel = AxiBSource(b_bus, clock) if needs_write else None
+    ar_channel = AxiARSink(driver_bus("read_address"), clock) if needs_read else None
+    r_bus = _bind_channel_bus(dut, channels["read_data"]) if needs_read else None
+    r_channel = AxiRSource(r_bus, clock) if needs_read else None
+
+    pause_patterns = dict(request_pause_patterns or {})
+    pause_channels = {
+        "read_address": ar_channel,
+        "write_address": aw_channel,
+        "write_data": w_channel,
+    }
+    unknown_pause_channels = set(pause_patterns) - set(pause_channels)
+    if unknown_pause_channels:
+        raise Axi4OutstandingDriveError(
+            "unknown AXI4 request pause channel(s) "
+            + repr(sorted(unknown_pause_channels))
+        )
+    for kind, raw_pattern in pause_patterns.items():
+        channel = pause_channels[kind]
+        if channel is None:
+            raise Axi4OutstandingDriveError(
+                f"pause pattern targets inactive AXI4 channel {kind!r}"
+            )
+        if isinstance(raw_pattern, (str, bytes)) or not isinstance(
+            raw_pattern, Sequence
+        ):
+            raise Axi4OutstandingDriveError(
+                f"pause pattern for {kind!r} must be a sequence"
+            )
+        pattern = tuple(bool(item) for item in raw_pattern)
+        if not pattern:
+            raise Axi4OutstandingDriveError(
+                f"pause pattern for {kind!r} must not be empty"
+            )
+        channel.set_pause_generator(cycle(pattern))
+
+    evidence: dict[str, Any] = {
+        "read_requests": [],
+        "read_responses": [],
+        "write_requests": [],
+        "write_data": [],
+        "write_responses": [],
+    }
+    progress = {
+        "read_requests": 0,
+        "read_requests_prepared": 0,
+        "read_beats_expected": 0,
+        "read_beats_completed": 0,
+        "write_requests": 0,
+        "write_beats_completed": 0,
+        "write_responses_completed": 0,
+    }
+    read_scheduler = RandomCompletionScheduler(
+        clock, seed=seed, max_extra_cycles=max_extra_cycles
+    )
+    write_scheduler = RandomCompletionScheduler(
+        clock, seed=seed, max_extra_cycles=max_extra_cycles
+    )
+    child_tasks: list[Any] = []
+
+    def response_value(policy: int | Any, request: Mapping[str, int]) -> int:
+        return int(policy(request) if callable(policy) else policy)
+
+    async def serve_read(raw: Any, sequence: int) -> None:
+        request = {
+            "sequence": sequence,
+            "id": int(getattr(raw, "arid", 0)),
+            "addr": int(raw.araddr),
+            "len": int(getattr(raw, "arlen", 0)),
+            "size": int(getattr(raw, "arsize", 2)),
+            "burst": int(getattr(raw, "arburst", 1)),
+        }
+        windows = axi_transfer_windows(
+            {
+                "addr": request["addr"],
+                "len": request["len"],
+                "size": request["size"],
+                "burst": request["burst"],
+            }
+        )
+        request["beats"] = len(windows)
+        evidence["read_requests"].append(dict(request))
+        progress["read_beats_expected"] += len(windows)
+        progress["read_requests_prepared"] += 1
+        resp = response_value(read_response, request)
+
+        async def send() -> None:
+            for beat_index, (lower, _upper) in enumerate(windows):
+                context = {**request, "beat_address": int(lower)}
+                data = int(
+                    read_data(context, beat_index)
+                    if callable(read_data)
+                    else read_data
+                )
+                beat = r_channel._transaction_obj()
+                beat.rid = request["id"]
+                beat.rdata = data
+                beat.rresp = resp
+                beat.rlast = int(beat_index == len(windows) - 1)
+                await r_channel.send(beat)
+
+        await read_scheduler.schedule(request["id"], send)
+
+    async def accept_reads() -> None:
+        while progress["read_requests"] < expected_read_requests:
+            raw = await ar_channel.recv()
+            progress["read_requests"] += 1
+            child_tasks.append(
+                cocotb.start_soon(serve_read(raw, progress["read_requests"]))
+            )
+
+    async def serve_write(raw: Any, sequence: int) -> None:
+        request = {
+            "sequence": sequence,
+            "id": int(getattr(raw, "awid", 0)),
+            "addr": int(raw.awaddr),
+            "len": int(getattr(raw, "awlen", 0)),
+            "size": int(getattr(raw, "awsize", 2)),
+            "burst": int(getattr(raw, "awburst", 1)),
+        }
+        windows = axi_transfer_windows(
+            {
+                "addr": request["addr"],
+                "len": request["len"],
+                "size": request["size"],
+                "burst": request["burst"],
+            }
+        )
+        request["beats"] = len(windows)
+        evidence["write_requests"].append(dict(request))
+        for beat_index, (lower, _upper) in enumerate(windows):
+            raw_data = await w_channel.recv()
+            data = int(raw_data.wdata)
+            strb = int(getattr(raw_data, "wstrb", 0))
+            evidence["write_data"].append(
+                {
+                    **request,
+                    "beat_index": beat_index,
+                    "beat_address": int(lower),
+                    "data": data,
+                    "strb": strb,
+                    "last": int(getattr(raw_data, "wlast", beat_index == len(windows) - 1)),
+                }
+            )
+            progress["write_beats_completed"] += 1
+        resp = response_value(write_response, request)
+
+        async def send() -> None:
+            beat = b_channel._transaction_obj()
+            beat.bid = request["id"]
+            beat.bresp = resp
+            await b_channel.send(beat)
+
+        await write_scheduler.schedule(request["id"], send)
+
+    async def accept_writes() -> None:
+        while progress["write_requests"] < expected_write_requests:
+            raw = await aw_channel.recv()
+            progress["write_requests"] += 1
+            child_tasks.append(
+                cocotb.start_soon(serve_write(raw, progress["write_requests"]))
+            )
+
+    async def count_read_responses() -> None:
+        while True:
+            await RisingEdge(clock)
+            if int(r_bus.rvalid.value) and int(r_bus.rready.value):
+                progress["read_beats_completed"] += 1
+                evidence["read_responses"].append(
+                    {
+                        "id": int(getattr(r_bus, "rid").value),
+                        "data": int(r_bus.rdata.value),
+                        "resp": int(r_bus.rresp.value),
+                        "last": int(r_bus.rlast.value),
+                    }
+                )
+
+    async def count_write_responses() -> None:
+        while True:
+            await RisingEdge(clock)
+            if int(b_bus.bvalid.value) and int(b_bus.bready.value):
+                progress["write_responses_completed"] += 1
+                evidence["write_responses"].append(
+                    {
+                        "id": int(getattr(b_bus, "bid").value),
+                        "resp": int(b_bus.bresp.value),
+                    }
+                )
+
+    tasks = [
+        cocotb.start_soon(accept_reads()) if needs_read else None,
+        cocotb.start_soon(accept_writes()) if needs_write else None,
+        cocotb.start_soon(count_read_responses()) if needs_read else None,
+        cocotb.start_soon(count_write_responses()) if needs_write else None,
+    ]
+    try:
+        for _ in range(timeout_cycles):
+            await RisingEdge(clock)
+            reads_done = (
+                progress["read_requests"] == expected_read_requests
+                and progress["read_requests_prepared"] == expected_read_requests
+                and progress["read_beats_completed"] == progress["read_beats_expected"]
+            )
+            writes_done = (
+                progress["write_requests"] == expected_write_requests
+                and progress["write_responses_completed"] == expected_write_requests
+            )
+            if reads_done and writes_done:
+                return {**evidence, "progress": dict(progress)}
+        raise Axi4OutstandingDriveError(
+            "AXI4 protocol responder timed out: " + repr(progress)
+        )
+    finally:
+        for task in (*tasks, *child_tasks):
+            if task is not None:
+                task.cancel()
+        for channel in (aw_channel, w_channel, b_channel, ar_channel, r_channel):
+            if channel is None:
+                continue
+            channel.clear_pause_generator()
+            if channel._run_cr is not None:
+                channel._run_cr.cancel()
+                channel._run_cr = None
+        if r_bus is not None:
+            r_bus.rvalid.value = 0
+        if b_bus is not None:
+            b_bus.bvalid.value = 0
 
 
 
@@ -477,4 +800,5 @@ __all__ = [
     "Axi4OutstandingDriveError",
     "RandomCompletionScheduler",
     "execute_axi4_memory_job",
+    "serve_axi4_protocol_transactions",
 ]

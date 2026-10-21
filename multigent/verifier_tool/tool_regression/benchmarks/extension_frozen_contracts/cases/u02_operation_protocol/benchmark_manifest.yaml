@@ -1,0 +1,22 @@
+schema_version: 1
+case_id: u02_operation_protocol
+unknown_feature_count: 2
+domains:
+- operation
+- protocol
+features:
+- id: operation.symmetric_clip
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: symmetric_clip
+  intent: Bounded saturating scalar transform.
+- id: protocol.transfer_gap_limit
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.transfer_gap_limit
+  intent: Consecutive output transfers must be separated by at most five cycles.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

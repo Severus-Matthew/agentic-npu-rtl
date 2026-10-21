@@ -1,0 +1,37 @@
+schema_version: 1
+case_id: u05_lifecycle_heavy
+unknown_feature_count: 5
+domains:
+- lifecycle
+- protocol
+features:
+- id: lifecycle.minimum_busy_duration
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.minimum_busy_duration
+  intent: Every accepted job remains busy for at least four sampled cycles.
+- id: lifecycle.maximum_completion_latency
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.maximum_completion_latency
+  intent: Completion follows legal job acceptance within forty cycles.
+- id: lifecycle.completion_to_idle_deadline
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.completion_to_idle_deadline
+  intent: Busy deasserts within two cycles after completion.
+- id: lifecycle.error_recovery_window
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.error_recovery_window
+  intent: A clean legal job can be accepted within six cycles after an error pulse.
+- id: protocol.payload_parity_observation
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.payload_parity_observation
+  intent: Classify accepted output payloads by even and odd parity.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

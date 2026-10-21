@@ -1,0 +1,144 @@
+design:
+  name: koios_self_attention_layer
+  description: External benchmark O01 over Koios accelerator benchmarks in the SLDB-pinned
+    VTR fork at exact revision 0812786f103b63b6db679eab163c3d4ab8b5cf1a, target vtr_flow/benchmarks/verilog/koios/attention_layer.v.
+operations:
+- name: koios_self_attention_layer
+  kind: koios_self_attention_layer
+  coverage_family: koios_self_attention_layer
+  coverage_family_source: novel
+  features:
+  - self_attention_qk_score
+  feature_extensions:
+  - attention_scaling
+  - softmax_value_composition
+  semantics: Source-backed operation scope for koios_self_attention_layer; exact behavior
+    is owned by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  arithmetic:
+    classifier_profile: llm_extension
+    reason: The selected upstream arithmetic is not a current code-owned profile.
+    extension_request: operation.o01_self_attention_qk_score
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Known linear primitives are reused; the self-attention composition is extended.
+open_assumptions: []
+verification_extensions:
+- id: operation.o01_self_attention_qk_score
+  domain: operation
+  feature_name: self_attention_qk_score
+  target:
+    scope: operation
+    name: koios_self_attention_layer
+  semantics:
+    summary: Verify self attention qk score exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible self attention qk score behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: self_attention_qk_score is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - matrix_vector_multiply
+  - canonical_tensor_capture
+  - golden_equivalence_shell
+- id: operation.o01_attention_scaling
+  domain: operation
+  feature_name: attention_scaling
+  target:
+    scope: operation
+    name: koios_self_attention_layer
+  semantics:
+    summary: Verify attention scaling exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible attention scaling behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: attention_scaling is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - matrix_vector_multiply
+  - canonical_tensor_capture
+  - golden_equivalence_shell
+- id: operation.o01_softmax_value_composition
+  domain: operation
+  feature_name: softmax_value_composition
+  target:
+    scope: operation
+    name: koios_self_attention_layer
+  semantics:
+    summary: Verify softmax value composition exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible softmax value composition behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: softmax_value_composition is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - matrix_vector_multiply
+  - canonical_tensor_capture
+  - golden_equivalence_shell

@@ -108,6 +108,143 @@ async def drive_protocol_transfers(
     return accepted
 
 
+async def drive_protocol_event_transactions(
+    dut: Any,
+    profile: Mapping[str, Any],
+    transaction: Mapping[str, Any],
+    beats: Iterable[Mapping[str, Any]],
+    *,
+    timeout_cycles: int = 4096,
+    settle_timer_ps: int = 1,
+) -> list[dict[str, int]]:
+    """Drive a Contract-Reviewer-compiled custom input transaction.
+
+    The frozen contract supplies exact drive assignments and a compiled accepted
+    event.  This helper is protocol-name agnostic: it works for composed events
+    such as ``cyc && stb && !stall`` without generated handshake code.
+    """
+
+    from cocotb.triggers import FallingEdge, RisingEdge
+    from multigent.verifier_tool.pool.role_pool.protocol_semantics import (
+        evaluate_protocol_expression,
+        expression_signals,
+    )
+
+    drive = transaction.get("source_drive")
+    if not isinstance(drive, Mapping):
+        raise ProtocolDriveError("event transaction has no source_drive binding")
+    accepted_expression = transaction.get("accepted")
+    if not isinstance(accepted_expression, Mapping):
+        raise ProtocolDriveError("event transaction has no compiled accepted expression")
+    clock_binding = profile.get("clock", {})
+    clock_name = str(clock_binding.get("signal", ""))
+    if str(clock_binding.get("edge", "rising")) != "rising":
+        raise ProtocolDriveError("event transaction source currently requires a rising-edge clock")
+    clock = _handle(dut, clock_name)
+    presented = {
+        str(name): int(value)
+        for name, value in drive.get("presented_assignments", {}).items()
+    }
+    idle = {
+        str(name): int(value)
+        for name, value in drive.get("idle_assignments", {}).items()
+    }
+    post_accept = {
+        str(name): int(value)
+        for name, value in drive.get("post_accept_assignments", {}).items()
+    }
+    completion_mode = str(
+        drive.get("completion_mode", "return_after_acceptance")
+    )
+    fields = tuple(map(str, drive.get("driven_fields", ())))
+    completed_expression = transaction.get("completed")
+    dependencies = tuple(
+        dict.fromkeys(
+            (*expression_signals(accepted_expression), *(
+                expression_signals(completed_expression)
+                if isinstance(completed_expression, Mapping)
+                else ()
+            ))
+        )
+    )
+
+    def assign(values: Mapping[str, Any]) -> None:
+        for signal, value in values.items():
+            _handle(dut, str(signal)).value = int(value)
+
+    def snapshot() -> dict[str, int]:
+        return {name: int(_handle(dut, name).value) for name in dependencies}
+
+    unknown_fixed = sorted(
+        (set(presented) | set(idle) | set(post_accept)) & set(fields)
+    )
+    if unknown_fixed:
+        raise ProtocolDriveError(
+            f"source_drive control assignments overlap driven fields {unknown_fixed}"
+        )
+    assign(idle)
+    for field in fields:
+        _handle(dut, field).value = 0
+    accepted_beats: list[dict[str, int]] = []
+    completed_count = 0
+    for raw_beat in beats:
+        beat = {str(name): int(value) for name, value in raw_beat.items()}
+        unknown = sorted(set(beat) - set(fields))
+        missing = sorted(set(fields) - set(beat))
+        if unknown or missing:
+            raise ProtocolDriveError(
+                f"event transaction beat must map every driven field; missing={missing}, unknown={unknown}"
+            )
+        first_drive = True
+        for cycle in range(1, timeout_cycles + 1):
+            await FallingEdge(clock)
+            if first_drive:
+                assign(beat)
+                assign(presented)
+                first_drive = False
+            await _settle(settle_timer_ps)
+            accepted = evaluate_protocol_expression(accepted_expression, snapshot())
+            completed = (
+                evaluate_protocol_expression(completed_expression, snapshot())
+                if isinstance(completed_expression, Mapping)
+                else False
+            )
+            await RisingEdge(clock)
+            completed_count += int(completed)
+            if accepted:
+                accepted_beats.append(dict(beat))
+                break
+        else:
+            raise ProtocolDriveError(
+                f"event transaction timed out after {timeout_cycles} cycles; "
+                f"profile={profile.get('name')!r} transaction={transaction.get('name')!r}"
+            )
+    await FallingEdge(clock)
+    assign(post_accept)
+    if completion_mode == "wait_for_all_completions":
+        if not isinstance(completed_expression, Mapping):
+            raise ProtocolDriveError(
+                "wait_for_all_completions requires a compiled completed expression"
+            )
+        for _cycle in range(1, timeout_cycles + 1):
+            if completed_count >= len(accepted_beats):
+                break
+            await _settle(settle_timer_ps)
+            completed = evaluate_protocol_expression(completed_expression, snapshot())
+            await RisingEdge(clock)
+            completed_count += int(completed)
+            await FallingEdge(clock)
+        else:
+            raise ProtocolDriveError(
+                f"event transaction completion timed out after {timeout_cycles} cycles; "
+                f"accepted={len(accepted_beats)} completed={completed_count}"
+            )
+    assign(idle)
+    for field in fields:
+        _handle(dut, field).value = 0
+    return accepted_beats
+
+
 async def drive_protocol_field_values(
     dut: Any,
     clock_name: str,
@@ -303,5 +440,6 @@ __all__ = [
     "collect_protocol_transfers",
     "drive_protocol_reset",
     "drive_protocol_field_values",
+    "drive_protocol_event_transactions",
     "drive_protocol_transfers",
 ]

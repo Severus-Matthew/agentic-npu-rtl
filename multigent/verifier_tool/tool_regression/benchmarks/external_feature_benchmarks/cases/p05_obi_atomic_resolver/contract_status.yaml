@@ -1,0 +1,16 @@
+schema_version: 1
+case_id: P05
+status: blocked
+freeze_blockers:
+- manual_source_port_binding_audit
+- deterministic_contract_reviewer_pass
+- upstream_build_dependency_audit
+source:
+  project: PULP OBI
+  revision: f29d4cc421248dfb5c32986bbf9918e2a1ca7556
+  target: src/obi_atop_resolver.sv
+unknown_features:
+- obi_atomic_operation_resolution
+- exclusive_bus_atomic_sequence
+preflight_status: BLOCKED
+preflight_finding_count: 2

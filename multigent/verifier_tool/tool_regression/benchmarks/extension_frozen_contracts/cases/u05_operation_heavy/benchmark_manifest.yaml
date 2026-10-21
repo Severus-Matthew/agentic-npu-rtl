@@ -1,0 +1,37 @@
+schema_version: 1
+case_id: u05_operation_heavy
+unknown_feature_count: 5
+domains:
+- lifecycle
+- operation
+features:
+- id: operation.affine_triple_plus_one
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: triple_plus_one
+  intent: Affine post-operation after ReLU.
+- id: operation.absolute_value
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: absolute_value
+  intent: Nonnegative piecewise scalar transform.
+- id: operation.modulo_seven
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: modulo_seven
+  intent: Integer remainder classes.
+- id: operation.dead_zone
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: dead_zone
+  intent: Piecewise dead-zone transform.
+- id: lifecycle.busy_watchdog_observation
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.busy_watchdog_observation
+  intent: Observe whether an accepted job remains busy for twelve sampled cycles.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

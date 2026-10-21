@@ -1,0 +1,12 @@
+{
+  "top": "wbxclk",
+  "modules": [
+    {
+      "name": "wbxclk",
+      "responsibility": "wishbone_cross_clock",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

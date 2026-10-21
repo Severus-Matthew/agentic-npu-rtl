@@ -1,0 +1,146 @@
+design:
+  name: koios_elementwise_layer
+  description: External benchmark O04 over Koios accelerator benchmarks in the SLDB-pinned
+    VTR fork at exact revision 0812786f103b63b6db679eab163c3d4ab8b5cf1a, target vtr_flow/benchmarks/verilog/koios/eltwise_layer.v.
+operations:
+- name: koios_elementwise_layer
+  kind: koios_elementwise_layer
+  coverage_family: koios_elementwise_layer
+  coverage_family_source: novel
+  features:
+  - vector_vector_and_vector_scalar_modes
+  feature_extensions:
+  - runtime_selected_elementwise_operator
+  - banked_lane_mapping
+  semantics: Source-backed operation scope for koios_elementwise_layer; exact behavior
+    is owned by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  arithmetic:
+    classifier_profile: llm_extension
+    reason: The selected upstream arithmetic is not a current code-owned profile.
+    extension_request: operation.o04_vector_vector_and_vector_scalar_modes
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Scalar operators are known; mode selection, broadcasting, and lane mapping are extended.
+open_assumptions: []
+verification_extensions:
+- id: operation.o04_vector_vector_and_vector_scalar_modes
+  domain: operation
+  feature_name: vector_vector_and_vector_scalar_modes
+  target:
+    scope: operation
+    name: koios_elementwise_layer
+  semantics:
+    summary: Verify vector vector and vector scalar modes exactly as implemented by
+      the pinned upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible vector vector and vector scalar modes
+      behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: vector_vector_and_vector_scalar_modes is intentionally absent from the current
+    verifier_tool pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - scalar_arithmetic
+  - canonical_tensor_capture
+  - golden_equivalence_shell
+- id: operation.o04_runtime_selected_elementwise_operator
+  domain: operation
+  feature_name: runtime_selected_elementwise_operator
+  target:
+    scope: operation
+    name: koios_elementwise_layer
+  semantics:
+    summary: Verify runtime selected elementwise operator exactly as implemented by
+      the pinned upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible runtime selected elementwise operator
+      behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: runtime_selected_elementwise_operator is intentionally absent from the current
+    verifier_tool pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - scalar_arithmetic
+  - canonical_tensor_capture
+  - golden_equivalence_shell
+- id: operation.o04_banked_lane_mapping
+  domain: operation
+  feature_name: banked_lane_mapping
+  target:
+    scope: operation
+    name: koios_elementwise_layer
+  semantics:
+    summary: Verify banked lane mapping exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible banked lane mapping behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: banked_lane_mapping is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - scalar_arithmetic
+  - canonical_tensor_capture
+  - golden_equivalence_shell

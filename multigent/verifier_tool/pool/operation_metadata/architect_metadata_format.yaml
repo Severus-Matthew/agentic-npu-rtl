@@ -49,6 +49,11 @@ operation_arithmetic_extension:
     be erased during revisions. Do not emit both compact arithmetic and full
     verification_metadata. Existing interface bindings and object/type/shape fields
     remain authoritative and are not redeclared here.
+  standalone_attention_scale: >-
+    fixed_point_attention_scale owns only signed score multiplication by the
+    contract-derived round(2^scale_shift/sqrt(head_dimension)) coefficient,
+    arithmetic-floor power-of-two shifting, and result conversion. It does not
+    imply mask, softmax/normalization, top-k selection, or value multiplication.
 
 object_serialization_extension:
   owner: verifier_tool
@@ -162,22 +167,11 @@ input_output_binding:
       passes accepted values under the exact data_object name in that order.
 
 arithmetic:
-  required_fields:
-    - classifier_profile
-    - accumulator_data_type
-    - accumulator_type
-    - reduction_dimensions
-    - post_operations
-    - product_data_type
-    - accumulator_initialization
-    - reduction_order
-    - reduction_conversion
-    - bias_conversion
-    - result_data_type
-    - result_conversion
-    - stage_order
-    - support_status
-    - metadata_origin
+  common_required_fields: [classifier_profile, result_data_type, result_conversion]
+  rule: >-
+    Remaining fields are profile-specific and must match the exact branch in
+    arithmetic_metadata.schema.json. The compiler never infers sparse-attention
+    normalization, mask semantics, reduction axes, or numeric conversions.
   classifier_profiles:
     integer_matrix_multiply:
       required_object_roles:
@@ -195,6 +189,74 @@ arithmetic:
         attempts deterministic solver compilation. Verifier owns coverage bins
         and predicates after successful compilation; llm_extension is reserved
         for behavior the Architect declares not solver-representable.
+    integer_sparse_attention:
+      exact_semantics: >-
+        A composed restricted pipeline: integer_qk_score -> identity scale ->
+        binary_keep mask -> no normalization -> integer weighted V reduction.
+        Y=sum(mask ? score*V : 0). Reciprocal-square-root scaling, softmax,
+        top-k selection, and approximate normalization require separate stages.
+      required_object_roles:
+        - query_matrix
+        - key_matrix
+        - value_matrix
+        - attention_mask
+        - attention_result
+      required_shapes:
+        - Q[Q,D]
+        - K[S,D]
+        - V[S,DV]
+        - mask[Q,S]
+        - result[Q,DV]
+      required_numeric_declarations:
+        - score_product_data_type
+        - score_accumulator_data_type
+        - score_reduction_dimensions
+        - score_reduction_order
+        - score_reduction_conversion
+        - scaling
+        - mask_mode
+        - normalization
+        - output_product_data_type
+        - output_accumulator_data_type
+        - output_reduction_dimensions
+        - output_reduction_order
+        - output_reduction_conversion
+    integer_qk_score:
+      exact_semantics: >-
+        Raw integer query-key score only: score=Q*K^T. Scaling, masking,
+        softmax, value multiplication, and block selection are separate stages
+        and are not implied by this profile.
+      required_object_roles:
+        - query_matrix
+        - key_matrix
+        - attention_score_matrix
+      required_shapes:
+        - Q[Q,D]
+        - K[S,D]
+        - score[Q,S]
+      required_numeric_declarations:
+        - score_product_data_type
+        - score_accumulator_data_type
+        - score_reduction_dimensions
+        - score_reduction_order
+        - score_reduction_conversion
+    binary_attention_mask:
+      exact_semantics: >-
+        Standalone binary-keep masking over scaled scores. One preserves the
+        signed score at the same Q,S coordinate; zero emits zero. Softmax,
+        normalization, and V multiplication are separate stages.
+      required_object_roles:
+        - scaled_attention_score_matrix
+        - attention_mask
+        - masked_attention_score_matrix
+      required_shapes:
+        - scaled_score[Q,S]
+        - mask[Q,S]
+        - masked_score[Q,S]
+      required_numeric_declarations:
+        - mask_mode
+        - result_data_type
+        - result_conversion
 
 lifecycle:
   owner: verifier_tool

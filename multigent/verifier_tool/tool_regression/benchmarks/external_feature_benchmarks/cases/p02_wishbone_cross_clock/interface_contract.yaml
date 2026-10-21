@@ -1,0 +1,303 @@
+clock: i_wb_clk
+reset: i_reset
+channels:
+- name: wb_request
+  direction: input
+  protocol_profile: custom
+  protocol_group: source_wishbone
+  data_objects: []
+  ordering: source-defined
+  framing: source-defined
+- name: wb_response
+  direction: output
+  protocol_profile: custom
+  protocol_group: source_wishbone
+  data_objects: []
+  ordering: source-defined
+  framing: source-defined
+- name: xclk_request
+  direction: output
+  protocol_profile: custom
+  protocol_group: destination_wishbone
+  data_objects: []
+  ordering: source-defined
+  framing: source-defined
+- name: xclk_response
+  direction: input
+  protocol_profile: custom
+  protocol_group: destination_wishbone
+  data_objects: []
+  ordering: source-defined
+  framing: source-defined
+signals:
+- name: i_wb_clk
+  role: clock
+  channel: null
+  direction: input
+  width: 1
+  signed: false
+  semantic: Source-domain clock.
+- name: i_xclk_clk
+  role: clock
+  channel: null
+  direction: input
+  width: 1
+  signed: false
+  semantic: Destination-domain clock.
+- name: i_reset
+  role: reset
+  channel: null
+  direction: input
+  width: 1
+  signed: false
+  semantic: Active-high reset.
+- name: i_wb_cyc
+  role: metadata
+  channel: wb_request
+  direction: input
+  width: 1
+  signed: false
+  semantic_class: command
+  semantic: Exact i_wb_cyc port from wbxclk.
+- name: i_wb_stb
+  role: valid
+  channel: wb_request
+  direction: input
+  width: 1
+  signed: false
+  semantic: Exact i_wb_stb port from wbxclk.
+- name: i_wb_we
+  role: metadata
+  channel: wb_request
+  direction: input
+  width: 1
+  signed: false
+  semantic_class: command
+  semantic: Exact i_wb_we port from wbxclk.
+- name: i_wb_addr
+  role: payload
+  channel: wb_request
+  direction: input
+  width: 32
+  signed: false
+  semantic_class: address
+  semantic: Exact i_wb_addr port from wbxclk.
+- name: i_wb_data
+  role: payload
+  channel: wb_request
+  direction: input
+  width: 32
+  signed: false
+  semantic_class: data
+  semantic: Exact i_wb_data port from wbxclk.
+- name: i_wb_sel
+  role: keep
+  channel: wb_request
+  direction: input
+  width: 4
+  signed: false
+  semantic_class: byte_enable
+  semantic: Exact i_wb_sel port from wbxclk.
+- name: o_wb_stall
+  role: metadata
+  channel: wb_response
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: configuration
+  semantic: Exact o_wb_stall port from wbxclk.
+- name: o_wb_ack
+  role: valid
+  channel: wb_response
+  direction: output
+  width: 1
+  signed: false
+  semantic: Exact o_wb_ack port from wbxclk.
+- name: o_wb_data
+  role: payload
+  channel: wb_response
+  direction: output
+  width: 32
+  signed: false
+  semantic_class: data
+  semantic: Exact o_wb_data port from wbxclk.
+- name: o_wb_err
+  role: metadata
+  channel: wb_response
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: response_code
+  semantic: Exact o_wb_err port from wbxclk.
+- name: o_xclk_cyc
+  role: metadata
+  channel: xclk_request
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: command
+  semantic: Exact o_xclk_cyc port from wbxclk.
+- name: o_xclk_stb
+  role: valid
+  channel: xclk_request
+  direction: output
+  width: 1
+  signed: false
+  semantic: Exact o_xclk_stb port from wbxclk.
+- name: o_xclk_we
+  role: metadata
+  channel: xclk_request
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: command
+  semantic: Exact o_xclk_we port from wbxclk.
+- name: o_xclk_addr
+  role: payload
+  channel: xclk_request
+  direction: output
+  width: 32
+  signed: false
+  semantic_class: address
+  semantic: Exact o_xclk_addr port from wbxclk.
+- name: o_xclk_data
+  role: payload
+  channel: xclk_request
+  direction: output
+  width: 32
+  signed: false
+  semantic_class: data
+  semantic: Exact o_xclk_data port from wbxclk.
+- name: o_xclk_sel
+  role: keep
+  channel: xclk_request
+  direction: output
+  width: 4
+  signed: false
+  semantic_class: byte_enable
+  semantic: Exact o_xclk_sel port from wbxclk.
+- name: i_xclk_stall
+  role: metadata
+  channel: xclk_response
+  direction: input
+  width: 1
+  signed: false
+  semantic_class: configuration
+  semantic: Exact i_xclk_stall port from wbxclk.
+- name: i_xclk_ack
+  role: valid
+  channel: xclk_response
+  direction: input
+  width: 1
+  signed: false
+  semantic: Exact i_xclk_ack port from wbxclk.
+- name: i_xclk_data
+  role: payload
+  channel: xclk_response
+  direction: input
+  width: 32
+  signed: false
+  semantic_class: data
+  semantic: Exact i_xclk_data port from wbxclk.
+- name: i_xclk_err
+  role: metadata
+  channel: xclk_response
+  direction: input
+  width: 1
+  signed: false
+  semantic_class: response_code
+  semantic: Exact i_xclk_err port from wbxclk.
+protocol_semantics:
+- name: wishbone_source_domain
+  description: Source-clock Wishbone request acceptance and registered response retirement.
+  protocol_groups: [source_wishbone]
+  clock: {signal: i_wb_clk, edge: rising}
+  events:
+  - {name: request_presented, expression: "i_wb_cyc && i_wb_stb", description: Source request is presented.}
+  - {name: request_ready, expression: "!o_wb_stall", description: Bridge can accept a source request.}
+  - {name: request_accepted, expression: "request_presented && request_ready", description: Source request is accepted.}
+  - {name: request_stalled, expression: "request_presented && !request_ready", description: Source request is stalled.}
+  - {name: response_success, expression: "i_wb_cyc && o_wb_ack", description: Registered source ACK retires a request.}
+  - {name: response_error, expression: "i_wb_cyc && o_wb_err", description: Registered source ERR retires a request.}
+  - {name: response_completed, expression: "response_success || response_error", description: One source response retires.}
+  - {name: cycle_cancelled, expression: "!i_wb_cyc", description: Source cycle is inactive or cancelled.}
+  transactions:
+  - name: source_request
+    channel: wb_request
+    presented_event: request_presented
+    ready_event: request_ready
+    accepted_event: request_accepted
+    stalled_event: request_stalled
+    completed_event: response_completed
+    success_event: response_success
+    error_event: response_error
+    content_signals: [i_wb_we, i_wb_addr, i_wb_data, i_wb_sel]
+    stable_while_stalled: true
+    stability_rules: []
+    source_drive:
+      presented_assignments:
+      - {signal: i_wb_cyc, value: 1}
+      - {signal: i_wb_stb, value: 1}
+      idle_assignments:
+      - {signal: i_wb_cyc, value: 0}
+      - {signal: i_wb_stb, value: 0}
+      post_accept_assignments:
+      - {signal: i_wb_cyc, value: 1}
+      - {signal: i_wb_stb, value: 0}
+      driven_fields: [i_wb_we, i_wb_addr, i_wb_data, i_wb_sel]
+      completion_mode: wait_for_all_completions
+  flow_control: {maximum_outstanding: 32, ordering: oldest_outstanding, in_order: true}
+  cancellation: {supported: true, trigger_event: cycle_cancelled, pending_behavior: flush}
+  custom_rules:
+  - id: source_outstanding_cdc
+    description: Source acceptances and registered retirements remain ordered across CDC.
+    required_observations: [transaction_trace, cycle_trace]
+    extension_request_id: protocol.p02_wishbone_outstanding_cdc
+  - id: source_cycle_cancellation
+    description: Dropping the source cycle flushes pending work without stale responses.
+    required_observations: [transaction_trace, cycle_trace]
+    extension_request_id: protocol.p02_wishbone_cycle_cancellation
+- name: wishbone_destination_domain
+  description: Destination-clock Wishbone request acceptance and response observation.
+  protocol_groups: [destination_wishbone]
+  clock: {signal: i_xclk_clk, edge: rising}
+  events:
+  - {name: request_presented, expression: "o_xclk_cyc && o_xclk_stb", description: Destination request is presented.}
+  - {name: request_ready, expression: "!i_xclk_stall", description: Destination target can accept the request.}
+  - {name: request_accepted, expression: "request_presented && request_ready", description: Destination request is accepted.}
+  - {name: request_stalled, expression: "request_presented && !request_ready", description: Destination request is stalled.}
+  - {name: response_success, expression: "o_xclk_cyc && i_xclk_ack", description: Destination ACK is observed.}
+  - {name: response_error, expression: "o_xclk_cyc && i_xclk_err", description: Destination ERR is observed.}
+  - {name: response_completed, expression: "response_success || response_error", description: One destination response completes.}
+  - {name: cycle_cancelled, expression: "!o_xclk_cyc", description: Destination cycle is inactive or cancelled.}
+  transactions:
+  - name: destination_request
+    channel: xclk_request
+    presented_event: request_presented
+    ready_event: request_ready
+    accepted_event: request_accepted
+    stalled_event: request_stalled
+    completed_event: response_completed
+    success_event: response_success
+    error_event: response_error
+    content_signals: [o_xclk_we, o_xclk_addr, o_xclk_data, o_xclk_sel]
+    stable_while_stalled: true
+    stability_rules: []
+    source_drive: null
+  flow_control: {maximum_outstanding: 32, ordering: oldest_outstanding, in_order: true}
+  cancellation: {supported: true, trigger_event: cycle_cancelled, pending_behavior: flush}
+  custom_rules:
+  - id: destination_outstanding_cdc
+    description: Destination acceptances and responses contribute real cross-clock evidence.
+    required_observations: [transaction_trace, cycle_trace]
+    extension_request_id: protocol.p02_wishbone_outstanding_cdc
+  - id: destination_cycle_cancellation
+    description: Destination cycle release and error termination contribute cancellation evidence.
+    required_observations: [transaction_trace, cycle_trace]
+    extension_request_id: protocol.p02_wishbone_cycle_cancellation
+global_handshake_rules: Both Wishbone domains are extension-owned; no READY inversion
+  is inferred.
+source_boundary:
+  top: wbxclk
+  target: rtl/wbxclk.v
+  binding_status: audited_default_parameters

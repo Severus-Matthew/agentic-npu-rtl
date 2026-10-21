@@ -125,6 +125,65 @@ signal *is* electrically."
   structure. This is the name-independent seed several coverage/assertion
   matchers use instead of re-reading all three taxonomies themselves.
 
+## `protocol_semantics.py` — safe event IR for new protocol profiles
+
+`protocol_semantics` is distinct from adding a protocol name to the built-in
+pool. It lets Architect describe a new external protocol in terms of observable
+events while preserving deterministic validation and helper reuse.
+
+- `with_protocol_semantics_schema(schema)` adds the optional Architect field.
+- `compile_protocol_semantics(interface)` parses the restricted boolean grammar,
+  resolves every signal/event reference, rejects duplicate names and dependency
+  cycles, and emits an inlined JSON expression AST.
+- `evaluate_protocol_expression(ast, snapshot)` is the only runtime evaluator;
+  it consumes the compiled data structure and never executes contract text.
+- `validate_protocol_semantics_extensions(architecture, interface)` requires
+  each residual custom rule to point at an actual protocol extension request.
+
+The protocol coverage and feature planners translate compiled transactions into
+the existing handshake and stall templates plus a generic transaction-accounting
+checker. Condition-specific stability rules allow, for example, control/address
+to remain stable on every stalled request while write data is required only when
+the stalled request is a write. Cancellation can flush both the stall tracker and
+the outstanding counter without falsely diagnosing a legal abort.
+
+An input transaction also declares deterministic `source_drive` states:
+presented, post-accept, and idle assignments; the per-beat fields; and whether
+the driver returns after acceptance or keeps the post-accept state until all
+compiled completions are observed. This distinguishes simple request channels
+from protocols such as Wishbone, whose cycle qualifier remains asserted while
+responses are outstanding.
+
+## `protocol_event_relations.py` — cross-protocol causal timing
+
+`protocol_semantics` defines events inside one contract-local protocol. A bridge
+or adapter can additionally require an event from one protocol to cause an event
+in another protocol after a bounded number of cycles. The Architect declares
+that fact in `interface_contract.protocol_event_relations[]`; it is not inferred
+from prose and the Verifier does not hand-write a cycle comparison.
+
+Each relation declares:
+
+- an exact clock and edge;
+- `cause` and `effect` bindings, each selecting a compiled
+  `protocol_event`, a `standard_channel_transfer`, or a safe signal
+  `expression`;
+- minimum/maximum latency in sampled cycles, FIFO ordering, and maximum pending
+  causes;
+- whether an unmatched effect is an error or may belong to another explicitly
+  declared relation;
+- whether pending causes must be disposed before a finite test ends; and
+- an optional cancellation event with `flush` or `preserve` behavior.
+
+`compile_protocol_event_relations(interface)` resolves every binding to the same
+safe expression IR used by `protocol_semantics.py`, rejects unknown profiles,
+events, groups, channels, signals, clocks, and impossible latency ranges, and
+returns inert JSON data. `check_event_correlations` consumes that data at runtime.
+It supports externally observable causality such as “a downstream response
+transfer produces a registered upstream completion one cycle later.” Payload
+transformation and keyed data identity remain separate obligations when event
+timing alone cannot prove them.
+
 ## `standard_protocols.py` — exact AXI4 / AXI4-Lite / AXI4-Stream / custom-memory field binding
 
 This is the largest and most load-bearing file in `role_pool` (~27 KB). The
@@ -211,6 +270,11 @@ other kind listed belongs to `axi4`/`axi4_lite`/`axi4_stream`.)
   `operation_metadata/architect_metadata.py::_attach_standard_memory_mappings`
   reads to compute a memory-mapped operation's address/data/response channel
   triple.
+- Group capabilities may include `sideband_bins_by_channel`, keyed by canonical
+  channel kind and protocol field. This represents fixed or asymmetric AXI4
+  sidebands (for example write ID 0 but read ID 1) without falsely requiring both
+  `zero` and `nonzero` on every physical ID signal. The protocol coverage planner
+  consumes these overrides before legacy group-wide `<field>_bins` values.
 
 ## Who calls this pool
 

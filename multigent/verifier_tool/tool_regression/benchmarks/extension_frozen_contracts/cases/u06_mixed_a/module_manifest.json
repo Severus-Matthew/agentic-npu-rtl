@@ -1,0 +1,12 @@
+{
+  "top": "tiny_gemm_rv_a_top",
+  "modules": [
+    {
+      "name": "tiny_gemm_rv_a_top",
+      "responsibility": "Frozen ready/valid GEMM top level.",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

@@ -161,6 +161,50 @@ def test_verifier_prompt_does_not_force_unreachable_catalog_starter_bins() -> No
     assert "do not invent none/some modes" in task
 
 
+def test_prompt_coverage_plan_keeps_obligations_without_repeated_bindings() -> None:
+    from multigent.verifier_tool import build_interface_coverage_plan
+
+    context = generic_fir_context()
+    full = build_interface_coverage_plan(
+        context["frozen_architecture"]["interface_contract"]
+    )
+    compact = VerifierAgent._prompt_interface_coverage_plan(full)
+
+    assert [item["id"] for item in compact["obligations"]] == [
+        item["id"] for item in full["obligations"]
+    ]
+    assert all(item.get("bins") for item in compact["obligations"])
+    assert all("bindings" not in item for item in compact["obligations"])
+    assert compact["representation"].startswith("authoring_view_full_obligations")
+    assert compact["coverage_obligation_ids_to_declare"] == [
+        item["id"] for item in full["obligations"]
+    ]
+    assert compact["binding_authority"]["hidden_runtime_binding_map_required"] is False
+
+
+def test_verifier_prompt_makes_bin_applicability_authoritative() -> None:
+    task = VerifierAgent._build_task(generic_fir_context())
+    assert "Only bins with ``required: true``" in task
+    assert "do not need hits, and are not verification gaps" in task
+    assert "never ask" in task and "Architect to reinterpret" in task
+    assert "coverage_obligation_ids_to_declare`` byte-for-byte" in task
+    assert "no hidden channel-binding artifact" in task
+
+
+def test_verifier_prompt_resolves_bridge_history_and_indirect_controllability() -> None:
+    task = VerifierAgent._build_task(generic_fir_context())
+    assert "keep cycle history at both visible boundaries" in task
+    assert "solve that mapping backward for legal input values" in task
+    assert "coverage result, not a" in task
+
+
+def test_verifier_prompt_explains_constrained_axi_bin_reachability() -> None:
+    task = VerifierAgent._build_task(generic_fir_context())
+    assert "AXI single-beat framing does not make 4-KiB" in task
+    assert "address-first, data-first, or in the same cycle" in task
+    assert "``fixed`` and ``nonzero`` do" in task
+
+
 def verification_ready_result() -> dict:
     reference = """def wrap_signed(value: int, bits: int) -> int:\n    mask = (1 << bits) - 1\n    value &= mask\n    sign = 1 << (bits - 1)\n    return value - (1 << bits) if value & sign else value\n"""
     test = """import cocotb\nfrom multigent.verifier_tool import contract_coverage, sample_operation\n\nCOVERAGE_OBLIGATIONS = {\"signal.rst.reset_behavior\", \"operation.filter.tap_count\", \"operation.filter.stream_length\", \"operation.filter.coefficient_values\", \"operation.filter.sample_values\", \"operation.filter.numeric_behavior\"}\n\n# === STIMULUS AND COVERAGE INTENT ===\nSTIMULUS_COVERAGE_INTENTS = [{\"label\": \"mixed\", \"targets\": [\"signal.rst.reset_behavior\", \"operation.filter.tap_count\", \"operation.filter.stream_length\", \"operation.filter.coefficient_values\", \"operation.filter.sample_values\", \"operation.filter.numeric_behavior\"]}]\n\n# === LLM-GENERATED OPERATION ASSERTIONS ===\n@cocotb.test(timeout_time=1, timeout_unit=\"ms\")\n@contract_coverage()\nasync def test_contract_smoke(dut):\n    # LLM-GENERATED OPERATION ASSERTION [filter.interface_clock]\n    assert hasattr(dut, \"clk\"), \"feature=filter.interface_clock expected=clk observed=missing signal=clk\"\n    # LLM-GENERATED OPERATION ASSERTION [filter.interface_reset]\n    assert hasattr(dut, \"rst\"), \"feature=filter.interface_reset expected=rst observed=missing signal=rst\"\n    stimulus_id = _contract_record_checked_stimulus(\"randomized\", {\"samples\": [1, 2, 3, 4], \"coefficients\": [1, 1, 1, 1]}, {\"result\": [1, 3, 6, 10]}, {\"result\": [1, 3, 6, 10]}, operations=(\"filter\",), label=\"mixed\")\n    sample_operation(\"filter\", {}, \"randomized\", stimulus_id)\n"""

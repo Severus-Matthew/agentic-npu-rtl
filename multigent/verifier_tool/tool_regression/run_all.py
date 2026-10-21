@@ -74,6 +74,10 @@ def run(*, quick: bool, jobs: int, output_dir: Path | None) -> Path:
         str(INTEGRATION_ROOT),
         str(EXTENSION_UNIT_ROOT),
         str(API_EVALUATION_ROOT),
+        # API outputs deliberately contain generated test_*.py files. They are
+        # evidence to inspect, never regression modules to collect again.
+        "--ignore",
+        str(API_EVALUATION_ROOT / "local_results"),
     ]
     if not quick:
         pytest_command.extend([

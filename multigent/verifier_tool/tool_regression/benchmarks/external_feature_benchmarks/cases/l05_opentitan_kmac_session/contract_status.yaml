@@ -1,0 +1,17 @@
+schema_version: 1
+case_id: L05
+status: blocked
+freeze_blockers:
+- manual_source_port_binding_audit
+- deterministic_contract_reviewer_pass
+- upstream_build_dependency_audit
+source:
+  project: OpenTitan
+  revision: dd8b1ab44e4da9929976ddbd47586518d1b850ec
+  target: hw/ip/kmac/rtl
+unknown_features:
+- message_process_run_done_close_session
+- xof_repeated_run
+- termination_after_partial_or_empty_last
+preflight_status: BLOCKED
+preflight_finding_count: 2

@@ -50,11 +50,32 @@ def test_source_completion_is_one_counted_call_and_keeps_metadata(tmp_path):
     assert len(agent.calls) == 1
     assert agent.calls[0]['schema_path'] == VERIFIER_SOURCE_REPAIR_SCHEMA
     assert 'Metadata is reused by the runtime' in agent.calls[0]['task']
+    assert 'extension_worklist:' in agent.calls[0]['task']
     assert 'semantic_validation_review' not in agent.calls[0]['task']
     assert result['operation_coverage'] == draft['operation_coverage']
     assert result['verification_plan'] == draft['verification_plan']
     assert draft == previous
     assert (tmp_path / 'tests/test_fir_contract.py').is_file()
+
+
+def test_source_repair_keeps_exact_component_resolution_for_p01():
+    from multigent.verifier_tool.tool_regression.benchmarks.external_feature_benchmarks.run_external_api import (
+        _load_context,
+    )
+
+    context = _load_context("P01")
+    context["semantic_validation_review"] = {
+        "validator_error": "extension stimulus only waits",
+        "previous_verifier_output": verification_ready_result(),
+    }
+    task = VerifierAgent._build_source_repair_task(
+        context, context["semantic_validation_review"]["previous_verifier_output"]
+    )
+    assert "protocol.driver.axi4_protocol_responder" in task
+    assert "serve_axi4_protocol_transactions" in task
+    assert "_contract_standard_protocol_group('axi', 'axi4')" in task
+    assert "one non-empty literal list" in task
+    assert "Never omit it, convert it to a mapping keyed by label" in task
 
 
 @pytest.mark.parametrize('reason', ['invalid_metadata', 'no_draft'])
@@ -124,12 +145,24 @@ def test_persist_rebuilds_stale_obligation_metadata_for_local_patch_paths(tmp_pa
     ).read_text()
 
 
-@pytest.mark.parametrize('defect', ['missing', 'unknown', 'duplicate'])
+def test_source_completion_accepts_partial_planned_file_replacement():
+    _, draft = review_context()
+    previous_reference = draft['reference_files'][0]['content']
+    sources = complete_sources()
+    sources['files'] = [
+        item for item in sources['files'] if item['path'].startswith('tests/')
+    ]
+    result = VerifierAgent._merge_source_repair(draft, sources)
+    assert result['reference_files'][0]['content'] == previous_reference
+    assert result['test_files'][0]['content'] == sources['files'][0]['content']
+
+
+@pytest.mark.parametrize('defect', ['empty', 'unknown', 'duplicate'])
 def test_source_completion_rejects_inexact_file_set(defect):
     _, draft = review_context()
     sources = complete_sources()
-    if defect == 'missing':
-        sources['files'].pop()
+    if defect == 'empty':
+        sources['files'] = []
     elif defect == 'unknown':
         sources['files'][0]['path'] = 'rtl/injected.py'
     else:

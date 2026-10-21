@@ -1,0 +1,149 @@
+design:
+  name: opentitan_dma_abort_and_chunking
+  description: External benchmark L02 over OpenTitan at exact revision dd8b1ab44e4da9929976ddbd47586518d1b850ec,
+    target hw/ip/dma/rtl.
+operations:
+- name: opentitan_dma_abort_and_chunking
+  kind: opentitan_dma_abort_and_chunking
+  coverage_family: opentitan_dma_abort_and_chunking
+  coverage_family_source: novel
+  features:
+  - software_abort
+  feature_extensions:
+  - chunk_completion
+  - persistent_hardware_handshake_mode
+  semantics: Source-backed lifecycle scope for opentitan_dma_abort_and_chunking; exact
+    behavior is owned by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  lifecycle_policy:
+    job_acceptance: valid_ready_handshake
+    job_overlap: single_inflight
+    busy_behavior: tracks_active_job
+    completion_style: pulse
+    completion_timing: next_cycle_after_retirement
+    illegal_command_behavior: error_without_start
+    error_style: pulse
+    error_timing: next_cycle_after_error_event
+    reset_behavior: abort_inflight
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Copied payload values are secondary; abort and mode-specific retirement are targeted.
+open_assumptions: []
+verification_extensions:
+- id: lifecycle.l02_software_abort
+  domain: lifecycle
+  feature_name: software_abort
+  target:
+    scope: operation
+    name: opentitan_dma_abort_and_chunking
+  semantics:
+    summary: Verify software abort exactly as implemented by the pinned upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible software abort behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: software_abort is intentionally absent from the current verifier_tool pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - control_plane_sequence
+  - busy_tracks_active_job
+  - response_error
+- id: lifecycle.l02_chunk_completion
+  domain: lifecycle
+  feature_name: chunk_completion
+  target:
+    scope: operation
+    name: opentitan_dma_abort_and_chunking
+  semantics:
+    summary: Verify chunk completion exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible chunk completion behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: chunk_completion is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - control_plane_sequence
+  - busy_tracks_active_job
+  - response_error
+- id: lifecycle.l02_persistent_hardware_handshake_mode
+  domain: lifecycle
+  feature_name: persistent_hardware_handshake_mode
+  target:
+    scope: operation
+    name: opentitan_dma_abort_and_chunking
+  semantics:
+    summary: Verify persistent hardware handshake mode exactly as implemented by the
+      pinned upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible persistent hardware handshake mode
+      behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: persistent_hardware_handshake_mode is intentionally absent from the current
+    verifier_tool pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - control_plane_sequence
+  - busy_tracks_active_job
+  - response_error

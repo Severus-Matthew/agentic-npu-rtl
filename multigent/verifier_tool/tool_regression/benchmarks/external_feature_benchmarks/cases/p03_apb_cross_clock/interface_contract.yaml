@@ -1,0 +1,229 @@
+clock: S_APB_PCLK
+reset: S_PRESETn
+channels:
+- name: s_apb_request
+  direction: input
+  protocol_profile: custom
+  protocol_group: source_apb
+  data_objects: []
+  ordering: source-defined
+  framing: source-defined
+- name: s_apb_response
+  direction: output
+  protocol_profile: custom
+  protocol_group: source_apb
+  data_objects: []
+  ordering: source-defined
+  framing: source-defined
+- name: m_apb_request
+  direction: output
+  protocol_profile: custom
+  protocol_group: destination_apb
+  data_objects: []
+  ordering: source-defined
+  framing: source-defined
+- name: m_apb_response
+  direction: input
+  protocol_profile: custom
+  protocol_group: destination_apb
+  data_objects: []
+  ordering: source-defined
+  framing: source-defined
+- name: m_reset
+  direction: output
+  protocol_profile: custom
+  protocol_group: destination_reset
+  data_objects: []
+  ordering: source-defined
+  framing: source-defined
+signals:
+- name: S_APB_PCLK
+  role: clock
+  channel: null
+  direction: input
+  width: 1
+  signed: false
+  semantic: Source APB clock.
+- name: M_APB_PCLK
+  role: clock
+  channel: null
+  direction: input
+  width: 1
+  signed: false
+  semantic: Destination APB clock.
+- name: S_PRESETn
+  role: reset
+  channel: null
+  direction: input
+  width: 1
+  signed: false
+  semantic: Source active-low asynchronous reset.
+- name: M_PRESETn
+  role: metadata
+  channel: m_reset
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: configuration
+  semantic: Synchronized destination active-low reset.
+- name: S_APB_PSEL
+  role: valid
+  channel: s_apb_request
+  direction: input
+  width: 1
+  signed: false
+  semantic: Exact S_APB_PSEL port from apbxclk.
+- name: S_APB_PENABLE
+  role: metadata
+  channel: s_apb_request
+  direction: input
+  width: 1
+  signed: false
+  semantic_class: command
+  semantic: Exact S_APB_PENABLE port from apbxclk.
+- name: S_APB_PADDR
+  role: payload
+  channel: s_apb_request
+  direction: input
+  width: 12
+  signed: false
+  semantic_class: address
+  semantic: Exact S_APB_PADDR port from apbxclk.
+- name: S_APB_PWRITE
+  role: metadata
+  channel: s_apb_request
+  direction: input
+  width: 1
+  signed: false
+  semantic_class: command
+  semantic: Exact S_APB_PWRITE port from apbxclk.
+- name: S_APB_PWDATA
+  role: payload
+  channel: s_apb_request
+  direction: input
+  width: 32
+  signed: false
+  semantic_class: data
+  semantic: Exact S_APB_PWDATA port from apbxclk.
+- name: S_APB_PWSTRB
+  role: keep
+  channel: s_apb_request
+  direction: input
+  width: 4
+  signed: false
+  semantic_class: byte_enable
+  semantic: Exact S_APB_PWSTRB port from apbxclk.
+- name: S_APB_PPROT
+  role: metadata
+  channel: s_apb_request
+  direction: input
+  width: 3
+  signed: false
+  semantic_class: protection
+  semantic: Exact S_APB_PPROT port from apbxclk.
+- name: S_APB_PREADY
+  role: valid
+  channel: s_apb_response
+  direction: output
+  width: 1
+  signed: false
+  semantic: Exact S_APB_PREADY port from apbxclk.
+- name: S_APB_PRDATA
+  role: payload
+  channel: s_apb_response
+  direction: output
+  width: 32
+  signed: false
+  semantic_class: data
+  semantic: Exact S_APB_PRDATA port from apbxclk.
+- name: S_APB_PSLVERR
+  role: metadata
+  channel: s_apb_response
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: response_code
+  semantic: Exact S_APB_PSLVERR port from apbxclk.
+- name: M_APB_PSEL
+  role: valid
+  channel: m_apb_request
+  direction: output
+  width: 1
+  signed: false
+  semantic: Exact M_APB_PSEL port from apbxclk.
+- name: M_APB_PENABLE
+  role: metadata
+  channel: m_apb_request
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: command
+  semantic: Exact M_APB_PENABLE port from apbxclk.
+- name: M_APB_PADDR
+  role: payload
+  channel: m_apb_request
+  direction: output
+  width: 12
+  signed: false
+  semantic_class: address
+  semantic: Exact M_APB_PADDR port from apbxclk.
+- name: M_APB_PWRITE
+  role: metadata
+  channel: m_apb_request
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: command
+  semantic: Exact M_APB_PWRITE port from apbxclk.
+- name: M_APB_PWDATA
+  role: payload
+  channel: m_apb_request
+  direction: output
+  width: 32
+  signed: false
+  semantic_class: data
+  semantic: Exact M_APB_PWDATA port from apbxclk.
+- name: M_APB_PWSTRB
+  role: keep
+  channel: m_apb_request
+  direction: output
+  width: 4
+  signed: false
+  semantic_class: byte_enable
+  semantic: Exact M_APB_PWSTRB port from apbxclk.
+- name: M_APB_PPROT
+  role: metadata
+  channel: m_apb_request
+  direction: output
+  width: 3
+  signed: false
+  semantic_class: protection
+  semantic: Exact M_APB_PPROT port from apbxclk.
+- name: M_APB_PREADY
+  role: valid
+  channel: m_apb_response
+  direction: input
+  width: 1
+  signed: false
+  semantic: Exact M_APB_PREADY port from apbxclk.
+- name: M_APB_PRDATA
+  role: payload
+  channel: m_apb_response
+  direction: input
+  width: 32
+  signed: false
+  semantic_class: data
+  semantic: Exact M_APB_PRDATA port from apbxclk.
+- name: M_APB_PSLVERR
+  role: metadata
+  channel: m_apb_response
+  direction: input
+  width: 1
+  signed: false
+  semantic_class: response_code
+  semantic: Exact M_APB_PSLVERR port from apbxclk.
+global_handshake_rules: APB setup/access and CDC behavior are extension-owned.
+source_boundary:
+  top: apbxclk
+  target: rtl/apbxclk.v
+  binding_status: audited_default_parameters

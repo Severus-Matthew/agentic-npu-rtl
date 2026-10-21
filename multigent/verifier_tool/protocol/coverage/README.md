@@ -235,6 +235,13 @@ file top to bottom):
 is observed active in `sample_snapshot`/`observe_reset_snapshot` (protocol
 coverage is intentionally not sampled while reset is active).
 
+AXI4 sideband applicability may be declared per channel with
+`protocol_capabilities.sideband_bins_by_channel`, keyed by canonical channel kind
+and then protocol field. For example, fixed write ID 0 and fixed read ID 1 use
+`write_address.id: [zero]`, `write_response.id: [zero]`,
+`read_address.id: [nonzero]`, and `read_data.id: [nonzero]`. The coverage compiler
+uses this channel-specific declaration before the legacy group-wide `id_bins`.
+
 ## Example: `handshake_states` → obligation → cocotb-coverage
 
 From `protocol_features.yaml`:

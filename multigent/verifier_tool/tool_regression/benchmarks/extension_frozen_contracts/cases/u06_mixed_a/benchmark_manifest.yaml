@@ -1,0 +1,44 @@
+schema_version: 1
+case_id: u06_mixed_a
+unknown_feature_count: 6
+domains:
+- lifecycle
+- operation
+- protocol
+features:
+- id: operation.affine_triple_plus_one
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: triple_plus_one
+  intent: Affine post-operation after ReLU.
+- id: operation.negative_shift
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: negative_shift
+  intent: Signed offset with reachable negative and positive regions.
+- id: protocol.bounded_ready_recovery
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.bounded_ready_recovery
+  intent: DUT-owned operand-A READY must recover within seven cycles after A VALID
+    is presented and a legal command opens the input channel.
+- id: protocol.transfer_gap_limit
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.transfer_gap_limit
+  intent: Consecutive output transfers must be separated by at most five cycles.
+- id: lifecycle.busy_watchdog_observation
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.busy_watchdog_observation
+  intent: Observe whether an accepted job remains busy for twelve sampled cycles.
+- id: lifecycle.reset_recovery_window
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.reset_recovery_window
+  intent: A clean legal job can start within five cycles after reset release.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

@@ -1,0 +1,37 @@
+clock: clk_i
+reset: rst_ni
+channels:
+- {name: obi_request, direction: input, protocol_profile: custom, protocol_group: source_obi, data_objects: [], ordering: single_inflight, framing: one request per grant}
+- {name: obi_response, direction: output, protocol_profile: custom, protocol_group: source_obi, data_objects: [], ordering: request order, framing: one response pulse per accepted request}
+- {name: apb_request, direction: output, protocol_profile: custom, protocol_group: destination_apb, data_objects: [], ordering: single_inflight, framing: setup then access}
+- {name: apb_response, direction: input, protocol_profile: custom, protocol_group: destination_apb, data_objects: [], ordering: matches sole in-flight request, framing: access completion}
+signals:
+- {name: clk_i, role: clock, channel: null, direction: input, width: 1, signed: false, semantic: Upstream clock.}
+- {name: rst_ni, role: reset, channel: null, direction: input, width: 1, signed: false, semantic: Active-low asynchronous reset; reset_active_level=low}
+- {name: obi_req, role: valid, channel: obi_request, direction: input, width: 1, signed: false, semantic: OBI request indication.}
+- {name: obi_gnt, role: ready, channel: obi_request, direction: output, width: 1, signed: false, semantic: OBI request grant.}
+- {name: obi_addr, role: payload, channel: obi_request, direction: input, width: 32, signed: false, semantic_class: address, semantic: OBI byte address.}
+- {name: obi_we, role: metadata, channel: obi_request, direction: input, width: 1, signed: false, semantic_class: command, semantic: OBI write enable.}
+- {name: obi_be, role: keep, channel: obi_request, direction: input, width: 4, signed: false, semantic_class: byte_enable, semantic: OBI byte enables.}
+- {name: obi_wdata, role: payload, channel: obi_request, direction: input, width: 32, signed: false, semantic_class: data, semantic: OBI write data.}
+- {name: obi_aid, role: transaction_id, channel: obi_request, direction: input, width: 1, signed: false, semantic_class: identifier, semantic: OBI request ID.}
+- {name: obi_rvalid, role: valid, channel: obi_response, direction: output, width: 1, signed: false, semantic: OBI response-valid pulse.}
+- {name: obi_rdata, role: payload, channel: obi_response, direction: output, width: 32, signed: false, semantic_class: data, semantic: OBI read response data.}
+- {name: obi_rid, role: transaction_id, channel: obi_response, direction: output, width: 1, signed: false, semantic_class: identifier, semantic: OBI response ID.}
+- {name: obi_err, role: metadata, channel: obi_response, direction: output, width: 1, signed: false, semantic_class: response_code, semantic: OBI error response.}
+- {name: apb_psel, role: valid, channel: apb_request, direction: output, width: 1, signed: false, semantic: APB select.}
+- {name: apb_penable, role: metadata, channel: apb_request, direction: output, width: 1, signed: false, semantic_class: command, semantic: APB access-phase indicator.}
+- {name: apb_paddr, role: payload, channel: apb_request, direction: output, width: 32, signed: false, semantic_class: address, semantic: APB byte address.}
+- {name: apb_pwrite, role: metadata, channel: apb_request, direction: output, width: 1, signed: false, semantic_class: command, semantic: APB write direction.}
+- {name: apb_pstrb, role: keep, channel: apb_request, direction: output, width: 4, signed: false, semantic_class: byte_enable, semantic: APB write strobes; zero on reads.}
+- {name: apb_pwdata, role: payload, channel: apb_request, direction: output, width: 32, signed: false, semantic_class: data, semantic: APB write data.}
+- {name: apb_pprot, role: metadata, channel: apb_request, direction: output, width: 3, signed: false, semantic_class: protection, semantic: APB protection; 3'b101 with the default OBI configuration.}
+- {name: apb_pready, role: valid, channel: apb_response, direction: input, width: 1, signed: false, semantic: APB access completion.}
+- {name: apb_prdata, role: payload, channel: apb_response, direction: input, width: 32, signed: false, semantic_class: data, semantic: APB read data.}
+- {name: apb_pslverr, role: metadata, channel: apb_response, direction: input, width: 1, signed: false, semantic_class: response_code, semantic: APB error response.}
+global_handshake_rules: OBI split grant/response and APB setup/access behavior are extension-owned.
+source_boundary:
+  top: obi_to_apb_flat_wrapper
+  target: src/obi_to_apb.sv
+  harness: obi_to_apb_flat_wrapper.sv
+  binding_status: audited_default_parameters

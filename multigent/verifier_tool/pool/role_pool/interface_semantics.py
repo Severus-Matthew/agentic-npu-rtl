@@ -108,12 +108,23 @@ def validate_interface_semantics(
     profiles = load_interface_protocol_taxonomy()["protocol_profiles"]
     errors: list[str] = []
 
+    try:
+        from .protocol_semantics import compile_protocol_semantics
+
+        local_semantics = compile_protocol_semantics(interface)
+        local_profiles = {
+            str(item["name"]) for item in local_semantics.get("profiles", [])
+        }
+    except ValueError as exc:
+        local_profiles = set()
+        errors.append(str(exc))
+
     for channel in interface.get("channels", []):
         if not isinstance(channel, Mapping):
             continue
         name = str(channel.get("name", ""))
         profile = str(channel.get("protocol_profile", ""))
-        if profile not in profiles:
+        if profile not in profiles and profile not in local_profiles:
             errors.append(
                 f"channel {name} uses unknown protocol_profile {profile!r}"
             )
@@ -176,6 +187,19 @@ def derive_interface_coverage_seed(
         },
     }
     profile_specs = load_interface_protocol_taxonomy()["protocol_profiles"]
+    from .protocol_semantics import compile_protocol_semantics
+
+    local_profile_tags: dict[str, set[str]] = {}
+    for profile in compile_protocol_semantics(interface).get("profiles", []):
+        tags = local_profile_tags.setdefault(str(profile["name"]), set())
+        for transaction in profile.get("transactions", []):
+            if transaction.get("presented") and transaction.get("ready"):
+                tags.update({"handshake", "backpressure"})
+            if transaction.get("stable_while_stalled") and transaction.get("stalled"):
+                tags.add("stall_stability")
+        flow = profile.get("flow_control", {})
+        if int(flow.get("maximum_outstanding", 1)) > 1:
+            tags.update({"outstanding_ids", "ordering"})
 
     signal_tags: dict[str, list[str]] = {}
     tags_by_channel: dict[str, set[str]] = {}
@@ -196,10 +220,13 @@ def derive_interface_coverage_seed(
     for channel in interface.get("channels", []):
         if not isinstance(channel, Mapping):
             continue
-        profile = profile_specs.get(channel.get("protocol_profile"), {})
+        profile_name = str(channel.get("protocol_profile", ""))
+        profile = profile_specs.get(profile_name, {})
         channel_name = str(channel.get("name", ""))
         channel_tags[channel_name] = sorted(
-            set(profile.get("coverage_tags", [])) | tags_by_channel.get(channel_name, set())
+            set(profile.get("coverage_tags", []))
+            | local_profile_tags.get(profile_name, set())
+            | tags_by_channel.get(channel_name, set())
         )
 
     return {"channels": channel_tags, "signals": signal_tags}

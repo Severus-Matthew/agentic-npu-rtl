@@ -1,0 +1,17 @@
+schema_version: 1
+case_id: L01
+status: blocked
+freeze_blockers:
+- manual_source_port_binding_audit
+- deterministic_contract_reviewer_pass
+- upstream_build_dependency_audit
+source:
+  project: OpenTitan
+  revision: dd8b1ab44e4da9929976ddbd47586518d1b850ec
+  target: hw/ip/otbn/rtl
+unknown_features:
+- pause_resume
+- post_operation_secure_wipe
+- recoverable_idle_vs_fatal_locked
+preflight_status: BLOCKED
+preflight_finding_count: 2

@@ -10,6 +10,10 @@ from .runtime import (
     check_protocol_assertions,
     finalize_protocol_assertions,
 )
+from .completion_payload import (
+    CompletionPayloadError,
+    check_transaction_completion_payloads,
+)
 
 __all__ = [
     "protocol_assertion_metadata",
@@ -17,5 +21,7 @@ __all__ = [
     "render_protocol_monitor_lines",
     "build_protocol_assertion_plan",
     "check_protocol_assertions",
+    "check_transaction_completion_payloads",
+    "CompletionPayloadError",
     "finalize_protocol_assertions",
 ]

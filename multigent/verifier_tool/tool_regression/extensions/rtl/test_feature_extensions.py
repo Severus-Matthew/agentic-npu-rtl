@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from copy import deepcopy
 
 import pytest
@@ -30,6 +31,128 @@ from multigent.verifier_tool import (
     validate_interface_semantics,
     validate_interface_signal_roles,
 )
+from multigent.verifier_tool.extensions.authoring import (
+    _call_result_is_consumed,
+    _coverage_consumer_asserts_named_bin,
+    _coverage_handles_declared_bins,
+    _extension_symbol_calls,
+    _python_function_nodes,
+    _unexercised_scenarios,
+)
+
+
+def _call_analysis(source: str, symbol: str):
+    tree = ast.parse(source)
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "test_case"
+    )
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    call = next(
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == symbol
+    )
+    return call, function, parents
+
+
+def test_extension_checker_tuple_unpack_is_enforced_by_asserted_decision() -> None:
+    call, function, parents = _call_analysis(
+        """
+def test_case(trace):
+    ok, errors, flags = extension_assertion(trace)
+    assert ok, errors
+""",
+        "extension_assertion",
+    )
+    assert _call_result_is_consumed(
+        call, function, parents, require_assertion=True
+    )
+
+
+def test_extension_coverage_literal_scenario_loop_requires_named_bins() -> None:
+    call, function, parents = _call_analysis(
+        """
+def test_case(trace):
+    hits = extension_coverage(trace)
+    for scenario, required_bin in [
+        ("read", "read_lane_mapping"),
+        ("write", "write_id_mapping"),
+    ]:
+        assert required_bin in hits, scenario
+""",
+        "extension_coverage",
+    )
+    assert _coverage_consumer_asserts_named_bin(
+        [(call, function, parents)],
+        ["read_lane_mapping", "write_id_mapping"],
+    )
+
+
+def test_extension_coverage_follows_reachable_reference_classifier() -> None:
+    sources = {
+        "tests/test_extension.py": """
+from reference.model import classify_trace
+
+def extension_coverage(cycle_trace):
+    return classify_trace(cycle_trace)
+
+def test_extension(observed_cycle_trace):
+    hits = extension_coverage(observed_cycle_trace)
+    assert "stall_observed" in hits
+""",
+        "reference/model.py": """
+def classify_trace(cycle_trace):
+    hits = set()
+    if any(item.get("stalled", False) for item in cycle_trace):
+        hits.add("stall_observed")
+    return hits
+""",
+    }
+    functions = _python_function_nodes(sources)
+    node = functions["tests/test_extension.py"]["extension_coverage"]
+    calls = _extension_symbol_calls(sources, "extension_coverage")
+    assert _coverage_handles_declared_bins(
+        node,
+        calls,
+        ["stall_observed"],
+        functions,
+    ) == []
+
+
+def test_temporal_coverage_accepts_any_observed_trace_trigger() -> None:
+    source = """
+def extension_coverage(cycle_trace):
+    return {"stall_observed"} if any(c.get("stalled", 0) for c in cycle_trace) else set()
+
+def test_case(cycle_trace):
+    hits = extension_coverage(cycle_trace)
+    assert any(c.get("stalled", 0) for c in cycle_trace)
+    assert "stall_observed" in hits
+"""
+    tree = ast.parse(source)
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    call, function, parents = _call_analysis(source, "extension_coverage")
+    from multigent.verifier_tool.extensions.authoring import (
+        _coverage_consumer_requires_temporal_trigger,
+    )
+
+    assert _coverage_consumer_requires_temporal_trigger(
+        functions["extension_coverage"],
+        [(call, function, parents)],
+    )
 
 
 def _request(operation_name: str = "job") -> dict:
@@ -330,6 +453,544 @@ async def test_bounded_ready_recovery(dut):
     assert any("no observable decision" in error for error in errors)
     assert any("constant coverage" in error for error in errors)
     assert any("await executable stimulus work" in error for error in errors)
+
+
+def test_generated_extension_rejects_vacuous_or_fabricated_runtime_evidence() -> None:
+    request = _protocol_request()
+    bundle = _protocol_bundle()
+    source = _protocol_source()
+    source["content"] = """
+import cocotb
+from cocotb.triggers import RisingEdge
+
+def check_ready_recovery(*args, **kwargs):
+    observed = bool(kwargs.get("completion_seen", False))
+    return observed
+
+def sample_ready_recovery(*args, **kwargs):
+    return {"observed": bool(kwargs.get("completion_seen", False))}
+
+async def drive_ready_recovery(dut):
+    await RisingEdge(dut.clk)
+
+@cocotb.test()
+async def test_bounded_ready_recovery(dut):
+    await drive_ready_recovery(dut)
+    sample_ready_recovery(
+        dut=dut,
+        completion_seen=False,
+        busy_samples=(int(dut.cmd_ready.value),),
+    )
+    check_ready_recovery(
+        dut=dut,
+        completion_seen=False,
+        busy_samples=(int(dut.cmd_ready.value),),
+    )
+"""
+    errors = validate_verifier_extension_bundles(
+        {"verification_extensions": [request]},
+        [bundle],
+        source_files=[source],
+        require_runtime_evidence=True,
+    )
+    assert any("fabricated literal observation" in error for error in errors)
+    assert any("decision that no generated test asserts" in error for error in errors)
+    assert any("sample that no generated test consumes" in error for error in errors)
+    assert any("only waits" in error for error in errors)
+
+
+def test_generated_extension_accepts_scheduled_driver_delegation() -> None:
+    request = _protocol_request()
+    bundle = _protocol_bundle()
+    source = _protocol_source()
+    source["content"] = """
+import cocotb
+from cocotb.triggers import RisingEdge
+
+def check_ready_recovery(snapshot, state):
+    assert snapshot["recovery_cycle"] <= state["maximum_cycles"]
+    return True
+
+def sample_ready_recovery(snapshot, state):
+    return {"seven_cycle_recovery"} if snapshot["recovery_cycle"] == 7 else set()
+
+async def reusable_driver(dut):
+    dut.cmd_valid.value = 1
+    await RisingEdge(dut.clk)
+
+async def drive_ready_recovery(dut):
+    driver_task = cocotb.start_soon(reusable_driver(dut))
+    await driver_task
+
+@cocotb.test()
+async def test_bounded_ready_recovery(dut):
+    snapshot = {"recovery_cycle": int(dut.recovery_cycle.value)}
+    state = {"maximum_cycles": 7}
+    assert check_ready_recovery(snapshot, state) is True
+    hits = sample_ready_recovery(snapshot, state)
+    assert "seven_cycle_recovery" in hits
+    await drive_ready_recovery(dut)
+"""
+    errors = validate_verifier_extension_bundles(
+        {"verification_extensions": [request]},
+        [bundle],
+        source_files=[source],
+        require_runtime_evidence=True,
+    )
+    assert not any("only waits" in error for error in errors)
+
+
+def test_generated_extension_rejects_single_snapshot_markers_and_inert_protocol_driver() -> None:
+    request = _protocol_request()
+    bundle = _protocol_bundle()
+    bundle["stimulus"]["implementation"]["kind"] = "protocol_driver"
+    source = _protocol_source()
+    source["content"] = """
+import cocotb
+
+def check_ready_recovery(dut):
+    valid = int(dut.cmd_valid.value)
+    ready = int(dut.cmd_ready.value)
+    return {"checked": True, "triggered": bool(valid and not ready)}
+
+def sample_ready_recovery(dut):
+    valid = int(dut.cmd_valid.value)
+    ready = int(dut.cmd_ready.value)
+    return {"sampled": True, "state": (valid << 1) | ready}
+
+def drive_ready_recovery(dut):
+    return {"invoked": True}
+
+@cocotb.test()
+async def test_bounded_ready_recovery(dut):
+    stimulus = drive_ready_recovery(dut)
+    coverage = sample_ready_recovery(dut)
+    decision = check_ready_recovery(dut)
+    assert stimulus["invoked"]
+    assert coverage["sampled"]
+    assert decision["checked"]
+"""
+    errors = validate_verifier_extension_bundles(
+        {"verification_extensions": [request]},
+        [bundle],
+        source_files=[source],
+        require_runtime_evidence=True,
+    )
+    assert any("must be async" in error for error in errors)
+    assert any("ignores declared parameter" in error for error in errors)
+    assert any("instantaneous snapshot" in error for error in errors)
+    assert any("does not classify declared bin" in error for error in errors)
+    assert any("multi-cycle schedule" in error for error in errors)
+    assert any("no reachable test assertion requiring a declared bin" in error for error in errors)
+
+
+def test_generated_temporal_extension_accepts_driven_trace_and_named_bin() -> None:
+    request = _protocol_request()
+    bundle = _protocol_bundle()
+    bundle["stimulus"]["implementation"]["kind"] = "protocol_driver"
+    source = _protocol_source()
+    source["content"] = """
+import cocotb
+from cocotb.triggers import RisingEdge
+
+def check_ready_recovery(recovery_cycle, maximum_cycles):
+    assert recovery_cycle <= maximum_cycles
+    return True
+
+def sample_ready_recovery(recovery_cycle, maximum_cycles):
+    return "seven_cycle_recovery" if recovery_cycle <= maximum_cycles else "over_bound"
+
+async def drive_ready_recovery(dut, stall_cycles):
+    dut.cmd_ready.value = 0
+    observed_cycles = 0
+    for _ in range(stall_cycles):
+        await RisingEdge(dut.clk)
+        observed_cycles += 1
+    dut.cmd_ready.value = 1
+    await RisingEdge(dut.clk)
+    return observed_cycles
+
+@cocotb.test()
+async def test_bounded_ready_recovery(dut):
+    stall_cycles = 7
+    recovery_cycle = await drive_ready_recovery(dut, stall_cycles=stall_cycles)
+    decision = check_ready_recovery(
+        recovery_cycle=recovery_cycle, maximum_cycles=7
+    )
+    covered_bin = sample_ready_recovery(
+        recovery_cycle=recovery_cycle, maximum_cycles=7
+    )
+    _contract_record_extension_coverage(
+        "protocol.bounded_ready_recovery", [covered_bin]
+    )
+    assert recovery_cycle > 0
+    assert decision
+    assert covered_bin == "seven_cycle_recovery"
+"""
+    assert validate_verifier_extension_bundles(
+        {"verification_extensions": [request]},
+        [bundle],
+        source_files=[source],
+        require_runtime_evidence=True,
+    ) == []
+
+
+def test_generated_temporal_extension_rejects_expected_trace_as_observation() -> None:
+    request = _protocol_request()
+    bundle = _protocol_bundle()
+    bundle["stimulus"]["implementation"]["kind"] = "protocol_driver"
+    source = _protocol_source()
+    source["content"] = """
+import cocotb
+from cocotb.triggers import RisingEdge
+
+def _build_trace_from_job(job):
+    return [
+        {"cycle": cycle, "valid": 1, "ready": int(cycle == job["stall_cycles"])}
+        for cycle in range(job["stall_cycles"] + 1)
+    ]
+
+def check_ready_recovery(trace, maximum_cycles):
+    recovery_cycle = next(item["cycle"] for item in trace if item["ready"])
+    assert recovery_cycle <= maximum_cycles
+    return True
+
+def sample_ready_recovery(trace, maximum_cycles):
+    recovery_cycle = next(item["cycle"] for item in trace if item["ready"])
+    return "seven_cycle_recovery" if recovery_cycle <= maximum_cycles else "over_bound"
+
+async def drive_ready_recovery(dut, stall_cycles):
+    dut.cmd_ready.value = 0
+    for _ in range(stall_cycles):
+        await RisingEdge(dut.clk)
+    dut.cmd_ready.value = 1
+    await RisingEdge(dut.clk)
+
+@cocotb.test()
+async def test_bounded_ready_recovery(dut):
+    job = {"stall_cycles": 7}
+    await drive_ready_recovery(dut, stall_cycles=job["stall_cycles"])
+    trace = _build_trace_from_job(job)
+    decision = check_ready_recovery(trace=trace, maximum_cycles=7)
+    covered_bin = sample_ready_recovery(trace=trace, maximum_cycles=7)
+    assert decision
+    assert covered_bin == "seven_cycle_recovery"
+"""
+    errors = validate_verifier_extension_bundles(
+        {"verification_extensions": [request]},
+        [bundle],
+        source_files=[source],
+        require_runtime_evidence=True,
+    )
+    assert any("not called with simulator-derived evidence" in error for error in errors)
+    assert not any("instantaneous snapshot" in error for error in errors)
+
+
+def test_generated_temporal_extension_rejects_late_monitor_unlisted_schedule_and_bad_decorator_order() -> None:
+    request = _protocol_request()
+    bundle = _protocol_bundle()
+    bundle["stimulus"]["implementation"]["kind"] = "protocol_driver"
+    source = _protocol_source()
+    source["content"] = """
+from cocotb.triggers import RisingEdge
+
+async def drive_ready_recovery(dut, stall_cycles):
+    dut.cmd_ready.value = 0
+    for _ in range(stall_cycles):
+        await RisingEdge(dut.clk)
+    dut.cmd_ready.value = 1
+
+async def sample_ready_recovery(dut, maximum_cycles):
+    recovery_cycle = 0
+    for _ in range(maximum_cycles):
+        await RisingEdge(dut.clk)
+        recovery_cycle += 1
+        if int(dut.cmd_ready.value):
+            return {"bin": "seven_cycle_recovery", "recovery_cycle": recovery_cycle}
+    return {"bin": "over_bound", "recovery_cycle": recovery_cycle}
+
+def check_ready_recovery(recovery_cycle, maximum_cycles):
+    assert maximum_cycles == 7
+    return recovery_cycle <= maximum_cycles
+
+@_contract_cocotb.test()
+async def test_bounded_ready_recovery(dut):
+    await drive_ready_recovery(dut, stall_cycles=2)
+    covered_bin = await sample_ready_recovery(dut, maximum_cycles=7)
+    assert covered_bin == "seven_cycle_recovery"
+    assert check_ready_recovery(covered_bin, maximum_cycles=7)
+
+import cocotb as _contract_cocotb
+"""
+    errors = validate_verifier_extension_bundles(
+        {"verification_extensions": [request]},
+        [bundle],
+        source_files=[source],
+        require_runtime_evidence=True,
+    )
+    assert any("before that name is imported or defined" in error for error in errors)
+    assert any("never executes declared scenario" in error for error in errors)
+    assert any("only after directed stimulus completes" in error for error in errors)
+
+
+def test_generated_temporal_extension_accepts_monitor_started_before_stimulus() -> None:
+    request = _protocol_request()
+    bundle = _protocol_bundle()
+    bundle["stimulus"]["implementation"]["kind"] = "protocol_driver"
+    source = _protocol_source()
+    source["content"] = """
+import cocotb
+from cocotb.triggers import RisingEdge
+
+async def drive_ready_recovery(dut, stall_cycles):
+    dut.cmd_ready.value = 0
+    for _ in range(stall_cycles):
+        await RisingEdge(dut.clk)
+    dut.cmd_ready.value = 1
+    await RisingEdge(dut.clk)
+
+async def sample_ready_recovery(dut, maximum_cycles):
+    recovery_cycle = 0
+    while recovery_cycle <= maximum_cycles:
+        await RisingEdge(dut.clk)
+        recovery_cycle += 1
+        if int(dut.cmd_ready.value):
+            assert recovery_cycle > 0
+            return {"bin": "seven_cycle_recovery", "recovery_cycle": recovery_cycle}
+    return {"bin": "over_bound", "recovery_cycle": recovery_cycle}
+
+def check_ready_recovery(recovery_cycle, maximum_cycles):
+    assert maximum_cycles == 7
+    return recovery_cycle <= maximum_cycles
+
+@cocotb.test()
+async def test_bounded_ready_recovery(dut):
+    monitor = cocotb.start_soon(
+        sample_ready_recovery(dut, maximum_cycles=7)
+    )
+    await drive_ready_recovery(dut, stall_cycles=7)
+    sample = await monitor
+    _contract_record_extension_coverage(
+        "protocol.bounded_ready_recovery", [sample["bin"]]
+    )
+    assert sample["bin"] == "seven_cycle_recovery"
+    assert check_ready_recovery(sample["recovery_cycle"], maximum_cycles=7)
+"""
+    assert validate_verifier_extension_bundles(
+        {"verification_extensions": [request]},
+        [bundle],
+        source_files=[source],
+        require_runtime_evidence=True,
+    ) == []
+
+
+def test_generated_temporal_extension_accepts_literal_scenario_table_loop() -> None:
+    request = _protocol_request()
+    bundle = _protocol_bundle()
+    bundle["stimulus"]["implementation"]["kind"] = "protocol_driver"
+    bundle["stimulus"]["scenarios"] = [
+        {
+            "name": "short_stall",
+            "intent": "Exercise a short recovery.",
+            "parameters": {"stall_cycles": 3},
+        },
+        {
+            "name": "maximum_legal_stall",
+            "intent": "Exercise the declared bound.",
+            "parameters": {"stall_cycles": 7},
+        },
+    ]
+    source = _protocol_source()
+    source["content"] = """
+import cocotb
+from cocotb.triggers import RisingEdge
+
+async def drive_ready_recovery(dut, stall_cycles):
+    dut.cmd_ready.value = 0
+    observed_cycles = 0
+    for _ in range(stall_cycles):
+        await RisingEdge(dut.clk)
+        observed_cycles += 1
+    dut.cmd_ready.value = 1
+    return observed_cycles
+
+def sample_ready_recovery(recovery_cycle, maximum_cycles):
+    return "seven_cycle_recovery" if recovery_cycle <= maximum_cycles else "over_bound"
+
+def check_ready_recovery(recovery_cycle, maximum_cycles):
+    assert recovery_cycle <= maximum_cycles
+    return True
+
+@cocotb.test()
+async def test_bounded_ready_recovery(dut):
+    scenarios = [("short_stall", 3), ("maximum_legal_stall", 7)]
+    for name, stall_cycles in scenarios:
+        recovery_cycle = await drive_ready_recovery(
+            dut, stall_cycles=stall_cycles
+        )
+        covered_bin = sample_ready_recovery(
+            recovery_cycle=recovery_cycle, maximum_cycles=7
+        )
+        _contract_record_extension_coverage(
+            "protocol.bounded_ready_recovery", [covered_bin]
+        )
+        assert recovery_cycle > 0
+        assert name in {"short_stall", "maximum_legal_stall"}
+        assert covered_bin == "seven_cycle_recovery"
+        assert check_ready_recovery(recovery_cycle, maximum_cycles=7)
+"""
+    assert validate_verifier_extension_bundles(
+        {"verification_extensions": [request]},
+        [bundle],
+        source_files=[source],
+        require_runtime_evidence=True,
+    ) == []
+
+
+def test_generated_extension_resolves_literal_scenario_values_inside_try() -> None:
+    request = _protocol_request()
+    bundle = _protocol_bundle()
+    bundle["stimulus"]["implementation"]["kind"] = "protocol_driver"
+    bundle["stimulus"]["parameters"] = {"timeout_cycles": 2048}
+    bundle["stimulus"]["scenarios"] = [
+        {
+            "name": "three_beats",
+            "intent": "Drive the exact declared beats.",
+            "parameters": {
+                "beats": [{"data": 1}, {"data": 2}, {"data": 3}],
+                "timeout_cycles": 2048,
+            },
+        }
+    ]
+    source = _protocol_source()
+    source["path"] = "tests/test_protocol_extension.py"
+    source["content"] = """
+import cocotb
+from cocotb.clock import Clock
+from cocotb.triggers import RisingEdge
+
+async def drive_ready_recovery(dut, beats, timeout_cycles):
+    for beat in beats:
+        dut.cmd_data.value = beat["data"]
+        await RisingEdge(dut.clk)
+    assert timeout_cycles > 0
+
+def sample_ready_recovery(recovery_cycle, maximum_cycles):
+    return "seven_cycle_recovery" if recovery_cycle <= maximum_cycles else "over_bound"
+
+def check_ready_recovery(recovery_cycle, maximum_cycles):
+    return recovery_cycle <= maximum_cycles
+
+@cocotb.test()
+async def test_bounded_ready_recovery(dut):
+    clock = cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    try:
+        beats = [{"data": 1}, {"data": 2}, {"data": 3}]
+        await drive_ready_recovery(dut, beats=beats, timeout_cycles=2048)
+        observed = 1
+        covered_bin = sample_ready_recovery(observed, maximum_cycles=7)
+        _contract_record_extension_coverage(
+            "protocol.bounded_ready_recovery", [covered_bin]
+        )
+        assert covered_bin == "seven_cycle_recovery"
+        assert check_ready_recovery(observed, maximum_cycles=7)
+    finally:
+        clock.kill()
+"""
+    sources = {source["path"]: source["content"]}
+    implementation = _python_function_nodes(sources)[source["path"]][
+        "drive_ready_recovery"
+    ]
+    calls = _extension_symbol_calls(sources, "drive_ready_recovery")
+    assert _unexercised_scenarios(
+        implementation,
+        calls,
+        bundle["stimulus"]["scenarios"],
+    ) == []
+
+
+def test_generated_temporal_extension_accepts_internal_awaited_scenario_table() -> None:
+    request = _protocol_request()
+    bundle = _protocol_bundle()
+    bundle["stimulus"]["implementation"]["kind"] = "protocol_driver"
+    bundle["stimulus"]["scenarios"] = [
+        {
+            "name": "short_stall",
+            "intent": "Exercise a short recovery.",
+            "parameters": {"stall_cycles": 3},
+        },
+        {
+            "name": "maximum_legal_stall",
+            "intent": "Exercise the declared bound.",
+            "parameters": {"stall_cycles": 7},
+        },
+    ]
+    source = _protocol_source()
+    source["content"] = """
+import cocotb
+from cocotb.triggers import RisingEdge
+
+async def drive_ready_recovery(dut, maximum_cycles):
+    observed_cycles = []
+
+    async def run_one(stall_cycles):
+        dut.cmd_ready.value = 0
+        for _ in range(stall_cycles):
+            await RisingEdge(dut.clk)
+        dut.cmd_ready.value = 1
+        observed_cycles.append(stall_cycles)
+
+    scenarios = [("short_stall", 3), ("maximum_legal_stall", 7)]
+    for scenario_name, stall_cycles in scenarios:
+        assert scenario_name
+        await run_one(stall_cycles)
+    assert maximum_cycles == 7
+    return observed_cycles
+
+def sample_ready_recovery(recovery_cycles, maximum_cycles):
+    return {"bin": "seven_cycle_recovery", "recovery_cycles": recovery_cycles, "maximum_cycles": maximum_cycles}
+
+def check_ready_recovery(recovery_cycles, maximum_cycles):
+    assert recovery_cycles and max(recovery_cycles) <= maximum_cycles
+    return True
+
+@cocotb.test()
+async def test_bounded_ready_recovery(dut):
+    recovery_cycles = await drive_ready_recovery(dut, maximum_cycles=7)
+    sample = sample_ready_recovery(recovery_cycles, maximum_cycles=7)
+    _contract_record_extension_coverage(
+        "protocol.bounded_ready_recovery", [sample["bin"]]
+    )
+    assert len(sample["recovery_cycles"]) > 0
+    assert sample["bin"] == "seven_cycle_recovery"
+    assert check_ready_recovery(recovery_cycles, maximum_cycles=7)
+"""
+    assert validate_verifier_extension_bundles(
+        {"verification_extensions": [request]},
+        [bundle],
+        source_files=[source],
+        require_runtime_evidence=True,
+    ) == []
+
+
+def test_generated_temporal_extension_rejects_unexecuted_internal_scenario_table() -> None:
+    request = _protocol_request()
+    bundle = _protocol_bundle()
+    source = _protocol_source()
+    source["content"] = source["content"].replace(
+        "async def drive_ready_recovery(dut):\n    await RisingEdge(dut.clk)",
+        '''async def drive_ready_recovery(dut):
+    scenarios = [("maximum_legal_stall", 7)]
+    assert scenarios
+    await RisingEdge(dut.clk)''',
+    )
+    errors = validate_verifier_extension_bundles(
+        {"verification_extensions": [request]},
+        [bundle],
+        source_files=[source],
+        require_runtime_evidence=True,
+    )
+    assert any("never executes declared scenario" in error for error in errors)
 
 
 def test_verifier_api_schemas_expose_contract_local_extension_bundles() -> None:

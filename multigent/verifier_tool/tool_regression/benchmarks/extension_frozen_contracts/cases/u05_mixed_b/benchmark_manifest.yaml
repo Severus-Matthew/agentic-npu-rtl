@@ -1,0 +1,38 @@
+schema_version: 1
+case_id: u05_mixed_b
+unknown_feature_count: 5
+domains:
+- lifecycle
+- operation
+- protocol
+features:
+- id: operation.square
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: square
+  intent: Nonlinear but bounded integer expression.
+- id: protocol.exact_two_cycle_backpressure
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.exact_two_cycle_backpressure
+  intent: Observe a transfer stalled for exactly two complete cycles.
+- id: protocol.transfer_gap_limit
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.transfer_gap_limit
+  intent: Consecutive output transfers must be separated by at most five cycles.
+- id: lifecycle.maximum_completion_latency
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.maximum_completion_latency
+  intent: Completion follows legal job acceptance within forty cycles.
+- id: lifecycle.inter_job_cooldown
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.inter_job_cooldown
+  intent: Two completed jobs are separated by at least two idle cycles.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

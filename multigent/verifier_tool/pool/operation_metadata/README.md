@@ -14,9 +14,11 @@ one of the Architect-facing "pools," alongside
 capability tags). Where those pools describe *roles*, *behaviors*, and *tags*,
 this pool compiles a frozen Architect contract into **canonical operation I/O
 and arithmetic metadata** — the exact mapping of data objects to channels/
-signals, and the exact numeric rules for the one arithmetic profile the tool
-implements end-to-end (restricted integer GEMM). If you are looking for "where
-does GEMM classification/coverage-bin logic actually live," it is
+signals, and the exact numeric rules for the arithmetic profiles the tool
+implements end-to-end (restricted integer GEMM, raw integer QK scores, and
+standalone fixed-point score scale, standalone binary-keep attention mask, and
+exact unnormalized binary-masked integer sparse attention). If you are looking for "where does
+operation classification/coverage-bin logic actually live," it is
 `canonical.py` in *this* folder, not `operation/coverage/` or
 `operation/assertion/` (those consume this folder's output; they don't
 duplicate it).
@@ -35,11 +37,11 @@ name-based guess.
 | `architect_metadata_format.yaml` | Human-readable, merge-facing description of the compiled metadata shape (schema_version 2) |
 | `architect_metadata.py` | The main compiler: frozen contract → canonical per-operation I/O + lifecycle + arithmetic metadata |
 | `arithmetic_metadata.py` | The arithmetic sub-schema, its Architect-schema composer, and the compact-declaration → canonical-arithmetic compiler |
-| `arithmetic_metadata.schema.json` | The actual JSON Schema for `operations[].arithmetic` (`anyOf`: `integer_matrix_multiply` branch or `llm_extension` branch) |
+| `arithmetic_metadata.schema.json` | The actual JSON Schema for `operations[].arithmetic` (`anyOf`: `integer_matrix_multiply`, `integer_qk_score`, `fixed_point_attention_scale`, `binary_attention_mask`, `integer_sparse_attention`, or `llm_extension`) |
 | `formula.py` | The safe compiler for formula-defined post-op stages. It translates contract syntax into Z3 IR and uses that same IR for golden evaluation; it never uses `eval`/`exec`. |
 | `io_metadata.py` | `data_objects[].serialization` schema (`dense_tensor` / `scalar` / `llm_extension` / `packed_encoding`) + validation + the wire-adapter support guard |
 | `packed_encoding.py` | The `packed_encoding` serialization kind: declaration validation and the encode-only `pack_words` engine (several logical elements folded into one physical container) |
-| `canonical.py` | Canonical job assembly + code-owned GEMM classifiers + reachable coverage bins |
+| `canonical.py` | Canonical job assembly + code-owned GEMM/QK/fixed-point-scale/binary-mask/sparse-attention golden traces, classifiers, and reachable coverage bins |
 | `protocol.py` | `ReadyValidCaptureAdapter` — captures accepted logical values off real ready/valid, AXI4-Lite, full-AXI4 (multi-outstanding, ID-correlated), and `custom_mmio` transfers, including register-started (`control_plane_sequence`) jobs |
 
 For a register-started HLS-style job, `protocol.py` reconstructs each data
@@ -290,6 +292,27 @@ metadata `architect_metadata.py` embeds.
     operation, so unsupported arithmetic is traceable without disabling known
     protocol/lifecycle behavior. The field remains optional only for older
     coarse `llm_extension` contracts.
+  - `classifier_profile == "integer_sparse_attention"`: requires
+    `coverage_family == "sparse_attention"`, fixed rank-2 objects with roles
+    `query_matrix`, `key_matrix`, `value_matrix`, `attention_mask`, and
+    `attention_result`, and shape agreement `Q[Q,D]`, `K[S,D]`, `V[S,DV]`,
+    `mask[Q,S]`, `Y[Q,DV]`. The mask is unsigned one-bit `binary_keep`, and
+    scaling and normalization are explicitly `none`. The compiler validates exact Q×K and
+    score×V product types, both declared reduction axes/conversions, and the
+    result conversion. It returns
+    `support_status: "supported_composed_restricted_integer_sparse_attention"`
+    plus a machine-readable QK/scale/mask/normalization/value composition. This is
+    deliberately not a claim of softmax, score scaling, top-k, or approximate
+    attention support.
+  - `classifier_profile == "fixed_point_attention_scale"`: requires
+    `coverage_family == "attention_scale"`, one signed rank-2
+    `attention_score_matrix` input, and one matching
+    `scaled_attention_score_matrix` output. `head_dimension` must resolve to a
+    positive fixed D, and `scale_multiplier` must equal the exact
+    `round(2^scale_shift/sqrt(D))` derivation. The compiler proves the declared
+    signed product type covers every score×multiplier product and records the
+    exact stage order: signed decode, exact multiply, arithmetic-floor shift,
+    result conversion. This is scaling only; mask, softmax, and V are separate.
   - `classifier_profile == "integer_matrix_multiply"`: requires
     `coverage_family == "matrix_multiply"`; resolves `left_operand_matrix` /
     `right_operand_matrix` / `result_matrix` object roles and checks
@@ -581,8 +604,10 @@ describes the evidence payload the tool can build for such a failure.
 
 - `supported_code_owned_concepts(metadata) -> {operation_name: {concepts}}` —
   for every `integer_matrix_multiply` operation, always includes `dimensions`,
-  `operand_values`, `accumulation`, plus `bias`/`activation` if the
-  corresponding post-operation stage is present. Anything else the Architect
+  `operand_values`, `accumulation`, plus `bias`/`activation`/`quantization` if
+  the corresponding post-operation stage is present. For
+  `integer_sparse_attention`, it includes `dimensions`, `operand_values`,
+  `sparsity_patterns`, `attention_scores`, `stage_handoffs`, and `output_values`. Anything else the Architect
   declared as a feature is, by construction, **not** in this set — that
   difference (`declared - supported`) is exactly what
   `orchestration/campaign.py`'s `automatic_campaign_support` reports as
@@ -601,9 +626,9 @@ describes the evidence payload the tool can build for such a failure.
   a normal, expected case, not a bug.
 - `classify_operation_job(job)` / `classify_checked_operations(metadata,
   operations, stimulus, expected, observed)` — dispatches on
-  `job.metadata["arithmetic"]["classifier_profile"]`; today only
-  `integer_matrix_multiply` has a classifier
-  (`_classify_integer_matrix_multiply`), everything else returns `{}`.
+  `job.metadata["arithmetic"]["classifier_profile"]`; the code-owned
+  classifiers are `_classify_integer_matrix_multiply` and
+  `_classify_integer_sparse_attention`. Unsupported profiles return `{}`.
 - `_classify_integer_matrix_multiply(job)` calls `integer_matrix_multiply_events`
   (this file) for the exact same product/reduction/bias/wrap/ReLU pipeline
   `arithmetic_metadata.py` validated the *shape* of — the same walk
@@ -622,8 +647,16 @@ describes the evidence payload the tool can build for such a failure.
   structured evidence a Debugger diagnosis or a coverage failure report can
   cite precisely (`coordinate`, `reduction_excursion`, `bias_excursion`, …)
   instead of a bare pass/fail.
+- `_classify_integer_sparse_attention(job)` calls the shared
+  `integer_sparse_attention_events` trace. It classifies mask rows as
+  `empty_row`/`singleton_row`/`partial_row`/`dense_row`, active score signs,
+  stage handoffs, and result signs while retaining score products, reduction
+  prefixes, weighted terms, and output prefixes as debugger evidence. The
+  trace calls the standalone QK evaluator and then composes scale, mask,
+  normalization, and value stages; the same trace is used by the end-to-end
+  sparse-attention golden evaluator.
 - `canonical_bins_for_concept(operation_metadata, concept) -> list[dict] |
-  None` — returns the **reachable** coverage bins for one of the five
+  None` — returns the **reachable** coverage bins for a supported
   supported concepts, computed from actual declared type bit-widths (e.g.
   `operand_values` only emits a `negative` bin if the operand type's range
   actually includes a negative value). This is what makes bins

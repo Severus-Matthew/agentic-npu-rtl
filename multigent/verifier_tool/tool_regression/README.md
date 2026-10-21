@@ -45,6 +45,9 @@ positive baseline. Non-qualified case workspaces are overwritten on retry.
 Successful cases retain the compact
 `qualification.json` evidence while reproducible copied RTL, raw simulation
 reports, and compiler build trees are removed.
+Ignored `api_evaluation/local_results/` artifacts can contain generated
+`test_*.py` files; `run_all` explicitly excludes that directory from pytest
+collection while retaining the files for manual audit.
 
 ## Opt-in Verifier API evaluation
 
@@ -66,7 +69,9 @@ PYTHONPATH=. .venv/bin/pytest -q -s \
   -k selected_verifier_api
 ```
 
-Each selected scenario permits one structured API attempt. The expected
-ownership split, solver witnesses, generated entry-point reachability, and exact
-extension bundle IDs are checked deterministically. Raw artifacts remain
-ignored; only compact reviewed evidence is retained for paper analysis.
+The runner defaults to one structured API attempt per scenario; pass
+`--max-attempts N` for a bounded deterministic repair loop. The expected
+ownership split, solver witnesses, generated runtime evidence, entry-point
+reachability, and exact extension bundle IDs are checked deterministically. Raw
+artifacts remain ignored; only compact manually reviewed evidence is retained
+for paper analysis.

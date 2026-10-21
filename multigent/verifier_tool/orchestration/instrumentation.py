@@ -9,8 +9,10 @@ campaign. Only genuinely unknown operation semantics remain Verifier-authored.
 from __future__ import annotations
 
 import ast
+import copy
+from difflib import get_close_matches
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from multigent.verifier_tool.operation.assertion import (
     known_operation_features,
@@ -59,6 +61,8 @@ _RESERVED_NAMES = {
     "_contract_generate_random_canonical_stimuli",
     "_contract_protocol_scenarios",
     "_contract_protocol_channel",
+    "_contract_standard_protocol_group",
+    "_contract_protocol_event_transaction",
     "_contract_drive_protocol_field_values",
     "_contract_drive_protocol_transfers",
     "_contract_collect_protocol_field_values",
@@ -68,6 +72,7 @@ _RESERVED_NAMES = {
     "_contract_runtime_record_checked_stimulus",
     "_contract_runtime_record_stimulus",
     "_contract_runtime_sample_operation",
+    "_contract_record_extension_coverage",
     "_check_contract_protocol_assertions",
     "_check_contract_lifecycle_assertions",
     "_check_contract_assertions",
@@ -92,6 +97,7 @@ _PROTECTED_PUBLIC_RUNTIME_NAMES = {
     "observe_contract_reset_snapshot",
     "record_stimulus",
     "sample_contract_snapshot",
+    "sample_extension_coverage",
 }
 
 
@@ -241,6 +247,30 @@ def strip_pipeline_generated_annotations(source: str) -> str:
         raise ValueError("Malformed pipeline-generated verifier annotation markers")
     end += len(AUDIT_END_MARKER)
     return (source[:start] + source[end:]).rstrip() + "\n"
+
+
+def verifier_owned_source_for_repair(source: str) -> str:
+    """Remove pipeline syntax while preserving Verifier-owned intent semantics.
+
+    ``install_pipeline_generated_annotations`` canonicalizes the Verifier's
+    label-to-target mapping into the code-owned audit block. A later local repair
+    must not lose that mapping when it removes the audit wrapper before sending
+    source back to the Verifier. Restore one ordinary literal declaration so the
+    next repair round receives the exact prior semantic choice.
+    """
+
+    if AUDIT_BEGIN_MARKER not in source and AUDIT_END_MARKER not in source:
+        return source.rstrip() + "\n"
+    intents = extract_stimulus_coverage_intents(source)
+    stripped = strip_pipeline_generated_annotations(source)
+    return (
+        stripped.rstrip()
+        + "\n\n"
+        + STIMULUS_SECTION
+        + "\nSTIMULUS_COVERAGE_INTENTS = "
+        + _literal(intents)
+        + "\n"
+    )
 
 
 def _static_value(
@@ -401,6 +431,7 @@ def _assert_authority_boundary(source: str) -> None:
 
     tree = ast.parse(source)
     errors: list[str] = []
+
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             module = str(node.module or "")
@@ -454,6 +485,117 @@ def _assert_authority_boundary(source: str) -> None:
         )
 
 
+def _protocol_clock_domains(
+    interface_plan: Mapping[str, Any],
+    assertion_plan: Mapping[str, Any],
+    *,
+    primary_clock: str,
+) -> dict[str, dict[str, Any]]:
+    """Partition custom-protocol assertions and bins by declared clock.
+
+    Standard protocols without an explicit semantic clock remain on the primary
+    interface clock. Contract-defined profiles carry their own clock binding and
+    must never be sampled through another domain merely because all signals are
+    visible from the same simulator handle.
+    """
+
+    semantics = (
+        assertion_plan.get("feature_plan", {})
+        .get("bindings", {})
+        .get("protocol_semantics", {})
+    )
+    profiles = [
+        item
+        for item in semantics.get("profiles", [])
+        if isinstance(item, Mapping)
+        and isinstance(item.get("clock"), Mapping)
+        and str(item.get("clock", {}).get("signal", ""))
+    ]
+    clocks = {str(item["clock"]["signal"]) for item in profiles}
+    if primary_clock:
+        clocks.add(primary_clock)
+    if len(clocks) <= 1:
+        return {}
+
+    prefixes_by_clock: dict[str, tuple[str, ...]] = {}
+    all_prefixes: list[str] = []
+    for clock_name in sorted(clocks):
+        prefixes = tuple(
+            f"protocol_transaction.{str(item['name'])}."
+            for item in profiles
+            if str(item["clock"]["signal"]) == clock_name
+        )
+        prefixes_by_clock[clock_name] = prefixes
+        all_prefixes.extend(prefixes)
+
+    def belongs(identity: str, prefixes: tuple[str, ...]) -> bool:
+        return any(identity.startswith(prefix) for prefix in prefixes)
+
+    feature_ids = tuple(map(str, assertion_plan.get("features", ())))
+    obligation_ids = tuple(
+        str(item.get("id", ""))
+        for item in interface_plan.get("obligations", [])
+        if isinstance(item, Mapping) and item.get("id")
+    )
+    result: dict[str, dict[str, Any]] = {}
+    for clock_name in sorted(clocks):
+        prefixes = prefixes_by_clock[clock_name]
+        primary = clock_name == primary_clock
+        selected_features = {
+            identity
+            for identity in feature_ids
+            if belongs(identity, prefixes)
+            or (primary and not belongs(identity, tuple(all_prefixes)))
+        }
+        selected_obligations = tuple(
+            identity
+            for identity in obligation_ids
+            if belongs(identity, prefixes)
+            or (primary and not belongs(identity, tuple(all_prefixes)))
+        )
+        plan = copy.deepcopy(dict(assertion_plan))
+        compiled = dict(plan.get("compiled_assertions", {}))
+        compiled["entries"] = [
+            item
+            for item in compiled.get("entries", [])
+            if str(item.get("id", "")) in selected_features
+        ]
+        plan["compiled_assertions"] = compiled
+        for field in ("stalls", "transaction_accounting"):
+            plan[field] = [
+                item
+                for item in plan.get(field, [])
+                if str(item.get("id", "")) in selected_features
+            ]
+        plan["event_correlations"] = [
+            item
+            for item in plan.get("event_correlations", [])
+            if str(item.get("feature_id", "")) in selected_features
+        ]
+        if not primary:
+            plan["standard_groups"] = []
+        plan["features"] = tuple(
+            identity for identity in feature_ids if identity in selected_features
+        )
+        plan["valid_reset_features"] = {
+            signal: identity
+            for signal, identity in plan.get("valid_reset_features", {}).items()
+            if identity in selected_features
+        }
+        plan["valid_reset_settle_cycles"] = {
+            signal: value
+            for signal, value in plan.get("valid_reset_settle_cycles", {}).items()
+            if signal in plan["valid_reset_features"]
+        }
+        plan["valid_signals"] = tuple(sorted(plan["valid_reset_features"]))
+        result[clock_name] = {
+            "assertion_plan": plan,
+            "obligation_ids": selected_obligations,
+            "sample_shared_domains": primary,
+        }
+    return result
+
+
 def render_contract_generated_block(
     interface_plan: Mapping[str, Any],
     architecture_contract: Mapping[str, Any] | None = None,
@@ -468,6 +610,9 @@ def render_contract_generated_block(
     clock = str(monitor.get("clock", ""))
     reset = str(monitor.get("reset", ""))
     assertion_plan, feature_ids = protocol_assertion_metadata(interface_plan)
+    protocol_clock_domains = _protocol_clock_domains(
+        interface_plan, assertion_plan, primary_clock=clock
+    )
     operation_features = known_operation_features(architecture_contract)
     operation_metadata = build_architect_operation_metadata(
         architecture_contract or {"operations": [], "data_objects": [], "data_types": [], "dimensions": [], "parameters": []},
@@ -494,6 +639,7 @@ def render_contract_generated_block(
         "    normalize_verification_value as _contract_normalize_verification_value,",
         "    record_stimulus as _contract_runtime_record_stimulus,",
         "    sample_operation as _contract_runtime_sample_operation,",
+        "    sample_extension_coverage as _contract_record_extension_coverage,",
         "    check_protocol_assertions as _contract_check_protocol_assertions,",
         "    finalize_protocol_assertions as _contract_finalize_protocol_assertions,",
         "    check_lifecycle_assertions as _contract_check_lifecycle_assertions,",
@@ -563,19 +709,41 @@ def render_contract_generated_block(
         "    assert protocol_channel in channels, f'unknown protocol_channel={protocol_channel!r}'",
         "    return channels[protocol_channel]",
         "",
+        "def _contract_standard_protocol_group(protocol_group, protocol_profile=None):",
+        "    \"\"\"Return one exact compiled standard-protocol group binding.\"\"\"",
+        "    groups = tuple(item for item in CONTRACT_PROTOCOL_STIMULUS_PLAN['groups'] if item['name'] == protocol_group)",
+        "    if protocol_profile is not None:",
+        "        groups = tuple(item for item in groups if item['profile'] == protocol_profile)",
+        "    assert len(groups) == 1, f'unknown or ambiguous standard protocol group={protocol_group!r} profile={protocol_profile!r}'",
+        "    return groups[0]",
+        "",
+        "def _contract_protocol_event_transaction(profile_name, transaction_name):",
+        "    \"\"\"Return one compiled custom-protocol monitor binding.\"\"\"",
+        "    semantics = CONTRACT_PROTOCOL_STIMULUS_PLAN['feature_plan']['bindings']['protocol_semantics']",
+        "    profiles = tuple(item for item in semantics['profiles'] if item['name'] == profile_name)",
+        "    assert len(profiles) == 1, f'unknown or ambiguous protocol profile={profile_name!r}'",
+        "    transactions = tuple(item for item in profiles[0]['transactions'] if item['name'] == transaction_name)",
+        "    assert len(transactions) == 1, f'unknown or ambiguous protocol transaction={transaction_name!r}'",
+        "    return profiles[0], transactions[0]",
+        "",
     ]
     lines += render_operation_assertion_lines(operation_features)
     lines += [""]
     lines += render_protocol_assertion_lines(
-        interface_plan, reset=reset, obligations=assertion_plan
+        interface_plan,
+        reset=reset,
+        obligations=assertion_plan,
+        clock_domains=protocol_clock_domains,
     )
     lines += [""]
     lines += render_lifecycle_assertion_lines(lifecycle_assertion_plan)
     lines += [
         "",
-        "def _check_contract_assertions(snapshot):",
-        "    completed_stalls = _check_contract_protocol_assertions(snapshot)",
-        "    _check_contract_lifecycle_assertions(snapshot)",
+        "def _check_contract_assertions(snapshot, clock_name=None):",
+        "    completed_stalls = _check_contract_protocol_assertions(snapshot, clock_name)",
+        "    domain = CONTRACT_PROTOCOL_CLOCK_DOMAINS.get(clock_name)",
+        "    if domain is None or domain['sample_shared_domains']:",
+        "        _check_contract_lifecycle_assertions(snapshot)",
         "    return completed_stalls",
         "",
         "def _finalize_contract_assertions():",
@@ -584,7 +752,10 @@ def render_contract_generated_block(
     ]
     lines += [""]
     lines += render_protocol_monitor_lines(
-        clock=clock, reset=reset, assertion_callback="_check_contract_assertions"
+        clock=clock,
+        reset=reset,
+        assertion_callback="_check_contract_assertions",
+        clock_domains=protocol_clock_domains,
     )
     if include_automatic_campaign:
         lines += [
@@ -701,6 +872,234 @@ def extract_stimulus_coverage_intents(source: str) -> list[dict[str, Any]]:
     return result
 
 
+def _axi4_protocol_responder_transfer_calls(
+    tree: ast.AST,
+    parents: Mapping[ast.AST, ast.AST],
+    interface_contract: Mapping[str, Any] | None,
+) -> list[tuple[ast.Call, str, str]]:
+    """Resolve exact channel traffic performed by the reusable AXI4 responder.
+
+    An imported verifier_tool driver is opaque to local assignment tracing. Credit
+    only the read/write directions whose literal ``request_counts`` are nonzero
+    and only for a statically resolved standard AXI4 group. A read-only call must
+    never become evidence for write-response stimulus.
+    """
+
+    if not isinstance(interface_contract, Mapping):
+        return []
+
+    group_variables: dict[str, tuple[str, str]] = {}
+    for assignment in ast.walk(tree):
+        if not isinstance(assignment, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = assignment.value
+        if not (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id == "_contract_standard_protocol_group"
+            and len(value.args) >= 2
+            and all(
+                isinstance(argument, ast.Constant)
+                and isinstance(argument.value, str)
+                for argument in value.args[:2]
+            )
+        ):
+            continue
+        binding = (str(value.args[0].value), str(value.args[1].value))
+        targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+        for target in targets:
+            if isinstance(target, ast.Name):
+                group_variables[target.id] = binding
+
+    def group_binding(node: ast.AST | None) -> tuple[str, str] | None:
+        if isinstance(node, ast.Name):
+            return group_variables.get(node.id)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_contract_standard_protocol_group"
+            and len(node.args) >= 2
+            and all(
+                isinstance(argument, ast.Constant)
+                and isinstance(argument.value, str)
+                for argument in node.args[:2]
+            )
+        ):
+            return (str(node.args[0].value), str(node.args[1].value))
+        return None
+
+    def channel_binding(channel: Mapping[str, Any]) -> tuple[str, str] | None:
+        group = str(channel.get("protocol_group", ""))
+        protocol_channel = str(channel.get("protocol_channel", ""))
+        for item in channel.get("metadata", []):
+            text = str(item)
+            if not group and (match := re.search(r"(?:^|\s)protocol_group=([^\s]+)", text)):
+                group = match.group(1)
+            if not protocol_channel and (
+                match := re.search(r"(?:^|\s)protocol_channel=([^\s]+)", text)
+            ):
+                protocol_channel = match.group(1)
+        return (group, protocol_channel) if group and protocol_channel else None
+
+    channels_by_group: dict[tuple[str, str], dict[str, str]] = {}
+    for item in interface_contract.get("channels", []):
+        if not isinstance(item, Mapping) or str(item.get("protocol_profile", "")) != "axi4":
+            continue
+        binding = channel_binding(item)
+        if binding is None:
+            continue
+        group, protocol_channel = binding
+        channels_by_group.setdefault((group, "axi4"), {})[protocol_channel] = str(
+            item.get("name", "")
+        )
+
+    events: list[tuple[ast.Call, str, str]] = []
+
+    def executes_async_call(call: ast.Call) -> bool:
+        parent = parents.get(call)
+        if isinstance(parent, ast.Await):
+            return True
+        if not (
+            isinstance(parent, ast.Call)
+            and (
+                (isinstance(parent.func, ast.Name) and parent.func.id in {"create_task", "ensure_future"})
+                or (
+                    isinstance(parent.func, ast.Attribute)
+                    and parent.func.attr in {"start_soon", "create_task", "ensure_future"}
+                )
+            )
+        ):
+            return False
+        current: ast.AST = parent
+        enclosing: ast.AsyncFunctionDef | None = None
+        while current in parents:
+            current = parents[current]
+            if isinstance(current, ast.AsyncFunctionDef):
+                enclosing = current
+                break
+        return bool(
+            enclosing is not None
+            and any(
+                isinstance(node, ast.Await)
+                and getattr(node, "lineno", 0) > getattr(parent, "lineno", 0)
+                for node in ast.walk(enclosing)
+            )
+        )
+
+    for call in ast.walk(tree):
+        if not (
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Name)
+            and call.func.id == "serve_axi4_protocol_transactions"
+            and executes_async_call(call)
+        ):
+            continue
+        keywords = {
+            keyword.arg: keyword.value
+            for keyword in call.keywords
+            if keyword.arg is not None
+        }
+        group_node = keywords.get("group") or (call.args[2] if len(call.args) >= 3 else None)
+        counts_node = keywords.get("request_counts") or (
+            call.args[3] if len(call.args) >= 4 else None
+        )
+        binding = group_binding(group_node)
+        try:
+            counts = ast.literal_eval(counts_node) if counts_node is not None else None
+        except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+            counts = None
+        if binding is None or not isinstance(counts, dict):
+            continue
+        group_channels = channels_by_group.get(binding, {})
+        requested_protocol_channels: list[tuple[str, str]] = []
+        if int(counts.get("read", 0)) > 0:
+            requested_protocol_channels.extend(
+                [("read_address", "collector_transport"), ("read_data", "driver_transport")]
+            )
+        if int(counts.get("write", 0)) > 0:
+            requested_protocol_channels.extend(
+                [
+                    ("write_address", "collector_transport"),
+                    ("write_data", "collector_transport"),
+                    ("write_response", "driver_transport"),
+                ]
+            )
+        for protocol_channel, kind in requested_protocol_channels:
+            channel_name = group_channels.get(protocol_channel)
+            if channel_name:
+                events.append((call, channel_name, kind))
+    return events
+
+
+def _scheduled_task_active_interval(
+    call: ast.Call,
+    tree: ast.AST,
+    parents: Mapping[ast.AST, ast.AST],
+) -> tuple[int, int] | None:
+    """Return the lexical lifetime of an assigned background coroutine task.
+
+    A reusable responder started with ``start_soon`` can legitimately serve more
+    than one checked scenario.  Its transport effect remains active until the
+    assigned task is explicitly killed, cancelled, or awaited.  This bounded AST
+    rule deliberately requires an assigned task name and a recognized scheduler;
+    it does not infer lifetime for arbitrary fire-and-forget coroutines.
+    """
+
+    scheduler = parents.get(call)
+    if not (
+        isinstance(scheduler, ast.Call)
+        and (
+            (
+                isinstance(scheduler.func, ast.Name)
+                and scheduler.func.id in {"create_task", "ensure_future"}
+            )
+            or (
+                isinstance(scheduler.func, ast.Attribute)
+                and scheduler.func.attr in {"start_soon", "create_task", "ensure_future"}
+            )
+        )
+    ):
+        return None
+    assignment = parents.get(scheduler)
+    if not isinstance(assignment, (ast.Assign, ast.AnnAssign)):
+        return None
+    targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+    task_names = [target.id for target in targets if isinstance(target, ast.Name)]
+    if len(task_names) != 1:
+        return None
+    task_name = task_names[0]
+
+    current: ast.AST = assignment
+    function: ast.AsyncFunctionDef | ast.FunctionDef | None = None
+    while current in parents:
+        current = parents[current]
+        if isinstance(current, (ast.AsyncFunctionDef, ast.FunctionDef)):
+            function = current
+            break
+    if function is None:
+        return None
+
+    end_line = int(getattr(function, "end_lineno", assignment.lineno)) + 1
+    for node in ast.walk(function):
+        line = int(getattr(node, "lineno", 0))
+        if line <= assignment.lineno:
+            continue
+        terminates = (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"kill", "cancel"}
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == task_name
+        ) or (
+            isinstance(node, ast.Await)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == task_name
+        )
+        if terminates:
+            end_line = min(end_line, line)
+    return assignment.lineno, end_line
+
+
 def validate_verifier_authored_structure(
     sources: list[str],
     required_obligations: set[str],
@@ -709,8 +1108,19 @@ def validate_verifier_authored_structure(
     *,
     randomized_transactions_minimum: int = 0,
     code_owned_obligations: set[str] | frozenset[str] = frozenset(),
+    support_sources: Sequence[str] = (),
 ) -> None:
     """Require auditable sections and complete declared stimulus intent coverage."""
+
+    captured_signal_names = (
+        {
+            str(signal.get("name"))
+            for signal in interface_contract.get("signals", [])
+            if isinstance(signal, Mapping) and signal.get("name")
+        }
+        if isinstance(interface_contract, Mapping)
+        else None
+    )
 
     pipeline_owned_operation_features = {
         feature
@@ -736,6 +1146,7 @@ def validate_verifier_authored_structure(
     stimulus_kinds: set[str] = set()
     statically_proven_randomized_records = 0
     unprovable_randomized_records: list[str] = []
+    support_trace_parameter_hints: dict[str, dict[int, str]] = {}
     record_shapes: dict[
         str, tuple[dict[str, str | None] | None, dict[str, str | None] | None, dict[str, str | None] | None]
     ] = {}
@@ -827,6 +1238,25 @@ def validate_verifier_authored_structure(
         except SyntaxError as exc:
             errors.append(f"test source {source_index} has syntax error: {exc.msg}")
             continue
+        for function_name, parameter_hints in (
+            _called_protocol_trace_parameter_hints(tree).items()
+        ):
+            merged = support_trace_parameter_hints.setdefault(function_name, {})
+            for index, trace_name in parameter_hints.items():
+                existing = merged.get(index)
+                if existing is None or existing == trace_name:
+                    merged[index] = trace_name
+                else:
+                    merged.pop(index, None)
+        shell_escaped_keys = _shell_escaped_subscript_keys(tree)
+        if shell_escaped_keys:
+            errors.append(
+                "Generated Python contains shell-quoting artifacts inside dict "
+                f"subscript keys; source={source_index}, occurrences="
+                f"{[(line, repr(value)) for line, value in shell_escaped_keys]}. "
+                "Write ordinary Python keys such as result['expected']; do not "
+                "preserve command-shell quote splicing in emitted source."
+            )
         parents = {
             child: parent
             for parent in ast.walk(tree)
@@ -1046,6 +1476,14 @@ def validate_verifier_authored_structure(
                     )
                 )
 
+        # Imported reusable responders are opaque to local signal-assignment
+        # tracing. Resolve their normative call contract into the same channel
+        # event representation used by contract-generated transfer helpers.
+        responder_transfer_calls = _axi4_protocol_responder_transfer_calls(
+            tree, parents, interface_contract
+        )
+        valid_transfer_calls.extend(responder_transfer_calls)
+
         # Summarize fixed-channel tool calls through local wrapper helpers, then
         # project each awaited helper invocation back into its caller.  This lets
         # the audit credit a small reusable collector without turning a single
@@ -1068,8 +1506,8 @@ def validate_verifier_authored_structure(
                     callee = local_functions.get(call.func.id)
                     if callee is None or callee is function:
                         continue
-                    if isinstance(callee, ast.AsyncFunctionDef) and not isinstance(
-                        parents.get(call), ast.Await
+                    if isinstance(callee, ast.AsyncFunctionDef) and not _async_call_is_consumed(
+                        call, parents
                     ):
                         continue
                     expanded.update(function_channel_summary[callee.name])
@@ -1086,6 +1524,14 @@ def validate_verifier_authored_structure(
                 transfer_events.append(
                     (function.name, call.lineno, enclosing_loops(call), channel, kind)
                 )
+        active_transfer_intervals: list[tuple[str, int, int, str, str]] = []
+        for call, channel, kind in responder_transfer_calls:
+            function = enclosing_function(call)
+            interval = _scheduled_task_active_interval(call, tree, parents)
+            if function is not None and interval is not None:
+                active_transfer_intervals.append(
+                    (function.name, interval[0], interval[1], channel, kind)
+                )
         for call in ast.walk(tree):
             if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Name):
                 continue
@@ -1096,8 +1542,8 @@ def validate_verifier_authored_structure(
             summary = function_channel_summary.get(callee.name, set())
             if not summary:
                 continue
-            if isinstance(callee, ast.AsyncFunctionDef) and not isinstance(
-                parents.get(call), ast.Await
+            if isinstance(callee, ast.AsyncFunctionDef) and not _async_call_is_consumed(
+                call, parents
             ):
                 errors.append(
                     f"source={source_index}, line={call.lineno}: asynchronous "
@@ -1115,6 +1561,17 @@ def validate_verifier_authored_structure(
             f"source={source_index}, line={line}" for line in unprovable
         )
         errors.extend(_unadvanced_checked_stimulus_records(tree, source_index, verifier_source))
+        errors.extend(_preawaited_protocol_evidence_stimulus(tree, source_index))
+        errors.extend(
+            _dut_writes_after_protocol_evidence_capture(tree, source_index)
+        )
+        errors.extend(
+            _invalid_protocol_evidence_record_accesses(
+                tree,
+                source_index,
+                captured_signal_names,
+            )
+        )
         errors.extend(_unused_passed_helper_parameters(tree, source_index))
         errors.extend(_unchecked_stall_replays(tree, source_index))
         errors.extend(
@@ -1433,6 +1890,16 @@ def validate_verifier_authored_structure(
                             label_driven_channels.add(channel)
                         if kind == "collector":
                             label_collected_channels.add(channel)
+                    for function_name, start_line, end_line, channel, kind in active_transfer_intervals:
+                        if (
+                            function_name != record_function.name
+                            or not (start_line < record_node.lineno < end_line)
+                        ):
+                            continue
+                        if kind.startswith("driver"):
+                            label_transport_driven_channels.add(channel)
+                        if kind.startswith("collector"):
+                            label_transport_collected_channels.add(channel)
             errors.extend(
                 _missing_claimed_channel_drives(
                     tree, label=label, targets=item["targets"],
@@ -1605,6 +2072,22 @@ def validate_verifier_authored_structure(
                     f"{feature_id!r}; only taxonomy-missing feature assertions "
                     "belong in the LLM section"
                 )
+
+    for source_index, source in enumerate(support_sources, start=len(sources)):
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            # Python syntax diagnostics for support files are reported by the
+            # Verifier's ordinary source validation with the exact filename.
+            continue
+        errors.extend(
+            _invalid_protocol_evidence_record_accesses(
+                tree,
+                source_index,
+                captured_signal_names,
+                support_trace_parameter_hints,
+            )
+        )
 
     unknown_targets = sorted(declared_targets - required_obligations)
     missing_targets = sorted(
@@ -2052,6 +2535,639 @@ def _unadvanced_checked_stimulus_records(
 
     scan(getattr(tree, "body", []))
     return errors
+
+
+def _preawaited_protocol_evidence_stimulus(
+    tree: ast.AST, source_index: int
+) -> list[str]:
+    """Reject consuming a stimulus before the concurrent observer starts."""
+
+    errors: list[str] = []
+    for call in ast.walk(tree):
+        if not (
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Name)
+            and call.func.id == "capture_protocol_event_trace"
+        ):
+            continue
+        stimulus = call.args[3] if len(call.args) >= 4 else next(
+            (
+                keyword.value
+                for keyword in call.keywords
+                if keyword.arg == "stimulus"
+            ),
+            None,
+        )
+        if isinstance(stimulus, ast.Await):
+            errors.append(
+                "capture_protocol_event_trace must receive the unawaited stimulus "
+                "coroutine so its observer starts before DUT traffic; "
+                f"source={source_index}, line={call.lineno}. Remove await from the "
+                "stimulus argument; await only capture_protocol_event_trace itself"
+            )
+    return errors
+
+
+def _dut_writes_after_protocol_evidence_capture(
+    tree: ast.AST, source_index: int
+) -> list[str]:
+    """Reject DUT writes before leaving capture's final ReadOnly phase.
+
+    ``capture_protocol_event_trace`` deliberately finishes its observer after a
+    ReadOnly sample.  Cocotb resumes the caller in that same simulator phase, so
+    a direct ``dut.<signal>.value = ...`` before another await is illegal.
+    """
+
+    errors: list[str] = []
+
+    def statement_roots(statement: ast.stmt) -> list[ast.AST]:
+        if isinstance(statement, (ast.If, ast.While)):
+            return [statement.test]
+        if isinstance(statement, (ast.For, ast.AsyncFor)):
+            return [statement.iter]
+        if isinstance(statement, (ast.With, ast.AsyncWith)):
+            return [item.context_expr for item in statement.items]
+        if isinstance(
+            statement,
+            (ast.Try, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+        ):
+            return []
+        return [statement]
+
+    def is_capture_await(node: ast.AST) -> bool:
+        return bool(
+            isinstance(node, ast.Await)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "capture_protocol_event_trace"
+        )
+
+    def awaited_call_name(node: ast.AST) -> str:
+        if not isinstance(node, ast.Await) or not isinstance(node.value, ast.Call):
+            return ""
+        function = node.value.func
+        if isinstance(function, ast.Name):
+            return function.id
+        if isinstance(function, ast.Attribute):
+            return function.attr
+        return ""
+
+    def dut_write_signals(statement: ast.stmt) -> set[str]:
+        names: set[str] = set()
+        for assignment in (
+            [statement]
+            if isinstance(statement, (ast.Assign, ast.AnnAssign, ast.AugAssign))
+            else []
+        ):
+            targets = (
+                assignment.targets
+                if isinstance(assignment, ast.Assign)
+                else [assignment.target]
+            )
+            for target in targets:
+                if not (
+                    isinstance(target, ast.Attribute)
+                    and target.attr == "value"
+                    and isinstance(target.value, ast.Attribute)
+                    and isinstance(target.value.value, ast.Name)
+                    and target.value.value.id == "dut"
+                ):
+                    continue
+                names.add(target.value.attr)
+        return names
+
+    def scan(statements: Sequence[ast.stmt], read_only_after_capture: bool = False) -> None:
+        read_only = read_only_after_capture
+        for statement in statements:
+            roots = statement_roots(statement)
+            capture_awaits = [
+                node
+                for root in roots
+                for node in ast.walk(root)
+                if is_capture_await(node)
+            ]
+            awaits = [
+                node
+                for root in roots
+                for node in ast.walk(root)
+                if isinstance(node, ast.Await)
+            ]
+            if read_only:
+                writes = dut_write_signals(statement)
+                if writes:
+                    errors.append(
+                        "DUT input is written immediately after awaited "
+                        "capture_protocol_event_trace returns in Cocotb's ReadOnly "
+                        f"phase; source={source_index}, line={statement.lineno}, "
+                        f"signals={sorted(writes)}. Await a writable scheduling "
+                        "boundary such as FallingEdge(clock) or Timer(...) before "
+                        "the next DUT assignment"
+                    )
+                    read_only = False
+                elif capture_awaits:
+                    errors.append(
+                        "A new capture_protocol_event_trace stimulus is started "
+                        "immediately after a previous capture returned in Cocotb's "
+                        f"ReadOnly phase; source={source_index}, "
+                        f"line={capture_awaits[0].lineno}. Await a writable scheduling "
+                        "boundary such as FallingEdge(clock) or Timer(...) before "
+                        "starting the next capture, because its stimulus coroutine "
+                        "may write DUT inputs before its first await"
+                    )
+                elif awaits and not all(
+                    awaited_call_name(node)
+                    in {"ClockCycles", "Edge", "FallingEdge", "ReadWrite", "RisingEdge", "Timer"}
+                    for node in awaits
+                ):
+                    errors.append(
+                        "A coroutine is awaited immediately after "
+                        "capture_protocol_event_trace returned in Cocotb's ReadOnly "
+                        f"phase; source={source_index}, line={statement.lineno}, "
+                        f"calls={sorted(filter(None, (awaited_call_name(node) for node in awaits)))}. "
+                        "The coroutine may write DUT inputs before its first await. "
+                        "Await a writable scheduling boundary such as FallingEdge(clock) "
+                        "or Timer(...) before calling another driver or helper"
+                    )
+                    read_only = False
+                elif awaits:
+                    read_only = False
+            if capture_awaits:
+                read_only = True
+            for field in ("body", "orelse", "finalbody"):
+                nested = getattr(statement, field, None)
+                if isinstance(nested, list):
+                    scan(nested, read_only)
+            handlers = getattr(statement, "handlers", None)
+            if isinstance(handlers, list):
+                for handler in handlers:
+                    scan(handler.body, read_only)
+
+    for definition in ast.walk(tree):
+        if isinstance(definition, ast.AsyncFunctionDef):
+            scan(definition.body)
+    return sorted(set(errors))
+
+
+def _async_call_is_consumed(
+    call: ast.Call, parents: Mapping[ast.AST, ast.AST]
+) -> bool:
+    """Return true when an async helper is awaited directly or by evidence capture.
+
+    ``capture_protocol_event_trace`` deliberately accepts an unawaited stimulus
+    coroutine so it can start its observer before awaiting the stimulus.  Treating
+    that fourth argument as a dropped coroutine contradicts the capture API and
+    makes deterministic repair oscillate between "add await" and "remove await".
+    This helper recognizes only that exact, awaited delegation boundary; arbitrary
+    unawaited coroutine arguments remain invalid.
+    """
+
+    parent = parents.get(call)
+    if isinstance(parent, ast.Await):
+        return True
+
+    capture_call: ast.Call | None = None
+    if isinstance(parent, ast.Call):
+        capture_call = parent
+        positional_stimulus = (
+            capture_call.args[3] if len(capture_call.args) >= 4 else None
+        )
+        if positional_stimulus is not call:
+            return False
+    elif isinstance(parent, ast.keyword) and parent.arg == "stimulus":
+        candidate = parents.get(parent)
+        if isinstance(candidate, ast.Call):
+            capture_call = candidate
+        else:
+            return False
+    else:
+        return False
+
+    return bool(
+        isinstance(capture_call.func, ast.Name)
+        and capture_call.func.id == "capture_protocol_event_trace"
+        and isinstance(parents.get(capture_call), ast.Await)
+    )
+
+
+def _invalid_protocol_evidence_record_accesses(
+    tree: ast.AST,
+    source_index: int,
+    allowed_signal_names: set[str] | frozenset[str] | None = None,
+    function_parameter_traces: Mapping[str, Mapping[int, str]] | None = None,
+) -> list[str]:
+    """Reject top-level fields absent from reusable protocol trace records."""
+
+    allowed = {
+        "transaction_trace": {
+            "cycle", "event", "signals", "outstanding_before", "outstanding_after"
+        },
+        "cycle_trace": {"cycle", "signals", "events"},
+    }
+    transaction_event_values = {
+        "accepted",
+        "success",
+        "error",
+        "completed",
+        "cancelled",
+    }
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+
+    # Verifier-authored reference files often hide dictionary access behind a
+    # small helper such as ``_get(record, key, default=0)``.  Treat that helper
+    # exactly like ``record.get(key)``; otherwise an invented trace field can
+    # silently evaluate to the helper's default and pass structural review.
+    # Only recognize helpers whose own AST proves that one parameter indexes or
+    # calls ``get`` on another parameter, so unrelated functions that merely
+    # accept a record and a string are not over-classified as accessors.
+    helper_accessors: dict[str, tuple[int, int]] = {}
+    for definition in ast.walk(tree):
+        if not isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        positional_parameters = [
+            *definition.args.posonlyargs,
+            *definition.args.args,
+        ]
+        parameter_positions = {
+            parameter.arg: index
+            for index, parameter in enumerate(positional_parameters)
+        }
+        for node in ast.walk(definition):
+            record_parameter: str | None = None
+            key_parameter: str | None = None
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in parameter_positions
+                and node.args
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id in parameter_positions
+            ):
+                record_parameter = node.func.value.id
+                key_parameter = node.args[0].id
+            elif (
+                isinstance(node, ast.Subscript)
+                and isinstance(node.value, ast.Name)
+                and node.value.id in parameter_positions
+                and isinstance(node.slice, ast.Name)
+                and node.slice.id in parameter_positions
+            ):
+                record_parameter = node.value.id
+                key_parameter = node.slice.id
+            if record_parameter is not None and key_parameter is not None:
+                helper_accessors[definition.name] = (
+                    parameter_positions[record_parameter],
+                    parameter_positions[key_parameter],
+                )
+                break
+    parameter_traces = function_parameter_traces or {}
+    trace_loops: list[tuple[str, str, ast.AST]] = []
+    for loop in ast.walk(tree):
+        if isinstance(loop, ast.For):
+            target, iterator, scope = loop.target, loop.iter, loop
+        elif isinstance(loop, ast.comprehension):
+            target, iterator = loop.target, loop.iter
+            scope = parents.get(loop, loop)
+        else:
+            continue
+        iterator_name: str | None = None
+        record_target: ast.Name | None = target if isinstance(target, ast.Name) else None
+        if isinstance(iterator, ast.Name):
+            iterator_name = iterator.id
+        elif (
+            isinstance(iterator, ast.Call)
+            and isinstance(iterator.func, ast.Name)
+            and iterator.func.id == "enumerate"
+            and iterator.args
+            and isinstance(iterator.args[0], ast.Name)
+        ):
+            iterator_name = iterator.args[0].id
+            if (
+                isinstance(target, (ast.Tuple, ast.List))
+                and len(target.elts) == 2
+                and isinstance(target.elts[1], ast.Name)
+            ):
+                record_target = target.elts[1]
+        if record_target is None or iterator_name is None:
+            continue
+        trace_name = iterator_name if iterator_name in allowed else None
+        if trace_name is None:
+            current: ast.AST = scope
+            definition: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+            while current in parents:
+                current = parents[current]
+                if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    definition = current
+                    break
+            if definition is not None:
+                positional_parameters = [
+                    *definition.args.posonlyargs,
+                    *definition.args.args,
+                ]
+                for index, parameter in enumerate(positional_parameters):
+                    if parameter.arg == iterator_name:
+                        trace_name = parameter_traces.get(definition.name, {}).get(index)
+                        break
+        if trace_name in allowed:
+            trace_loops.append((record_target.id, trace_name, scope))
+
+    errors: list[str] = []
+    for record_name, trace_name, scope in trace_loops:
+        signal_aliases: set[str] = set()
+        event_aliases: set[str] = set()
+        for assignment in ast.walk(scope):
+            if not isinstance(assignment, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = assignment.value
+            is_signal_mapping = (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Attribute)
+                and value.func.attr == "get"
+                and isinstance(value.func.value, ast.Name)
+                and value.func.value.id == record_name
+                and value.args
+                and isinstance(value.args[0], ast.Constant)
+                and value.args[0].value == "signals"
+            ) or (
+                isinstance(value, ast.Subscript)
+                and isinstance(value.value, ast.Name)
+                and value.value.id == record_name
+                and isinstance(value.slice, ast.Constant)
+                and value.slice.value == "signals"
+            )
+            targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+            target_names = {
+                target.id for target in targets if isinstance(target, ast.Name)
+            }
+            if is_signal_mapping:
+                signal_aliases.update(target_names)
+
+            is_event_access = (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Attribute)
+                and value.func.attr == "get"
+                and isinstance(value.func.value, ast.Name)
+                and value.func.value.id == record_name
+                and value.args
+                and isinstance(value.args[0], ast.Constant)
+                and value.args[0].value == "event"
+            ) or (
+                isinstance(value, ast.Subscript)
+                and isinstance(value.value, ast.Name)
+                and value.value.id == record_name
+                and isinstance(value.slice, ast.Constant)
+                and value.slice.value == "event"
+            )
+            if is_event_access:
+                event_aliases.update(target_names)
+
+        def is_transaction_event_access(expression: ast.AST) -> bool:
+            if trace_name != "transaction_trace":
+                return False
+            if isinstance(expression, ast.Name):
+                return expression.id in event_aliases
+            if (
+                isinstance(expression, ast.Call)
+                and isinstance(expression.func, ast.Attribute)
+                and expression.func.attr == "get"
+                and isinstance(expression.func.value, ast.Name)
+                and expression.func.value.id == record_name
+                and expression.args
+                and isinstance(expression.args[0], ast.Constant)
+            ):
+                return expression.args[0].value == "event"
+            if (
+                isinstance(expression, ast.Subscript)
+                and isinstance(expression.value, ast.Name)
+                and expression.value.id == record_name
+                and isinstance(expression.slice, ast.Constant)
+            ):
+                return expression.slice.value == "event"
+            if (
+                isinstance(expression, ast.Call)
+                and isinstance(expression.func, ast.Name)
+                and expression.func.id in helper_accessors
+            ):
+                record_position, key_position = helper_accessors[expression.func.id]
+                return bool(
+                    len(expression.args) > max(record_position, key_position)
+                    and isinstance(expression.args[record_position], ast.Name)
+                    and expression.args[record_position].id == record_name
+                    and isinstance(expression.args[key_position], ast.Constant)
+                    and expression.args[key_position].value == "event"
+                )
+            return False
+
+        def literal_strings(expression: ast.AST) -> set[str]:
+            if isinstance(expression, ast.Constant) and isinstance(expression.value, str):
+                return {expression.value}
+            if isinstance(expression, (ast.List, ast.Tuple, ast.Set)):
+                return {
+                    item.value
+                    for item in expression.elts
+                    if isinstance(item, ast.Constant) and isinstance(item.value, str)
+                }
+            return set()
+
+        for node in ast.walk(scope):
+            key: str | None = None
+            signal_key: str | None = None
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == record_name
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                key = node.args[0].value
+            elif (
+                isinstance(node, ast.Subscript)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == record_name
+                and isinstance(node.slice, ast.Constant)
+                and isinstance(node.slice.value, str)
+            ):
+                key = node.slice.value
+            elif (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in helper_accessors
+            ):
+                record_position, key_position = helper_accessors[node.func.id]
+                if (
+                    len(node.args) > max(record_position, key_position)
+                    and isinstance(node.args[record_position], ast.Name)
+                    and node.args[record_position].id == record_name
+                    and isinstance(node.args[key_position], ast.Constant)
+                    and isinstance(node.args[key_position].value, str)
+                ):
+                    key = node.args[key_position].value
+                elif (
+                    len(node.args) > max(record_position, key_position)
+                    and isinstance(node.args[record_position], ast.Name)
+                    and node.args[record_position].id in signal_aliases
+                    and isinstance(node.args[key_position], ast.Constant)
+                    and isinstance(node.args[key_position].value, str)
+                ):
+                    signal_key = node.args[key_position].value
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in signal_aliases
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                signal_key = node.args[0].value
+            elif (
+                isinstance(node, ast.Subscript)
+                and isinstance(node.value, ast.Name)
+                and node.value.id in signal_aliases
+                and isinstance(node.slice, ast.Constant)
+                and isinstance(node.slice.value, str)
+            ):
+                signal_key = node.slice.value
+            if key is not None and key not in allowed[trace_name]:
+                signal_guidance = ""
+                if allowed_signal_names:
+                    candidates = get_close_matches(
+                        key, sorted(allowed_signal_names), n=3, cutoff=0.45
+                    )
+                    signal_guidance = (
+                        " Actual frozen-contract signal candidates: "
+                        + repr(candidates)
+                        + "."
+                        if candidates
+                        else " This alias is not a captured DUT signal name."
+                    )
+                errors.append(
+                    f"{trace_name} record has no top-level field {key!r}; "
+                    f"source={source_index}, line={node.lineno}. Use record['event'] "
+                    "for accepted/completed transaction outcomes, record['events'] "
+                    "for cycle predicates, or record['signals'][<exact frozen-contract "
+                    "signal name>] for sampled DUT signals; do not move a semantic "
+                    f"alias into record['signals'] under the same invented key."
+                    f"{signal_guidance}"
+                )
+            if (
+                signal_key is not None
+                and allowed_signal_names is not None
+                and signal_key not in allowed_signal_names
+            ):
+                errors.append(
+                    f"{trace_name} record['signals'] has no captured DUT signal "
+                    f"{signal_key!r}; source={source_index}, line={node.lineno}. "
+                    "Use only frozen-contract signal names in record['signals']; "
+                    "derive semantic events and correlation state from the canonical "
+                    "event/cycle timeline rather than inventing helper fields"
+                )
+            if isinstance(node, ast.Compare) and trace_name == "transaction_trace":
+                operands = [node.left, *node.comparators]
+                for left, right in zip(operands, operands[1:]):
+                    event_side: ast.AST | None = None
+                    literal_side: ast.AST | None = None
+                    if is_transaction_event_access(left):
+                        event_side, literal_side = left, right
+                    elif is_transaction_event_access(right):
+                        event_side, literal_side = right, left
+                    if event_side is None or literal_side is None:
+                        continue
+                    invalid_values = sorted(
+                        literal_strings(literal_side) - transaction_event_values
+                    )
+                    if invalid_values:
+                        errors.append(
+                            "transaction_trace record['event'] uses unsupported "
+                            f"literal value(s) {invalid_values!r}; source={source_index}, "
+                            f"line={node.lineno}. The reusable trace emits only "
+                            f"{sorted(transaction_event_values)!r}; use 'accepted' for "
+                            "request acceptance and 'success'/'error'/'completed' for "
+                            "response outcomes instead of inventing compound event names"
+                        )
+    return sorted(set(errors))
+
+
+def _called_protocol_trace_parameter_hints(
+    tree: ast.AST,
+) -> dict[str, dict[int, str]]:
+    """Infer trace-typed arguments passed from tests into support helpers.
+
+    Extension assertions commonly filter ``transaction_trace`` into local
+    ``accepted``/``retired`` lists before passing those records to a reference
+    oracle. Preserve the canonical record type across that call boundary so an
+    oracle cannot read invented fields merely because the list was renamed.
+    """
+
+    hints: dict[str, dict[int, str]] = {}
+    for definition in ast.walk(tree):
+        if not isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        aliases: dict[str, str] = {}
+        for parameter in [*definition.args.posonlyargs, *definition.args.args]:
+            if parameter.arg.endswith("transaction_trace"):
+                aliases[parameter.arg] = "transaction_trace"
+            elif parameter.arg.endswith("cycle_trace"):
+                aliases[parameter.arg] = "cycle_trace"
+
+        changed = True
+        while changed:
+            changed = False
+            for assignment in ast.walk(definition):
+                if not isinstance(assignment, (ast.Assign, ast.AnnAssign)):
+                    continue
+                value = assignment.value
+                trace_name: str | None = None
+                if isinstance(value, ast.Name):
+                    trace_name = aliases.get(value.id)
+                elif isinstance(value, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+                    iterator_names = [
+                        generator.iter.id
+                        for generator in value.generators
+                        if isinstance(generator.iter, ast.Name)
+                    ]
+                    iterator_types = {
+                        aliases[name] for name in iterator_names if name in aliases
+                    }
+                    if len(iterator_types) == 1:
+                        trace_name = next(iter(iterator_types))
+                if trace_name is None:
+                    continue
+                targets = (
+                    assignment.targets
+                    if isinstance(assignment, ast.Assign)
+                    else [assignment.target]
+                )
+                for target in targets:
+                    if isinstance(target, ast.Name) and aliases.get(target.id) != trace_name:
+                        aliases[target.id] = trace_name
+                        changed = True
+
+        for call in ast.walk(definition):
+            if not (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Name)
+            ):
+                continue
+            for index, argument in enumerate(call.args):
+                if not isinstance(argument, ast.Name) or argument.id not in aliases:
+                    continue
+                trace_name = aliases[argument.id]
+                existing = hints.setdefault(call.func.id, {}).get(index)
+                if existing is None or existing == trace_name:
+                    hints[call.func.id][index] = trace_name
+                else:
+                    hints[call.func.id].pop(index, None)
+    return hints
 
 
 def _overlapping_unqueued_command_starts(
@@ -2802,7 +3918,14 @@ def _reset_abort_operation_records_without_relaunch(
         and signal.get("role") == "valid"
         and signal.get("direction") == "input"
     }
-    reset_rules = str(contract.get("global_handshake_rules", {}).get("stall_behavior", "")).lower()
+    raw_handshake_rules = contract.get("global_handshake_rules", {})
+    if isinstance(raw_handshake_rules, Mapping):
+        reset_rules = str(raw_handshake_rules.get("stall_behavior", "")).lower()
+    else:
+        # Older and extension-owned interface contracts legitimately use one
+        # descriptive string here.  Such a contract has no structured reset
+        # discard policy to enforce, but it must never crash TB validation.
+        reset_rules = str(raw_handshake_rules).lower()
     if not reset_values or not command_valid_signals or "non-attributable discard" not in reset_rules:
         return []
     try:
@@ -2914,6 +4037,33 @@ def _reset_abort_operation_records_without_relaunch(
     return errors
 
 
+def _shell_escaped_subscript_keys(tree: ast.AST) -> list[tuple[int, str]]:
+    """Find shell-quoting fragments accidentally embedded in Python dict keys.
+
+    Model-authored source can preserve the shell escape sequence used to splice a
+    single quote. Python accepts it as adjacent string literals, but the resulting
+    key contains quote characters and fails only at simulation time.
+    """
+
+    findings: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.slice, ast.Constant)
+            and isinstance(node.slice.value, str)
+        ):
+            continue
+        value = node.slice.value
+        if (
+            len(value) >= 4
+            and value[0] == value[-1]
+            and value[0] in {"'", '"'}
+            and {"'", '"'} <= set(value)
+        ):
+            findings.append((getattr(node, "lineno", 0), value))
+    return findings
+
+
 def _vacuous_single_bit_signal_assertions(
     tree: ast.AST,
     source_index: int,
@@ -2989,6 +4139,13 @@ def _unused_passed_helper_parameters(tree: ast.AST, source_index: int) -> list[s
         if len(matches) != 1:
             continue
         helper = matches[0]
+        if not isinstance(helper, ast.AsyncFunctionDef):
+            # This rule is specifically about behavior-shaping stimulus controls.
+            # A synchronous checker/classifier may accept several observed values
+            # and legitimately decide that one is irrelevant to a particular
+            # contract-local predicate; extension authoring validates its own
+            # branch parameters separately.
+            continue
         params = {
             arg.arg
             for arg in (

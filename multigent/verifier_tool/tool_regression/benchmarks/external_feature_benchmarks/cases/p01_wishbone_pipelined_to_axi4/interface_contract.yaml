@@ -1,0 +1,658 @@
+clock: i_clk
+reset: i_reset
+channels:
+- name: axi_aw
+  direction: output
+  protocol_profile: axi4
+  data_objects: []
+  ordering: in_order_per_id
+  framing: single_beat
+  metadata:
+  - protocol_group=axi protocol_channel=write_address
+  - protocol_capability.max_outstanding=64
+  - protocol_capability.read_write_concurrency=false
+  - protocol_capability.address_bins=aligned
+  - protocol_capability.boundary_bins=ends_before_boundary|ends_at_boundary
+  - protocol_capability.alignment_bins=aligned
+  - protocol_capability.burst_length_bins=single
+  - protocol_capability.burst_type_bins=incrementing
+  - protocol_capability.transfer_size_bins=narrow
+  - protocol_capability.lock_bins=zero
+  - protocol_capability.cache_bins=nonzero
+  - protocol_capability.prot_bins=nonzero
+  - protocol_capability.qos_bins=zero
+  - protocol_capability.exclusive_access=false
+  - protocol_capability.write_strobe_bins=all_zero|sparse
+  - protocol_capability.protection_bins=none
+  - protocol_capability.write_order_bins=address_first|data_first|same_cycle
+  protocol_capabilities:
+    sideband_bins_by_channel:
+      write_address:
+        id: [zero]
+      write_response:
+        id: [zero]
+      read_address:
+        id: [nonzero]
+      read_data:
+        id: [nonzero]
+- name: axi_w
+  direction: output
+  protocol_profile: axi4
+  data_objects: []
+  ordering: in_order_per_id
+  framing: single_beat
+  metadata:
+  - protocol_group=axi protocol_channel=write_data
+  - protocol_capability.max_outstanding=64
+  - protocol_capability.read_write_concurrency=false
+  - protocol_capability.address_bins=aligned
+  - protocol_capability.boundary_bins=ends_before_boundary|ends_at_boundary
+  - protocol_capability.alignment_bins=aligned
+  - protocol_capability.burst_length_bins=single
+  - protocol_capability.burst_type_bins=incrementing
+  - protocol_capability.transfer_size_bins=narrow
+  - protocol_capability.lock_bins=zero
+  - protocol_capability.cache_bins=nonzero
+  - protocol_capability.prot_bins=nonzero
+  - protocol_capability.qos_bins=zero
+  - protocol_capability.exclusive_access=false
+  - protocol_capability.write_strobe_bins=all_zero|sparse
+  - protocol_capability.protection_bins=none
+  - protocol_capability.write_order_bins=address_first|data_first|same_cycle
+- name: axi_b
+  direction: input
+  protocol_profile: axi4
+  data_objects: []
+  ordering: in_order_per_id
+  framing: single_beat
+  metadata:
+  - protocol_group=axi protocol_channel=write_response
+  - protocol_capability.max_outstanding=64
+  - protocol_capability.read_write_concurrency=false
+  - protocol_capability.address_bins=aligned
+  - protocol_capability.boundary_bins=ends_before_boundary|ends_at_boundary
+  - protocol_capability.alignment_bins=aligned
+  - protocol_capability.burst_length_bins=single
+  - protocol_capability.burst_type_bins=incrementing
+  - protocol_capability.transfer_size_bins=narrow
+  - protocol_capability.lock_bins=zero
+  - protocol_capability.cache_bins=nonzero
+  - protocol_capability.prot_bins=nonzero
+  - protocol_capability.qos_bins=zero
+  - protocol_capability.exclusive_access=false
+  - protocol_capability.write_strobe_bins=all_zero|sparse
+  - protocol_capability.protection_bins=none
+  - protocol_capability.write_order_bins=address_first|data_first|same_cycle
+- name: axi_ar
+  direction: output
+  protocol_profile: axi4
+  data_objects: []
+  ordering: in_order_per_id
+  framing: single_beat
+  metadata:
+  - protocol_group=axi protocol_channel=read_address
+  - protocol_capability.max_outstanding=64
+  - protocol_capability.read_write_concurrency=false
+  - protocol_capability.address_bins=aligned
+  - protocol_capability.boundary_bins=ends_before_boundary|ends_at_boundary
+  - protocol_capability.alignment_bins=aligned
+  - protocol_capability.burst_length_bins=single
+  - protocol_capability.burst_type_bins=incrementing
+  - protocol_capability.transfer_size_bins=narrow
+  - protocol_capability.lock_bins=zero
+  - protocol_capability.cache_bins=nonzero
+  - protocol_capability.prot_bins=nonzero
+  - protocol_capability.qos_bins=zero
+  - protocol_capability.exclusive_access=false
+  - protocol_capability.write_strobe_bins=all_zero|sparse
+  - protocol_capability.protection_bins=none
+  - protocol_capability.write_order_bins=address_first|data_first|same_cycle
+- name: axi_r
+  direction: input
+  protocol_profile: axi4
+  data_objects: []
+  ordering: in_order_per_id
+  framing: single_beat
+  metadata:
+  - protocol_group=axi protocol_channel=read_data
+  - protocol_capability.max_outstanding=64
+  - protocol_capability.read_write_concurrency=false
+  - protocol_capability.address_bins=aligned
+  - protocol_capability.boundary_bins=ends_before_boundary|ends_at_boundary
+  - protocol_capability.alignment_bins=aligned
+  - protocol_capability.burst_length_bins=single
+  - protocol_capability.burst_type_bins=incrementing
+  - protocol_capability.transfer_size_bins=narrow
+  - protocol_capability.lock_bins=zero
+  - protocol_capability.cache_bins=nonzero
+  - protocol_capability.prot_bins=nonzero
+  - protocol_capability.qos_bins=zero
+  - protocol_capability.exclusive_access=false
+  - protocol_capability.write_strobe_bins=all_zero|sparse
+  - protocol_capability.protection_bins=none
+  - protocol_capability.write_order_bins=address_first|data_first|same_cycle
+- name: wb_request
+  direction: input
+  protocol_profile: wishbone_b4_pipelined
+  protocol_group: wishbone
+  data_objects: []
+  ordering: source-defined
+  framing: source-defined
+- name: wb_response
+  direction: output
+  protocol_profile: wishbone_b4_pipelined
+  protocol_group: wishbone
+  data_objects: []
+  ordering: source-defined
+  framing: source-defined
+signals:
+- name: i_clk
+  role: clock
+  channel: null
+  direction: input
+  width: 1
+  signed: false
+  semantic: Free-running system clock.
+- name: i_reset
+  role: reset
+  channel: null
+  direction: input
+  width: 1
+  signed: false
+  semantic: Active-high synchronous reset.
+- name: o_axi_awvalid
+  role: valid
+  channel: axi_aw
+  direction: output
+  width: 1
+  signed: false
+- name: o_axi_awid
+  role: transaction_id
+  channel: axi_aw
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: identifier
+  protocol_field: id
+  semantic: protocol_field=id
+- name: o_axi_awaddr
+  role: payload
+  channel: axi_aw
+  direction: output
+  width: 28
+  signed: false
+  semantic_class: address
+  protocol_field: addr
+  semantic: protocol_field=addr
+- name: o_axi_awlen
+  role: metadata
+  channel: axi_aw
+  direction: output
+  width: 8
+  signed: false
+  semantic_class: length
+  protocol_field: len
+  semantic: protocol_field=len
+- name: o_axi_awsize
+  role: metadata
+  channel: axi_aw
+  direction: output
+  width: 3
+  signed: false
+  semantic_class: size
+  protocol_field: size
+  semantic: protocol_field=size
+- name: o_axi_awburst
+  role: metadata
+  channel: axi_aw
+  direction: output
+  width: 2
+  signed: false
+  semantic_class: burst_type
+  protocol_field: burst
+  semantic: protocol_field=burst
+- name: o_axi_awlock
+  role: metadata
+  channel: axi_aw
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: configuration
+  protocol_field: lock
+  semantic: protocol_field=lock
+- name: o_axi_awcache
+  role: metadata
+  channel: axi_aw
+  direction: output
+  width: 4
+  signed: false
+  semantic_class: configuration
+  protocol_field: cache
+  semantic: protocol_field=cache
+- name: o_axi_awprot
+  role: metadata
+  channel: axi_aw
+  direction: output
+  width: 3
+  signed: false
+  semantic_class: protection
+  protocol_field: prot
+  semantic: protocol_field=prot
+- name: o_axi_awqos
+  role: metadata
+  channel: axi_aw
+  direction: output
+  width: 4
+  signed: false
+  semantic_class: priority
+  protocol_field: qos
+  semantic: protocol_field=qos
+- name: o_axi_wvalid
+  role: valid
+  channel: axi_w
+  direction: output
+  width: 1
+  signed: false
+- name: o_axi_wdata
+  role: payload
+  channel: axi_w
+  direction: output
+  width: 128
+  signed: false
+  semantic_class: data
+  protocol_field: data
+  semantic: protocol_field=data
+- name: o_axi_wstrb
+  role: keep
+  channel: axi_w
+  direction: output
+  width: 16
+  signed: false
+  semantic_class: byte_enable
+  protocol_field: strb
+  semantic: protocol_field=strb
+- name: o_axi_wlast
+  role: last
+  channel: axi_w
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: framing
+  protocol_field: last
+  semantic: protocol_field=last
+- name: i_axi_bvalid
+  role: valid
+  channel: axi_b
+  direction: input
+  width: 1
+  signed: false
+- name: i_axi_bid
+  role: transaction_id
+  channel: axi_b
+  direction: input
+  width: 1
+  signed: false
+  semantic_class: identifier
+  protocol_field: id
+  semantic: protocol_field=id
+- name: i_axi_bresp
+  role: metadata
+  channel: axi_b
+  direction: input
+  width: 2
+  signed: false
+  semantic_class: response_code
+  protocol_field: resp
+  semantic: protocol_field=resp
+- name: o_axi_arvalid
+  role: valid
+  channel: axi_ar
+  direction: output
+  width: 1
+  signed: false
+- name: o_axi_arid
+  role: transaction_id
+  channel: axi_ar
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: identifier
+  protocol_field: id
+  semantic: protocol_field=id
+- name: o_axi_araddr
+  role: payload
+  channel: axi_ar
+  direction: output
+  width: 28
+  signed: false
+  semantic_class: address
+  protocol_field: addr
+  semantic: protocol_field=addr
+- name: o_axi_arlen
+  role: metadata
+  channel: axi_ar
+  direction: output
+  width: 8
+  signed: false
+  semantic_class: length
+  protocol_field: len
+  semantic: protocol_field=len
+- name: o_axi_arsize
+  role: metadata
+  channel: axi_ar
+  direction: output
+  width: 3
+  signed: false
+  semantic_class: size
+  protocol_field: size
+  semantic: protocol_field=size
+- name: o_axi_arburst
+  role: metadata
+  channel: axi_ar
+  direction: output
+  width: 2
+  signed: false
+  semantic_class: burst_type
+  protocol_field: burst
+  semantic: protocol_field=burst
+- name: o_axi_arlock
+  role: metadata
+  channel: axi_ar
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: configuration
+  protocol_field: lock
+  semantic: protocol_field=lock
+- name: o_axi_arcache
+  role: metadata
+  channel: axi_ar
+  direction: output
+  width: 4
+  signed: false
+  semantic_class: configuration
+  protocol_field: cache
+  semantic: protocol_field=cache
+- name: o_axi_arprot
+  role: metadata
+  channel: axi_ar
+  direction: output
+  width: 3
+  signed: false
+  semantic_class: protection
+  protocol_field: prot
+  semantic: protocol_field=prot
+- name: o_axi_arqos
+  role: metadata
+  channel: axi_ar
+  direction: output
+  width: 4
+  signed: false
+  semantic_class: priority
+  protocol_field: qos
+  semantic: protocol_field=qos
+- name: i_axi_rvalid
+  role: valid
+  channel: axi_r
+  direction: input
+  width: 1
+  signed: false
+- name: i_axi_rid
+  role: transaction_id
+  channel: axi_r
+  direction: input
+  width: 1
+  signed: false
+  semantic_class: identifier
+  protocol_field: id
+  semantic: protocol_field=id
+- name: i_axi_rdata
+  role: payload
+  channel: axi_r
+  direction: input
+  width: 128
+  signed: false
+  semantic_class: data
+  protocol_field: data
+  semantic: protocol_field=data
+- name: i_axi_rresp
+  role: metadata
+  channel: axi_r
+  direction: input
+  width: 2
+  signed: false
+  semantic_class: response_code
+  protocol_field: resp
+  semantic: protocol_field=resp
+- name: i_axi_rlast
+  role: last
+  channel: axi_r
+  direction: input
+  width: 1
+  signed: false
+  semantic_class: framing
+  protocol_field: last
+  semantic: protocol_field=last
+- name: i_axi_awready
+  role: ready
+  channel: axi_aw
+  direction: input
+  width: 1
+  signed: false
+- name: i_axi_wready
+  role: ready
+  channel: axi_w
+  direction: input
+  width: 1
+  signed: false
+- name: o_axi_bready
+  role: ready
+  channel: axi_b
+  direction: output
+  width: 1
+  signed: false
+- name: i_axi_arready
+  role: ready
+  channel: axi_ar
+  direction: input
+  width: 1
+  signed: false
+- name: o_axi_rready
+  role: ready
+  channel: axi_r
+  direction: output
+  width: 1
+  signed: false
+- name: i_wb_cyc
+  role: metadata
+  channel: wb_request
+  direction: input
+  width: 1
+  signed: false
+  semantic_class: command
+  semantic: Wishbone cycle qualifier.
+- name: i_wb_stb
+  role: valid
+  channel: wb_request
+  direction: input
+  width: 1
+  signed: false
+  semantic: Wishbone request strobe.
+- name: i_wb_we
+  role: metadata
+  channel: wb_request
+  direction: input
+  width: 1
+  signed: false
+  semantic_class: command
+  semantic: Wishbone write enable.
+- name: i_wb_addr
+  role: payload
+  channel: wb_request
+  direction: input
+  width: 26
+  signed: false
+  semantic_class: address
+  semantic: Wishbone word address.
+- name: i_wb_data
+  role: payload
+  channel: wb_request
+  direction: input
+  width: 32
+  signed: false
+  semantic_class: data
+  semantic: Wishbone write data.
+- name: i_wb_sel
+  role: keep
+  channel: wb_request
+  direction: input
+  width: 4
+  signed: false
+  semantic_class: byte_enable
+  semantic: Wishbone byte select.
+- name: o_wb_stall
+  role: metadata
+  channel: wb_response
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: configuration
+  semantic: Active-high Wishbone backpressure; not READY.
+- name: o_wb_ack
+  role: valid
+  channel: wb_response
+  direction: output
+  width: 1
+  signed: false
+  semantic: Wishbone completion acknowledgement.
+- name: o_wb_data
+  role: payload
+  channel: wb_response
+  direction: output
+  width: 32
+  signed: false
+  semantic_class: data
+  semantic: Wishbone read data.
+- name: o_wb_err
+  role: metadata
+  channel: wb_response
+  direction: output
+  width: 1
+  signed: false
+  semantic_class: response_code
+  semantic: Wishbone error termination.
+global_handshake_rules: AXI4 channels obey AXI4; Wishbone events are defined by protocol_semantics.
+protocol_semantics:
+- name: wishbone_b4_pipelined
+  description: Wishbone B4 pipelined request and registered response behavior at the audited slave boundary.
+  protocol_groups: [wishbone]
+  clock: {signal: i_clk, edge: rising}
+  events:
+  - {name: request_presented, expression: i_wb_cyc && i_wb_stb, description: A source presents a request.}
+  - {name: request_ready, expression: '!o_wb_stall', description: The bridge can accept a request.}
+  - {name: request_accepted, expression: request_presented && request_ready, description: A request is accepted on this edge.}
+  - {name: request_stalled, expression: request_presented && !request_ready, description: A presented request is backpressured.}
+  - {name: write_request_stalled, expression: request_stalled && i_wb_we, description: A stalled write request must retain write data.}
+  - {name: response_success, expression: i_wb_cyc && o_wb_ack, description: One accepted request retires successfully.}
+  - {name: response_error, expression: i_wb_cyc && o_wb_err, description: One accepted request retires with an error.}
+  - {name: response_completed, expression: response_success || response_error, description: Exactly one response terminates a request.}
+  - {name: cycle_cancelled, expression: '!i_wb_cyc', description: Dropping CYC cancels the visible source cycle.}
+  transactions:
+  - name: wishbone_request
+    channel: wb_request
+    presented_event: request_presented
+    ready_event: request_ready
+    accepted_event: request_accepted
+    stalled_event: request_stalled
+    completed_event: response_completed
+    success_event: response_success
+    error_event: response_error
+    content_signals: [i_wb_we, i_wb_addr, i_wb_data, i_wb_sel]
+    stable_while_stalled: true
+    stability_rules:
+    - id: request_control
+      while_event: request_stalled
+      signals: [i_wb_stb, i_wb_we, i_wb_addr, i_wb_sel]
+    - id: write_data
+      while_event: write_request_stalled
+      signals: [i_wb_data]
+    source_drive:
+      presented_assignments:
+      - {signal: i_wb_cyc, value: 1}
+      - {signal: i_wb_stb, value: 1}
+      idle_assignments:
+      - {signal: i_wb_cyc, value: 0}
+      - {signal: i_wb_stb, value: 0}
+      post_accept_assignments:
+      - {signal: i_wb_cyc, value: 1}
+      - {signal: i_wb_stb, value: 0}
+      driven_fields: [i_wb_we, i_wb_addr, i_wb_data, i_wb_sel]
+      completion_mode: wait_for_all_completions
+  flow_control:
+    maximum_outstanding: 64
+    ordering: oldest_outstanding
+    in_order: true
+  cancellation:
+    supported: true
+    trigger_event: cycle_cancelled
+    pending_behavior: flush
+  custom_rules:
+  - id: axi_translation_and_read_lane
+    description: Check fixed AXI IDs, byte-address translation, saved read-lane association, and returned read data.
+    required_observations: [transaction_trace, cycle_trace]
+    extension_request_id: protocol.p01_wishbone_axi_translation_residuals
+  - id: abort_flush_and_read_data_association
+    description: Check returned read-data association and suppression of stale source-visible responses after reset or cycle cancellation.
+    required_observations: [transaction_trace, cycle_trace]
+    extension_request_id: protocol.p01_wishbone_axi_translation_residuals
+protocol_event_relations:
+- id: axi_read_response_to_wishbone_completion
+  description: A transferred AXI read response produces its registered Wishbone completion on the following cycle.
+  clock: {signal: i_clk, edge: rising}
+  cause:
+    kind: standard_channel_transfer
+    protocol_group: axi
+    protocol_channel: read_data
+  effect:
+    kind: protocol_event
+    profile: wishbone_b4_pipelined
+    event: response_completed
+  minimum_latency_cycles: 1
+  maximum_latency_cycles: 1
+  ordering: fifo
+  maximum_outstanding: 64
+  unmatched_effect: ignore
+  require_effect_before_test_end: true
+  cancellation:
+    event:
+      kind: protocol_event
+      profile: wishbone_b4_pipelined
+      event: cycle_cancelled
+    pending_behavior: flush
+- id: axi_write_response_to_wishbone_completion
+  description: A transferred AXI write response produces its registered Wishbone completion on the following cycle.
+  clock: {signal: i_clk, edge: rising}
+  cause:
+    kind: standard_channel_transfer
+    protocol_group: axi
+    protocol_channel: write_response
+  effect:
+    kind: protocol_event
+    profile: wishbone_b4_pipelined
+    event: response_completed
+  minimum_latency_cycles: 1
+  maximum_latency_cycles: 1
+  ordering: fifo
+  maximum_outstanding: 64
+  unmatched_effect: ignore
+  require_effect_before_test_end: true
+  cancellation:
+    event:
+      kind: protocol_event
+      profile: wishbone_b4_pipelined
+      event: cycle_cancelled
+    pending_behavior: flush
+source_boundary:
+  top: wbm2axisp
+  target: rtl/wbm2axisp.v
+  binding_status: audited_default_parameters

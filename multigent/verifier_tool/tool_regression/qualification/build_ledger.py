@@ -1,9 +1,9 @@
 """Generate/refresh `ledger.json`: the machine-readable qualification ledger.
 
-Enumerates the exact 166 runtime verification targets (31 standard protocol rules + 1
+Enumerates the exact 232 runtime verification targets (31 standard protocol rules + 1
 explicit generic-channel reset rule + 1 protocol driver invariant + 77 protocol
 feature/bin rows + 32 lifecycle feature/bin rows
-+ 24 operation bins) and 91
++ 90 operation bins) and 91
 metadata/configuration entries (71 verification tags + 6 selectable protocol profiles + 14
 lifecycle policy choices) named in the qualification task, transcribed 1:1 from
 the pool YAML sources and the existing ledger. Running this script never simulates anything. It preserves
@@ -221,6 +221,51 @@ OPERATION_BINS = [
 ]
 assert sum(len(b) for _, b in OPERATION_BINS) == 24
 
+SPARSE_ATTENTION_BINS = [
+    ("dimensions", ["fixed_shape"]),
+    ("operand_values", ["zero", "positive", "negative", "minimum", "maximum"]),
+    ("sparsity_patterns", ["empty_row", "singleton_row", "partial_row", "dense_row"]),
+    ("attention_scores", ["zero_score", "positive_score", "negative_score"]),
+    ("stage_handoffs", ["qk_to_scale_forwarded", "active_mask_preserved", "inactive_mask_zeroed", "normalization_bypass_forwarded", "value_reduction_consumed"]),
+    ("output_values", ["zero_output", "positive_output", "negative_output"]),
+]
+assert sum(len(b) for _, b in SPARSE_ATTENTION_BINS) == 21
+
+QK_SCORE_BINS = [
+    ("dimensions", ["fixed_shape"]),
+    ("operand_values", ["zero", "positive", "negative", "minimum", "maximum"]),
+    ("accumulation", ["ordinary", "positive_boundary", "negative_boundary", "positive_overflow", "negative_overflow"]),
+    ("attention_scores", ["zero_score", "positive_score", "negative_score"]),
+]
+assert sum(len(b) for _, b in QK_SCORE_BINS) == 14
+
+ATTENTION_SCALE_BINS = [
+    ("dimensions", ["fixed_shape"]),
+    ("score_values", ["zero", "positive", "negative", "minimum", "maximum"]),
+    ("rounding", ["exact", "positive_fraction_discarded", "negative_fraction_discarded"]),
+    ("scaled_values", ["zero_scaled", "positive_scaled", "negative_scaled"]),
+    ("attenuation", ["zero_preserved", "magnitude_reduced"]),
+]
+assert sum(len(b) for _, b in ATTENTION_SCALE_BINS) == 14
+
+ATTENTION_MASK_BINS = [
+    ("dimensions", ["fixed_shape"]),
+    ("score_values", ["zero", "positive", "negative", "minimum", "maximum"]),
+    ("mask_values", ["drop", "keep"]),
+    ("sparsity_patterns", ["empty_row", "singleton_row", "partial_row", "dense_row"]),
+    ("masked_values", ["zero_masked", "positive_masked", "negative_masked"]),
+    ("mask_effects", ["active_score_preserved", "inactive_nonzero_zeroed"]),
+]
+assert sum(len(b) for _, b in ATTENTION_MASK_BINS) == 17
+
+OPERATION_FAMILY_BINS = {
+    "matrix_multiply": OPERATION_BINS,
+    "sparse_attention": SPARSE_ATTENTION_BINS,
+    "attention_qk": QK_SCORE_BINS,
+    "attention_scale": ATTENTION_SCALE_BINS,
+    "attention_mask": ATTENTION_MASK_BINS,
+}
+
 
 def build_all_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -260,10 +305,17 @@ def build_all_rows() -> list[dict[str, Any]]:
         for bin_name in bins:
             rows.append(_row(f"lfeat:{section}.{feature}.{bin_name}", "lifecycle_feature_bin", "lifecycle",
                               section=section, feature=feature, bin=bin_name))
-    for concept, bins in OPERATION_BINS:
-        for bin_name in bins:
-            rows.append(_row(f"ofeat:matrix_multiply.{concept}.{bin_name}", "operation_bin", "operation",
-                              family="matrix_multiply", concept=concept, bin=bin_name))
+    for family, concepts in OPERATION_FAMILY_BINS.items():
+        for concept, bins in concepts:
+            for bin_name in bins:
+                rows.append(_row(
+                    f"ofeat:{family}.{concept}.{bin_name}",
+                    "operation_bin",
+                    "operation",
+                    family=family,
+                    concept=concept,
+                    bin=bin_name,
+                ))
     return rows
 
 
@@ -279,12 +331,64 @@ def main() -> None:
     metadata_categories = {"tag", "protocol_profile", "lifecycle_policy_choice"}
     runtime_count = sum(1 for r in rows if r["category"] in runtime_categories)
     metadata_count = sum(1 for r in rows if r["category"] in metadata_categories)
-    if runtime_count != 166:
-        raise AssertionError(f"expected 166 runtime targets, got {runtime_count}")
+    if runtime_count != 232:
+        raise AssertionError(f"expected 232 runtime targets, got {runtime_count}")
     if metadata_count != 91:
         raise AssertionError(f"expected 91 metadata entries, got {metadata_count}")
     if len(rows) != len({r["id"] for r in rows}):
         raise AssertionError("duplicate row id generated")
+
+    for row in rows:
+        if row.get("family") != "attention_scale":
+            continue
+        row.update(
+            {
+                "status": "STRICT_PASS",
+                "contract": "fixed_point_attention_scale D=64 F=8 multiplier=32 signed s16",
+                "generated_tb_hash": "9e30c78ac5961f664aff525d35b588a80b881c00a647473043f4d79cba466b3b",
+                "resolved_feature_plan_hash": "60bd76726ca97808b60ec051c29e370a19f717c99e7fc41ca815eac983b7f2eb",
+                "compliant_rtl": "attention_scale_fixed.sv sha256=b33c17e2b3f2fbd8e8536ac29252212cb70169d362b3f7026d0ac68a6562ee35",
+                "mutant_or_negative_contract": "73 compile-valid coefficient/shift/signedness/data/protocol/reset RTL mutants",
+                "expected_diagnostic": "nonzero simulator exit from oracle, accounting, stall-stability, or reset-abort checker",
+                "actual_diagnostic": "73/73 compile-valid mutants rejected; zero survivors and zero invalid mutations",
+                "detection_mechanism": "canonical_pool_witness+signed16_exhaustive_oracle+ready_valid_temporal_checker",
+                "required_coverage": "all 14 attention_scale bins, minimum one checked hit each",
+                "actual_coverage": "14/14 bins; 65,536/65,536 signed inputs plus 870 pool/random elements",
+                "deterministic_seed": "0x5CA1E",
+                "evidence_paths": [
+                    "multigent/verifier_tool/tool_regression/benchmarks/attention_scale_fixed/EXHAUSTIVE_RESULT.md",
+                    "multigent/verifier_tool/tool_regression/benchmarks/attention_scale_fixed/qualify.py",
+                    "multigent/verifier_tool/tool_regression/rtl/test_attention_scale_fixed.py",
+                ],
+                "notes": "Scale-only stage; excludes mask, softmax, and V. Full JSON evidence is reproducible with the command in EXHAUSTIVE_RESULT.md.",
+            }
+        )
+
+    for row in rows:
+        if row.get("family") != "attention_mask":
+            continue
+        row.update(
+            {
+                "status": "STRICT_PASS",
+                "contract": "binary_attention_mask Q=2 S=3 signed s16 score, u1 binary_keep mask",
+                "generated_tb_hash": "37e654d8fc8a962544c1b23f8e42b3739d79c75f175e79346146b8e91942f2d3",
+                "resolved_feature_plan_hash": "356b52347890b7661d132e97ba66aa6a39fc3e5c90ec228679049d1a7faf0f06",
+                "compliant_rtl": "attention_mask_binary.sv sha256=6c6495a09c5e7a6affc885fd3771c6fa385f66d1e8473ce79da8604bbb1f38cc",
+                "mutant_or_negative_contract": "59 compile-valid polarity/data/alignment/protocol/reset RTL mutants",
+                "expected_diagnostic": "nonzero simulator exit from oracle, independent-input accounting, stall-stability, or reset-abort checker",
+                "actual_diagnostic": "59/59 compile-valid mutants rejected; zero survivors and zero invalid mutations",
+                "detection_mechanism": "canonical_pool_witness+signed16_x_binary_mask_exhaustive_oracle+independent_ready_valid_temporal_checker",
+                "required_coverage": "all 17 attention_mask bins, minimum one checked hit each",
+                "actual_coverage": "17/17 bins; 131,072/131,072 signed-score/mask pairs plus 888 pool/random elements",
+                "deterministic_seed": "0xA55A",
+                "evidence_paths": [
+                    "multigent/verifier_tool/tool_regression/benchmarks/attention_mask_binary/EXHAUSTIVE_RESULT.md",
+                    "multigent/verifier_tool/tool_regression/benchmarks/attention_mask_binary/qualify.py",
+                    "multigent/verifier_tool/tool_regression/rtl/test_attention_mask_binary.py",
+                ],
+                "notes": "Mask-only stage; mask 1 preserves and 0 emits zero. Excludes softmax and V. Score and mask streams are stalled independently to prove coordinate alignment.",
+            }
+        )
 
     existing: dict[str, Any] = {}
     if LEDGER_PATH.is_file():
@@ -567,7 +671,14 @@ def main() -> None:
     added = 0
     for row in rows:
         if row["id"] in existing:
-            merged.append(existing[row["id"]])
+            # Scale qualification is fully regenerated from the frozen
+            # exhaustive benchmark above; keep its digests/evidence in sync
+            # instead of preserving a stale manually-edited copy.
+            merged.append(
+                row
+                if row.get("family") in {"attention_scale", "attention_mask"}
+                else existing[row["id"]]
+            )
         else:
             merged.append(row)
             added += 1

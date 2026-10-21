@@ -1,0 +1,12 @@
+{
+  "top": "gemm_layer",
+  "modules": [
+    {
+      "name": "gemm_layer",
+      "responsibility": "koios_gemm_layer",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

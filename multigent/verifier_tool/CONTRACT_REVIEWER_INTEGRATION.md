@@ -38,6 +38,12 @@ These follow from how the tool resolves contracts:
    side declares meaning and target only, and checker/coverage/stimulus code is
    Verifier-authored (see [`extensions/README.md`](extensions/README.md)). A review
    should not ask for checker code from the contract.
+6. **Compile new protocol semantics before accepting a protocol extension.** A
+   nonstandard protocol first declares `interface_contract.protocol_semantics`.
+   Contract Review validates its restricted boolean expressions, resolves exact
+   signal/event references, rejects cycles, and checks that every residual
+   `custom_rule` names a real protocol extension request. The whole protocol must
+   not be delegated merely because its profile name is absent from the pool.
 
 ## Entry points
 
@@ -87,7 +93,8 @@ These follow from how the tool resolves contracts:
 ```
 
 Checks it runs, in order (`contract_review/preflight.py`): `contract_vocabulary`,
-`extension_requests`, `signal_roles`, `interface_semantics`,
+`extension_requests`, `signal_roles`, `interface_semantics`, `protocol_semantics`,
+`protocol_semantics_extensions`, `protocol_event_relations`,
 `standard_protocol_bindings`, `operation_features`, `lifecycle_policy`,
 `reset_channel_policies`,
 `operation_arithmetic`, `operation_solver_compilation`, `standard_protocol_plan`, `interface_coverage_plan`,

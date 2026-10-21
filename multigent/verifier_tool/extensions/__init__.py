@@ -19,21 +19,31 @@ from .authoring import (
     with_architect_extension_request_schema,
     with_verifier_extension_bundle_schema,
 )
+from .retrieval import retrieve_extension_analogues
+from .coverage import (
+    ExtensionCoverageError,
+    build_extension_coverage_plan,
+    extension_coverage_obligation_id,
+)
 
 __all__ = [
     "BUNDLE_SCHEMA_PATH",
     "EXAMPLES_PATH",
+    "ExtensionCoverageError",
     "FeatureExtensionError",
     "REQUEST_SCHEMA_PATH",
     "build_feature_extension_manifest",
+    "build_extension_coverage_plan",
     "decode_verifier_extension_transport",
     "extension_bundle_schema",
     "extension_request_schema",
     "extension_requests",
+    "extension_coverage_obligation_id",
     "interface_vocabulary_extensions",
     "render_architect_extension_request_guide",
     "render_extension_authoring_guide",
     "render_requested_extension_worklist",
+    "retrieve_extension_analogues",
     "validate_architect_extension_requests",
     "validate_verifier_extension_bundles",
     "with_architect_extension_request_schema",

@@ -17,6 +17,23 @@ from .signal_roles import (
     signals_with_roles,
     validate_interface_signal_roles,
 )
+from .protocol_semantics import (
+    ProtocolSemanticsError,
+    compile_protocol_expression,
+    compile_protocol_semantics,
+    evaluate_protocol_expression,
+    expression_signals,
+    protocol_semantics_schema,
+    validate_protocol_semantics_extensions,
+    with_protocol_semantics_schema,
+)
+from .protocol_event_relations import (
+    ProtocolEventRelationError,
+    compile_protocol_event_relations,
+    protocol_event_relations_schema,
+    validate_protocol_event_relations,
+    with_protocol_event_relations_schema,
+)
 from .standard_protocols import (
     STANDARD_PROFILES,
     STANDARD_PROTOCOL_CATALOG_PATH,
@@ -36,6 +53,13 @@ __all__ = [
     "load_interface_protocol_taxonomy",
     "load_interface_semantic_taxonomy",
     "load_signal_role_taxonomy",
+    "ProtocolSemanticsError",
+    "compile_protocol_expression",
+    "compile_protocol_semantics",
+    "evaluate_protocol_expression",
+    "expression_signals",
+    "protocol_semantics_schema",
+    "validate_protocol_semantics_extensions",
     "render_interface_semantic_catalog",
     "render_signal_role_catalog",
     "signals_with_coverage_tags",
@@ -50,4 +74,10 @@ __all__ = [
     "signals_with_roles",
     "validate_interface_semantics",
     "validate_interface_signal_roles",
+    "with_protocol_semantics_schema",
+    "ProtocolEventRelationError",
+    "compile_protocol_event_relations",
+    "protocol_event_relations_schema",
+    "validate_protocol_event_relations",
+    "with_protocol_event_relations_schema",
 ]

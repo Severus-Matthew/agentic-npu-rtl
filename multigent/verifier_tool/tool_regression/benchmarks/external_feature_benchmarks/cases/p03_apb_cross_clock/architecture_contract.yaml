@@ -1,0 +1,169 @@
+design:
+  name: apb_cross_clock
+  description: External benchmark P03 over ZipCPU wb2axip at exact revision 2e8d3bc2d26ddc33d1881022a2a2b9d3f0c16b9b,
+    target rtl/apbxclk.v.
+operations: []
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: single-inflight APB setup/access CDC
+reset:
+  signal: S_PRESETn
+  active_level: low
+  assertion: asynchronous
+  release: two destination stages then two source stages
+  behavior: suppress transfers until the bidirectional reset round trip completes
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- The APB state sequence is evaluated with a trivial register target.
+open_assumptions: []
+verification_extensions:
+- id: protocol.p03_apb_setup_access_phases
+  domain: protocol
+  feature_name: apb_setup_access_phases
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Single-inflight APB request crossing from S_APB_PCLK to M_APB_PCLK with
+      a returned completion pulse.
+    trigger: Capture one source APB setup phase when S_APB_PSEL && !S_APB_PENABLE
+      on a rising S_APB_PCLK edge.
+    required_behavior:
+    - A captured source setup is transferred only after the reset round trip has completed
+      and no prior response acknowledgement remains active.
+    - The destination presents one APB setup phase with M_APB_PSEL=1 and M_APB_PENABLE=0,
+      followed by an access phase with both high.
+    - During destination wait states, M_APB_PSEL, M_APB_PENABLE, address, write direction,
+      write data, byte strobes, and protection remain stable until M_APB_PREADY is
+      sampled high.
+    - Exactly one destination access completion returns as a one-S_APB_PCLK-cycle
+      S_APB_PREADY pulse; no second request begins until the prior acknowledgement
+      has crossed back and cleared.
+    - For default OPT_REGISTERED=0, ancillary request values are direct source-domain
+      values and therefore rely on the APB source holding them stable for the complete
+      source transfer. OPT_REGISTERED=1 instead captures those values before crossing.
+    end_condition: The source observes exactly one S_APB_PREADY completion for the
+      captured setup and the internal request/acknowledgement handshake returns idle.
+    forbidden_behavior:
+    - Enter destination access without a preceding destination setup phase.
+    - Change destination request content during a wait state, accept overlapping source
+      requests, or emit duplicate source completions.
+  reason: apb_setup_access_phases is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - clock_reset
+  - single_transfer_memory
+  parameters:
+    maximum_inflight: 1
+    source_setup: S_APB_PSEL && !S_APB_PENABLE
+    destination_completion: M_APB_PSEL && M_APB_PENABLE && M_APB_PREADY
+    default_opt_registered: 0
+- id: protocol.p03_apb_wait_state_and_error
+  domain: protocol
+  feature_name: apb_wait_state_and_error
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: APB wait-state stability and read/error response preservation across
+      the clock domains.
+    trigger: The destination APB request enters its access phase.
+    required_behavior:
+    - If M_APB_PREADY is low, the destination remains in the same APB access phase
+      and all producer-owned request content remains stable.
+    - When M_APB_PREADY is sampled high, M_APB_PRDATA and M_APB_PSLVERR from that
+      same destination completion are captured and associated with the sole in-flight
+      request.
+    - The matching S_APB_PRDATA is presented with the source completion. S_APB_PSLVERR
+      equals the captured destination error only for that completion and is not reused
+      by a later transfer.
+    - Read data, error, and ready are never credited before a completed destination
+      access or more than once for one source setup.
+    end_condition: The captured destination response has been returned once at the
+      source APB boundary.
+    forbidden_behavior:
+    - Treat M_APB_PREADY outside the destination access phase as a completion.
+    - Lose, duplicate, or associate PRDATA/PSLVERR with a different source request.
+  reason: apb_wait_state_and_error is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - clock_reset
+  - single_transfer_memory
+  parameters:
+    wait_state: M_APB_PSEL && M_APB_PENABLE && !M_APB_PREADY
+    response_capture: M_APB_PSEL && M_APB_PENABLE && M_APB_PREADY
+- id: protocol.p03_apb_cdc
+  domain: protocol
+  feature_name: apb_cdc
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Two-toggle-style APB request/acknowledgement CDC and bidirectional reset
+      synchronization in apbxclk.
+    trigger: S_PRESETn is released or a source setup toggles the request state.
+    required_behavior:
+    - Asserting S_PRESETn low asynchronously drives M_PRESETn low and clears request,
+      acknowledgement, PSEL, PENABLE, PREADY, and error state.
+    - 'Deassertion is synchronized: M_PRESETn rises only after two M_APB_PCLK sampling
+      stages, and source-side full_reset rises only after M_PRESETn has crossed back
+      through two S_APB_PCLK stages.'
+    - No source request is forwarded before full_reset is established. Each request
+      and acknowledgement passes through the declared two-stage receiving-domain pipelines
+      and is counted only on receiving clock edges.
+    - Arbitrary positive source/destination clock ratios and phase offsets preserve
+      one-request/one-response correspondence.
+    end_condition: The reset round trip is complete or the request and matching acknowledgement
+      have both returned to their idle levels.
+    forbidden_behavior:
+    - Release a destination or source-domain transaction state directly from an asynchronous
+      deassertion.
+    - Create, lose, or duplicate a transaction solely because the two clock domains
+      sample at different rates.
+  reason: apb_cdc is intentionally absent from the current verifier_tool pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - clock_reset
+  - single_transfer_memory
+  parameters:
+    request_synchronizer_stages: 2
+    acknowledgement_synchronizer_stages: 2
+    reset_release_stages_per_direction: 2
+    reset_assertion: asynchronous_active_low
+verification_scope:
+  domains:
+  - protocol
+  operation_coverage_required: false
+  operation_stimulus_ledger_required: false
+  reason: This bridge benchmark isolates transport semantics and declares no accelerator
+    operation.

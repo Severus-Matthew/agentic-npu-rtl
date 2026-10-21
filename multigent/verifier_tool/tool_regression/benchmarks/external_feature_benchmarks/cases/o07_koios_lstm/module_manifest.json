@@ -1,0 +1,12 @@
+{
+  "top": "lstm",
+  "modules": [
+    {
+      "name": "lstm",
+      "responsibility": "koios_lstm",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

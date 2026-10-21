@@ -67,6 +67,13 @@ def review_contract_deterministically(
     from multigent.verifier_tool.pool.role_pool.interface_semantics import (
         validate_interface_semantics,
     )
+    from multigent.verifier_tool.pool.role_pool.protocol_semantics import (
+        compile_protocol_semantics,
+        validate_protocol_semantics_extensions,
+    )
+    from multigent.verifier_tool.pool.role_pool.protocol_event_relations import (
+        compile_protocol_event_relations,
+    )
     from multigent.verifier_tool.pool.role_pool.signal_roles import (
         validate_interface_signal_roles,
     )
@@ -116,6 +123,18 @@ def review_contract_deterministically(
             role_extensions=role_extensions,
             semantic_class_extensions=semantic_extensions,
         ),
+    )
+    collect(
+        "protocol_semantics", "interface_contract",
+        lambda: compile_protocol_semantics(interface),
+    )
+    collect(
+        "protocol_semantics_extensions", "architecture_contract/interface_contract",
+        lambda: validate_protocol_semantics_extensions(architecture, interface),
+    )
+    collect(
+        "protocol_event_relations", "interface_contract",
+        lambda: compile_protocol_event_relations(interface),
     )
     collect(
         "standard_protocol_bindings", "interface_contract",

@@ -29,6 +29,39 @@ _MATRIX_CONCEPTS = {
     "bias", "activation", "quantization",
 }
 
+_SPARSE_ATTENTION_CONCEPTS = {
+    "dimensions",
+    "operand_values",
+    "sparsity_patterns",
+    "attention_scores",
+    "stage_handoffs",
+    "output_values",
+}
+
+_QK_SCORE_CONCEPTS = {
+    "dimensions",
+    "operand_values",
+    "accumulation",
+    "attention_scores",
+}
+
+_ATTENTION_SCALE_CONCEPTS = {
+    "dimensions",
+    "score_values",
+    "rounding",
+    "scaled_values",
+    "attenuation",
+}
+
+_ATTENTION_MASK_CONCEPTS = {
+    "dimensions",
+    "score_values",
+    "mask_values",
+    "sparsity_patterns",
+    "masked_values",
+    "mask_effects",
+}
+
 
 def supported_code_owned_concepts(metadata: Mapping[str, Any]) -> dict[str, set[str]]:
     result: dict[str, set[str]] = {}
@@ -53,6 +86,22 @@ def supported_code_owned_concepts(metadata: Mapping[str, Any]) -> dict[str, set[
             ):
                 concepts.add("quantization")
             result[str(operation.get("operation_name", ""))] = concepts
+        elif profile == "integer_sparse_attention":
+            result[str(operation.get("operation_name", ""))] = set(
+                _SPARSE_ATTENTION_CONCEPTS
+            )
+        elif profile == "integer_qk_score":
+            result[str(operation.get("operation_name", ""))] = set(
+                _QK_SCORE_CONCEPTS
+            )
+        elif profile == "fixed_point_attention_scale":
+            result[str(operation.get("operation_name", ""))] = set(
+                _ATTENTION_SCALE_CONCEPTS
+            )
+        elif profile == "binary_attention_mask":
+            result[str(operation.get("operation_name", ""))] = set(
+                _ATTENTION_MASK_CONCEPTS
+            )
     return result
 
 
@@ -111,6 +160,18 @@ def _lookup_payload(mapping: Mapping[str, Any], binding: Mapping[str, Any]) -> A
         "right_operand_matrix": ("b", "B"),
         "per_output_column_bias": ("bias",),
         "result_matrix": ("y", "Y"),
+        "query_matrix": ("q", "Q"),
+        "key_matrix": ("k", "K"),
+        "value_matrix": ("v", "V"),
+        "attention_mask": ("mask", "MASK"),
+        "attention_score_matrix": ("score", "S", "scores"),
+        "scaled_attention_score_matrix": (
+            "scaled_score", "scaled_scores", "scaled_S"
+        ),
+        "masked_attention_score_matrix": (
+            "masked_score", "masked_scores", "masked_S"
+        ),
+        "attention_result": ("y", "Y"),
     }.get(role, ())
     present = [name for name in aliases if name in mapping]
     if len(present) == 1:
@@ -180,9 +241,18 @@ def _binding_by_role(metadata: Mapping[str, Any], role: str) -> Mapping[str, Any
 
 
 def _dtype(metadata: Mapping[str, Any], name: str) -> Mapping[str, Any]:
-    accumulator = metadata.get("arithmetic", {}).get("accumulator_type", {})
-    if accumulator.get("name") == name:
-        return accumulator
+    arithmetic = metadata.get("arithmetic", {})
+    for field in (
+        "accumulator_type",
+        "score_product_data_type",
+        "score_accumulator_type",
+        "output_product_data_type",
+        "output_accumulator_type",
+        "result_data_type",
+    ):
+        dtype = arithmetic.get(field, {})
+        if isinstance(dtype, Mapping) and dtype.get("name") == name:
+            return dtype
     for item in [*metadata.get("inputs", []), *metadata.get("outputs", [])]:
         dtype = item.get("data_type", {})
         if dtype.get("name") == name:
@@ -526,10 +596,737 @@ def _classify_integer_matrix_multiply(job: CanonicalOperationJob) -> dict[str, l
     return result
 
 
+def integer_qk_score_events(
+    query: Sequence[int],
+    key: Sequence[int],
+    *,
+    query_count: int,
+    key_count: int,
+    feature_count: int,
+    score_accumulator_dtype: Mapping[str, Any],
+    score_reduction_conversion: str,
+    result_dtype: Mapping[str, Any],
+    result_conversion: str,
+) -> list[dict[str, Any]]:
+    """Evaluate raw row-major ``Q*K^T`` scores and retain each reduction trace."""
+
+    events: list[dict[str, Any]] = []
+    for query_index in range(query_count):
+        for key_index in range(key_count):
+            terms = [
+                query[query_index * feature_count + depth]
+                * key[key_index * feature_count + depth]
+                for depth in range(feature_count)
+            ]
+            score, mathematical, converted = _reduction_trace(
+                terms,
+                score_accumulator_dtype,
+                score_reduction_conversion,
+            )
+            result_value = score
+            if result_conversion == "wrap_twos_complement":
+                result_value = _wrap(result_value, result_dtype)
+            elif result_conversion != "exact":
+                raise CanonicalOperationError(
+                    f"Unsupported QK score result conversion {result_conversion!r}"
+                )
+            events.append(
+                {
+                    "coordinate": [query_index, key_index],
+                    "product_terms": list(terms),
+                    "mathematical_reduction_prefixes": list(mathematical),
+                    "converted_reduction_prefixes": list(converted),
+                    "reduction_final": score,
+                    "result_value": result_value,
+                }
+            )
+    return events
+
+
+def fixed_point_attention_scale_events(
+    scores: Sequence[int],
+    *,
+    query_count: int,
+    key_count: int,
+    scale_multiplier: int,
+    scale_shift: int,
+    rounding: str,
+    result_dtype: Mapping[str, Any],
+    result_conversion: str,
+) -> list[dict[str, Any]]:
+    """Scale signed QK scores by multiplier/2**shift in coordinate order."""
+
+    if len(scores) != query_count * key_count:
+        raise CanonicalOperationError(
+            "attention scale input count does not match Q by S shape"
+        )
+    if rounding != "arithmetic_floor":
+        raise CanonicalOperationError(
+            f"Unsupported attention-scale rounding {rounding!r}"
+        )
+    denominator = 1 << scale_shift
+    events: list[dict[str, Any]] = []
+    for index, raw_score in enumerate(scores):
+        score = int(raw_score)
+        product = score * scale_multiplier
+        shifted = product // denominator
+        result_value = shifted
+        if result_conversion == "wrap_twos_complement":
+            result_value = _wrap(result_value, result_dtype)
+        elif result_conversion != "exact":
+            raise CanonicalOperationError(
+                f"Unsupported attention-scale result conversion {result_conversion!r}"
+            )
+        fractional = product % denominator != 0
+        events.append(
+            {
+                "coordinate": [index // key_count, index % key_count],
+                "score": score,
+                "scale_multiplier": scale_multiplier,
+                "scale_shift": scale_shift,
+                "exact_product": product,
+                "fraction_discarded": fractional,
+                "rounding_class": (
+                    "exact"
+                    if not fractional
+                    else "positive_fraction_discarded"
+                    if score > 0
+                    else "negative_fraction_discarded"
+                ),
+                "shifted_value": shifted,
+                "result_value": result_value,
+            }
+        )
+    return events
+
+
+def binary_attention_mask_events(
+    scores: Sequence[int],
+    mask: Sequence[int],
+    *,
+    query_count: int,
+    key_count: int,
+    mask_mode: str,
+    result_dtype: Mapping[str, Any],
+    result_conversion: str,
+) -> list[dict[str, Any]]:
+    """Apply an independent binary-keep mask to signed scaled scores."""
+
+    element_count = query_count * key_count
+    if len(scores) != element_count or len(mask) != element_count:
+        raise CanonicalOperationError(
+            "attention mask input counts do not match Q by S shape"
+        )
+    if mask_mode != "binary_keep":
+        raise CanonicalOperationError(
+            f"Unsupported attention-mask mode {mask_mode!r}"
+        )
+    if any(item not in {0, 1} for item in mask):
+        raise CanonicalOperationError(
+            "binary_keep attention mask accepts only 0 and 1"
+        )
+    events: list[dict[str, Any]] = []
+    for index, (raw_score, raw_mask) in enumerate(zip(scores, mask)):
+        score = int(raw_score)
+        mask_value = int(raw_mask)
+        masked_score = score if mask_value == 1 else 0
+        result_value = masked_score
+        if result_conversion == "wrap_twos_complement":
+            result_value = _wrap(result_value, result_dtype)
+        elif result_conversion != "exact":
+            raise CanonicalOperationError(
+                f"Unsupported attention-mask result conversion {result_conversion!r}"
+            )
+        events.append(
+            {
+                "coordinate": [index // key_count, index % key_count],
+                "scaled_score": score,
+                "mask_value": mask_value,
+                "active": mask_value == 1,
+                "mask_mode": "binary_keep",
+                "masked_score": masked_score,
+                "result_value": result_value,
+            }
+        )
+    return events
+
+
+def integer_sparse_attention_events(
+    query: Sequence[int],
+    key: Sequence[int],
+    value: Sequence[int],
+    mask: Sequence[int],
+    *,
+    query_count: int,
+    key_count: int,
+    feature_count: int,
+    value_count: int,
+    score_accumulator_dtype: Mapping[str, Any],
+    score_reduction_conversion: str,
+    scaling: str,
+    mask_mode: str,
+    normalization: str,
+    output_accumulator_dtype: Mapping[str, Any],
+    output_reduction_conversion: str,
+    result_dtype: Mapping[str, Any],
+    result_conversion: str,
+) -> list[dict[str, Any]]:
+    """Compose QK, scale, mask, normalization, and value stages.
+
+    This restricted profile deliberately selects identity scaling and no
+    normalization, but still models those boundaries explicitly.  That keeps the
+    end-to-end oracle assembled from stage contracts instead of maintaining a
+    second private implementation of Q*K^T.
+    """
+
+    qk_events = integer_qk_score_events(
+        query,
+        key,
+        query_count=query_count,
+        key_count=key_count,
+        feature_count=feature_count,
+        score_accumulator_dtype=score_accumulator_dtype,
+        score_reduction_conversion=score_reduction_conversion,
+        result_dtype=score_accumulator_dtype,
+        result_conversion="exact",
+    )
+    scaled_events = integer_attention_scale_events(qk_events, scaling=scaling)
+    masked_events = integer_attention_mask_events(
+        scaled_events,
+        mask,
+        query_count=query_count,
+        key_count=key_count,
+        mask_mode=mask_mode,
+    )
+    normalized_events = integer_attention_normalization_events(
+        masked_events,
+        normalization=normalization,
+    )
+    return integer_attention_value_events(
+        normalized_events,
+        value,
+        query_count=query_count,
+        key_count=key_count,
+        value_count=value_count,
+        output_accumulator_dtype=output_accumulator_dtype,
+        output_reduction_conversion=output_reduction_conversion,
+        result_dtype=result_dtype,
+        result_conversion=result_conversion,
+    )
+
+
+def integer_attention_scale_events(
+    qk_events: Sequence[Mapping[str, Any]], *, scaling: str
+) -> list[dict[str, Any]]:
+    """Apply the declared score scaling stage to canonical QK events."""
+
+    if scaling != "none":
+        raise CanonicalOperationError(
+            f"Unsupported sparse-attention scaling {scaling!r}"
+        )
+    return [
+        {
+            **dict(event),
+            "qk_score": int(event["result_value"]),
+            "scale_mode": "none",
+            "scaled_score": int(event["result_value"]),
+        }
+        for event in qk_events
+    ]
+
+
+def integer_attention_mask_events(
+    scaled_events: Sequence[Mapping[str, Any]],
+    mask: Sequence[int],
+    *,
+    query_count: int,
+    key_count: int,
+    mask_mode: str,
+) -> list[dict[str, Any]]:
+    """Apply one explicit attention-mask stage to scaled score events."""
+
+    if mask_mode != "binary_keep":
+        raise CanonicalOperationError(
+            f"Unsupported sparse-attention mask mode {mask_mode!r}"
+        )
+    if len(mask) != query_count * key_count or any(item not in {0, 1} for item in mask):
+        raise CanonicalOperationError(
+            "binary_keep attention mask accepts only 0 and 1"
+        )
+    result: list[dict[str, Any]] = []
+    for event in scaled_events:
+        query_index, key_index = map(int, event["coordinate"])
+        active = bool(mask[query_index * key_count + key_index])
+        result.append(
+            {
+                **dict(event),
+                "active": active,
+                "mask_mode": "binary_keep",
+                "masked_score": int(event["scaled_score"]) if active else 0,
+            }
+        )
+    return result
+
+
+def integer_attention_normalization_events(
+    masked_events: Sequence[Mapping[str, Any]], *, normalization: str
+) -> list[dict[str, Any]]:
+    """Apply the declared normalization boundary to masked scores."""
+
+    if normalization != "none":
+        raise CanonicalOperationError(
+            f"Unsupported sparse-attention normalization {normalization!r}"
+        )
+    return [
+        {
+            **dict(event),
+            "normalization_mode": "none",
+            "normalized_weight": int(event["masked_score"]),
+        }
+        for event in masked_events
+    ]
+
+
+def integer_attention_value_events(
+    normalized_events: Sequence[Mapping[str, Any]],
+    value: Sequence[int],
+    *,
+    query_count: int,
+    key_count: int,
+    value_count: int,
+    output_accumulator_dtype: Mapping[str, Any],
+    output_reduction_conversion: str,
+    result_dtype: Mapping[str, Any],
+    result_conversion: str,
+) -> list[dict[str, Any]]:
+    """Reduce normalized attention weights against V in row-major order."""
+
+    rows: list[list[dict[str, Any]]] = [[] for _ in range(query_count)]
+    for event in normalized_events:
+        query_index, key_index = map(int, event["coordinate"])
+        rows[query_index].append({**dict(event), "key_index": key_index})
+    if any(len(row) != key_count for row in rows):
+        raise CanonicalOperationError("attention stage composition lost a QK coordinate")
+    for row in rows:
+        row.sort(key=lambda item: int(item["key_index"]))
+
+    events: list[dict[str, Any]] = []
+    for query_index, row in enumerate(rows):
+        active_count = sum(int(item["active"]) for item in row)
+        for value_index in range(value_count):
+            weighted_terms = [
+                int(item["normalized_weight"])
+                * value[int(item["key_index"]) * value_count + value_index]
+                for item in row
+            ]
+            output_value, mathematical, converted = _reduction_trace(
+                weighted_terms,
+                output_accumulator_dtype,
+                output_reduction_conversion,
+            )
+            result_value = output_value
+            if result_conversion == "wrap_twos_complement":
+                result_value = _wrap(result_value, result_dtype)
+            elif result_conversion != "exact":
+                raise CanonicalOperationError(
+                    f"Unsupported sparse-attention result conversion {result_conversion!r}"
+                )
+            scores = [
+                {
+                    **dict(item),
+                    "score": int(item["qk_score"]),
+                }
+                for item in row
+            ]
+            events.append(
+                {
+                    "coordinate": [query_index, value_index],
+                    "active_key_count": active_count,
+                    "scores": scores,
+                    "weighted_terms": weighted_terms,
+                    "mathematical_output_prefixes": list(mathematical),
+                    "converted_output_prefixes": list(converted),
+                    "result_value": result_value,
+                    "stage_trace": {
+                        "qk_score": [
+                            {
+                                "coordinate": list(item["coordinate"]),
+                                "product_terms": list(item["product_terms"]),
+                                "result_value": int(item["qk_score"]),
+                            }
+                            for item in row
+                        ],
+                        "scale": [int(item["scaled_score"]) for item in row],
+                        "mask": [int(item["masked_score"]) for item in row],
+                        "normalization": [
+                            int(item["normalized_weight"]) for item in row
+                        ],
+                        "value_reduction": {
+                            "weighted_terms": list(weighted_terms),
+                            "result_value": result_value,
+                        },
+                    },
+                }
+            )
+    return events
+
+
+def _classify_integer_qk_score(
+    job: CanonicalOperationJob,
+) -> dict[str, list[Any]]:
+    metadata = job.metadata
+    query_binding = _binding_by_role(metadata, "query_matrix")
+    key_binding = _binding_by_role(metadata, "key_matrix")
+    score_binding = _binding_by_role(metadata, "attention_score_matrix")
+    qd, kd, sd = [
+        list(item["dimensions"])
+        for item in (query_binding, key_binding, score_binding)
+    ]
+    if (
+        len(qd) != 2
+        or len(kd) != 2
+        or qd[1] != kd[1]
+        or sd != [qd[0], kd[0]]
+    ):
+        raise CanonicalOperationError("integer_qk_score metadata shape is inconsistent")
+    arithmetic = metadata.get("arithmetic", {})
+    accumulator_dtype = _dtype(
+        metadata, str(arithmetic["score_accumulator_data_type"])
+    )
+    events = integer_qk_score_events(
+        job.inputs[str(query_binding["data_object"])],
+        job.inputs[str(key_binding["data_object"])],
+        query_count=job.dimensions[qd[0]],
+        key_count=job.dimensions[kd[0]],
+        feature_count=job.dimensions[qd[1]],
+        score_accumulator_dtype=accumulator_dtype,
+        score_reduction_conversion=str(arithmetic["score_reduction_conversion"]),
+        result_dtype=score_binding["data_type"],
+        result_conversion=str(
+            arithmetic.get("result_data_type", {}).get("conversion", "exact")
+        ),
+    )
+    low, high = _integer_bounds(accumulator_dtype)
+    accumulation: list[str] = []
+    for event in events:
+        mathematical = event["mathematical_reduction_prefixes"]
+        classes: list[str] = []
+        if any(item == high for item in mathematical):
+            classes.append("positive_boundary")
+        if any(item == low for item in mathematical):
+            classes.append("negative_boundary")
+        if any(item > high for item in mathematical):
+            classes.append("positive_overflow")
+        if any(item < low for item in mathematical):
+            classes.append("negative_overflow")
+        accumulation.extend(classes or ["ordinary"])
+    return {
+        "dimensions": ["fixed"],
+        "operand_values": [
+            *job.inputs[str(query_binding["data_object"])],
+            *job.inputs[str(key_binding["data_object"])],
+        ],
+        "accumulation": accumulation,
+        "attention_scores": [
+            "negative_score"
+            if int(event["result_value"]) < 0
+            else "zero_score"
+            if int(event["result_value"]) == 0
+            else "positive_score"
+            for event in events
+        ],
+        "numeric_stage_events": events,
+    }
+
+
+def _classify_fixed_point_attention_scale(
+    job: CanonicalOperationJob,
+) -> dict[str, list[Any]]:
+    metadata = job.metadata
+    score_binding = _binding_by_role(metadata, "attention_score_matrix")
+    result_binding = _binding_by_role(metadata, "scaled_attention_score_matrix")
+    score_dimensions = list(score_binding["dimensions"])
+    if (
+        len(score_dimensions) != 2
+        or list(result_binding["dimensions"]) != score_dimensions
+    ):
+        raise CanonicalOperationError(
+            "fixed_point_attention_scale metadata shape is inconsistent"
+        )
+    arithmetic = metadata.get("arithmetic", {})
+    events = fixed_point_attention_scale_events(
+        job.inputs[str(score_binding["data_object"])],
+        query_count=job.dimensions[score_dimensions[0]],
+        key_count=job.dimensions[score_dimensions[1]],
+        scale_multiplier=int(arithmetic["scale_multiplier"]),
+        scale_shift=int(arithmetic["scale_shift"]),
+        rounding=str(arithmetic["rounding"]),
+        result_dtype=result_binding["data_type"],
+        result_conversion=str(
+            arithmetic.get("result_data_type", {}).get("conversion", "exact")
+        ),
+    )
+    attenuation: list[str] = []
+    for event in events:
+        score = int(event["score"])
+        result = int(event["result_value"])
+        if score == 0 and result == 0:
+            attenuation.append("zero_preserved")
+        if score != 0 and abs(result) < abs(score):
+            attenuation.append("magnitude_reduced")
+    return {
+        "dimensions": ["fixed"],
+        "score_values": [int(event["score"]) for event in events],
+        "rounding": [str(event["rounding_class"]) for event in events],
+        "scaled_values": [
+            "negative_scaled"
+            if int(event["result_value"]) < 0
+            else "zero_scaled"
+            if int(event["result_value"]) == 0
+            else "positive_scaled"
+            for event in events
+        ],
+        "attenuation": attenuation,
+        "numeric_stage_events": events,
+    }
+
+
+def _classify_binary_attention_mask(
+    job: CanonicalOperationJob,
+) -> dict[str, list[Any]]:
+    metadata = job.metadata
+    score_binding = _binding_by_role(metadata, "scaled_attention_score_matrix")
+    mask_binding = _binding_by_role(metadata, "attention_mask")
+    result_binding = _binding_by_role(metadata, "masked_attention_score_matrix")
+    dimensions = list(score_binding["dimensions"])
+    if (
+        len(dimensions) != 2
+        or list(mask_binding["dimensions"]) != dimensions
+        or list(result_binding["dimensions"]) != dimensions
+    ):
+        raise CanonicalOperationError(
+            "binary_attention_mask metadata shape is inconsistent"
+        )
+    query_count = job.dimensions[dimensions[0]]
+    key_count = job.dimensions[dimensions[1]]
+    arithmetic = metadata.get("arithmetic", {})
+    events = binary_attention_mask_events(
+        job.inputs[str(score_binding["data_object"])],
+        job.inputs[str(mask_binding["data_object"])],
+        query_count=query_count,
+        key_count=key_count,
+        mask_mode=str(arithmetic["mask_mode"]),
+        result_dtype=result_binding["data_type"],
+        result_conversion=str(
+            arithmetic.get("result_data_type", {}).get("conversion", "exact")
+        ),
+    )
+    mask_values = job.inputs[str(mask_binding["data_object"])]
+    patterns: list[str] = []
+    for row in range(query_count):
+        active = sum(mask_values[row * key_count : (row + 1) * key_count])
+        patterns.append(
+            "empty_row"
+            if active == 0
+            else "singleton_row"
+            if active == 1
+            else "dense_row"
+            if active == key_count
+            else "partial_row"
+        )
+    effects: list[str] = []
+    if any(
+        event["active"]
+        and int(event["result_value"]) == int(event["scaled_score"])
+        for event in events
+    ):
+        effects.append("active_score_preserved")
+    if any(
+        not event["active"]
+        and int(event["scaled_score"]) != 0
+        and int(event["result_value"]) == 0
+        for event in events
+    ):
+        effects.append("inactive_nonzero_zeroed")
+    return {
+        "dimensions": ["fixed"],
+        "score_values": [int(event["scaled_score"]) for event in events],
+        "mask_values": [
+            "keep" if int(event["mask_value"]) == 1 else "drop"
+            for event in events
+        ],
+        "sparsity_patterns": patterns,
+        "masked_values": [
+            "negative_masked"
+            if int(event["result_value"]) < 0
+            else "zero_masked"
+            if int(event["result_value"]) == 0
+            else "positive_masked"
+            for event in events
+        ],
+        "mask_effects": effects,
+        "numeric_stage_events": events,
+    }
+
+
+def _classify_integer_sparse_attention(
+    job: CanonicalOperationJob,
+) -> dict[str, list[Any]]:
+    metadata = job.metadata
+    query_binding = _binding_by_role(metadata, "query_matrix")
+    key_binding = _binding_by_role(metadata, "key_matrix")
+    value_binding = _binding_by_role(metadata, "value_matrix")
+    mask_binding = _binding_by_role(metadata, "attention_mask")
+    output_binding = _binding_by_role(metadata, "attention_result")
+    qd, kd, vd, md, od = [
+        list(item["dimensions"])
+        for item in (
+            query_binding,
+            key_binding,
+            value_binding,
+            mask_binding,
+            output_binding,
+        )
+    ]
+    if (
+        len(qd) != 2
+        or len(kd) != 2
+        or len(vd) != 2
+        or md != [qd[0], kd[0]]
+        or od != [qd[0], vd[1]]
+        or qd[1] != kd[1]
+        or kd[0] != vd[0]
+    ):
+        raise CanonicalOperationError(
+            "integer_sparse_attention metadata shape is inconsistent"
+        )
+    query_count = job.dimensions[qd[0]]
+    key_count = job.dimensions[kd[0]]
+    feature_count = job.dimensions[qd[1]]
+    value_count = job.dimensions[vd[1]]
+    arithmetic = metadata.get("arithmetic", {})
+    events = integer_sparse_attention_events(
+        job.inputs[str(query_binding["data_object"])],
+        job.inputs[str(key_binding["data_object"])],
+        job.inputs[str(value_binding["data_object"])],
+        job.inputs[str(mask_binding["data_object"])],
+        query_count=query_count,
+        key_count=key_count,
+        feature_count=feature_count,
+        value_count=value_count,
+        score_accumulator_dtype=_dtype(
+            metadata, str(arithmetic["score_accumulator_data_type"])
+        ),
+        score_reduction_conversion=str(arithmetic["score_reduction_conversion"]),
+        scaling=str(arithmetic["scaling"]),
+        mask_mode=str(arithmetic["mask_mode"]),
+        normalization=str(arithmetic["normalization"]),
+        output_accumulator_dtype=_dtype(
+            metadata, str(arithmetic["output_accumulator_data_type"])
+        ),
+        output_reduction_conversion=str(arithmetic["output_reduction_conversion"]),
+        result_dtype=output_binding["data_type"],
+        result_conversion=str(
+            arithmetic.get("result_data_type", {}).get("conversion", "exact")
+        ),
+    )
+    mask_values = job.inputs[str(mask_binding["data_object"])]
+    patterns: list[str] = []
+    for row in range(query_count):
+        active = sum(mask_values[row * key_count : (row + 1) * key_count])
+        patterns.append(
+            "empty_row"
+            if active == 0
+            else "singleton_row"
+            if active == 1
+            else "dense_row"
+            if active == key_count
+            else "partial_row"
+        )
+    active_scores: list[int] = []
+    seen_query_rows: set[int] = set()
+    for event in events:
+        row = int(event["coordinate"][0])
+        if row in seen_query_rows:
+            continue
+        seen_query_rows.add(row)
+        active_scores.extend(
+            int(item["score"]) for item in event["scores"] if item["active"]
+        )
+    score_classes = [
+        "negative_score" if item < 0 else "zero_score" if item == 0 else "positive_score"
+        for item in active_scores
+    ]
+    output_classes = [
+        "negative_output"
+        if int(event["result_value"]) < 0
+        else "zero_output"
+        if int(event["result_value"]) == 0
+        else "positive_output"
+        for event in events
+    ]
+    score_events = [
+        item
+        for event in events
+        for item in event["scores"]
+    ]
+    stage_handoffs: list[str] = []
+    if score_events and all(
+        int(item["scaled_score"]) == int(item["qk_score"])
+        for item in score_events
+    ):
+        stage_handoffs.append("qk_to_scale_forwarded")
+    if any(
+        item["active"]
+        and int(item["masked_score"]) == int(item["scaled_score"])
+        for item in score_events
+    ):
+        stage_handoffs.append("active_mask_preserved")
+    if any(
+        not item["active"]
+        and int(item["scaled_score"]) != 0
+        and int(item["masked_score"]) == 0
+        for item in score_events
+    ):
+        stage_handoffs.append("inactive_mask_zeroed")
+    if score_events and all(
+        int(item["normalized_weight"]) == int(item["masked_score"])
+        for item in score_events
+    ):
+        stage_handoffs.append("normalization_bypass_forwarded")
+    if any(
+        int(term) != 0
+        for event in events
+        for term in event["weighted_terms"]
+    ):
+        stage_handoffs.append("value_reduction_consumed")
+    return {
+        "dimensions": ["fixed"],
+        "operand_values": [
+            *job.inputs[str(query_binding["data_object"])],
+            *job.inputs[str(key_binding["data_object"])],
+            *job.inputs[str(value_binding["data_object"])],
+        ],
+        "sparsity_patterns": patterns,
+        "attention_scores": score_classes,
+        "stage_handoffs": stage_handoffs,
+        "output_values": output_classes,
+        "numeric_stage_events": events,
+    }
+
+
 def classify_operation_job(job: CanonicalOperationJob) -> dict[str, list[Any]]:
     profile = job.metadata.get("arithmetic", {}).get("classifier_profile")
     if profile == "integer_matrix_multiply":
         return _classify_integer_matrix_multiply(job)
+    if profile == "integer_qk_score":
+        return _classify_integer_qk_score(job)
+    if profile == "fixed_point_attention_scale":
+        return _classify_fixed_point_attention_scale(job)
+    if profile == "binary_attention_mask":
+        return _classify_binary_attention_mask(job)
+    if profile == "integer_sparse_attention":
+        return _classify_integer_sparse_attention(job)
     return {}
 
 
@@ -561,7 +1358,7 @@ def classify_checked_operations(
 def canonical_bins_for_concept(
     operation_metadata: Mapping[str, Any], concept: str
 ) -> list[dict[str, Any]] | None:
-    """Return code-owned reachable semantic bins for supported GEMM concepts."""
+    """Return code-owned semantic bins for supported operation concepts."""
 
     def bin_(name: str, value: Any) -> dict[str, Any]:
         return {
@@ -582,7 +1379,227 @@ def canonical_bins_for_concept(
                 predicates.add(key)
         return result
 
-    if operation_metadata.get("arithmetic", {}).get("classifier_profile") != "integer_matrix_multiply":
+    profile = operation_metadata.get("arithmetic", {}).get("classifier_profile")
+    if profile == "binary_attention_mask":
+        if concept == "dimensions":
+            return [bin_("fixed_shape", "fixed")]
+        if concept == "score_values":
+            score_types = [
+                item["data_type"]
+                for item in operation_metadata.get("inputs", [])
+                if item.get("object_role") == "scaled_attention_score_matrix"
+            ]
+            if len(score_types) != 1:
+                return None
+            low, high = _integer_bounds(score_types[0])
+            bins = [bin_("zero", 0)]
+            if high >= 1:
+                bins.append(
+                    {
+                        "name": "positive",
+                        "intent": "Observe a positive scaled attention score.",
+                        "predicate": {"op": "between", "args": [1, high]},
+                    }
+                )
+            if low < 0:
+                bins.append(
+                    {
+                        "name": "negative",
+                        "intent": "Observe a negative scaled attention score.",
+                        "predicate": {"op": "between", "args": [low, -1]},
+                    }
+                )
+            bins.extend([bin_("minimum", low), bin_("maximum", high)])
+            return unique(bins)
+        if concept == "mask_values":
+            return [bin_("drop", "drop"), bin_("keep", "keep")]
+        if concept == "sparsity_patterns":
+            return [
+                bin_(name, name)
+                for name in (
+                    "empty_row",
+                    "singleton_row",
+                    "partial_row",
+                    "dense_row",
+                )
+            ]
+        if concept == "masked_values":
+            return [
+                bin_(name, name)
+                for name in ("zero_masked", "positive_masked", "negative_masked")
+            ]
+        if concept == "mask_effects":
+            return [
+                bin_(name, name)
+                for name in ("active_score_preserved", "inactive_nonzero_zeroed")
+            ]
+        return None
+    if profile == "fixed_point_attention_scale":
+        if concept == "dimensions":
+            return [bin_("fixed_shape", "fixed")]
+        if concept == "score_values":
+            score_types = [
+                item["data_type"]
+                for item in operation_metadata.get("inputs", [])
+                if item.get("object_role") == "attention_score_matrix"
+            ]
+            if len(score_types) != 1:
+                return None
+            low, high = _integer_bounds(score_types[0])
+            bins = [bin_("zero", 0)]
+            if high >= 1:
+                bins.append(
+                    {
+                        "name": "positive",
+                        "intent": "Observe a positive unscaled attention score.",
+                        "predicate": {"op": "between", "args": [1, high]},
+                    }
+                )
+            if low < 0:
+                bins.append(
+                    {
+                        "name": "negative",
+                        "intent": "Observe a negative unscaled attention score.",
+                        "predicate": {"op": "between", "args": [low, -1]},
+                    }
+                )
+            bins.extend([bin_("minimum", low), bin_("maximum", high)])
+            return unique(bins)
+        if concept == "rounding":
+            return [
+                bin_(name, name)
+                for name in (
+                    "exact",
+                    "positive_fraction_discarded",
+                    "negative_fraction_discarded",
+                )
+            ]
+        if concept == "scaled_values":
+            return [
+                bin_(name, name)
+                for name in ("zero_scaled", "positive_scaled", "negative_scaled")
+            ]
+        if concept == "attenuation":
+            return [
+                bin_(name, name)
+                for name in ("zero_preserved", "magnitude_reduced")
+            ]
+        return None
+    if profile == "integer_qk_score":
+        if concept == "dimensions":
+            return [bin_("fixed_shape", "fixed")]
+        if concept == "operand_values":
+            operand_types = [
+                item["data_type"]
+                for item in operation_metadata.get("inputs", [])
+                if item.get("object_role") in {"query_matrix", "key_matrix"}
+            ]
+            if not operand_types:
+                return None
+            low = min(_integer_bounds(item)[0] for item in operand_types)
+            high = max(_integer_bounds(item)[1] for item in operand_types)
+            bins = [bin_("zero", 0)]
+            if high >= 1:
+                bins.append(
+                    {
+                        "name": "positive",
+                        "intent": "Observe a positive Q or K operand.",
+                        "predicate": {"op": "between", "args": [1, high]},
+                    }
+                )
+            if low < 0:
+                bins.append(
+                    {
+                        "name": "negative",
+                        "intent": "Observe a negative Q or K operand.",
+                        "predicate": {"op": "between", "args": [low, -1]},
+                    }
+                )
+            bins.extend([bin_("minimum", low), bin_("maximum", high)])
+            return unique(bins)
+        if concept == "accumulation":
+            return [
+                bin_(name, name)
+                for name in (
+                    "ordinary",
+                    "positive_boundary",
+                    "negative_boundary",
+                    "positive_overflow",
+                    "negative_overflow",
+                )
+            ]
+        if concept == "attention_scores":
+            return [
+                bin_(name, name)
+                for name in ("zero_score", "positive_score", "negative_score")
+            ]
+        return None
+    if profile == "integer_sparse_attention":
+        if concept == "dimensions":
+            return [bin_("fixed_shape", "fixed")]
+        if concept == "operand_values":
+            operand_types = [
+                item["data_type"]
+                for item in operation_metadata.get("inputs", [])
+                if item.get("object_role")
+                in {"query_matrix", "key_matrix", "value_matrix"}
+            ]
+            if not operand_types:
+                return None
+            low = min(_integer_bounds(item)[0] for item in operand_types)
+            high = max(_integer_bounds(item)[1] for item in operand_types)
+            bins = [bin_("zero", 0)]
+            if high >= 1:
+                bins.append(
+                    {
+                        "name": "positive",
+                        "intent": "Observe a positive Q, K, or V operand.",
+                        "predicate": {"op": "between", "args": [1, high]},
+                    }
+                )
+            if low < 0:
+                bins.append(
+                    {
+                        "name": "negative",
+                        "intent": "Observe a negative Q, K, or V operand.",
+                        "predicate": {"op": "between", "args": [low, -1]},
+                    }
+                )
+            bins.extend([bin_("minimum", low), bin_("maximum", high)])
+            return unique(bins)
+        if concept == "sparsity_patterns":
+            return [
+                bin_(name, name)
+                for name in (
+                    "empty_row",
+                    "singleton_row",
+                    "partial_row",
+                    "dense_row",
+                )
+            ]
+        if concept == "attention_scores":
+            return [
+                bin_(name, name)
+                for name in ("zero_score", "positive_score", "negative_score")
+            ]
+        if concept == "stage_handoffs":
+            return [
+                bin_(name, name)
+                for name in (
+                    "qk_to_scale_forwarded",
+                    "active_mask_preserved",
+                    "inactive_mask_zeroed",
+                    "normalization_bypass_forwarded",
+                    "value_reduction_consumed",
+                )
+            ]
+        if concept == "output_values":
+            return [
+                bin_(name, name)
+                for name in ("zero_output", "positive_output", "negative_output")
+            ]
+        return None
+    if profile != "integer_matrix_multiply":
         return None
     if concept == "dimensions":
         return [bin_("fixed_shape", "fixed")]

@@ -1,0 +1,12 @@
+{
+  "top": "wbm2axisp",
+  "modules": [
+    {
+      "name": "wbm2axisp",
+      "responsibility": "wishbone_pipelined_to_axi4",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

@@ -1,0 +1,179 @@
+design:
+  name: koios_sparse_matrix_vector
+  description: External benchmark O10 over Koios accelerator benchmarks in the SLDB-pinned
+    VTR fork at exact revision 0812786f103b63b6db679eab163c3d4ab8b5cf1a, target vtr_flow/benchmarks/verilog/koios/spmv.v.
+operations:
+- name: koios_sparse_matrix_vector
+  kind: koios_sparse_matrix_vector
+  coverage_family: koios_sparse_matrix_vector
+  coverage_family_source: novel
+  features:
+  - cisr_sparse_encoding
+  feature_extensions:
+  - sparse_index_value_association
+  - irregular_row_reduction
+  - sparse_empty_row
+  semantics: Source-backed operation scope for koios_sparse_matrix_vector; exact behavior
+    is owned by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  arithmetic:
+    classifier_profile: llm_extension
+    reason: The selected upstream arithmetic is not a current code-owned profile.
+    extension_request: operation.o10_cisr_sparse_encoding
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- MAC arithmetic is reused; CISR traversal and row ownership are extended.
+open_assumptions: []
+verification_extensions:
+- id: operation.o10_cisr_sparse_encoding
+  domain: operation
+  feature_name: cisr_sparse_encoding
+  target:
+    scope: operation
+    name: koios_sparse_matrix_vector
+  semantics:
+    summary: Verify cisr sparse encoding exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible cisr sparse encoding behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: cisr_sparse_encoding is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - multiply_accumulate
+  - canonical_output_vector
+  - golden_equivalence_shell
+- id: operation.o10_sparse_index_value_association
+  domain: operation
+  feature_name: sparse_index_value_association
+  target:
+    scope: operation
+    name: koios_sparse_matrix_vector
+  semantics:
+    summary: Verify sparse index value association exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible sparse index value association behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: sparse_index_value_association is intentionally absent from the current
+    verifier_tool pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - multiply_accumulate
+  - canonical_output_vector
+  - golden_equivalence_shell
+- id: operation.o10_irregular_row_reduction
+  domain: operation
+  feature_name: irregular_row_reduction
+  target:
+    scope: operation
+    name: koios_sparse_matrix_vector
+  semantics:
+    summary: Verify irregular row reduction exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible irregular row reduction behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: irregular_row_reduction is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - multiply_accumulate
+  - canonical_output_vector
+  - golden_equivalence_shell
+- id: operation.o10_sparse_empty_row
+  domain: operation
+  feature_name: sparse_empty_row
+  target:
+    scope: operation
+    name: koios_sparse_matrix_vector
+  semantics:
+    summary: Verify sparse empty row exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible sparse empty row behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: sparse_empty_row is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - multiply_accumulate
+  - canonical_output_vector
+  - golden_equivalence_shell

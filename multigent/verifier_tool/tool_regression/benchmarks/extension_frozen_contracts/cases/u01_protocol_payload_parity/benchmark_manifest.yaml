@@ -1,0 +1,16 @@
+schema_version: 1
+case_id: u01_protocol_payload_parity
+unknown_feature_count: 1
+domains:
+- protocol
+features:
+- id: protocol.payload_parity_observation
+  domain: protocol
+  representation: verifier_extension_request
+  request_id: protocol.payload_parity_observation
+  intent: Classify accepted output payloads by even and odd parity.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

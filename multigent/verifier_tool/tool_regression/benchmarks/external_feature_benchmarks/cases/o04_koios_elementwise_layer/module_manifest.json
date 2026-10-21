@@ -1,0 +1,12 @@
+{
+  "top": "eltwise_layer",
+  "modules": [
+    {
+      "name": "eltwise_layer",
+      "responsibility": "koios_elementwise_layer",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

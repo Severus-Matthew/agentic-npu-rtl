@@ -1,0 +1,12 @@
+{
+  "top": null,
+  "modules": [
+    {
+      "name": null,
+      "responsibility": "opentitan_key_manager_state_advance",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

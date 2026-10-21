@@ -2,7 +2,8 @@
 
 This folder validates, instantiates, and samples functional/data coverage for
 the **operation** domain — arithmetic and data-object correctness (code-owned
-integer GEMM, or Verifier-authored extensions for other math), as opposed to
+integer GEMM and restricted integer sparse attention, or Verifier-authored
+extensions for other math), as opposed to
 `../protocol/` (bus rules) or
 `../lifecycle/` (command/job/busy/completion/error). Do not confuse this folder
 with `multigent/verifier_tool/pool/operation_metadata/`: that package compiles
@@ -15,8 +16,8 @@ Two independent YAML catalogs back this folder, and they are not
 interchangeable:
 
 - `multigent/verifier_tool/pool/feature_plans/operation_features.yaml` — the catalog
-  of code-owned operation **families** (currently only `matrix_multiply`, aliases `gemm`,
-  `matmul`, etc.), their baseline/optional/grouped **concepts**, and starter
+  of code-owned operation **families** (`matrix_multiply` and
+  `sparse_attention`), their baseline/optional/grouped **concepts**, and starter
   bin names. Reached via `feature_plans/catalog.py:load_operation_feature_catalog()`.
   `plan.py`'s `OPERATION_COVERAGE_FAMILIES_PATH` is only an alias for
   `feature_plans.catalog.OPERATION_FEATURES_PATH` — nothing in this folder
@@ -35,6 +36,20 @@ In other words: `operation_features.yaml` says *what must be covered*
 gets its runtime value* (e.g. read a `dimension` field and bin it against the
 contract's declared minimum/maximum). `plan.py` owns the former;
 `sampling.py` owns the latter.
+
+The sparse-attention family owns six baseline concepts:
+`dimensions`, `operand_values`, `sparsity_patterns`, `attention_scores`, and
+`stage_handoffs`, and `output_values`. Its mask bins are `empty_row`, `singleton_row`, `partial_row`,
+and `dense_row`; score/output bins cover zero, positive, and negative classes.
+Handoff bins prove QK-to-scale forwarding, active-mask preservation,
+inactive-mask zeroing, normalization bypass forwarding, and consumption by the
+value reduction.
+Every required bin is admitted only after the canonical stimulus generator
+symbolically compiles the sparse-attention golden trace, asks Z3 for a legal
+Q/K/V/mask witness, evaluates that witness through the concrete golden model,
+and reclassifies it. Shape-dependent bins such as `partial_row` are explicitly
+proven unreachable when the key dimension is too small rather than silently
+counted as covered.
 
 ## Files
 
@@ -188,10 +203,11 @@ reported *diagnostically*, just not as a release-gating bin. Called by
 The mechanism that makes known-family coverage **deterministic instead of
 LLM-authored**. For every contract operation, computes which selected concepts
 are `supported_code_owned_concepts(operation_metadata)` (from
-`operation_metadata/canonical.py` — currently `dimensions`, `operand_values`,
+`operation_metadata/canonical.py` — `dimensions`, `operand_values`, and
 `accumulation` for `integer_matrix_multiply`, plus
-`bias`/`activation`/`quantization` when
-those post-op stages are present). For each such concept, calls
+`bias`/`activation`/`quantization` when those post-op stages are present; and
+`dimensions`, `operand_values`, `sparsity_patterns`, `attention_scores`, and
+`output_values` for `integer_sparse_attention`). For each such concept, calls
 `operation.stimulus.canonical_bin_dispositions(metadata, concept)` and requires
 every returned bin to already be resolved to `required_reachable`,
 `proven_unreachable`, or `inapplicable` — an unresolved bin is a hard

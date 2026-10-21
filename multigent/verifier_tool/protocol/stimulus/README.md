@@ -3,7 +3,8 @@
 This is the `protocol` leg of the three-domain stimulus taxonomy described in
 [`../README.md`](../README.md) and [`../../README.md`](../../README.md). It
 covers channel/handshake/bus-level traffic: generic role-bound ready/valid
-channels plus the standard AXI4, AXI4-Lite, and AXI4-Stream profiles. It is a
+channels, Contract-Reviewer-compiled custom event protocols, and the standard
+AXI4, AXI4-Lite, and AXI4-Stream profiles. It is a
 sibling of `protocol/assertion/` and `protocol/coverage/`, not a dependency of
 either — all three independently consume the Protocol Feature Plan built by
 `build_protocol_feature_plan()` (see
@@ -18,10 +19,10 @@ documenting it is mostly the task of keeping them apart:
 | `cocotb.py` | Yes | Generic, protocol-agnostic cocotb primitives that toggle exact bound signals on an actual `dut` handle. |
 | `memory/` | No | The **memory** layer of the memory/adapter/driver split: a thin re-export of the `cocotbext-axi` dependency's plain `Memory` class — raw byte-addressable storage, nothing else. |
 | `adapter/` | No | The **adapter** layer: `OperationMemoryAdapter` — operation-contract-aware address windows and canonical-value word packing/unpacking, built on `memory/`. No `cocotb` import — pure, synchronous Python, shared by every driver below. |
-| `drivers/` | Yes | The **driver** layer: `axi_lite.py` (AXI4-Lite memory subordinate), `axi4_outstanding.py` (full AXI4, multi-outstanding, out-of-order), `custom_mmio.py` (LLM-declared memory-like custom protocol, both directions, reusing the shared completion scheduler unmodified), and `axi_lite_control.py` (non-destructive register probes on an AXI4-Lite *control* subordinate) — built on `cocotbext-axi`'s primitives and consuming `adapter/` for everything address/object-related. Shared helpers: `_bus_binding.py`, `_completion_scheduler.py`. |
+| `drivers/` | Yes | The **driver** layer: `axi_lite.py` (AXI4-Lite memory subordinate), `axi4_outstanding.py` (full AXI4, multi-outstanding, out-of-order operation jobs plus an operation-independent bounded protocol responder), `custom_mmio.py` (LLM-declared memory-like custom protocol, both directions, reusing the shared completion scheduler unmodified), and `axi_lite_control.py` (non-destructive register probes on an AXI4-Lite *control* subordinate) — built on `cocotbext-axi`'s primitives and consuming `adapter/` only when logical data objects are actually present. Shared helpers: `_bus_binding.py`, `_completion_scheduler.py`. |
 
-`build_protocol_stimulus_plan` never touches a `dut`; `drive_protocol_transfers`
-and `collect_protocol_transfers` never look at a feature catalog or a YAML
+`build_protocol_stimulus_plan` never touches a `dut`; `drive_protocol_transfers`,
+`drive_protocol_event_transactions`, and `collect_protocol_transfers` never look at a feature catalog or a YAML
 file. Nothing in `stimulus_generator.py` calls anything in `cocotb.py`, and
 `../../orchestration/campaign.py` (the one thing that actually runs a
 simulation) does not call `build_protocol_stimulus_plan` at all — see the
@@ -97,7 +98,8 @@ Re-exports `ProtocolStimulusGenerationError`, `build_protocol_stimulus_plan`,
 `generate_random_protocol_scenarios` (from `stimulus_generator.py`);
 `ProtocolDriveError`, `collect_protocol_field_values`,
 `collect_protocol_transfers`, `drive_protocol_field_values`,
-`drive_protocol_reset`, `drive_protocol_transfers` (from `cocotb.py`); and
+`drive_protocol_reset`, `drive_protocol_transfers`,
+`drive_protocol_event_transactions` (from `cocotb.py`); and
 `AxiLiteMemoryDriveError`, `default_axi_lite_memory_bases`,
 `execute_axi_lite_memory_job`, the full-AXI4/custom-MMIO driver symbols
 (`Axi4OutstandingDriveError`, `CustomMmioDriveError`, `execute_axi4_memory_job`,
@@ -157,6 +159,10 @@ part of a standard group, plus one `reset_sequence` scenario per
         {"name", "profile", "endpoint_role", "channels", "scenarios": [...]},
         ...
     ],
+    "event_protocols": [
+        {"name", "clock", "driver_component_id", "transactions": [...]},
+        ...
+    ],
     "execution_contract": [...],     # prose invariants any driver must uphold
 }
 ```
@@ -166,9 +172,13 @@ imports it directly (`from multigent.verifier_tool.protocol.stimulus import
 build_protocol_stimulus_plan`) and calls it once per generated testbench, at
 *generation* time (not simulation time), to embed its return value verbatim as
 the `CONTRACT_PROTOCOL_STIMULUS_PLAN` literal in the generated code-owned
-block. That block exposes two thin accessor wrappers over the embedded
+block. That block exposes accessor wrappers over the embedded
 literal, `_contract_protocol_scenarios(protocol_group=None)` and
-`_contract_protocol_channel(protocol_group, protocol_channel)`, which is how
+`_contract_protocol_channel(protocol_group, protocol_channel)`. For a compiled
+custom protocol,
+`_contract_protocol_event_transaction(profile_name, transaction_name)` returns
+the exact profile and transaction arguments for
+`drive_protocol_event_transactions`. These are how
 Verifier-authored `llm_extension` test code is meant to read scenarios and
 exact channel bindings out of it. **`../../orchestration/campaign.py` does not call this
 function at all** — the automatic code-owned campaign drives every operand and
@@ -180,6 +190,23 @@ for the generated TB's Verifier-authored extension code and for direct
 inspection/testing, not for the immutable campaign. Also called directly by
 `multigent/verifier_tool/tool_regression/integration/test_standard_axi_protocols.py` and
 `multigent/verifier_tool/tool_regression/unit/test_feature_plans.py`.
+
+Runtime evidence is intentionally not inferred from the driver's returned input
+beats. `protocol/evidence.py::capture_protocol_event_trace` starts a concurrent
+observer before a supplied stimulus coroutine and samples the actual DUT every
+cycle. It returns `cycle_trace`, event-derived `transaction_trace`, and the
+stimulus result. Extension code passes extra cross-protocol fields through
+`signal_names`; this is the reusable path for bridge checks such as source-to-AXI
+address/data association.
+
+For a custom DUT-input transaction, `source_drive` defines three distinct
+states: `presented_assignments`, `post_accept_assignments`, and
+`idle_assignments`. `completion_mode: wait_for_all_completions` keeps the
+post-accept controls active until the compiled completion event has retired
+every accepted request. This matters for Wishbone: `CYC` must remain high after
+`STB` is removed, whereas dropping directly to idle would cancel the request.
+The driver evaluates only the safe Contract-Reviewer-compiled event AST and
+holds every driven field until the compiled accepted event is observed.
 
 ### `generate_random_protocol_scenarios(interface, count, *, seed=0) -> list[dict[str, Any]]`
 
@@ -558,6 +585,26 @@ No `cocotb` import anywhere in either package — every function is
 synchronous and testable without a simulator.
 
 ## `drivers/axi4_outstanding.py` — full-AXI4, multi-outstanding, out-of-order drive
+
+Two public entrypoints intentionally share the same compiled group binding and
+completion scheduler:
+
+- `execute_axi4_memory_job(...)` is operation-aware. It uses
+  `OperationMemoryAdapter`, tensor/object bindings, and base addresses.
+- `serve_axi4_protocol_transactions(dut, clock_name, group, request_counts, *,
+  read_data=0,
+  read_response=0, write_response=0, ...)` is protocol-only. It accepts bounded
+  AXI requests, emits configurable responses, and returns evidence captured from
+  real handshakes. `read_data` may be a constant or a
+  `callable(request, beat_index)`; response policies may be constants or
+  `callable(request)`.
+  `request_counts={"read": N, "write": M}` is required, so generated call
+  contracts cannot accidentally omit the responder's termination bound.
+
+The second entrypoint is what a custom-to-AXI bridge extension reuses. It does
+not invent operation metadata merely to make a memory model run. Its real-
+simulator qualification is
+`tool_regression/rtl/test_axi4_protocol_responder.py`.
 
 Module docstring explains the scope in detail; summary: this is the
 **driver** layer of the memory/adapter/driver split (`../../pool/operation_metadata/README.md`'s

@@ -1,20 +1,47 @@
 from __future__ import annotations
 
+import ast
+from pathlib import Path
 from types import MappingProxyType
 
 import pytest
+import yaml
+
+from multigent.verifier_tool.orchestration.instrumentation import (
+    _async_call_is_consumed,
+    _axi4_protocol_responder_transfer_calls,
+    _called_protocol_trace_parameter_hints,
+    _dut_writes_after_protocol_evidence_capture,
+    _invalid_protocol_evidence_record_accesses,
+    _invalid_protocol_evidence_record_accesses,
+    _preawaited_protocol_evidence_stimulus,
+    _reset_abort_operation_records_without_relaunch,
+    _scheduled_task_active_interval,
+    _shell_escaped_subscript_keys,
+)
+
+
+def _parents(tree: ast.AST) -> dict[ast.AST, ast.AST]:
+    return {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
 
 from multigent.verifier_tool import (
+    AUDIT_BEGIN_MARKER,
     BEGIN_MARKER,
     ContractSnapshot,
     END_MARKER,
     build_interface_coverage_plan,
     capture_contract_snapshot,
+    extract_stimulus_coverage_intents,
     install_contract_generated_block,
     install_pipeline_generated_annotations,
     render_contract_generated_block,
     validate_contract_generated_block,
     validate_verifier_authored_structure,
+    verifier_owned_source_for_repair,
 )
 
 
@@ -56,6 +83,634 @@ def snapshot(**values: int) -> ContractSnapshot:
         MappingProxyType(dict(values)),
         MappingProxyType({name: 1 for name in values}),
     )
+
+
+def test_protocol_event_accessor_exposes_monitor_only_output_binding() -> None:
+    root = (
+        Path(__file__).resolve().parents[1]
+        / "benchmarks/external_feature_benchmarks/cases/p02_wishbone_cross_clock"
+    )
+    interface = yaml.safe_load((root / "interface_contract.yaml").read_text())
+    namespace: dict[str, object] = {}
+    exec(
+        render_contract_generated_block(build_interface_coverage_plan(interface)),
+        namespace,
+    )
+
+    profile, transaction = namespace["_contract_protocol_event_transaction"](
+        "wishbone_destination_domain", "destination_request"
+    )
+
+    assert profile["clock"]["signal"] == "i_xclk_clk"
+    assert transaction["source_drive"] is None
+
+
+def test_cross_clock_contract_renders_one_monitor_per_declared_clock() -> None:
+    root = (
+        Path(__file__).resolve().parents[1]
+        / "benchmarks/external_feature_benchmarks/cases/p02_wishbone_cross_clock"
+    )
+    interface = yaml.safe_load((root / "interface_contract.yaml").read_text())
+
+    generated = render_contract_generated_block(
+        build_interface_coverage_plan(interface)
+    )
+
+    assert "'i_wb_clk'" in generated
+    assert "'i_xclk_clk'" in generated
+    assert "_contract_generated_clock_monitor" in generated
+    assert "protocol_obligation_ids=domain['obligation_ids']" in generated
+    assert "sample_shared_domains=domain['sample_shared_domains']" in generated
+    assert "for task in tasks:" in generated
+    assert "task.cancel()" in generated
+
+
+def test_reference_oracle_cannot_hide_invented_trace_field_behind_filtered_list() -> None:
+    test_tree = ast.parse(
+        """
+def extension_assertion(transaction_trace):
+    accepted = [record for record in transaction_trace if record.get("event") == "accepted"]
+    retired = [record for record in transaction_trace if record.get("event") == "success"]
+    return fifo_order_ok(accepted, retired)
+"""
+    )
+    support_tree = ast.parse(
+        """
+def fifo_order_ok(accepted, retired):
+    for index, record in enumerate(retired):
+        if record.get("kind") != "ack":
+            return False
+    return True
+"""
+    )
+
+    errors = _invalid_protocol_evidence_record_accesses(
+        support_tree,
+        1,
+        function_parameter_traces=_called_protocol_trace_parameter_hints(test_tree),
+    )
+
+    assert any("no top-level field 'kind'" in error for error in errors)
+
+
+def test_axi4_protocol_responder_credits_only_requested_direction_channels() -> None:
+    tree = ast.parse(
+        """
+async def run(dut):
+    group = _contract_standard_protocol_group("axi", "axi4")
+    await serve_axi4_protocol_transactions(
+        dut=dut,
+        clock_name="clk",
+        group=group,
+        request_counts={"read": 1, "write": 0},
+    )
+"""
+    )
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    interface = {
+        "channels": [
+            {
+                "name": "ar",
+                "protocol_profile": "axi4",
+                "metadata": ["protocol_group=axi protocol_channel=read_address"],
+            },
+            {
+                "name": "r",
+                "protocol_profile": "axi4",
+                "metadata": ["protocol_group=axi protocol_channel=read_data"],
+            },
+            {
+                "name": "b",
+                "protocol_profile": "axi4",
+                "metadata": ["protocol_group=axi protocol_channel=write_response"],
+            },
+        ]
+    }
+
+    events = _axi4_protocol_responder_transfer_calls(tree, parents, interface)
+
+    assert {(channel, kind) for _, channel, kind in events} == {
+        ("ar", "collector_transport"),
+        ("r", "driver_transport"),
+    }
+
+
+def test_scheduled_axi4_protocol_responder_is_credited_when_test_advances_time() -> None:
+    tree = ast.parse(
+        """
+async def run(dut):
+    group = _contract_standard_protocol_group("axi", "axi4")
+    task = cocotb.start_soon(serve_axi4_protocol_transactions(
+        dut=dut,
+        clock_name="clk",
+        group=group,
+        request_counts={"read": 0, "write": 1},
+    ))
+    await RisingEdge(dut.clk)
+    task.kill()
+"""
+    )
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    interface = {
+        "channels": [
+            {
+                "name": "aw",
+                "protocol_profile": "axi4",
+                "metadata": ["protocol_group=axi protocol_channel=write_address"],
+            },
+            {
+                "name": "w",
+                "protocol_profile": "axi4",
+                "metadata": ["protocol_group=axi protocol_channel=write_data"],
+            },
+            {
+                "name": "b",
+                "protocol_profile": "axi4",
+                "metadata": ["protocol_group=axi protocol_channel=write_response"],
+            },
+        ]
+    }
+
+    events = _axi4_protocol_responder_transfer_calls(tree, parents, interface)
+
+    assert {(channel, kind) for _, channel, kind in events} == {
+        ("aw", "collector_transport"),
+        ("w", "collector_transport"),
+        ("b", "driver_transport"),
+    }
+
+
+def test_scheduled_task_interval_ends_at_explicit_cancel() -> None:
+    tree = ast.parse(
+        """
+async def run(dut):
+    responder = cocotb.start_soon(serve(dut))
+    await RisingEdge(dut.clk)
+    first = int(dut.result.value)
+    await RisingEdge(dut.clk)
+    second = int(dut.result.value)
+    responder.cancel()
+"""
+    )
+    parents = _parents(tree)
+    call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "serve"
+    )
+
+    assert _scheduled_task_active_interval(call, tree, parents) == (3, 8)
+
+
+def test_background_axi4_responder_is_credited_across_checked_scenarios() -> None:
+    source = '''
+# === STIMULUS AND COVERAGE INTENT ===
+STIMULUS_COVERAGE_INTENTS = [
+    {"label": "first", "targets": ["channel.axi_aw.handshake_states"]},
+    {"label": "second", "targets": ["channel.axi_b.handshake_states"]},
+]
+# === LLM-GENERATED OPERATION ASSERTIONS ===
+async def exercise(dut):
+    responder = cocotb.start_soon(serve_axi4_protocol_transactions(
+        dut=dut,
+        clock_name="clk",
+        group=_contract_standard_protocol_group("axi", "axi4"),
+        request_counts={"read": 0, "write": 2},
+    ))
+    await RisingEdge(dut.clk)
+    first_observed = int(dut.observed.value)
+    # STIMULUS [first]
+    _contract_record_checked_stimulus(
+        "directed", {"case": 1}, {"result": 1}, {"result": first_observed},
+        operations=(), label="first",
+    )
+    await RisingEdge(dut.clk)
+    second_observed = int(dut.observed.value)
+    # STIMULUS [second]
+    _contract_record_checked_stimulus(
+        "directed", {"case": 2}, {"result": 2}, {"result": second_observed},
+        operations=(), label="second",
+    )
+    responder.cancel()
+'''
+    interface = {
+        "channels": [
+            {
+                "name": "axi_aw",
+                "direction": "output",
+                "protocol_profile": "axi4",
+                "metadata": ["protocol_group=axi protocol_channel=write_address"],
+            },
+            {
+                "name": "axi_w",
+                "direction": "output",
+                "protocol_profile": "axi4",
+                "metadata": ["protocol_group=axi protocol_channel=write_data"],
+            },
+            {
+                "name": "axi_b",
+                "direction": "input",
+                "protocol_profile": "axi4",
+                "metadata": ["protocol_group=axi protocol_channel=write_response"],
+            },
+        ],
+        "signals": [
+            {"name": "awvalid", "channel": "axi_aw", "role": "valid", "direction": "output"},
+            {"name": "awready", "channel": "axi_aw", "role": "ready", "direction": "input"},
+            {"name": "wvalid", "channel": "axi_w", "role": "valid", "direction": "output"},
+            {"name": "wready", "channel": "axi_w", "role": "ready", "direction": "input"},
+            {"name": "bvalid", "channel": "axi_b", "role": "valid", "direction": "input"},
+            {"name": "bready", "channel": "axi_b", "role": "ready", "direction": "output"},
+        ],
+    }
+
+    validate_verifier_authored_structure(
+        [source],
+        {"channel.axi_aw.handshake_states", "channel.axi_b.handshake_states"},
+        interface_contract=interface,
+    )
+
+
+def test_repair_source_preserves_semantic_intents_outside_audit_block() -> None:
+    source = """# === STIMULUS AND COVERAGE INTENT ===
+STIMULUS_COVERAGE_INTENTS = [{"label": "case", "targets": ["feature.a"]}]
+
+def record():
+    _contract_record_checked_stimulus(
+        "directed", {"x": 1}, {"y": 2}, {"y": 2}, operations=(), label="case"
+    )
+"""
+    installed = install_pipeline_generated_annotations(source)
+
+    repaired = verifier_owned_source_for_repair(installed)
+
+    assert extract_stimulus_coverage_intents(repaired) == [
+        {"label": "case", "targets": ["feature.a"]}
+    ]
+    assert AUDIT_BEGIN_MARKER not in repaired
+    assert repaired.count("STIMULUS_COVERAGE_INTENTS") == 1
+
+
+def test_protocol_evidence_capture_rejects_preawaited_stimulus() -> None:
+    tree = ast.parse(
+        """
+async def test(dut):
+    evidence = await capture_protocol_event_trace(
+        dut, profile, transaction, await drive_case(dut)
+    )
+"""
+    )
+
+    errors = _preawaited_protocol_evidence_stimulus(tree, 0)
+
+    assert len(errors) == 1
+    assert "observer starts before DUT traffic" in errors[0]
+
+
+@pytest.mark.parametrize(
+    "capture",
+    [
+        "await capture_protocol_event_trace(dut, profile, tx, drive_case(dut))",
+        (
+            "await capture_protocol_event_trace("
+            "dut, profile, tx, stimulus=drive_case(dut))"
+        ),
+    ],
+)
+def test_protocol_evidence_capture_consumes_unawaited_async_stimulus(
+    capture: str,
+) -> None:
+    tree = ast.parse(f"async def test(dut):\n    {capture}\n")
+    parents = _parents(tree)
+    call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "drive_case"
+    )
+
+    assert _async_call_is_consumed(call, parents)
+
+
+def test_arbitrary_unawaited_async_argument_is_not_consumed() -> None:
+    tree = ast.parse(
+        "async def test(dut):\n"
+        "    unrelated_wrapper(drive_case(dut))\n"
+    )
+    parents = _parents(tree)
+    call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "drive_case"
+    )
+
+    assert not _async_call_is_consumed(call, parents)
+
+
+def test_protocol_evidence_capture_requires_writable_boundary_before_next_drive() -> None:
+    tree = ast.parse(
+        """
+async def test(dut):
+    evidence = await capture_protocol_event_trace(
+        dut, profile, transaction, drive_case(dut)
+    )
+    dut.ready.value = 1
+"""
+    )
+
+    errors = _dut_writes_after_protocol_evidence_capture(tree, 0)
+
+    assert any("returns in Cocotb's ReadOnly phase" in item for item in errors)
+    assert any("signals=['ready']" in item for item in errors)
+
+
+def test_protocol_evidence_capture_allows_drive_after_writable_boundary() -> None:
+    tree = ast.parse(
+        """
+async def test(dut):
+    evidence = await capture_protocol_event_trace(
+        dut, profile, transaction, drive_case(dut)
+    )
+    await FallingEdge(dut.clk)
+    dut.ready.value = 1
+"""
+    )
+
+    assert _dut_writes_after_protocol_evidence_capture(tree, 0) == []
+
+
+def test_protocol_evidence_capture_requires_writable_boundary_before_next_capture() -> None:
+    tree = ast.parse(
+        """
+async def test(dut):
+    first = await capture_protocol_event_trace(
+        dut, profile, transaction, drive_case(dut)
+    )
+    second = await capture_protocol_event_trace(
+        dut, profile, transaction, drive_case(dut)
+    )
+"""
+    )
+
+    errors = _dut_writes_after_protocol_evidence_capture(tree, 0)
+
+    assert any("starting the next capture" in item for item in errors)
+
+
+def test_protocol_evidence_capture_allows_next_capture_after_writable_boundary() -> None:
+    tree = ast.parse(
+        """
+async def test(dut):
+    first = await capture_protocol_event_trace(
+        dut, profile, transaction, drive_case(dut)
+    )
+    await Timer(1, unit="ns")
+    second = await capture_protocol_event_trace(
+        dut, profile, transaction, drive_case(dut)
+    )
+"""
+    )
+
+    assert _dut_writes_after_protocol_evidence_capture(tree, 0) == []
+
+
+def test_protocol_evidence_capture_rejects_indirect_driver_helper_without_boundary() -> None:
+    tree = ast.parse(
+        """
+async def test(dut):
+    first = await capture_protocol_event_trace(
+        dut, profile, transaction, drive_case(dut)
+    )
+    second = await run_next_scenario(dut)
+"""
+    )
+
+    errors = _dut_writes_after_protocol_evidence_capture(tree, 0)
+
+    assert any("calls=['run_next_scenario']" in item for item in errors)
+
+
+def test_protocol_evidence_trace_rejects_invented_top_level_fields() -> None:
+    tree = ast.parse(
+        """
+async def test(dut):
+    evidence = await capture_protocol_event_trace(dut, profile, tx, drive(dut))
+
+def check(transaction_trace, cycle_trace):
+    for event in transaction_trace:
+        assert event.get("kind") == "wb_read_retire"
+    for cycle in cycle_trace:
+        assert cycle.get("i_reset", 0) == 0
+"""
+    )
+
+    errors = _invalid_protocol_evidence_record_accesses(tree, 0)
+
+    assert any("transaction_trace record has no top-level field 'kind'" in item for item in errors)
+    assert any("cycle_trace record has no top-level field 'i_reset'" in item for item in errors)
+
+
+def test_protocol_evidence_trace_feedback_names_real_signal_candidates() -> None:
+    tree = ast.parse(
+        """
+def check(transaction_trace):
+    for transaction in transaction_trace:
+        assert transaction.get("wb_addr") == 0
+"""
+    )
+
+    errors = _invalid_protocol_evidence_record_accesses(
+        tree, 0, {"i_wb_addr", "o_axi_araddr"}
+    )
+
+    assert any("Actual frozen-contract signal candidates: ['i_wb_addr'" in item for item in errors)
+    assert all("record['signals']['wb_addr']" not in item for item in errors)
+
+
+def test_protocol_evidence_trace_rejects_invented_fields_in_comprehensions() -> None:
+    tree = ast.parse(
+        """
+def classify(transaction_trace, cycle_trace):
+    lane = any(t.get("kind") == "axi_ar_transfer" for t in transaction_trace)
+    reset = any(c.get("i_reset", 0) for c in cycle_trace)
+    return lane, reset
+"""
+    )
+
+    errors = _invalid_protocol_evidence_record_accesses(tree, 0)
+
+    assert any("transaction_trace record has no top-level field 'kind'" in item for item in errors)
+    assert any("cycle_trace record has no top-level field 'i_reset'" in item for item in errors)
+
+
+def test_protocol_evidence_trace_rejects_invented_transaction_event_literal() -> None:
+    tree = ast.parse(
+        """
+def classify(transaction_trace):
+    return any(
+        transaction.get("event") == "response_success"
+        for transaction in transaction_trace
+    )
+"""
+    )
+
+    errors = _invalid_protocol_evidence_record_accesses(tree, 0)
+
+    assert any(
+        "record['event'] uses unsupported literal value(s) ['response_success']"
+        in item
+        for item in errors
+    )
+    assert any("'success'" in item and "'accepted'" in item for item in errors)
+
+
+def test_protocol_evidence_trace_rejects_aliased_transaction_event_literal() -> None:
+    tree = ast.parse(
+        """
+def check(transaction_trace):
+    for transaction in transaction_trace:
+        event_name = transaction.get("event")
+        if event_name == "request_accepted":
+            return True
+    return False
+"""
+    )
+
+    errors = _invalid_protocol_evidence_record_accesses(tree, 0)
+
+    assert any(
+        "record['event'] uses unsupported literal value(s) ['request_accepted']"
+        in item
+        for item in errors
+    )
+
+
+def test_protocol_evidence_trace_allows_stable_transaction_event_vocabulary() -> None:
+    tree = ast.parse(
+        """
+def classify(transaction_trace):
+    accepted = any(t.get("event") == "accepted" for t in transaction_trace)
+    terminal = any(
+        t["event"] in {"success", "error", "completed", "cancelled"}
+        for t in transaction_trace
+    )
+    return accepted, terminal
+"""
+    )
+
+    assert _invalid_protocol_evidence_record_accesses(tree, 0) == []
+
+
+def test_protocol_evidence_trace_rejects_invented_fields_through_get_helper() -> None:
+    tree = ast.parse(
+        """
+def _get(record, key, default=0):
+    return record.get(key, default)
+
+def classify(transaction_trace, cycle_trace):
+    for transaction in transaction_trace:
+        assert _get(transaction, "kind") == "axi_read"
+    for cycle in cycle_trace:
+        assert _get(cycle, "last_axi_rdata", 0) == 0
+"""
+    )
+
+    errors = _invalid_protocol_evidence_record_accesses(tree, 0)
+
+    assert any("transaction_trace record has no top-level field 'kind'" in item for item in errors)
+    assert any("cycle_trace record has no top-level field 'last_axi_rdata'" in item for item in errors)
+
+
+def test_protocol_evidence_trace_does_not_treat_unrelated_helper_as_accessor() -> None:
+    tree = ast.parse(
+        """
+def classify_label(record, label):
+    return label in record.get("events", ())
+
+def classify(transaction_trace, cycle_trace):
+    return any(classify_label(cycle, "completion") for cycle in cycle_trace)
+"""
+    )
+
+    assert _invalid_protocol_evidence_record_accesses(tree, 0) == []
+
+
+def test_protocol_evidence_trace_rejects_uncaptured_signal_through_alias() -> None:
+    tree = ast.parse(
+        """
+def _get(record, key, default=0):
+    return record.get(key, default)
+
+def classify(transaction_trace, cycle_trace):
+    for cycle in cycle_trace:
+        signals = cycle.get("signals", {})
+        assert _get(signals, "invented_completion_state", 0) == 0
+"""
+    )
+
+    errors = _invalid_protocol_evidence_record_accesses(
+        tree, 0, {"i_reset", "o_wb_ack"}
+    )
+
+    assert any(
+        "record['signals'] has no captured DUT signal 'invented_completion_state'"
+        in item
+        for item in errors
+    )
+
+
+def test_protocol_evidence_trace_allows_captured_signal_through_alias() -> None:
+    tree = ast.parse(
+        """
+def _get(record, key, default=0):
+    return record.get(key, default)
+
+def classify(transaction_trace, cycle_trace):
+    for cycle in cycle_trace:
+        signals = cycle.get("signals", {})
+        assert _get(signals, "o_wb_ack", 0) == 0
+"""
+    )
+
+    assert _invalid_protocol_evidence_record_accesses(
+        tree, 0, {"i_reset", "o_wb_ack"}
+    ) == []
+
+
+def test_protocol_evidence_trace_validates_reference_support_source() -> None:
+    source = '''
+# === STIMULUS AND COVERAGE INTENT ===
+STIMULUS_COVERAGE_INTENTS = [{"label": "case", "targets": ["feature.a"]}]
+# === LLM-GENERATED OPERATION ASSERTIONS ===
+async def exercise():
+    # STIMULUS [case]
+    _contract_record_checked_stimulus(
+        "directed", {"x": 1}, {"y": 1}, {"y": observed},
+        operations=(), label="case",
+    )
+'''
+    reference = '''
+def check(transaction_trace):
+    return any(t.get("kind") == "accepted" for t in transaction_trace)
+'''
+
+    with pytest.raises(ValueError, match="transaction_trace record has no top-level field 'kind'"):
+        validate_verifier_authored_structure(
+            [source], {"feature.a"}, support_sources=[reference]
+        )
 
 
 def checker():
@@ -203,6 +858,26 @@ _contract_record_checked_stimulus(
         validate_verifier_authored_structure(
             [valid.replace(', "feature.b"', "")], required
         )
+
+
+def test_protocol_only_checked_stimulus_accepts_empty_operation_tuple() -> None:
+    source = '''
+# === STIMULUS AND COVERAGE INTENT ===
+STIMULUS_COVERAGE_INTENTS = [
+    {"label": "protocol_case", "targets": ["channel.req.handshake_states"]},
+]
+# === LLM-GENERATED OPERATION ASSERTIONS ===
+# STIMULUS [protocol_case]
+_contract_record_checked_stimulus(
+    "directed", {"request": request_seen},
+    {"response": expected_response}, {"response": observed_response},
+    operations=(), label="protocol_case",
+)
+'''
+    validate_verifier_authored_structure(
+        [source], {"channel.req.handshake_states"},
+        architecture_contract={"operations": []},
+    )
 
 
 def test_checked_stimulus_call_must_use_complete_code_owned_signature() -> None:
@@ -1246,6 +1921,31 @@ async def exercise(dut):
     validate_verifier_authored_structure([using_control], {"feature.a"})
 
 
+def test_unused_checker_observation_is_not_mislabeled_as_stimulus_control() -> None:
+    source = '''
+# === STIMULUS AND COVERAGE INTENT ===
+STIMULUS_COVERAGE_INTENTS = [{"label": "case", "targets": ["feature.a"]}]
+# === LLM-GENERATED OPERATION ASSERTIONS ===
+def extension_assertion(*, transaction_trace, cycle_trace):
+    return bool(transaction_trace)
+async def exercise(dut):
+    transaction_trace = [{"accepted": int(dut.valid.value)}]
+    cycle_trace = []
+    # LLM-GENERATED OPERATION ASSERTION [extension_result]
+    assert extension_assertion(
+        transaction_trace=transaction_trace,
+        cycle_trace=cycle_trace,
+    )
+    observed = int(dut.result.value)
+    # STIMULUS [case]
+    _contract_record_checked_stimulus(
+        "directed", {"x": 1}, {"result": 1}, {"result": observed},
+        operations=("op",), label="case",
+    )
+'''
+    validate_verifier_authored_structure([source], {"feature.a"})
+
+
 def test_invalid_cocotb_timeout_unit_is_rejected_before_simulation() -> None:
     source = '''
 import cocotb
@@ -1817,3 +2517,30 @@ async def test_case(dut):
             {"signal.rst_n.reset_behavior", "operation.op.activation"},
             interface_contract=interface_contract,
         )
+
+
+def test_descriptive_global_handshake_rules_do_not_crash_reset_validation() -> None:
+    source = "async def test_case(dut):\n    return None\n"
+    interface_contract = {
+        "signals": [
+            {"name": "clk", "role": "clock", "direction": "input"},
+            {"name": "rst_n", "role": "reset", "direction": "input", "reset_value": "0"},
+        ],
+        "global_handshake_rules": "Protocol behavior is extension-owned.",
+    }
+    assert _reset_abort_operation_records_without_relaunch(
+        ast.parse(source), 0, source, interface_contract
+    ) == []
+
+
+def test_shell_escaped_dict_subscript_is_rejected_before_simulation() -> None:
+    source = "value = result['\"'\"'expected'\"'\"']\n"
+    assert _shell_escaped_subscript_keys(ast.parse(source)) == [
+        (1, '"\'expected\'"')
+    ]
+
+
+def test_ordinary_dict_subscript_is_not_shell_escape_artifact() -> None:
+    assert _shell_escaped_subscript_keys(
+        ast.parse("value = result['expected']\n")
+    ) == []

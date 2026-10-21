@@ -1,0 +1,143 @@
+design:
+  name: koios_lstm
+  description: External benchmark O07 over Koios accelerator benchmarks in the SLDB-pinned
+    VTR fork at exact revision 0812786f103b63b6db679eab163c3d4ab8b5cf1a, target vtr_flow/benchmarks/verilog/koios/lstm.v.
+operations:
+- name: koios_lstm
+  kind: koios_lstm
+  coverage_family: koios_lstm
+  coverage_family_source: novel
+  features:
+  - recurrent_hidden_cell_state
+  feature_extensions:
+  - lstm_gate_graph
+  - sequence_state_update
+  semantics: Source-backed operation scope for koios_lstm; exact behavior is owned
+    by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  arithmetic:
+    classifier_profile: llm_extension
+    reason: The selected upstream arithmetic is not a current code-owned profile.
+    extension_request: operation.o07_recurrent_hidden_cell_state
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Known linear primitives are reused; recurrent state and gate composition are extended.
+open_assumptions: []
+verification_extensions:
+- id: operation.o07_recurrent_hidden_cell_state
+  domain: operation
+  feature_name: recurrent_hidden_cell_state
+  target:
+    scope: operation
+    name: koios_lstm
+  semantics:
+    summary: Verify recurrent hidden cell state exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible recurrent hidden cell state behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: recurrent_hidden_cell_state is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - matrix_vector_multiply
+  - bias
+  - canonical_sequence_capture
+- id: operation.o07_lstm_gate_graph
+  domain: operation
+  feature_name: lstm_gate_graph
+  target:
+    scope: operation
+    name: koios_lstm
+  semantics:
+    summary: Verify lstm gate graph exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible lstm gate graph behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: lstm_gate_graph is intentionally absent from the current verifier_tool pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - matrix_vector_multiply
+  - bias
+  - canonical_sequence_capture
+- id: operation.o07_sequence_state_update
+  domain: operation
+  feature_name: sequence_state_update
+  target:
+    scope: operation
+    name: koios_lstm
+  semantics:
+    summary: Verify sequence state update exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible sequence state update behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: sequence_state_update is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: golden_trace
+    kind: golden_trace
+    description: Intermediate values required to classify operation coverage.
+  related_builtin_features:
+  - matrix_vector_multiply
+  - bias
+  - canonical_sequence_capture

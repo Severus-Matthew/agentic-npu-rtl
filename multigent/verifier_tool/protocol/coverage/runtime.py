@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from multigent.verifier_tool.protocol.assertion.axi import axi_transfer_windows
+from multigent.verifier_tool.pool.role_pool.protocol_semantics import (
+    evaluate_protocol_expression,
+)
 
 
 _SPECIAL_TEMPLATES = frozenset(
@@ -91,8 +94,18 @@ class ProtocolCoverageMonitor:
             raise ValueError(
                 f"{obligation_id} needs machine-readable arrival-order event bins"
             )
-        valid = bool(self._read(snapshot, str(bindings["valid"])))
-        ready = bool(self._read(snapshot, str(bindings["ready"])))
+        valid_expression = bindings.get("valid_expression")
+        ready_expression = bindings.get("ready_expression")
+        valid = (
+            evaluate_protocol_expression(valid_expression, snapshot)
+            if isinstance(valid_expression, Mapping)
+            else bool(self._read(snapshot, str(bindings["valid"])))
+        )
+        ready = (
+            evaluate_protocol_expression(ready_expression, snapshot)
+            if isinstance(ready_expression, Mapping)
+            else bool(self._read(snapshot, str(bindings["ready"])))
+        )
         key = f"arrival:{obligation_id}"
         previous = self.state.get(key)
         hits: list[str] = []
@@ -385,10 +398,16 @@ class ProtocolCoverageMonitor:
             return ["zero" if value == 0 else "nonzero"]
         return []
 
-    def sample(self, snapshot: Mapping[str, Any]) -> list[tuple[str, str]]:
+    def sample(
+        self,
+        snapshot: Mapping[str, Any],
+        obligation_ids: set[str] | frozenset[str] | None = None,
+    ) -> list[tuple[str, str]]:
         self.cycle += 1
         result: list[tuple[str, str]] = []
         for obligation_id, obligation in self.obligations.items():
+            if obligation_ids is not None and obligation_id not in obligation_ids:
+                continue
             template = str(obligation["template"])
             bindings = obligation.get("bindings", {})
             if template == "handshake_arrival_order":

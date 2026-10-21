@@ -29,7 +29,7 @@ matchers) with the top-level [`../../feature_plan.py`](../../feature_plan.py)
 |---|---|
 | `protocol_features.yaml` | Declarative catalog: channel/protocol-rule features, their match conditions, and default assertion/coverage/stimulus wiring |
 | `lifecycle_features.yaml` | Declarative catalog: reset/command/job/status features and `operation_coverage` lifecycle-vs-operation cross bins |
-| `operation_features.yaml` | Declarative code-owned catalog: currently only integer `matrix_multiply` with three baseline concepts and the supported bias, ReLU, and per-tensor affine-quantization extensions; other operations require contract-local extensions |
+| `operation_features.yaml` | Declarative code-owned catalog: integer `matrix_multiply`, raw `attention_qk`, standalone signed fixed-point `attention_scale`, and restricted integer `sparse_attention`; other operations require contract-local extensions |
 | `resolved_feature_plan.schema.json` | JSON Schema every domain's *output* must satisfy — the one shape `assertion`/`coverage`/`stimulus` all trust |
 | `catalog.py` | Loads + structurally validates the three YAML catalogs above |
 | `common.py` | Shared helpers: id-safety, reset lookup, interface/standard-plan unwrapping, one `feature_record()` constructor |

@@ -14,6 +14,10 @@ from multigent.verifier_tool.pool.role_pool.standard_protocols import (
     STANDARD_PROFILES,
     compile_standard_protocol_plan,
 )
+from multigent.verifier_tool.pool.role_pool.protocol_semantics import (
+    compile_protocol_semantics,
+    expression_signals,
+)
 from multigent.verifier_tool.lifecycle.coverage.plan import (
     load_lifecycle_coverage_templates,
 )
@@ -195,6 +199,42 @@ def _capability_bins(value: Any) -> set[str] | None:
     return None
 
 
+def _channel_field_capability_bins(
+    group: Mapping[str, Any], channel: Mapping[str, Any], field: str
+) -> tuple[set[str] | None, str]:
+    """Resolve a field partition per protocol channel, then fall back to legacy group bins."""
+
+    capabilities = group.get("capabilities", {})
+    if not isinstance(capabilities, Mapping):
+        capabilities = {}
+    by_channel = capabilities.get("sideband_bins_by_channel")
+    if by_channel is not None:
+        if not isinstance(by_channel, Mapping):
+            raise ValueError(
+                "AXI4 capability sideband_bins_by_channel must be a mapping"
+            )
+        channel_key = str(channel.get("kind", ""))
+        channel_bins = by_channel.get(channel_key)
+        if channel_bins is None:
+            channel_bins = by_channel.get(str(channel.get("name", "")))
+        if channel_bins is not None:
+            if not isinstance(channel_bins, Mapping):
+                raise ValueError(
+                    "AXI4 capability sideband_bins_by_channel."
+                    f"{channel_key} must be a mapping"
+                )
+            if field in channel_bins:
+                return (
+                    _capability_bins(channel_bins[field]),
+                    "protocol_capability.sideband_bins_by_channel."
+                    f"{channel_key}.{field}",
+                )
+    return (
+        _capability_bins(capabilities.get(f"{field}_bins")),
+        f"protocol_capability.{field}_bins",
+    )
+
+
 def _restrict_to_capability_bins(
     item: dict[str, Any], allowed: set[str] | None, basis: str
 ) -> None:
@@ -315,16 +355,16 @@ def _append_standard_obligations(
                                 "protocol_capability.protection_bins",
                             )
                         if template_name == "axi4_sideband_partition":
-                            allowed = _capability_bins(
-                                group.get("capabilities", {}).get(f"{field}_bins")
+                            allowed, capability_basis = _channel_field_capability_bins(
+                                group, channel, field
                             )
                             if allowed is not None:
                                 if not allowed or not allowed <= {"zero", "nonzero"}:
                                     raise ValueError(
-                                        f"AXI4 capability {field}_bins must select zero/nonzero"
+                                        f"AXI4 capability {capability_basis} must select zero/nonzero"
                                     )
                                 _restrict_to_capability_bins(
-                                    item, allowed, f"protocol_capability.{field}_bins",
+                                    item, allowed, capability_basis,
                                 )
                         obligations.append(item)
                     continue
@@ -555,6 +595,84 @@ def build_interface_coverage_plan(
                     )
             obligations.append(item)
 
+    # Contract-local protocols reuse the same handshake/stall templates through
+    # Contract-Reviewer-compiled event expressions.  No signal-name inference or
+    # generated Python is involved.
+    semantic_plan = compile_protocol_semantics(interface)
+    for profile in semantic_plan.get("profiles", []):
+        for transaction in profile.get("transactions", []):
+            common_bindings = {
+                "valid_expression": transaction["presented"],
+                "ready_expression": transaction["ready"],
+                "accepted_expression": transaction["accepted"],
+                "expression_signals": sorted(
+                    set(expression_signals(transaction["presented"]))
+                    | set(expression_signals(transaction["ready"]))
+                    | set(expression_signals(transaction["accepted"]))
+                ),
+                "protocol_profile": str(profile["name"]),
+                "transaction": str(transaction["name"]),
+                "abort_expression": profile.get("cancellation", {}).get("trigger"),
+            }
+            for template_name in ("handshake_states", "handshake_arrival_order"):
+                item = _obligation(
+                    template_name=template_name,
+                    template=templates[template_name],
+                    scope="channel",
+                    scope_name=str(transaction["channel"]),
+                    bindings=common_bindings,
+                )
+                item["id"] = (
+                    f"protocol_transaction.{_safe_id(profile['name'])}."
+                    f"{_safe_id(transaction['name'])}.{template_name}"
+                )
+                if channels_by_name.get(str(transaction["channel"]), {}).get(
+                    "direction"
+                ) == "input":
+                    _restrict_to_capability_bins(
+                        item,
+                        {"transfer"} if template_name == "handshake_states" else set(),
+                        "testbench is source; DUT-owned backpressure timing is not contract-bound",
+                    )
+                obligations.append(item)
+            stability_rules = list(transaction.get("stability_rules", []))
+            if (
+                not stability_rules
+                and transaction.get("stable_while_stalled")
+                and transaction.get("stalled")
+            ):
+                stability_rules = [{
+                    "id": "stall",
+                    "while": transaction["stalled"],
+                    "signals": transaction.get("content", ()),
+                }]
+            for stability_rule in stability_rules:
+                stall_item = _obligation(
+                    template_name="stall_stability",
+                    template=templates["stall_stability"],
+                    scope="channel",
+                    scope_name=str(transaction["channel"]),
+                    bindings={
+                        **common_bindings,
+                        "stalled_expression": stability_rule["while"],
+                        "content": list(stability_rule.get("signals", ())),
+                    },
+                )
+                stall_item["id"] = (
+                    f"protocol_transaction.{_safe_id(profile['name'])}."
+                    f"{_safe_id(transaction['name'])}."
+                    f"{_safe_id(stability_rule['id'])}.stall_stability"
+                )
+                if channels_by_name.get(str(transaction["channel"]), {}).get(
+                    "direction"
+                ) == "input":
+                    _restrict_to_capability_bins(
+                        stall_item,
+                        set(),
+                        "testbench is source; DUT-owned stall length is not controllable",
+                    )
+                obligations.append(stall_item)
+
     _append_standard_obligations(obligations, templates, standard_plan)
 
     obligations.sort(key=lambda item: item["id"])
@@ -567,6 +685,7 @@ def build_interface_coverage_plan(
         # adapters without making generated TBs or callers pass a second contract.
         "interface_contract": dict(interface),
         "standard_protocol_plan": standard_plan,
+        "protocol_semantics_plan": semantic_plan,
         "monitor": {
             "clock": str(interface.get("clock") or (clocks[0] if clocks else "")),
             "reset": str(interface.get("reset") or (resets[0] if resets else "")),

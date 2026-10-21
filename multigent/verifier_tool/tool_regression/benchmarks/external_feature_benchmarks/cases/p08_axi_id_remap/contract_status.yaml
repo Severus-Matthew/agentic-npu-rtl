@@ -1,0 +1,17 @@
+schema_version: 1
+case_id: P08
+status: blocked
+freeze_blockers:
+- manual_source_port_binding_audit
+- deterministic_contract_reviewer_pass
+- upstream_build_dependency_audit
+source:
+  project: PULP AXI
+  revision: 70b8e54fd460e3308e58be596ceb3566a6e3576e
+  target: src/axi_id_remap.sv
+unknown_features:
+- axi_id_namespace_remapping
+- remapped_response_association
+- same_id_order_preservation
+preflight_status: BLOCKED
+preflight_finding_count: 2

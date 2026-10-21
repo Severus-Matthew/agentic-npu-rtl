@@ -1,0 +1,12 @@
+{
+  "top": null,
+  "modules": [
+    {
+      "name": null,
+      "responsibility": "opentitan_rom_controller_boot_check",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

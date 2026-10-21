@@ -1,0 +1,15 @@
+schema_version: 1
+case_id: P04
+status: reviewer_pass_candidate
+freeze_blockers:
+- upstream_build_dependency_audit
+source:
+  project: PULP OBI
+  revision: f29d4cc421248dfb5c32986bbf9918e2a1ca7556
+  target: src/obi_to_apb.sv
+unknown_features:
+- obi_req_gnt_split_response
+- obi_delayed_rvalid
+- apb_phase_mapping
+preflight_status: PASS
+preflight_finding_count: 0

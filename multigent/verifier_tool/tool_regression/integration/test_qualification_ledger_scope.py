@@ -15,6 +15,7 @@ from multigent.verifier_tool.tool_regression.qualification.build_ledger import (
     PROTOCOL_FEATURE_BINS,
     LIFECYCLE_ROWS,
     OPERATION_BINS,
+    OPERATION_FAMILY_BINS,
     STANDARD_RULES,
     TAGS,
     build_all_rows,
@@ -27,7 +28,7 @@ def test_generic_ready_valid_reset_is_tracked_as_an_explicit_policy() -> None:
     assert "rule:ready_valid.valid_low_during_reset" not in generated
     assert "policy:channel_reset_behavior.valid_deasserted" in generated
     assert "rule:explicit_generic_channel_reset.valid_deasserted" in generated
-    assert len(generated) == 257
+    assert len(generated) == 323
 
 
 def test_committed_ledger_matches_the_generated_inventory() -> None:
@@ -35,9 +36,9 @@ def test_committed_ledger_matches_the_generated_inventory() -> None:
     generated_ids = {row["id"] for row in build_all_rows()}
     stored_ids = {row["id"] for row in document["rows"]}
     assert stored_ids == generated_ids
-    assert document["runtime_target_count"] == 166
+    assert document["runtime_target_count"] == 232
     assert document["metadata_entry_count"] == 91
-    assert document["total_rows"] == 257
+    assert document["total_rows"] == 323
 
 
 def test_explicit_channel_reset_policy_has_strict_fault_fix_evidence() -> None:
@@ -131,17 +132,20 @@ def test_hand_transcribed_inventory_matches_live_pool_sources() -> None:
         ))
     assert LIFECYCLE_ROWS == source_lifecycle_rows
 
-    matrix = operation_features["families"]["matrix_multiply"]
-    source_operation_bins = [
-        (concept, list(matrix["starter_bins"][concept]))
-        for concept in matrix["baseline_concepts"]
-    ]
-    for group_name, group in matrix["feature_groups"].items():
-        source_operation_bins.extend(
-            (
-                f"{group_name}.{concept}",
-                list(spec["starter_bins"]),
+    source_operation_families: dict[str, list[tuple[str, list[str]]]] = {}
+    for family_name, family in operation_features["families"].items():
+        source_operation_bins = [
+            (concept, list(family["starter_bins"][concept]))
+            for concept in family["baseline_concepts"]
+        ]
+        for group_name, group in family.get("feature_groups", {}).items():
+            source_operation_bins.extend(
+                (
+                    f"{group_name}.{concept}",
+                    list(spec["starter_bins"]),
+                )
+                for concept, spec in group["optional_concepts"].items()
             )
-            for concept, spec in group["optional_concepts"].items()
-        )
-    assert OPERATION_BINS == source_operation_bins
+        source_operation_families[family_name] = source_operation_bins
+    assert OPERATION_FAMILY_BINS == source_operation_families
+    assert OPERATION_BINS == source_operation_families["matrix_multiply"]

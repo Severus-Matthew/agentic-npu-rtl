@@ -1,0 +1,122 @@
+design:
+  name: axi_clock_domain_crossing
+  description: External benchmark P09 over PULP AXI at exact revision 70b8e54fd460e3308e58be596ceb3566a6e3576e,
+    target src/axi_cdc.sv.
+operations: []
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Each domain uses known AXI; only cross-clock evidence and reset epochs are extended.
+open_assumptions: []
+verification_extensions:
+- id: protocol.p09_axi_five_channel_cdc
+  domain: protocol
+  feature_name: axi_five_channel_cdc
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify axi five channel cdc exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible axi five channel cdc behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: axi_five_channel_cdc is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - axi4
+  - axi4_channel_legality
+- id: protocol.p09_cross_domain_reset_epoch
+  domain: protocol
+  feature_name: cross_domain_reset_epoch
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify cross domain reset epoch exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible cross domain reset epoch behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: cross_domain_reset_epoch is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - axi4
+  - axi4_channel_legality
+- id: protocol.p09_cdc_order_preservation
+  domain: protocol
+  feature_name: cdc_order_preservation
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify cdc order preservation exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible cdc order preservation behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: cdc_order_preservation is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - axi4
+  - axi4_channel_legality
+verification_scope:
+  domains:
+  - protocol
+  operation_coverage_required: false
+  operation_stimulus_ledger_required: false
+  reason: This bridge benchmark isolates transport semantics and declares no accelerator
+    operation.

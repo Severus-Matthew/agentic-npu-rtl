@@ -1,0 +1,57 @@
+schema_version: 1
+components:
+  - id: operation.golden.canonical
+    component_type: golden_operation
+    abi: canonical_golden_v1
+    entrypoint: multigent.verifier_tool.operation.stimulus.stimulus_generator:evaluate_canonical_operation
+    domains: [operation]
+    execution_owner: pipeline
+    description: Evaluate a supported operation from accepted canonical inputs and emit golden output and trace.
+    supported_profiles: ['*']
+    capabilities: [golden_output, golden_trace, matrix_multiply, qk_score, sparse_attention, post_operations]
+    tags: [golden_model]
+    match_terms: [mathematical result, golden output, golden trace, matrix multiply, qk score, sparse attention]
+    limitations: [The operation metadata and every non-scalar stage must be supported by the code-owned evaluator.]
+    auto_reuse: true
+
+  - id: operation.solver.compiled_formula
+    component_type: constraint_solver
+    abi: solver_targeted_stimulus_v1
+    entrypoint: multigent.verifier_tool.operation.stimulus.stimulus_generator:generate_solver_compiled_stimulus_for_bin
+    domains: [operation]
+    execution_owner: pipeline
+    description: Use Z3 and the compiled formula DAG to generate stimulus for a declared operation bin.
+    supported_profiles: ['*']
+    capabilities: [constraint_solving, targeted_stimulus, reachability_proof, scalar_formula]
+    tags: [solver, stimulus]
+    match_terms: [targeted stimulus, solve predicate, reachable bin, scalar formula, inverse calculation]
+    limitations: [Only solver-compilable formula stages and predicates are accepted.]
+    auto_reuse: true
+
+  - id: operation.strategy.canonical_suite
+    component_type: stimulus_strategy
+    abi: feature_plan_strategy_v1
+    entrypoint: multigent.verifier_tool.operation.stimulus.stimulus_generator:generate_canonical_stimulus_suite
+    domains: [operation]
+    execution_owner: pipeline
+    description: Combine directed, solver-targeted, randomized, and discriminating canonical cases.
+    supported_profiles: ['*']
+    capabilities: [directed_stimulus, randomized_stimulus, targeted_stimulus, discriminating_stimulus]
+    tags: [operation_stimulus]
+    match_terms: [directed vectors, randomized transactions, coverage campaign, discriminating case]
+    limitations: [Requires a supported canonical operation model or a compiled scalar formula extension.]
+    auto_reuse: true
+
+  - id: operation.compiler.scalar_formula
+    component_type: formula_compiler
+    abi: scalar_formula_compiler_v1
+    entrypoint: multigent.verifier_tool.pool.operation_metadata.formula:compile_formula
+    domains: [operation]
+    execution_owner: pipeline
+    description: Compile an Architect-declared integer scalar formula into shared Z3 and concrete semantics.
+    supported_profiles: ['*']
+    capabilities: [scalar_formula, solver_ir, concrete_evaluation]
+    tags: [formula_dag]
+    match_terms: [post operation formula, scalar transform, formula dag, new activation]
+    limitations: [Rejects unsupported stateful, temporal, real-valued, or externally defined semantics.]
+    auto_reuse: true

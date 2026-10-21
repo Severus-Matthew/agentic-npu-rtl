@@ -1,0 +1,9 @@
+clock: null
+reset: null
+channels: []
+signals: []
+global_handshake_rules: No rule is inferred before source-port audit.
+source_boundary:
+  top: reduction_layer
+  target: vtr_flow/benchmarks/verilog/koios/reduction_layer.v
+  binding_status: requires_manual_port_audit

@@ -1,0 +1,12 @@
+{
+  "top": "tlul_adapter_sram",
+  "modules": [
+    {
+      "name": "tlul_adapter_sram",
+      "responsibility": "tilelink_ul_sram_adapter",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+design:
+  name: obi_atomic_resolver
+  description: External benchmark P05 over PULP OBI at exact revision f29d4cc421248dfb5c32986bbf9918e2a1ca7556,
+    target src/obi_atop_resolver.sv.
+operations: []
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Only atomic sequencing and returned value semantics are extended.
+open_assumptions: []
+verification_extensions:
+- id: protocol.p05_obi_atomic_operation_resolution
+  domain: protocol
+  feature_name: obi_atomic_operation_resolution
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify obi atomic operation resolution exactly as implemented by the
+      pinned upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible obi atomic operation resolution behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: obi_atomic_operation_resolution is intentionally absent from the current
+    verifier_tool pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - obi_request_response_binding
+  - memory_model
+- id: protocol.p05_exclusive_bus_atomic_sequence
+  domain: protocol
+  feature_name: exclusive_bus_atomic_sequence
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify exclusive bus atomic sequence exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible exclusive bus atomic sequence behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: exclusive_bus_atomic_sequence is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - obi_request_response_binding
+  - memory_model
+verification_scope:
+  domains:
+  - protocol
+  operation_coverage_required: false
+  operation_stimulus_ledger_required: false
+  reason: This bridge benchmark isolates transport semantics and declares no accelerator
+    operation.

@@ -1,0 +1,141 @@
+design:
+  name: wishbone_cross_clock
+  description: External benchmark P02 over ZipCPU wb2axip at exact revision 2e8d3bc2d26ddc33d1881022a2a2b9d3f0c16b9b,
+    target rtl/wbxclk.v.
+operations: []
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: ordered pipelined-Wishbone request/response CDC
+reset:
+  signal: i_reset
+  active_level: high
+  source_sampling: synchronous_to_i_wb_clk
+  destination_propagation: asynchronous_assertion_then_two_i_xclk_clk_stages
+  behavior: abort pending source work and reset both asynchronous FIFO paths
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Identity transactions cross two clocks; operation semantics are excluded.
+open_assumptions: []
+verification_extensions:
+- id: protocol.p02_wishbone_outstanding_cdc
+  domain: protocol
+  feature_name: wishbone_outstanding_cdc
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Ordered pipelined-Wishbone clock-domain crossing implemented by wbxclk
+      at the pinned revision.
+    trigger: On a rising i_wb_clk edge, accept exactly when i_wb_cyc && i_wb_stb &&
+      !o_wb_stall.
+    required_behavior:
+    - While i_wb_cyc && i_wb_stb && o_wb_stall, the source holds i_wb_stb, i_wb_we,
+      i_wb_addr, i_wb_data, and i_wb_sel stable.
+    - Accepted source requests enter the asynchronous request FIFO in order. In the
+      destination domain, o_xclk_stb and its WE/address/data/select payload remain
+      stable while i_xclk_stall is high; a destination request is accepted exactly
+      when o_xclk_cyc && o_xclk_stb && !i_xclk_stall.
+    - Each destination i_xclk_ack or i_xclk_err observed while o_xclk_cyc is active
+      enters the asynchronous return FIFO in order. The source emits the corresponding
+      registered o_wb_ack or o_wb_err only while i_wb_cyc remains active, with o_wb_data
+      equal to the matching returned data.
+    - o_wb_ack and o_wb_err are mutually exclusive, responses never exceed accepted
+      requests, and response order equals source acceptance order.
+    - At default LGFIFO=5, at most 32 source requests may be outstanding. o_wb_stall
+      is asserted when the outstanding-response capacity or request FIFO is full,
+      or while an abort flush is active.
+    - The two clocks may have unrelated rates and phase. A request or response receives
+      credit only on the appropriate domain clock edge, never merely because an asynchronously
+      observed level changed.
+    end_condition: Every non-aborted accepted source request retires once as o_wb_ack
+      or o_wb_err in original order.
+    forbidden_behavior:
+    - Accept a source request while o_wb_stall is high or change a destination request
+      while stalled.
+    - Duplicate, lose, or reorder a non-aborted request or response across the clock
+      domains.
+    - Assert source ACK and ERR together or expose a return after its source cycle
+      was aborted.
+  reason: wishbone_outstanding_cdc is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - clock_reset
+  - memory_request_response
+  parameters:
+    default_lgfifo: 5
+    maximum_outstanding: 32
+    source_acceptance: i_wb_cyc && i_wb_stb && !o_wb_stall
+    destination_acceptance: o_xclk_cyc && o_xclk_stb && !i_xclk_stall
+    destination_response: o_xclk_cyc && (i_xclk_ack || i_xclk_err)
+- id: protocol.p02_wishbone_cycle_cancellation
+  domain: protocol
+  feature_name: wishbone_cycle_cancellation
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Wishbone cycle release and outstanding-work abort semantics implemented
+      by wbxclk.
+    trigger: After at least one accepted request, i_wb_cyc is deasserted, or a destination
+      error terminates the active cycle.
+    required_behavior:
+    - When an otherwise completed source cycle drops i_wb_cyc, a FIFO marker with
+      request-strobe zero eventually drops o_xclk_cyc in the destination domain without
+      creating a transaction response.
+    - If i_wb_cyc drops while accepted responses remain outstanding, or if o_wb_err
+      is emitted, bus_abort asynchronously resets both FIFO paths and propagates a
+      reset into the destination domain.
+    - During abort, o_wb_stall is asserted. o_wb_ack and o_wb_err are forced low when
+      reset, abort, inactive i_wb_cyc, or an empty return FIFO applies.
+    - After the abort/reset pipelines settle, a new source cycle starts with no response,
+      request, or data credit inherited from the cancelled cycle.
+    - A destination i_xclk_err drops o_xclk_cyc, prevents further destination strobes
+      for that cycle, and returns exactly one ordered source error before the flush
+      suppresses stale work.
+    end_condition: Both domains have left the cancelled cycle and a subsequent legal
+      request can be accepted without stale activity.
+    forbidden_behavior:
+    - Return ACK, ERR, or read-data credit from cancelled work into a later source
+      cycle.
+    - Leave o_xclk_cyc asserted indefinitely after a propagated cycle-release marker,
+      abort, reset, or destination error.
+  reason: wishbone_cycle_cancellation is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - clock_reset
+  - memory_request_response
+  parameters:
+    abort_sources: i_reset|i_wb_cyc_drop_with_outstanding|o_wb_err
+    request_fifo_cycle_release_marker: req_stb=0
+    synchronizer_stages: 2
+verification_scope:
+  domains:
+  - protocol
+  operation_coverage_required: false
+  operation_stimulus_ledger_required: false
+  reason: This bridge benchmark isolates transport semantics and declares no accelerator
+    operation.

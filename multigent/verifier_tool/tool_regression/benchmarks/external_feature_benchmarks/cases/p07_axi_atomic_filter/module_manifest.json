@@ -1,0 +1,12 @@
+{
+  "top": "axi_atop_filter",
+  "modules": [
+    {
+      "name": "axi_atop_filter",
+      "responsibility": "axi_atomic_filter",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

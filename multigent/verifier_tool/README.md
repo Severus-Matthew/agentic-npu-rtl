@@ -7,6 +7,9 @@ nodes, and cocotb runtime; it is not another LLM agent.
 What to require of each kind of consumer to use this tool well, and what the tool
 provides to each, is documented per role in
 [`GUIDE.md`](GUIDE.md) (human-readable architecture and integration overview),
+[`AGENT_EXTENSION_GUIDE_KO.md`](AGENT_EXTENSION_GUIDE_KO.md) (Korean guide to
+the exact Architect contract, Verifier coverage, and executable-code boundary
+for features absent from the pools),
 [`ARCHITECT_INTEGRATION.md`](ARCHITECT_INTEGRATION.md) (contract producer),
 [`VERIFIER_INTEGRATION.md`](VERIFIER_INTEGRATION.md) (testbench/reference
 generator), [`DEBUGGER_INTEGRATION.md`](DEBUGGER_INTEGRATION.md) (failure-evidence
@@ -87,6 +90,11 @@ verifier_tool/
 │   ├── extension_bundle.schema.json   Verifier-owned assertion/coverage/stimulus
 │   ├── examples.yaml                 reusable built-in feature examples
 │   └── authoring.py                  schema composition, validation, inert manifest
+├── components/                reusable callable registry + compatibility resolver
+│   ├── catalog/                      driver/adapter/runtime/golden/solver manifests
+│   ├── interfaces.py                 stable component types and invocation ABIs
+│   ├── registry.py                   checked-in manifest validation and safe loader
+│   └── resolver.py                   exact reuse, residual work, and RAG references
 ├── contract_review/           deterministic contract preflight + extension reuse resolution
 ├── tb_validation/
 │   ├── validator.py          stable code-only generated-TB validation
@@ -115,8 +123,9 @@ semantics that sits alongside `pool/role_pool/` (signal roles) and
 `pool/lifecycle_policy_pool/` (lifecycle behaviors). All three pools turn a
 frozen Architect contract into canonical, code-owned meaning; the `operation/`
 (and `protocol/`, `lifecycle/`) domain folders then *consume* that meaning to
-generate assertions, coverage, and stimuli. If you are looking for "where GEMM
-classification happens," that is `pool/operation_metadata/canonical.py`, not
+generate assertions, coverage, and stimuli. If you are looking for "where
+code-owned operation classification happens," that is
+`pool/operation_metadata/canonical.py`, not
 `operation/assertion/` or `operation/coverage/`.
 
 Similarly, `feature_plan.py` (singular, a small facade module) sits beside
@@ -141,7 +150,11 @@ data-object metadata into accepted canonical jobs. `coverage` records observed b
 hits. `assertion` generates one central golden-result comparison and
 code-owned protocol checks. For a known GEMM, verifier_tool owns channel binding,
 transaction completeness, and the dimensions/operand/accumulation/post-op/bias/
-activation classifiers. For the supported ready/valid integer-GEMM profile, the
+activation classifiers. The restricted integer sparse-attention profile owns
+the exact composed QK/scale/mask/normalization/value golden trace and its
+dimension, operand, sparsity-pattern, active-score, stage-handoff, and
+output-value classifiers. For the supported
+ready/valid code-owned profiles, the
 immutable generated cocotb campaign also owns protocol scheduling, accepted-transfer
 capture, directed/qualification/random stimuli, exact 1/3/6-cycle channel stalls,
 reset in every input/compute/output phase, illegal-command recovery, and post-reset
@@ -244,7 +257,14 @@ The effective Architect response schema requires `operations[].arithmetic`,
 and optionally accepts `verification_extensions` and `verification_vocabulary`.
 Tool-owned schema composers add these fields without duplicating enums in the
 pipeline's base schema. The same composed schema optionally accepts
-`interface_contract.reset_channel_policies`. The register-sequence declaration
+`interface_contract.reset_channel_policies` and
+`interface_contract.protocol_semantics`. The latter is the machine-readable
+escape-hatch boundary for a new protocol profile: Architect declares boolean
+events, transactions, stable fields, flow control, ordering, cancellation, and
+residual custom rules; Contract Review compiles them into a safe data AST; the
+Verifier reuses tool-owned handshake/stall/accounting features and implements
+only custom rules linked to a real extension request. Descriptive prose is never
+the executable authority. The register-sequence declaration
 (`operations[].lifecycle_control_plane_sequence`) is an optional property of that
 schema (required exactly when a lifecycle policy field is `control_plane_sequence`,
 enforced by the compile); a reset signal's `reset_settle_cycles` is honored by the
@@ -274,8 +294,36 @@ field catalog live in `pool/role_pool/standard_protocols.yaml` and
 `pool/operation_metadata/architect_metadata_format.yaml`; this is deliberately separate from
 the frozen Architect schema for a later conflict-free merge.
 
+For a nonstandard protocol whose VALID/READY equivalents are expressions rather
+than individual signals, `protocol_semantics.py` supplies a second deterministic
+path. Its expression language is intentionally limited to declared signal/event
+names, `!`, `&&`, `||`, `==`, `!=`, `0`, and `1`; Python evaluation and arbitrary
+code are forbidden. Contract Review rejects unknown references and cycles, then
+inlines event dependencies. The resolved Feature Plan can consequently use the
+same `handshake_states`, `handshake_arrival_order`, `stall_stability`, and
+`transaction_accounting` runtime primitives for Wishbone-like or future custom
+profiles. When one observable event must cause another across protocol boundaries,
+`interface_contract.protocol_event_relations` additionally declares the exact
+cause/effect bindings, bounded cycle latency, FIFO correlation, outstanding depth,
+and cancellation behavior. Contract Review compiles this data and the generated
+monitor invokes the code-owned event-correlation checker; a registered response is
+therefore not rewritten as an incorrect same-cycle LLM assertion. Only residual
+payload transformation, keyed identity, or other semantics absent from these IRs
+remain Verifier-authored extensions.
+
+The compiled input transaction includes presented, post-accept, and idle drive
+states plus a completion mode. The generic custom-event source driver can thus
+hold a Wishbone-like cycle open until every accepted request completes without
+hardcoding Wishbone names. Component resolution selects this driver and the
+pipeline-owned transaction-accounting checker only when the targeted group has
+validated protocol semantics; otherwise they remain unavailable rather than
+being guessed from prose.
+
 The generated TB block embeds immutable operation, protocol, and lifecycle plans and exposes
 `_contract_protocol_scenarios()` and `_contract_protocol_channel()`. Executable
+custom-event bindings are exposed by
+`_contract_protocol_event_transaction(profile_name, transaction_name)`.
+Executable
 `_contract_drive_protocol_transfers`, `_contract_collect_protocol_transfers`, and
 `_contract_drive_protocol_reset` helpers own the cocotb edge/hold/accept loop, so
 the Verifier does not recreate handshake drivers. All temporal implementation remains in the

@@ -14,6 +14,9 @@ from multigent.verifier_tool.pool.feature_plans.compiler import (
     compile_stimulus_feature_plan,
 )
 from multigent.verifier_tool.pool.role_pool.standard_protocols import compile_standard_protocol_plan
+from multigent.verifier_tool.pool.role_pool.protocol_semantics import (
+    compile_protocol_semantics,
+)
 
 
 class ProtocolStimulusGenerationError(ValueError):
@@ -408,6 +411,33 @@ def build_protocol_stimulus_plan(interface: Mapping[str, Any]) -> dict[str, Any]
     generic = _generic_ready_valid_group(interface, coverage_plan)
     if generic is not None:
         generated.append(generic)
+    event_protocols = []
+    for profile in compile_protocol_semantics(interface).get("profiles", []):
+        input_transactions = [
+            dict(transaction)
+            for transaction in profile.get("transactions", [])
+            if transaction.get("source_drive") is not None
+        ]
+        if not input_transactions:
+            continue
+        event_protocols.append(
+            {
+                "name": str(profile["name"]),
+                "protocol_groups": list(profile.get("protocol_groups", [])),
+                "clock": dict(profile.get("clock", {})),
+                "driver_component_id": "protocol.driver.contract_event_source",
+                "driver_entrypoint": (
+                    "multigent.verifier_tool.protocol.stimulus.cocotb:"
+                    "drive_protocol_event_transactions"
+                ),
+                "transactions": input_transactions,
+                "requirements": [
+                    "drive every source field from the compiled source_drive binding",
+                    "hold the presented transaction until its compiled accepted event is true",
+                    "credit coverage only from runtime-observed compiled events",
+                ],
+            }
+        )
     reset_scenarios = []
     for item in coverage_plan.get("obligations", []):
         if item.get("template") != "reset_behavior":
@@ -436,6 +466,7 @@ def build_protocol_stimulus_plan(interface: Mapping[str, Any]) -> dict[str, Any]
         "interface_contract": dict(interface),
         "global_scenarios": reset_scenarios,
         "groups": generated,
+        "event_protocols": event_protocols,
         "execution_contract": [
             "testbench drives only DUT input signals and observes DUT output signals",
             "all source fields remain stable from presentation through the accepting edge",

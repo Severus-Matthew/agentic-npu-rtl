@@ -1,0 +1,25 @@
+schema_version: 1
+case_id: P09
+domain: protocol
+status: BLOCKED
+findings:
+- check_id: signal_roles
+  severity: blocking
+  owner: architect_contract
+  artifact: interface_contract
+  paths: []
+  message: interface clock references missing signal 'None'
+- check_id: signal_roles
+  severity: blocking
+  owner: architect_contract
+  artifact: interface_contract
+  paths: []
+  message: interface reset references missing signal 'None'
+capability_notes: []
+automatic_campaign_support:
+  supported: false
+  status: llm_extension_required
+  reasons:
+  - no_operations
+  operations: {}
+  any_operation_supported: false

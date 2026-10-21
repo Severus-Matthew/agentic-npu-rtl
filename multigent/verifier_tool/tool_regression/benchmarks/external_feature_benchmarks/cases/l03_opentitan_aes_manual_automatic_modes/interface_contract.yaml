@@ -1,0 +1,9 @@
+clock: null
+reset: null
+channels: []
+signals: []
+global_handshake_rules: No rule is inferred before source-port audit.
+source_boundary:
+  top: null
+  target: hw/ip/aes/rtl
+  binding_status: requires_manual_port_audit

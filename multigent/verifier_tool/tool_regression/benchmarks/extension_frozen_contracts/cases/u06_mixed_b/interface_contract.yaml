@@ -1,0 +1,173 @@
+clock: clk
+reset: rst_n
+channels:
+- name: cmd
+  direction: input
+  protocol_profile: ready_valid
+  data_objects: []
+  ordering: one command
+  framing: one beat
+- name: a
+  direction: input
+  protocol_profile: ready_valid
+  data_objects:
+  - A_matrix
+  ordering: declared dimension order
+  framing: exact tensor
+- name: b
+  direction: input
+  protocol_profile: ready_valid
+  data_objects:
+  - B_matrix
+  ordering: declared dimension order
+  framing: exact tensor
+- name: bias
+  direction: input
+  protocol_profile: ready_valid
+  data_objects:
+  - bias_vector
+  ordering: declared dimension order
+  framing: exact tensor
+- name: y
+  direction: output
+  protocol_profile: ready_valid
+  data_objects:
+  - Y_matrix
+  ordering: declared dimension order
+  framing: exact tensor
+signals:
+- name: clk
+  role: clock
+  semantic_class: null
+  channel: null
+  direction: input
+  width: 1
+  signed: false
+  semantic: Free-running clock.
+  reset_value: '0'
+- name: rst_n
+  role: reset
+  semantic_class: null
+  channel: null
+  direction: input
+  width: 1
+  signed: false
+  semantic: Synchronous active-low reset.
+  reset_value: '0'
+- name: cmd_valid
+  role: valid
+  channel: cmd
+  direction: input
+  width: 1
+  signed: false
+- name: cmd_ready
+  role: ready
+  channel: cmd
+  direction: output
+  width: 1
+  signed: false
+- name: cmd_op
+  role: payload
+  semantic_class: command
+  channel: cmd
+  direction: input
+  width: '1'
+  signed: false
+  semantic: legal only 1'd1
+- name: a_valid
+  role: valid
+  channel: a
+  direction: input
+  width: 1
+  signed: false
+- name: a_ready
+  role: ready
+  channel: a
+  direction: output
+  width: 1
+  signed: false
+- name: a_data
+  role: payload
+  semantic_class: data
+  channel: a
+  direction: input
+  width: '8'
+  signed: true
+- name: b_valid
+  role: valid
+  channel: b
+  direction: input
+  width: 1
+  signed: false
+- name: b_ready
+  role: ready
+  channel: b
+  direction: output
+  width: 1
+  signed: false
+- name: b_data
+  role: payload
+  semantic_class: data
+  channel: b
+  direction: input
+  width: '8'
+  signed: true
+- name: bias_valid
+  role: valid
+  channel: bias
+  direction: input
+  width: 1
+  signed: false
+- name: bias_ready
+  role: ready
+  channel: bias
+  direction: output
+  width: 1
+  signed: false
+- name: bias_data
+  role: payload
+  semantic_class: data
+  channel: bias
+  direction: input
+  width: '16'
+  signed: true
+- name: y_valid
+  role: valid
+  channel: y
+  direction: output
+  width: 1
+  signed: false
+- name: y_ready
+  role: ready
+  channel: y
+  direction: input
+  width: 1
+  signed: false
+- name: y_data
+  role: payload
+  semantic_class: data
+  channel: y
+  direction: output
+  width: '16'
+  signed: true
+- name: busy
+  role: busy
+  channel: null
+  direction: output
+  width: 1
+  signed: false
+- name: done
+  role: completion
+  channel: null
+  direction: output
+  width: 1
+  signed: false
+- name: err
+  role: error
+  channel: null
+  direction: output
+  width: 1
+  signed: false
+global_handshake_rules: 'Every VALID/READY pair follows standard ready/valid stability:
+  once asserted, VALID and its payload hold stable until the paired READY active edge.
+  All producer VALIDs are held low throughout active reset.'

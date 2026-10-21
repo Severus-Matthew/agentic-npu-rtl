@@ -1,0 +1,17 @@
+schema_version: 1
+case_id: L08
+status: blocked
+freeze_blockers:
+- manual_source_port_binding_audit
+- deterministic_contract_reviewer_pass
+- upstream_build_dependency_audit
+source:
+  project: OpenTitan
+  revision: dd8b1ab44e4da9929976ddbd47586518d1b850ec
+  target: hw/ip/keymgr_dpe/rtl
+unknown_features:
+- state_advance
+- generate_erase_disable
+- invalid_terminal_state
+preflight_status: BLOCKED
+preflight_finding_count: 2

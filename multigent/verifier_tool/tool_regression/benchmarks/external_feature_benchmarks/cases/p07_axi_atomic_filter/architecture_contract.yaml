@@ -1,0 +1,93 @@
+design:
+  name: axi_atomic_filter
+  description: External benchmark P07 over PULP AXI at exact revision 70b8e54fd460e3308e58be596ceb3566a6e3576e,
+    target src/axi_atop_filter.sv.
+operations: []
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- Base AXI4 is tool-owned; ATOP behavior is the only extension.
+open_assumptions: []
+verification_extensions:
+- id: protocol.p07_axi4_atop_atomic_legality
+  domain: protocol
+  feature_name: axi4_atop_atomic_legality
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify axi4 atop atomic legality exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible axi4 atop atomic legality behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: axi4_atop_atomic_legality is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - axi4
+  - axi4_outstanding_tracking
+- id: protocol.p07_atomic_read_write_response_coupling
+  domain: protocol
+  feature_name: atomic_read_write_response_coupling
+  target:
+    scope: interface
+    name: interface
+  semantics:
+    summary: Verify atomic read write response coupling exactly as implemented by
+      the pinned upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible atomic read write response coupling
+      behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: atomic_read_write_response_coupling is intentionally absent from the current
+    verifier_tool pools.
+  required_observations:
+  - name: transaction_trace
+    kind: transaction
+    description: Accepted request and response events at the real RTL boundary.
+  - name: cycle_trace
+    kind: event
+    description: Cycle-ordered protocol state and handshake evidence.
+  related_builtin_features:
+  - axi4
+  - axi4_outstanding_tracking
+verification_scope:
+  domains:
+  - protocol
+  operation_coverage_required: false
+  operation_stimulus_ledger_required: false
+  reason: This bridge benchmark isolates transport semantics and declares no accelerator
+    operation.

@@ -1,0 +1,12 @@
+{
+  "top": "spmv",
+  "modules": [
+    {
+      "name": "spmv",
+      "responsibility": "koios_sparse_matrix_vector",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

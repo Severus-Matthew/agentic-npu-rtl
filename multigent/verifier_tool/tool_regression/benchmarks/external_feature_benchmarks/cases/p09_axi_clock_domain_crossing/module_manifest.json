@@ -1,0 +1,12 @@
+{
+  "top": "axi_cdc",
+  "modules": [
+    {
+      "name": "axi_cdc",
+      "responsibility": "axi_clock_domain_crossing",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

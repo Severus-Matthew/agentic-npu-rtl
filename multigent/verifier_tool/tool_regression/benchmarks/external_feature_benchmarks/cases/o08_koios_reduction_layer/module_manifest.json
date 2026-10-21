@@ -1,0 +1,12 @@
+{
+  "top": "reduction_layer",
+  "modules": [
+    {
+      "name": "reduction_layer",
+      "responsibility": "koios_reduction_layer",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

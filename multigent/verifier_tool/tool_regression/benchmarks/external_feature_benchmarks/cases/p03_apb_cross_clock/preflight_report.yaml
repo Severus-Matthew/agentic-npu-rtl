@@ -1,0 +1,13 @@
+schema_version: 1
+case_id: P03
+domain: protocol
+status: PASS
+findings: []
+capability_notes: []
+automatic_campaign_support:
+  supported: false
+  status: llm_extension_required
+  reasons:
+  - no_operations
+  operations: {}
+  any_operation_supported: false

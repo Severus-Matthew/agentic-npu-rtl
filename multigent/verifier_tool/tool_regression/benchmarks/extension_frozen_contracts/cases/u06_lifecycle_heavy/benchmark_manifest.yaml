@@ -1,0 +1,42 @@
+schema_version: 1
+case_id: u06_lifecycle_heavy
+unknown_feature_count: 6
+domains:
+- lifecycle
+- operation
+features:
+- id: lifecycle.busy_watchdog_observation
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.busy_watchdog_observation
+  intent: Observe whether an accepted job remains busy for twelve sampled cycles.
+- id: lifecycle.minimum_busy_duration
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.minimum_busy_duration
+  intent: Every accepted job remains busy for at least four sampled cycles.
+- id: lifecycle.maximum_completion_latency
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.maximum_completion_latency
+  intent: Completion follows legal job acceptance within forty cycles.
+- id: lifecycle.error_recovery_window
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.error_recovery_window
+  intent: A clean legal job can be accepted within six cycles after an error pulse.
+- id: lifecycle.reset_recovery_window
+  domain: lifecycle
+  representation: verifier_extension_request
+  request_id: lifecycle.reset_recovery_window
+  intent: A clean legal job can start within five cycles after reset release.
+- id: operation.symmetric_clip
+  domain: operation
+  representation: solver_compiled_formula
+  stage_name: symmetric_clip
+  intent: Bounded saturating scalar transform.
+provenance:
+  contract_author: benchmark_builder
+  includes_generated_rtl: false
+  includes_verifier_output: false
+  includes_model_output: false

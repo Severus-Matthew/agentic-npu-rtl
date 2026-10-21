@@ -1,0 +1,65 @@
+schema_version: 1
+case_id: L02
+domain: lifecycle
+status: BLOCKED
+findings:
+- check_id: signal_roles
+  severity: blocking
+  owner: architect_contract
+  artifact: interface_contract
+  paths: []
+  message: interface clock references missing signal 'None'
+- check_id: signal_roles
+  severity: blocking
+  owner: architect_contract
+  artifact: interface_contract
+  paths: []
+  message: interface reset references missing signal 'None'
+capability_notes:
+- operation_name: opentitan_dma_abort_and_chunking
+  reason_code: missing_arithmetic_declaration
+  category: contract_error
+  owner: architect_contract
+  affected_domains:
+  - arithmetic
+  message: 'operation ''opentitan_dma_abort_and_chunking''.arithmetic: arithmetic
+    is required: Architect must declare numeric rules explicitly, or select llm_extension
+    with exact semantics; no inference or default is allowed'
+  resolution_hint: Declare operation.arithmetic explicitly, or select classifier_profile=llm_extension
+    with exact operations[].semantics.
+  blocked_by: opentitan_dma_abort_and_chunking:missing_arithmetic_declaration
+automatic_campaign_support:
+  supported: false
+  status: llm_extension_required
+  reasons:
+  - no_operations
+  - opentitan_dma_abort_and_chunking:operation_not_compiled=missing_arithmetic_declaration
+  operations:
+    opentitan_dma_abort_and_chunking:
+      supported: false
+      reasons:
+      - opentitan_dma_abort_and_chunking:operation_not_compiled=missing_arithmetic_declaration
+      arithmetic_reasons: []
+      protocol_lifecycle_supported: false
+      compile_blocked: true
+      category: contract_error
+      owner: architect_contract
+      reason_code: missing_arithmetic_declaration
+  any_operation_supported: false
+  blocked_operations:
+    opentitan_dma_abort_and_chunking:
+      reasons:
+      - opentitan_dma_abort_and_chunking:operation_not_compiled=missing_arithmetic_declaration
+      reason_code: missing_arithmetic_declaration
+      category: contract_error
+      owner: architect_contract
+      blocked_by:
+      - opentitan_dma_abort_and_chunking:missing_arithmetic_declaration
+      affected_domains:
+      - arithmetic
+      affected_feature_ids: []
+      message: 'operation ''opentitan_dma_abort_and_chunking''.arithmetic: arithmetic
+        is required: Architect must declare numeric rules explicitly, or select llm_extension
+        with exact semantics; no inference or default is allowed'
+      resolution_hint: Declare operation.arithmetic explicitly, or select classifier_profile=llm_extension
+        with exact operations[].semantics.

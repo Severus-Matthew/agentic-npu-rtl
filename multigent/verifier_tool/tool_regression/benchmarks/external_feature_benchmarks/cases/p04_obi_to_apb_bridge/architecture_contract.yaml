@@ -1,0 +1,91 @@
+design:
+  name: obi_to_apb_bridge
+  description: External benchmark P04 over PULP OBI at exact revision f29d4cc421248dfb5c32986bbf9918e2a1ca7556, target src/obi_to_apb.sv, through a transparent flat-port wrapper.
+operations: []
+data_types: []
+data_objects: []
+dimensions: []
+parameters:
+- {name: ObiCfg, value: ObiDefaultConfig, meaning: 32-bit address and data, 1-bit ID, no optional fields or response ready.}
+- {name: EnableSameCycleRsp, value: 0, meaning: Buffered split grant and response mode.}
+compute: {organization: protocol bridge only; no accelerator operation}
+storage:
+- One in-flight request register stores address, write data, direction, byte enable, and request ID while APB waits.
+pipeline: {stages: OBI acceptance, APB setup, APB access/completion, OBI response}
+control: {style: single-inflight buffered OBI-to-APB bridge}
+reset: {signal: rst_ni, active_level: low, assertion: asynchronous, behavior: clear transaction-in-progress state and retained request fields}
+latency_model: {exact: false, note: APB wait-state count is controlled by the testbench subordinate.}
+architectural_invariants:
+- The bridge accepts at most one OBI request at a time in the default buffered mode.
+- The transparent wrapper changes only port representation and fixes upstream default parameters.
+open_assumptions:
+- The APB subordinate asserts PREADY to complete an APB access; PREADY outside an active access is not credited as a completion.
+verification_extensions:
+- id: protocol.p04_obi_req_gnt_split_response
+  domain: protocol
+  feature_name: obi_req_gnt_split_response
+  target: {scope: interface, name: interface}
+  semantics:
+    summary: Buffered OBI request grant followed by a distinct response-valid pulse after the matching APB access completes.
+    trigger: Accept an OBI request on a rising clk_i edge when obi_req && obi_gnt.
+    required_behavior:
+    - obi_gnt is high only while no buffered transaction is in progress; after acceptance it remains low until APB completion clears that transaction.
+    - Exactly one obi_rvalid response is produced for each accepted request, and no response precedes the matching APB access completion.
+    - obi_rid equals the accepted obi_aid, obi_rdata equals the matching apb_prdata, and obi_err equals the matching apb_pslverr.
+    - A new OBI request may be granted only after the prior buffered transaction has completed.
+    end_condition: The matching one-cycle OBI response has been observed and the bridge can grant a later request.
+    forbidden_behavior:
+    - Accept overlapping requests, respond before APB completion, lose or duplicate a response, or return another request's ID/data/error.
+  reason: obi_req_gnt_split_response is intentionally absent from the current verifier_tool pools.
+  required_observations:
+  - {name: transaction_trace, kind: transaction, description: "Accepted OBI requests, APB completions, and OBI responses."}
+  - {name: cycle_trace, kind: event, description: "Cycle-ordered grant, request, APB phase, and response evidence."}
+  related_builtin_features: [identity_data_transform, single_inflight]
+  parameters: {maximum_inflight: 1, acceptance: obi_req && obi_gnt, response: obi_rvalid}
+- id: protocol.p04_obi_delayed_rvalid
+  domain: protocol
+  feature_name: obi_delayed_rvalid
+  target: {scope: interface, name: interface}
+  semantics:
+    summary: In buffered mode the OBI response is delayed until a later APB access completion rather than accompanying the request grant.
+    trigger: An OBI request is accepted while EnableSameCycleRsp is zero.
+    required_behavior:
+    - The acceptance cycle grants the request but does not assert obi_rvalid.
+    - APB wait states of zero or more access cycles may separate acceptance from response; obi_rvalid asserts only when apb_psel && apb_penable && apb_pready completes the request.
+    - obi_rvalid is a single-cycle pulse for one completion and returns low after transaction state clears.
+    end_condition: One delayed response pulse has been observed after the completion event.
+    forbidden_behavior:
+    - Assert response valid in the acceptance cycle, hold it after completion, or respond without a buffered request.
+  reason: obi_delayed_rvalid is intentionally absent from the current verifier_tool pools.
+  required_observations:
+  - {name: transaction_trace, kind: transaction, description: Accepted requests and matching delayed responses.}
+  - {name: cycle_trace, kind: event, description: "Per-cycle separation among grant, APB completion, and response valid."}
+  related_builtin_features: [identity_data_transform, single_inflight]
+  parameters: {enable_same_cycle_response: false, response_pulse_cycles: 1}
+- id: protocol.p04_apb_phase_mapping
+  domain: protocol
+  feature_name: apb_phase_mapping
+  target: {scope: interface, name: interface}
+  semantics:
+    summary: Each accepted OBI request becomes one APB setup phase followed by an access phase that remains stable through wait states.
+    trigger: An OBI request is accepted.
+    required_behavior:
+    - The bridge presents apb_psel=1 and apb_penable=0 for setup, followed on a later cycle by apb_psel=1 and apb_penable=1 for access.
+    - While access waits with apb_pready=0, apb_psel, apb_penable, apb_paddr, apb_pwrite, apb_pwdata, apb_pstrb, and apb_pprot remain stable.
+    - Address, write direction, write data, and byte enable match the accepted OBI request; apb_pstrb is zero for reads and equals obi_be for writes.
+    - With default optional configuration apb_pprot is 3'b101.
+    - Only apb_psel && apb_penable && apb_pready completes the destination access.
+    end_condition: The sole APB access completes and its result is returned once through OBI.
+    forbidden_behavior:
+    - Enter access without setup, change request content during wait, complete on setup, or issue a second APB transfer for one OBI request.
+  reason: apb_phase_mapping is intentionally absent from the current verifier_tool pools.
+  required_observations:
+  - {name: transaction_trace, kind: transaction, description: OBI acceptance and APB setup/access/completion events.}
+  - {name: cycle_trace, kind: event, description: APB phase and stable request field evidence.}
+  related_builtin_features: [identity_data_transform, single_inflight]
+  parameters: {setup: apb_psel && !apb_penable, access: apb_psel && apb_penable, completion: apb_psel && apb_penable && apb_pready}
+verification_scope:
+  domains: [protocol]
+  operation_coverage_required: false
+  operation_stimulus_ledger_required: false
+  reason: This bridge benchmark isolates transport semantics and declares no accelerator operation.

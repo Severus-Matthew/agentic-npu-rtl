@@ -1,0 +1,151 @@
+design:
+  name: opentitan_aes_manual_automatic_modes
+  description: External benchmark L03 over OpenTitan at exact revision dd8b1ab44e4da9929976ddbd47586518d1b850ec,
+    target hw/ip/aes/rtl.
+operations:
+- name: opentitan_aes_manual_automatic_modes
+  kind: opentitan_aes_manual_automatic_modes
+  coverage_family: opentitan_aes_manual_automatic_modes
+  coverage_family_source: novel
+  features:
+  - automatic_vs_manual_start
+  feature_extensions:
+  - prng_reseed_trigger
+  - fatal_terminal_lock
+  semantics: Source-backed lifecycle scope for opentitan_aes_manual_automatic_modes;
+    exact behavior is owned by the listed contract-local extension requests.
+  inputs: []
+  outputs: []
+  lifecycle_policy:
+    job_acceptance: valid_ready_handshake
+    job_overlap: single_inflight
+    busy_behavior: tracks_active_job
+    completion_style: pulse
+    completion_timing: next_cycle_after_retirement
+    illegal_command_behavior: error_without_start
+    error_style: pulse
+    error_timing: next_cycle_after_error_event
+    reset_behavior: abort_inflight
+data_types: []
+data_objects: []
+dimensions: []
+parameters: []
+compute:
+  organization: upstream RTL; not inferred by this contract builder
+storage: []
+pipeline:
+  stages: upstream RTL; see pinned source
+control:
+  style: source-specific extension
+reset:
+  behavior: source-specific; must be audited before freezing
+latency_model:
+  exact: false
+  note: No latency is inferred from source names.
+architectural_invariants:
+- AES value correctness is delegated to upstream DV; mode and trigger policies are
+  targeted.
+open_assumptions: []
+verification_extensions:
+- id: lifecycle.l03_automatic_vs_manual_start
+  domain: lifecycle
+  feature_name: automatic_vs_manual_start
+  target:
+    scope: operation
+    name: opentitan_aes_manual_automatic_modes
+  semantics:
+    summary: Verify automatic vs manual start exactly as implemented by the pinned
+      upstream design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible automatic vs manual start behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: automatic_vs_manual_start is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - busy_status
+  - control_plane_sequence
+  - reset_epoch
+- id: lifecycle.l03_prng_reseed_trigger
+  domain: lifecycle
+  feature_name: prng_reseed_trigger
+  target:
+    scope: operation
+    name: opentitan_aes_manual_automatic_modes
+  semantics:
+    summary: Verify prng reseed trigger exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible prng reseed trigger behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: prng_reseed_trigger is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - busy_status
+  - control_plane_sequence
+  - reset_epoch
+- id: lifecycle.l03_fatal_terminal_lock
+  domain: lifecycle
+  feature_name: fatal_terminal_lock
+  target:
+    scope: operation
+    name: opentitan_aes_manual_automatic_modes
+  semantics:
+    summary: Verify fatal terminal lock exactly as implemented by the pinned upstream
+      design.
+    trigger: A legal source-level transaction or job begins.
+    required_behavior:
+    - Observe and check the externally visible fatal terminal lock behavior.
+    - Preserve every reusable built-in protocol, lifecycle, and operation check that
+      applies.
+    end_condition: The corresponding response, retirement, or terminal state is observed.
+    forbidden_behavior:
+    - Credit the feature without observing the required RTL boundary evidence.
+    - Replace an unsupported behavior with an inferred built-in behavior.
+  reason: fatal_terminal_lock is intentionally absent from the current verifier_tool
+    pools.
+  required_observations:
+  - name: accepted_inputs
+    kind: transaction
+    description: Inputs actually accepted by the pinned RTL.
+  - name: observed_outputs
+    kind: transaction
+    description: Outputs actually retired by the pinned RTL.
+  - name: lifecycle_trace
+    kind: event
+    description: Cycle-ordered command, status, completion, reset, and error evidence.
+  related_builtin_features:
+  - busy_status
+  - control_plane_sequence
+  - reset_epoch

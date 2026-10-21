@@ -1,0 +1,12 @@
+{
+  "top": "bnn",
+  "modules": [
+    {
+      "name": "bnn",
+      "responsibility": "koios_binary_neural_network",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

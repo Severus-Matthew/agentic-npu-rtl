@@ -1,0 +1,55 @@
+schema_version: 1
+components:
+  - id: memory.model.byte_addressable
+    component_type: memory_model
+    abi: byte_addressable_memory_v1
+    entrypoint: multigent.verifier_tool.protocol.stimulus.memory:Memory
+    domains: [common, protocol, operation]
+    description: Sparse byte-addressable storage independent of operation and wire protocol.
+    supported_profiles: ['*']
+    capabilities: [byte_storage, sparse_address_space, memory_backing_store]
+    tags: [memory]
+    match_terms: [memory, address, byte storage, backing store]
+    limitations: [Packing, address windows, and bus timing belong to adapters and drivers.]
+    auto_reuse: true
+
+  - id: memory.adapter.operation_objects
+    component_type: memory_adapter
+    abi: operation_memory_adapter_v1
+    entrypoint: multigent.verifier_tool.protocol.stimulus.adapter:OperationMemoryAdapter
+    domains: [protocol, operation]
+    description: Map canonical operation objects to byte-addressed windows shared by all memory drivers.
+    supported_profiles: [axi4, axi4_lite, custom_mmio]
+    required_architecture_sections: [operations]
+    required_semantic_classes: [address, data]
+    capabilities: [address_windows, canonical_pack, canonical_unpack, byte_enable]
+    tags: [serialization, memory_mapping]
+    match_terms: [base address, address window, packed words, tensor memory, write strobe]
+    limitations: [Needs fixed object dimensions and complete memory_mapping metadata.]
+    auto_reuse: true
+
+  - id: serialization.adapter.dense_tensor_pack
+    component_type: serialization_adapter
+    abi: canonical_pack_v1
+    entrypoint: multigent.verifier_tool.protocol.stimulus.adapter.operation_memory_adapter:pack_words
+    domains: [operation]
+    description: Pack canonical scalar elements into little-endian bus words from contract metadata.
+    supported_profiles: ['*']
+    capabilities: [dense_tensor, little_endian, lane_pack]
+    tags: [serialization, packing]
+    match_terms: [dense tensor, elements per word, little endian, pack input]
+    limitations: [The contract must declare element width, word width, stride, and elements_per_word.]
+    auto_reuse: true
+
+  - id: serialization.adapter.dense_tensor_unpack
+    component_type: serialization_adapter
+    abi: canonical_unpack_v1
+    entrypoint: multigent.verifier_tool.protocol.stimulus.adapter.operation_memory_adapter:unpack_words
+    domains: [operation]
+    description: Recover signed or unsigned canonical output elements from bus words.
+    supported_profiles: ['*']
+    capabilities: [dense_tensor, little_endian, lane_unpack]
+    tags: [serialization, unpacking]
+    match_terms: [unpack output, output words, signed elements, logical tensor]
+    limitations: [Generic packed_encoding output decode is not implemented.]
+    auto_reuse: true

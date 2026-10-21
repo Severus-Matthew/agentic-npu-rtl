@@ -1,0 +1,12 @@
+{
+  "top": "axi_id_remap",
+  "modules": [
+    {
+      "name": "axi_id_remap",
+      "responsibility": "axi_id_remap",
+      "dependencies": [],
+      "parameters": [],
+      "stateful": true
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+schema_version: 1
+case_id: P03
+status: reviewer_pass_candidate
+freeze_blockers:
+- upstream_build_dependency_audit
+source:
+  project: ZipCPU wb2axip
+  revision: 2e8d3bc2d26ddc33d1881022a2a2b9d3f0c16b9b
+  target: rtl/apbxclk.v
+unknown_features:
+- apb_setup_access_phases
+- apb_wait_state_and_error
+- apb_cdc
+preflight_status: PASS
+preflight_finding_count: 0

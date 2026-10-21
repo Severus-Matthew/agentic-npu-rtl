@@ -1,0 +1,71 @@
+schema_version: 1
+case_id: O01
+domain: operation
+status: BLOCKED
+findings:
+- check_id: signal_roles
+  severity: blocking
+  owner: architect_contract
+  artifact: interface_contract
+  paths: []
+  message: interface clock references missing signal 'None'
+- check_id: signal_roles
+  severity: blocking
+  owner: architect_contract
+  artifact: interface_contract
+  paths: []
+  message: interface reset references missing signal 'None'
+- check_id: lifecycle_policy
+  severity: blocking
+  owner: architect_contract
+  artifact: architecture_contract
+  paths: []
+  message: operation 'koios_self_attention_layer'.lifecycle_policy is required; select
+    every field from Lifecycle Policy Pool. An explicit selection cannot be removed
+    to fall back to legacy defaults.
+capability_notes:
+- operation_name: koios_self_attention_layer
+  reason_code: missing_lifecycle_policy
+  category: contract_error
+  owner: architect_contract
+  affected_domains:
+  - lifecycle
+  message: 'operation ''koios_self_attention_layer'': Missing lifecycle.policy; Architect
+    must select supported lifecycle policies explicitly'
+  resolution_hint: Select every field of operation.lifecycle_policy from the Lifecycle
+    Policy Pool.
+  blocked_by: koios_self_attention_layer:missing_lifecycle_policy
+automatic_campaign_support:
+  supported: false
+  status: llm_extension_required
+  reasons:
+  - no_operations
+  - koios_self_attention_layer:operation_not_compiled=missing_lifecycle_policy
+  operations:
+    koios_self_attention_layer:
+      supported: false
+      reasons:
+      - koios_self_attention_layer:operation_not_compiled=missing_lifecycle_policy
+      arithmetic_reasons: []
+      protocol_lifecycle_supported: false
+      compile_blocked: true
+      category: contract_error
+      owner: architect_contract
+      reason_code: missing_lifecycle_policy
+  any_operation_supported: false
+  blocked_operations:
+    koios_self_attention_layer:
+      reasons:
+      - koios_self_attention_layer:operation_not_compiled=missing_lifecycle_policy
+      reason_code: missing_lifecycle_policy
+      category: contract_error
+      owner: architect_contract
+      blocked_by:
+      - koios_self_attention_layer:missing_lifecycle_policy
+      affected_domains:
+      - lifecycle
+      affected_feature_ids: []
+      message: 'operation ''koios_self_attention_layer'': Missing lifecycle.policy;
+        Architect must select supported lifecycle policies explicitly'
+      resolution_hint: Select every field of operation.lifecycle_policy from the Lifecycle
+        Policy Pool.

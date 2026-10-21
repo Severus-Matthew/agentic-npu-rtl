@@ -56,15 +56,18 @@ def compile_verification_manifest(
     interface_plan: Mapping[str, Any],
     operation_plan: Mapping[str, Any],
     lifecycle_plan: Mapping[str, Any] | None = None,
+    extension_plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile immutable obligations and support dispositions before simulation."""
 
+    has_extension_coverage = bool((extension_plan or {}).get("obligations"))
     obligations: list[dict[str, Any]] = []
     unresolved: list[str] = []
     for obligation in [
         *interface_plan.get("obligations", []),
         *operation_plan.get("obligations", []),
         *(lifecycle_plan or {}).get("obligations", []),
+        *(extension_plan or {}).get("obligations", []),
     ]:
         obligation_id = str(obligation["id"])
         bins: list[dict[str, Any]] = []
@@ -217,7 +220,8 @@ def compile_verification_manifest(
             "require_complete_transaction_ledgers": True,
             "require_no_unresolved_obligations": True,
             "diagnostic_bins_in_denominator": False,
-            "extension_semantics_reported_separately": True,
+            "extension_semantics_reported_separately": not has_extension_coverage,
+            "extension_bins_share_required_denominator": has_extension_coverage,
         },
     }
     result["manifest_hash"] = manifest_hash(result)

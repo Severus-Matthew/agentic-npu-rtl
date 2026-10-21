@@ -7,6 +7,12 @@ from typing import Any, Mapping
 from multigent.verifier_tool.pool.role_pool.interface_semantics import (
     derive_interface_coverage_seed,
 )
+from multigent.verifier_tool.pool.role_pool.protocol_semantics import (
+    compile_protocol_semantics,
+)
+from multigent.verifier_tool.pool.role_pool.protocol_event_relations import (
+    compile_protocol_event_relations,
+)
 from multigent.verifier_tool.pool.lifecycle_policy_pool import (
     resolve_reset_channel_policies,
 )
@@ -82,7 +88,10 @@ def build_protocol_feature_plan(interface_plan: Mapping[str, Any]) -> dict[str, 
     # field, never inferred from the presence of a coverage template name.
     for obligation in obligations_by_id.values():
         feature_name = str(obligation.get("template", ""))
-        if feature_name == "stall_stability" or feature_name not in declared_features:
+        if (
+            feature_name == "stall_stability"
+            and "stalled_expression" not in obligation.get("bindings", {})
+        ) or feature_name not in declared_features:
             continue
         spec = declared_features[feature_name]
         stimulus = spec["stimulus"]
@@ -162,6 +171,79 @@ def build_protocol_feature_plan(interface_plan: Mapping[str, Any]) -> dict[str, 
                 },
                 stimulus_strategy=str(stall_spec["stimulus"]["strategy"]),
                 stimulus=stall_spec["stimulus"],
+            )
+        )
+
+    # A custom protocol may express VALID/READY as boolean events rather than
+    # one physical signal per role.  Contract Review has already inlined those
+    # expressions, so the same runtime checker can own acceptance accounting,
+    # response underflow, mutual exclusion, cancellation, and depth limits.
+    protocol_semantics = compile_protocol_semantics(interface)
+    for profile in protocol_semantics.get("profiles", []):
+        flow = profile.get("flow_control", {})
+        cancellation = profile.get("cancellation", {})
+        for transaction in profile.get("transactions", []):
+            if not transaction.get("completed"):
+                continue
+            features.append(
+                feature_record(
+                    feature_id=(
+                        f"protocol_transaction.{safe_id(profile['name'])}."
+                        f"{safe_id(transaction['name'])}.accounting"
+                    ),
+                    domain="protocol",
+                    kind="transaction_accounting",
+                    scope="channel",
+                    scope_name=str(transaction["channel"]),
+                    bindings={
+                        "accepted_expression": transaction["accepted"],
+                        "completed_expression": transaction["completed"],
+                        "success_expression": transaction.get("success"),
+                        "error_expression": transaction.get("error"),
+                        "cancellation_expression": cancellation.get("trigger"),
+                        "cancellation_behavior": str(
+                            cancellation.get("pending_behavior", "not_applicable")
+                        ),
+                        "maximum_outstanding": int(
+                            flow.get("maximum_outstanding", 1)
+                        ),
+                        "ordering": str(flow.get("ordering", "unordered")),
+                    },
+                    tags=("ordering", "contract_defined_protocol"),
+                    assertion_checker="transaction_accounting",
+                    coverage={"sampler": None, "bins": [], "obligation_ids": ()},
+                    stimulus_strategy="contract_event_schedule",
+                    stimulus={
+                        "strategy": "contract_event_schedule",
+                        "scenarios": [],
+                    },
+                )
+            )
+
+    # Cross-protocol causality is a separate, Architect-declared relation.  It
+    # reuses already compiled events and standard channel transfers instead of
+    # asking the Verifier to invent a cycle comparison in generated test code.
+    event_relations = compile_protocol_event_relations(interface)
+    for relation in event_relations.get("relations", []):
+        relation_id = str(relation["id"])
+        features.append(
+            feature_record(
+                feature_id=(
+                    f"protocol_relation.{safe_id(relation_id)}.causality"
+                ),
+                domain="protocol",
+                kind="event_correlation",
+                scope="interface",
+                scope_name=relation_id,
+                bindings=dict(relation),
+                tags=("correlation", "ordering"),
+                assertion_checker="event_correlation",
+                coverage={"sampler": None, "bins": [], "obligation_ids": ()},
+                stimulus_strategy="contract_event_schedule",
+                stimulus={
+                    "strategy": "contract_event_schedule",
+                    "scenarios": [],
+                },
             )
         )
 
@@ -275,6 +357,8 @@ def build_protocol_feature_plan(interface_plan: Mapping[str, Any]) -> dict[str, 
         "bindings": {
             "reset": reset,
             "standard_groups": standard_groups,
+            "protocol_semantics": protocol_semantics,
+            "protocol_event_relations": event_relations,
         },
         "features": features,
     })

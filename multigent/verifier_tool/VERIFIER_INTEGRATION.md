@@ -74,7 +74,21 @@ Each item is enforced (or consumed) by a `verifier_tool` function named beside i
    implementation symbol must exist at module level in `reference/*.py` or
    `tests/*.py` and be reachable from a generated test entry point, and the
    bundle must preserve the built-in feature IDs the tool resolved for that
-   target (`validate_verifier_extension_bundles`). See
+   target. Verifier persistence enables strict runtime-evidence validation:
+   observed inputs cannot be fabricated literals, returned assertion decisions
+   and coverage samples cannot be discarded, declared parameters cannot be ignored,
+   temporal rules need multi-cycle evidence, declared bins need executable
+   classification plus a reachable assertion of an observed bin, and temporal
+   stimulus must use its bound to shape a real schedule. Every declared scenario must
+   be invoked with its exact parameters; a DUT-observing temporal monitor must start
+   before the concurrent stimulus, and DUT-produced output observations require an
+   activation path through a campaign/driver or non-target input drive. Standalone
+   extension tests must start a Clock, and temporal bin credit requires an explicit
+   observed trigger/nonzero event so idle traces cannot pass. Wait-only
+   stimulus and decorators referenced before import are rejected.
+   These rules apply to both
+   `verifier_python` and `protocol_driver` symbols
+   (`validate_verifier_extension_bundles`). See
    [`extensions/README.md`](extensions/README.md).
 9. **Avoid the forbidden constructs** the agent-side phase-safety check enforces
    (imports/calls such as `os`, `subprocess`, `socket`, `open`, `exec`, `eval`);

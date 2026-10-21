@@ -1,0 +1,17 @@
+schema_version: 1
+case_id: L06
+status: blocked
+freeze_blockers:
+- manual_source_port_binding_audit
+- deterministic_contract_reviewer_pass
+- upstream_build_dependency_audit
+source:
+  project: OpenTitan
+  revision: dd8b1ab44e4da9929976ddbd47586518d1b850ec
+  target: hw/ip/csrng/rtl
+unknown_features:
+- instantiate_reseed_generate_update_uninstantiate
+- one_command_until_ack
+- entropy_wait
+preflight_status: BLOCKED
+preflight_finding_count: 2
