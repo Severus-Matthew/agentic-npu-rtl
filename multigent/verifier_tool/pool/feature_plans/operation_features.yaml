@@ -1,6 +1,6 @@
 taxonomy:
   name: accelerator_operation_features
-  version: "0.8"
+  version: "0.9"
   scope: code-owned functional-coverage concepts for supported integer accelerator operations
   rules:
     - A recognized operation kind must implement every baseline concept for its family.
@@ -18,6 +18,28 @@ feature_defaults:
   stimulus: {strategy: canonical_discriminating_stimuli}
 
 families:
+  softmax:
+    aliases: [softmax, fixed_point_softmax, row_softmax]
+    optional_concepts: {}
+    baseline_concepts: [dimensions, row_patterns, mask_patterns, exp_domain, normalization]
+    starter_bins:
+      dimensions: [fixed_shape]
+      row_patterns: [uniform, tied_maximum, unique_maximum, all_negative, mixed_sign, distinct_rows]
+      mask_patterns: [unmasked, singleton, partial, fully_masked, masked_maximum, masked_zero]
+      exp_domain: [zero_delta, interior_delta, last_lut_entry, clipped_delta]
+      normalization: [zero_probability, positive_probability, rounded_division, exact_division, tiny_positive_weight_zero]
+    feature_groups: {}
+  block_matmul:
+    aliases: [block_matmul, blocked_qk, indexed_block_matmul]
+    optional_concepts: {}
+    baseline_concepts: [dimensions, block_selection, block_mapping, block_tails, block_reduction]
+    starter_bins:
+      dimensions: [fixed_shape]
+      block_selection: [empty, singleton, multiple, nonadjacent, reordered, duplicate]
+      block_mapping: [origin, nonzero_row, nonzero_column, distinct_tile_results]
+      block_tails: [full_tile, row_tail, column_tail, reduction_tail]
+      block_reduction: [single_chunk, multiple_chunks, zero_result, positive_result, negative_result, nonzero_reduction_tail]
+    feature_groups: {}
   matrix_multiply:
     aliases: [gemm, matmul, matrix_multiply, matrix_multiplication, tensor_gemm]
     optional_concepts: {}
@@ -58,7 +80,7 @@ families:
     starter_bins:
       dimensions: [fixed_shape]
       operand_values: [zero, positive, negative, minimum, maximum]
-      accumulation: [ordinary, positive_boundary, negative_boundary, positive_overflow, negative_overflow]
+      accumulation: [ordinary, positive_boundary, negative_boundary, positive_overflow, negative_overflow, cancellation, mixed_sign_terms, last_term_only]
       attention_scores: [zero_score, positive_score, negative_score]
     feature_groups: {}
   attention_scale:
@@ -82,5 +104,5 @@ families:
       mask_values: [drop, keep]
       sparsity_patterns: [empty_row, singleton_row, partial_row, dense_row]
       masked_values: [zero_masked, positive_masked, negative_masked]
-      mask_effects: [active_score_preserved, inactive_nonzero_zeroed]
+      mask_effects: [active_score_preserved, inactive_nonzero_zeroed, active_zero_preserved, inactive_positive_zeroed, inactive_negative_zeroed]
     feature_groups: {}

@@ -167,12 +167,73 @@ input_output_binding:
       passes accepted values under the exact data_object name in that order.
 
 arithmetic:
-  common_required_fields: [classifier_profile, result_data_type, result_conversion]
+  common_required_fields: [classifier_profile]
   rule: >-
     Remaining fields are profile-specific and must match the exact branch in
     arithmetic_metadata.schema.json. The compiler never infers sparse-attention
     normalization, mask semantics, reduction axes, or numeric conversions.
   classifier_profiles:
+    integer_block_matmul:
+      coverage_family: block_matmul
+      exact_semantics: >-
+        Indexed integer GEMM or QK output tiles, not full normalized attention.
+        Select output block coordinates independently of increasing-depth
+        reduction chunks. Each valid result is one full-depth dot product.
+        Inactive work slots and row/column tail lanes still emit padded zeros.
+      required_object_roles: [left_operand_matrix, right_operand_matrix, block_coordinates, block_result]
+      required_shapes:
+        - left[M,K]
+        - right[N,K] if right_transposed else right[K,N]
+        - coordinates[W,2] signed output-block indices; only (-1,-1) is inactive
+        - result[W,BM,BN] ordered fixed work slots including padding
+      required_numeric_declarations:
+        - right_transposed
+        - block_rows
+        - block_columns
+        - reduction_block_size
+        - duplicate_policy
+        - padding
+        - inactive_coordinate
+        - product_data_type
+        - accumulator_data_type
+        - reduction_order
+        - reduction_conversion
+        - result_data_type
+        - result_conversion
+      boundary: >-
+        Full logical operands and fixed selected output slots only. Do not infer
+        min/max or top-k selection, compact variable-length sparse encodings,
+        internal scheduler signals, softmax or V. These need explicit extensions.
+    fixed_point_softmax:
+      coverage_family: softmax
+      exact_semantics: >-
+        Independent fixed-point normalization across a complete logical row.
+        Masked positions are excluded from row max and denominator, not treated
+        as scores of zero. LUT weights, clipping, normalization and output
+        saturation follow explicit arithmetic. Fully masked rows emit zero.
+      required_object_roles: [softmax_scores, softmax_probabilities]
+      conditional_object_roles:
+        softmax_mask: required only for mask_mode binary_keep; aligned unsigned one-bit keep bits
+      required_shapes: ["scores[R,S]", "probabilities[R,S]", "optional_mask[R,S]"]
+      required_numeric_declarations:
+        - score_fraction_bits
+        - delta_scale_multiplier
+        - delta_scale_shift
+        - exp_fraction_bits
+        - exp_lut
+        - clipping
+        - mask_mode
+        - fully_masked_row
+        - division
+        - rounding
+        - output_scale
+        - output_maximum
+        - result_data_type
+      boundary: >-
+        Direct integer division or the exact declared reciprocal_newton branch
+        only. No result_conversion field; output rounding and saturation are
+        explicit above. Online running max/sum across streamed tiles, FP/BF16,
+        arbitrary reciprocal methods and PV fusion require explicit extensions.
     integer_matrix_multiply:
       required_object_roles:
         - left_operand_matrix

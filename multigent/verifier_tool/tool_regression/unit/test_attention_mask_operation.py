@@ -194,10 +194,11 @@ def test_attention_mask_known_answer_polarity_and_patterns():
     assert set(evidence["mask_effects"]) == {
         "active_score_preserved",
         "inactive_nonzero_zeroed",
+        "active_zero_preserved", "inactive_positive_zeroed", "inactive_negative_zeroed",
     }
 
 
-def test_attention_mask_generates_all_seventeen_bins_and_qualification_cases():
+def test_attention_mask_generates_all_twenty_bins_and_qualification_cases():
     _, _, operation = compiled_attention_mask()
     suite = generate_canonical_stimulus_suite(
         operation, randomized_count=3, seed=0xA55A
@@ -207,7 +208,7 @@ def test_attention_mask_generates_all_seventeen_bins_and_qualification_cases():
         for concept in CONCEPTS
         for bin_spec in reachable_canonical_bins_for_concept(operation, concept) or []
     }
-    assert len(expected_targets) == 17
+    assert len(expected_targets) == 20
     assert {
         (item["target"]["concept"], item["target"]["bin"])
         for item in suite["directed"]

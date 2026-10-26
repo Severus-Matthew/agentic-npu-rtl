@@ -152,6 +152,46 @@
     },
     {
       "type": "object", "additionalProperties": false,
+      "required": ["classifier_profile", "right_transposed", "block_rows", "block_columns", "reduction_block_size", "duplicate_policy", "padding", "inactive_coordinate", "reduction_order", "reduction_conversion", "result_conversion", "product_data_type", "accumulator_data_type", "result_data_type"],
+      "properties": {
+        "classifier_profile": {"type": "string", "enum": ["integer_block_matmul"]},
+        "right_transposed": {"type": "boolean"},
+        "block_rows": {"type": "integer", "minimum": 1, "maximum": 4096},
+        "block_columns": {"type": "integer", "minimum": 1, "maximum": 4096},
+        "reduction_block_size": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "duplicate_policy": {"type": "string", "enum": ["allow", "forbid"]},
+        "padding": {"type": "string", "enum": ["zero"]},
+        "inactive_coordinate": {"type": "integer", "enum": [-1]},
+        "reduction_order": {"type": "string", "enum": ["increasing_declared_reduction_coordinate"]},
+        "reduction_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement_after_each_add"]},
+        "result_conversion": {"type": "string", "enum": ["exact", "wrap_twos_complement"]},
+        "product_data_type": {"type": "string", "minLength": 1},
+        "accumulator_data_type": {"type": "string", "minLength": 1},
+        "result_data_type": {"type": "string", "minLength": 1}
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["classifier_profile", "score_fraction_bits", "delta_scale_multiplier", "delta_scale_shift", "exp_fraction_bits", "exp_lut", "clipping", "mask_mode", "fully_masked_row", "division", "rounding", "output_scale", "output_maximum", "result_data_type"],
+      "properties": {
+        "classifier_profile": {"type": "string", "enum": ["fixed_point_softmax"]},
+        "score_fraction_bits": {"type": "integer", "minimum": 0, "maximum": 24},
+        "delta_scale_multiplier": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "delta_scale_shift": {"type": "integer", "minimum": 0, "maximum": 40},
+        "exp_fraction_bits": {"type": "integer", "minimum": 1, "maximum": 30},
+        "exp_lut": {"type": "array", "minItems": 2, "maxItems": 65536, "items": {"type": "integer", "minimum": 0, "maximum": 1073741824}},
+        "clipping": {"type": "string", "enum": ["clamp", "zero"]},
+        "mask_mode": {"type": "string", "enum": ["none", "binary_keep"]},
+        "fully_masked_row": {"type": "string", "enum": ["zero"]},
+        "division": {"anyOf": [{"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"type": "string", "enum": ["exact_divide"]}}}, {"type": "object", "additionalProperties": false, "required": ["kind", "denominator_fraction_bits", "denominator_width", "reciprocal_fraction_bits", "reciprocal_width", "iterations"], "properties": {"kind": {"type": "string", "enum": ["reciprocal_newton"]}, "denominator_fraction_bits": {"type": "integer", "minimum": 3, "maximum": 30}, "denominator_width": {"type": "integer", "minimum": 4, "maximum": 62}, "reciprocal_fraction_bits": {"type": "integer", "minimum": 1, "maximum": 30}, "reciprocal_width": {"type": "integer", "minimum": 2, "maximum": 62}, "iterations": {"type": "integer", "minimum": 1, "maximum": 16}}}]},
+        "rounding": {"type": "string", "enum": ["floor", "nearest_even"]},
+        "output_scale": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "output_maximum": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "result_data_type": {"type": "string", "minLength": 1}
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
       "required": ["classifier_profile", "reason"],
       "properties": {
         "classifier_profile": {"type": "string", "enum": ["llm_extension"]},

@@ -10,6 +10,10 @@ The two RTL files under `rtl/` are local qualification copies of commit
 `3054e9a5324da438a78937049f656abc413c2750` from
 [`Abhinav-Avasarala/TRANSFORMER-ATTENTION-ACCELERATOR`](https://github.com/Abhinav-Avasarala/TRANSFORMER-ATTENTION-ACCELERATOR).
 They are used only by this local benchmark.
+The local copies normalize comments/whitespace for stable mutation anchors;
+they are not byte-identical upstream files. The current `attention_open_source`
+source audit checks exact SystemVerilog token identity against the separately
+SHA-256-pinned upstream copies and records the local file hashes.
 
 The upstream core ties input and output width together and normally uses Q8.8
 truncation.  The raw-QK qualification therefore elaborates it as `N=4`, `D=4`,
@@ -28,12 +32,13 @@ format conversion.
 ## Testbench gates
 
 `qualify.py` uses the production canonical generator/oracle/classifier.  A run
-fails unless all 14 QK bins close with no generation exception:
+fails unless all 17 QK bins close with no generation exception:
 
 - fixed shape;
 - zero, positive, negative, minimum, and maximum operands;
 - ordinary, positive/negative boundary, and positive/negative overflow
   accumulation;
+- mixed-sign terms, exact cancellation and a last-term-only contribution;
 - zero, positive, and negative scores.
 
 The same frozen SystemVerilog testbench checks every score coordinate against

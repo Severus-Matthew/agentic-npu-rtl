@@ -153,8 +153,15 @@ class _AttentionMaskModel:
     key_count: int
 
 
+@dataclass(frozen=True)
+class _StructuredModel:
+    operation: Mapping[str, Any]
+    operation_name: str
+    dimensions: Mapping[str, int]
+
+
 def _generation_error(
-    model_or_operation: _GemmModel | _SparseAttentionModel | _QKScoreModel | _AttentionScaleModel | _AttentionMaskModel | Mapping[str, Any],
+    model_or_operation: _GemmModel | _SparseAttentionModel | _QKScoreModel | _AttentionScaleModel | _AttentionMaskModel | _StructuredModel | Mapping[str, Any],
     code: str,
     reason: str,
     *,
@@ -163,7 +170,7 @@ def _generation_error(
 ) -> CanonicalStimulusGenerationError:
     operation = (
         model_or_operation.operation
-        if isinstance(model_or_operation, (_GemmModel, _SparseAttentionModel, _QKScoreModel, _AttentionScaleModel, _AttentionMaskModel))
+        if isinstance(model_or_operation, (_GemmModel, _SparseAttentionModel, _QKScoreModel, _AttentionScaleModel, _AttentionMaskModel, _StructuredModel))
         else model_or_operation
     )
     return CanonicalStimulusGenerationError(
@@ -694,8 +701,12 @@ def _attention_mask_model(operation: Mapping[str, Any]) -> _AttentionMaskModel:
 
 def _operation_model(
     operation: Mapping[str, Any],
-) -> _GemmModel | _SparseAttentionModel | _QKScoreModel | _AttentionScaleModel | _AttentionMaskModel:
+) -> _GemmModel | _SparseAttentionModel | _QKScoreModel | _AttentionScaleModel | _AttentionMaskModel | _StructuredModel:
     profile = operation.get("arithmetic", {}).get("classifier_profile")
+    from multigent.verifier_tool.pool.operation_metadata.structured import STRUCTURED_PROFILES, validate_structured_resolved
+    if profile in STRUCTURED_PROFILES:
+        validate_structured_resolved(operation)
+        return _StructuredModel(operation, str(operation["operation_name"]), operation["dimensions"])
     if profile == "integer_matrix_multiply":
         return _gemm_model(operation)
     if profile == "integer_sparse_attention":
@@ -714,7 +725,7 @@ def _operation_model(
 
 
 def _base_stimulus(
-    model: _GemmModel | _SparseAttentionModel | _QKScoreModel | _AttentionScaleModel | _AttentionMaskModel,
+    model: _GemmModel | _SparseAttentionModel | _QKScoreModel | _AttentionScaleModel | _AttentionMaskModel | _StructuredModel,
 ) -> dict[str, list[int]]:
     return {
         str(binding["data_object"]): [0] * prod(_shape(binding, model.dimensions))
@@ -740,6 +751,12 @@ def evaluate_canonical_operation(
         ) from exc
     if job is None:
         raise _generation_error(model, "metadata_missing", "stimulus contains no operation input")
+    if isinstance(model, _StructuredModel):
+        from multigent.verifier_tool.pool.operation_metadata.structured import canonical_inputs, profile_module
+        try:
+            return profile_module(operation["arithmetic"]["classifier_profile"]).evaluate(operation, canonical_inputs(operation, stimulus))
+        except (ValueError, ArithmeticError) as exc:
+            raise _generation_error(model, "unsupported_known_feature", str(exc)) from exc
     if isinstance(model, _SparseAttentionModel):
         arithmetic = operation.get("arithmetic", {})
         try:
@@ -907,7 +924,7 @@ def _predicate_matches(value: Any, predicate: Mapping[str, Any]) -> bool:
 
 
 def _case(
-    model: _GemmModel | _SparseAttentionModel | _QKScoreModel | _AttentionScaleModel | _AttentionMaskModel,
+    model: _GemmModel | _SparseAttentionModel | _QKScoreModel | _AttentionScaleModel | _AttentionMaskModel | _StructuredModel,
     concept: str,
     bin_name: str,
     stimulus: Mapping[str, Sequence[int]],
@@ -1994,6 +2011,8 @@ def _target_qk_score_stimulus(
         solver.add(predicates[bin_name])
     elif concept == "accumulation":
         low, high = _integer_bounds(model.score_accumulator_dtype)
+        terms = [q*k for q,k in zip(query_vars, key_vars)]
+        mixed = z3.And(z3.Or(*[v > 0 for v in terms]), z3.Or(*[v < 0 for v in terms]))
         predicates = {
             "ordinary": z3.And(
                 *[z3.And(item > low, item < high) for item in mathematical_prefixes]
@@ -2002,6 +2021,9 @@ def _target_qk_score_stimulus(
             "negative_boundary": z3.Or(*[item == low for item in mathematical_prefixes]),
             "positive_overflow": z3.Or(*[item > high for item in mathematical_prefixes]),
             "negative_overflow": z3.Or(*[item < low for item in mathematical_prefixes]),
+            "cancellation": z3.And(mixed, z3.Sum(terms) == 0, result_value == 0),
+            "mixed_sign_terms": mixed,
+            "last_term_only": z3.And(terms[-1] != 0, result_value != 0, *[v == 0 for v in terms[:-1]]),
         }
         if bin_name not in predicates:
             raise _generation_error(
@@ -2272,6 +2294,9 @@ def _target_attention_mask_stimulus(
             "inactive_nonzero_zeroed": z3.And(
                 mask_vars[0] == 0, score != 0, result_value == 0
             ),
+            "active_zero_preserved": z3.And(mask_vars[0] == 1, score == 0, result_value == 0),
+            "inactive_positive_zeroed": z3.And(mask_vars[0] == 0, score > 0, result_value == 0),
+            "inactive_negative_zeroed": z3.And(mask_vars[0] == 0, score < 0, result_value == 0),
         }
         if bin_name not in predicates:
             raise _generation_error(
@@ -2336,7 +2361,10 @@ def generate_canonical_stimulus_for_bin(
             bin_name=str(bin_name),
         )
     try:
-        if isinstance(model, _GemmModel):
+        if isinstance(model, _StructuredModel):
+            from .structured import targeted_stimulus
+            stimulus = targeted_stimulus(model.operation, str(concept), str(bin_name))
+        elif isinstance(model, _GemmModel):
             stimulus = _target_stimulus(model, str(concept), str(bin_name))
         elif isinstance(model, _QKScoreModel):
             stimulus = _target_qk_score_stimulus(
@@ -2401,7 +2429,10 @@ def generate_random_canonical_stimuli(
     result: list[dict[str, Any]] = []
     for index in range(count):
         stimulus = _base_stimulus(model)
-        for binding in operation.get("inputs", []):
+        if isinstance(model, _StructuredModel):
+            from .structured import randomized_stimulus
+            stimulus = randomized_stimulus(operation, rng)
+        for binding in ([] if isinstance(model, _StructuredModel) else operation.get("inputs", [])):
             low, high = _integer_bounds(binding["data_type"])
             edge_values = tuple(dict.fromkeys((low, high, 0, -1, 1)))
             legal_edges = tuple(value for value in edge_values if low <= value <= high)
@@ -2438,6 +2469,9 @@ def generate_canonical_discriminating_stimuli(
 
     operation = _select_operation(operation_metadata, operation_name)
     model = _operation_model(operation)
+    if isinstance(model, _StructuredModel):
+        from .structured import discriminating_stimuli
+        return discriminating_stimuli(operation)
 
     def checked(label: str, stimulus: dict[str, list[int]], purpose: str) -> dict[str, Any]:
         expected = evaluate_canonical_operation(operation, stimulus)

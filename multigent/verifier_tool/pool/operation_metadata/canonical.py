@@ -69,6 +69,10 @@ def supported_code_owned_concepts(metadata: Mapping[str, Any]) -> dict[str, set[
         if not isinstance(operation, Mapping):
             continue
         profile = operation.get("arithmetic", {}).get("classifier_profile")
+        from .structured import STRUCTURED_PROFILES, profile_module
+        if profile in STRUCTURED_PROFILES:
+            result[str(operation.get("operation_name", ""))] = set(profile_module(profile).CONCEPTS)
+            continue
         if profile == "integer_matrix_multiply":
             concepts = {
                 "dimensions", "operand_values", "accumulation"
@@ -1020,6 +1024,14 @@ def _classify_integer_qk_score(
         if any(item < low for item in mathematical):
             classes.append("negative_overflow")
         accumulation.extend(classes or ["ordinary"])
+        terms = event["product_terms"]
+        mixed = any(v > 0 for v in terms) and any(v < 0 for v in terms)
+        if mixed:
+            accumulation.append("mixed_sign_terms")
+            if sum(terms) == 0 and event["result_value"] == 0:
+                accumulation.append("cancellation")
+        if terms[-1] != 0 and event["result_value"] != 0 and not any(terms[:-1]):
+            accumulation.append("last_term_only")
     return {
         "dimensions": ["fixed"],
         "operand_values": [
@@ -1148,6 +1160,13 @@ def _classify_binary_attention_mask(
         for event in events
     ):
         effects.append("inactive_nonzero_zeroed")
+    for name, predicate in (
+        ("active_zero_preserved", lambda e: e["active"] and e["scaled_score"] == 0 and e["result_value"] == 0),
+        ("inactive_positive_zeroed", lambda e: not e["active"] and e["scaled_score"] > 0 and e["result_value"] == 0),
+        ("inactive_negative_zeroed", lambda e: not e["active"] and e["scaled_score"] < 0 and e["result_value"] == 0),
+    ):
+        if any(predicate(event) for event in events):
+            effects.append(name)
     return {
         "dimensions": ["fixed"],
         "score_values": [int(event["scaled_score"]) for event in events],
@@ -1317,6 +1336,10 @@ def _classify_integer_sparse_attention(
 
 def classify_operation_job(job: CanonicalOperationJob) -> dict[str, list[Any]]:
     profile = job.metadata.get("arithmetic", {}).get("classifier_profile")
+    from .structured import STRUCTURED_PROFILES, profile_module, canonical_inputs
+    if profile in STRUCTURED_PROFILES:
+        inputs = canonical_inputs(job.metadata, job.inputs)
+        return profile_module(profile).classify(job.metadata, inputs)
     if profile == "integer_matrix_multiply":
         return _classify_integer_matrix_multiply(job)
     if profile == "integer_qk_score":
@@ -1359,6 +1382,16 @@ def canonical_bins_for_concept(
     operation_metadata: Mapping[str, Any], concept: str
 ) -> list[dict[str, Any]] | None:
     """Return code-owned semantic bins for supported operation concepts."""
+
+    from .structured import STRUCTURED_PROFILES, profile_module
+    profile = operation_metadata.get("arithmetic", {}).get("classifier_profile")
+    if profile in STRUCTURED_PROFILES:
+        names = profile_module(profile).CONCEPTS.get(concept)
+        if names is None:
+            return None
+        return [{"name": name, "intent": f"Checked {concept} case: {name}.",
+                 "predicate": {"op": "eq", "args": ["fixed" if concept == "dimensions" else name]}}
+                for name in names]
 
     def bin_(name: str, value: Any) -> dict[str, Any]:
         return {
@@ -1431,7 +1464,7 @@ def canonical_bins_for_concept(
         if concept == "mask_effects":
             return [
                 bin_(name, name)
-                for name in ("active_score_preserved", "inactive_nonzero_zeroed")
+                for name in ("active_score_preserved", "inactive_nonzero_zeroed", "active_zero_preserved", "inactive_positive_zeroed", "inactive_negative_zeroed")
             ]
         return None
     if profile == "fixed_point_attention_scale":
@@ -1526,6 +1559,9 @@ def canonical_bins_for_concept(
                     "negative_boundary",
                     "positive_overflow",
                     "negative_overflow",
+                    "cancellation",
+                    "mixed_sign_terms",
+                    "last_term_only",
                 )
             ]
         if concept == "attention_scores":

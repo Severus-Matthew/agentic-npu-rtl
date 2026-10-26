@@ -346,10 +346,11 @@ def test_qk_score_coverage_plan_is_code_owned_and_all_bins_are_reachable():
             "negative_boundary",
             "positive_overflow",
             "negative_overflow",
+            "cancellation", "mixed_sign_terms", "last_term_only",
         ],
         "attention_scores": ["zero_score", "positive_score", "negative_score"],
     }
-    assert sum(len(item["bins"]) for item in plan["obligations"]) == 14
+    assert sum(len(item["bins"]) for item in plan["obligations"]) == 17
     assert all(
         entry["required"]
         and entry["minimum_hits"] == 1

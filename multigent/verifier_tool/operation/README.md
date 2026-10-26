@@ -6,8 +6,9 @@ narrative). This folder holds the **complete, independent implementation of
 operation-level verification** — the actual arithmetic/data-movement
 semantics of a declared operation (today: `integer_matrix_multiply`, the raw
 `integer_qk_score` stage, standalone `fixed_point_attention_scale`, standalone
-`binary_attention_mask`, and the restricted exact
-`integer_sparse_attention` profile) — split
+`binary_attention_mask`, indexed `integer_block_matmul`, standalone
+`fixed_point_softmax`, and the restricted exact `integer_sparse_attention`
+profile) — split
 by verification type into its three subfolders:
 
 - [`assertion/`](assertion/README.md) — operation feature assertion catalog
@@ -32,8 +33,49 @@ silently fused into this profile; each requires its own declared stage.
 The standalone mask profile consumes aligned scaled scores and unsigned
 one-bit mask elements. `binary_keep` means one preserves the score and zero
 emits zero. It intentionally preserves the mask boundary used by the current
-unnormalized sparse composition; a future softmax profile must separately
-declare how inactive positions are excluded from normalization.
+unnormalized sparse composition. The separate softmax profile excludes masked
+elements from both the row maximum and denominator: zeroing a score is not
+equivalent to excluding it from softmax.
+
+## Indexed blocks and normalized rows
+
+`integer_block_matmul` is reusable for GEMM and QK, selected by an explicit
+`right_transposed` field, not by signal names. It consumes complete logical
+operands and a fixed work list of output-block coordinates. Column/key blocks
+identify different outputs; reduction chunks contribute to the same output.
+The oracle computes a full dot product independently of the DUT's chunk loop.
+It checks selected block mapping, inactive slots, row/column/reduction tails,
+and the declared exact or per-add wrap conversion. Its 21 catalog bins describe
+external behavior, not internal scheduler activity.
+
+`fixed_point_softmax` is a separate full-row stage with 22 catalog bins.
+Scores, optional keep bits, LUT values, delta scaling, clipping, denominator
+conversion, division/reciprocal algorithm, rounding, output scale and saturation
+must be explicit. It supports direct integer division and a specified
+Newton-reciprocal profile. A distinct high-precision natural-exp model reports
+approximation error; it never silently replaces the bit-accurate oracle.
+Independently normalizing each key block is not full-row softmax.
+
+Both use the ordinary generated campaign, accepted-transfer accounting, protocol
+stalls and lifecycle/reset checks. Directed constructors are reclassified before
+use; seeded random cases are also included. A bounded constructor miss is
+`generation_inconclusive`, not proof of unreachability. See the
+[contract details](../pool/operation_metadata/README.md#structured-operation-contracts)
+and [local/external RTL evaluation](../tool_regression/benchmarks/block_softmax_external/README.md).
+
+The source-history audit adds explicit reduction-cancellation/last-term cases,
+mask sign/zero crosses, discriminating block results and nonzero depth tails,
+masked-max/zero softmax cases, distinct rows, and positive-weight underflow.
+Six attention-related families now total 115 catalog bins. Twenty supplemental
+external tensor invariants execute on accepted DUT I/O; their IDs are recorded
+in the stimulus ledger. These are neither internal stage monitors nor claims
+that selection, BFP arithmetic, or online weighted normalization is implemented.
+See [the source audit](../tool_regression/benchmarks/attention_source_audit/README.md).
+
+These additions do not change `integer_sparse_attention` into a full normalized
+attention profile. Online softmax state across streamed tiles, arbitrary sparse
+encodings, and an end-to-end normalized QK→softmax→PV contract still require
+their own explicit composition/extension. No internal monitor signals are assumed.
 
 The sparse-attention base is deliberately narrow, exact, and composed:
 

@@ -26,8 +26,8 @@ def test_attention_mask_exhaustive_domain_and_all_mutants(tmp_path):
     )
 
     assert summary["passed"] is True
-    assert summary["coverage"]["required_bins"] == 17
-    assert summary["coverage"]["hit_bins"] == 17
+    assert summary["coverage"]["required_bins"] == 20
+    assert summary["coverage"]["hit_bins"] == 20
     assert summary["coverage"]["missing_bins"] == []
     assert summary["stimulus"]["exhaustive_signed16_mask_pairs"] == 131_072
     assert summary["stimulus"]["independent_score_mask_valid_gaps"] is True

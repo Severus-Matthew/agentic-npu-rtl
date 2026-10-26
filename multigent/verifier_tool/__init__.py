@@ -17,6 +17,19 @@ def _module(path: str, *names: str) -> dict[str, tuple[str, str]]:
 
 _EXPORTS: dict[str, tuple[str, str]] = {
     **_module(
+        "multigent.verifier_tool.operation.assertion.external",
+        "assert_external_operation_invariants",
+    ),
+    **_module(
+        "multigent.verifier_tool.pool.operation_metadata.blocks",
+        "block_elements",
+        "assert_block_records",
+    ),
+    **_module(
+        "multigent.verifier_tool.pool.operation_metadata.softmax",
+        "mathematical_probabilities",
+    ),
+    **_module(
         "multigent.verifier_tool.components",
         "ComponentCatalogError",
         "ComponentSpec",

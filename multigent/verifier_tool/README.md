@@ -159,6 +159,16 @@ immutable generated cocotb campaign also owns protocol scheduling, accepted-tran
 capture, directed/qualification/random stimuli, exact 1/3/6-cycle channel stalls,
 reset in every input/compute/output phase, illegal-command recovery, and post-reset
 purity. It recomputes the golden result from the values actually accepted by the DUT.
+The additional `integer_block_matmul` profile reuses this campaign for indexed
+GEMM/QK output tiles and reduction chunks; `fixed_point_softmax` adds explicitly
+masked, full-row fixed-point normalization. Together they contain 43 operation bins.
+They remain separate stages rather than silently changing the restricted
+unnormalized sparse-attention profile. See the
+[structured contract definitions](pool/operation_metadata/README.md#structured-operation-contracts)
+and [evaluation boundaries/results](tool_regression/benchmarks/block_softmax_external/RESULT.md).
+Current source-pinned QK/block/softmax mutation experiments, including a second
+public QK implementation from PULP ITA and explicit equivalent-survivor audits,
+are in [attention RTL qualification](tool_regression/benchmarks/attention_open_source/README.md).
 The Verifier does not reimplement this base profile; it supplies only genuinely
 unknown contract-local extension semantics or legacy `llm_extension` observers.
 Memory-mapped operations (AXI4-Lite, full AXI4, and the `custom_mmio` profile)

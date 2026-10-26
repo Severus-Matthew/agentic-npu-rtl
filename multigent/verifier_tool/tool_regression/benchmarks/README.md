@@ -6,6 +6,13 @@ and the binary-keep mask benchmark in
 all signed-16 score values under both legal mask values and independently
 stalls its score, mask, and output streams.
 
+[`attention_open_source`](attention_open_source/README.md) adds byte-identical
+PULP ITA dot-product RTL, current block/softmax fault catalogs, frozen-TB/vector
+hashes, and explicit equivalent-survivor proofs. Public source, local wrapper,
+canonical oracle and mathematical-accuracy boundaries are recorded separately.
+See its [current results](attention_open_source/RESULT.md) for execution status;
+the existence of a mutation definition does not imply that it was qualified.
+
 The [`extension_frozen_contracts`](extension_frozen_contracts/) corpus contains
 30 API-free frozen inputs for later Verifier extension evaluation.  Five cases
 are provided at every unknown-feature count from one through six, spanning

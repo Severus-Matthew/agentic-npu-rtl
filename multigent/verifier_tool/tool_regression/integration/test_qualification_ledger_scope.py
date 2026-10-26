@@ -19,6 +19,8 @@ from multigent.verifier_tool.tool_regression.qualification.build_ledger import (
     STANDARD_RULES,
     TAGS,
     build_all_rows,
+    BLACK_BOX_ADDITION_IDS,
+    EXTERNAL_OPERATION_INVARIANTS,
 )
 from multigent.verifier_tool.tool_regression.paths import VERIFIER_TOOL_ROOT
 
@@ -28,7 +30,7 @@ def test_generic_ready_valid_reset_is_tracked_as_an_explicit_policy() -> None:
     assert "rule:ready_valid.valid_low_during_reset" not in generated
     assert "policy:channel_reset_behavior.valid_deasserted" in generated
     assert "rule:explicit_generic_channel_reset.valid_deasserted" in generated
-    assert len(generated) == 323
+    assert len(generated) == 392
 
 
 def test_committed_ledger_matches_the_generated_inventory() -> None:
@@ -36,9 +38,35 @@ def test_committed_ledger_matches_the_generated_inventory() -> None:
     generated_ids = {row["id"] for row in build_all_rows()}
     stored_ids = {row["id"] for row in document["rows"]}
     assert stored_ids == generated_ids
-    assert document["runtime_target_count"] == 232
+    assert document["runtime_target_count"] == 301
     assert document["metadata_entry_count"] == 91
-    assert document["total_rows"] == 323
+    assert document["total_rows"] == 392
+
+
+def test_structured_bins_have_positive_evidence_without_overclaiming_strict() -> None:
+    document = json.loads(LEDGER_PATH.read_text())
+    rows = [row for row in document["rows"] if row["category"] == "operation_bin" and row.get("family") in {"block_matmul", "softmax"} and row["id"] not in BLACK_BOX_ADDITION_IDS]
+    assert len(rows) == 37
+    assert all(row["status"] == "POSITIVE_ONLY" for row in rows)
+    assert all("observed checked-job hits" in row["actual_coverage"] for row in rows)
+    assert all(row["evidence_paths"] for row in rows)
+
+
+def test_new_black_box_bins_do_not_inherit_historical_strict_status():
+    document = json.loads(LEDGER_PATH.read_text())
+    rows = [row for row in document["rows"] if row["id"] in BLACK_BOX_ADDITION_IDS]
+    assert len(rows) == 12
+    assert all(row["status"] != "STRICT_PASS" for row in rows)
+
+
+def test_executable_external_assertions_are_in_the_audit_inventory():
+    from multigent.verifier_tool.operation.assertion.catalog import load_operation_assertion_catalog
+    families = load_operation_assertion_catalog()["families"]
+    assert EXTERNAL_OPERATION_INVARIANTS == {
+        family:spec["external_invariants"] for family,spec in families.items() if spec.get("external_invariants")
+    }
+    rows = [r for r in build_all_rows() if r["category"] == "operation_invariant"]
+    assert len(rows) == 20
 
 
 def test_explicit_channel_reset_policy_has_strict_fault_fix_evidence() -> None:

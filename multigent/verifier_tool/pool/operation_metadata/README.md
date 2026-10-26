@@ -16,7 +16,8 @@ this pool compiles a frozen Architect contract into **canonical operation I/O
 and arithmetic metadata** — the exact mapping of data objects to channels/
 signals, and the exact numeric rules for the arithmetic profiles the tool
 implements end-to-end (restricted integer GEMM, raw integer QK scores, and
-standalone fixed-point score scale, standalone binary-keep attention mask, and
+standalone fixed-point score scale, standalone binary-keep attention mask,
+indexed integer block contractions, standalone fixed-point row softmax, and
 exact unnormalized binary-masked integer sparse attention). If you are looking for "where does
 operation classification/coverage-bin logic actually live," it is
 `canonical.py` in *this* folder, not `operation/coverage/` or
@@ -37,7 +38,10 @@ name-based guess.
 | `architect_metadata_format.yaml` | Human-readable, merge-facing description of the compiled metadata shape (schema_version 2) |
 | `architect_metadata.py` | The main compiler: frozen contract → canonical per-operation I/O + lifecycle + arithmetic metadata |
 | `arithmetic_metadata.py` | The arithmetic sub-schema, its Architect-schema composer, and the compact-declaration → canonical-arithmetic compiler |
-| `arithmetic_metadata.schema.json` | The actual JSON Schema for `operations[].arithmetic` (`anyOf`: `integer_matrix_multiply`, `integer_qk_score`, `fixed_point_attention_scale`, `binary_attention_mask`, `integer_sparse_attention`, or `llm_extension`) |
+| `arithmetic_metadata.schema.json` | The actual JSON Schema for `operations[].arithmetic`, including the two structured profiles described below |
+| `structured.py` | Explicit structured-profile compilation, revalidation of external resolved metadata, and integer input-domain checks |
+| `blocks.py` | Indexed GEMM/QK geometry, independent full-depth arithmetic, coverage classification, and external result-record assertion |
+| `softmax.py` | Full-row fixed-point softmax arithmetic, mask exclusion, explicit normalization and separate high-precision characterization |
 | `formula.py` | The safe compiler for formula-defined post-op stages. It translates contract syntax into Z3 IR and uses that same IR for golden evaluation; it never uses `eval`/`exec`. |
 | `io_metadata.py` | `data_objects[].serialization` schema (`dense_tensor` / `scalar` / `llm_extension` / `packed_encoding`) + validation + the wire-adapter support guard |
 | `packed_encoding.py` | The `packed_encoding` serialization kind: declaration validation and the encode-only `pack_words` engine (several logical elements folded into one physical container) |
@@ -891,3 +895,79 @@ fields, invalid references, unsupported math, extension delegation,
 serialization, accumulator/result width differences, conversion order, and
 revision preservation — these are local unit tests, not evidence of a
 successful live Architect/Verifier API trial.
+
+## Structured operation contracts
+
+Both profiles require fixed positive dimensions, explicit integer types and
+supported external serialization. Resolved metadata is recompiled and compared
+with its declaration; supplying a full metadata dictionary cannot bypass shape,
+axis, type or arithmetic validation. Runtime-configurable shapes and more than
+1,000,000 total canonical tensor elements require a different profile/extension.
+
+### `integer_block_matmul` / family `block_matmul`
+
+| Object role | Logical shape | Meaning |
+|---|---|---|
+| `left_operand_matrix` | `[M,K]` | Left operand; query matrix for QK |
+| `right_operand_matrix` | `[N,K]` if transposed, otherwise `[K,N]` | Key matrix or GEMM right operand |
+| `block_coordinates` | `[W,2]` | Signed output-block `(row_block,column_block)` coordinates |
+| `block_result` | `[W,BM,BN]` | Fixed, ordered work-slot output, including padding |
+
+`block_rows`, `block_columns` and `reduction_block_size` define BM, BN and BK;
+`right_transposed` selects the right-operand layout. The operand reduction axes
+must agree, and coordinate/output tensors share their work-slot axis. Indices
+are logical block indices, never bytes or token addresses. Only `(-1,-1)` is an
+inactive slot. Partial negative pairs, out-of-range coordinates and duplicates
+under `duplicate_policy: forbid` are rejected. `allow` repeats the tile in a
+different work slot, not a second accumulation into the original destination.
+
+The only padding policy is zero: row/column tail lanes and inactive slots still
+produce their fixed output transfers with value zero. A final reduction chunk
+uses only remaining logical depth terms. No contribution from another output
+column/key block is included. Reduction order is explicitly
+`increasing_declared_reduction_coordinate`; conversion is `exact` or
+`wrap_twos_complement_after_each_add`. Products must fit their declared type;
+the compiler proves full legal-prefix bounds for exact accumulation and exact
+result conversion. Final conversion is `exact` or `wrap_twos_complement`.
+
+The default checker compares the ordered result tensor. The separate
+`assert_block_records(expected_records, observed_records)` checker compares
+externally captured `(slot,local_row,local_column,value)` records and rejects
+duplicates, missing/unexpected coordinates and value mismatches. It is order
+independent, so use it only when the contract permits reordering; otherwise also
+check order. It does not observe hidden tags/scheduling, and is not auto-bound
+by the component catalog. Fixed serialization implies nonempty expected records
+even for an empty work selection. Compact variable-length sparse outputs need
+their own explicit adapter/extension.
+
+### `fixed_point_softmax` / family `softmax`
+
+`softmax_scores` and `softmax_probabilities` are aligned `[rows,columns]`
+tensors with signed and unsigned types respectively. Optional `softmax_mask`
+has the same axes/shape and unsigned one-bit elements. All columns in a logical
+row share one normalization denominator, irrespective of physical key blocks.
+
+For an unmasked position the integer LUT index is
+`((row_max - score) * delta_scale_multiplier) >> delta_scale_shift`. The row
+maximum excludes masked positions. `exp_lut[index]` contains explicit integer
+weights with `exp_lut[0] == 2**exp_fraction_bits`; the LUT must be nonincreasing.
+Out-of-table indices either use the last value (`clamp`) or zero (`zero`). A
+masked position always has zero weight. A fully masked row emits zeros under
+the explicit `fully_masked_row: zero` policy. Binary score-zeroing is not a
+substitute for this mask input.
+
+For `division: {kind: exact_divide}`, normalize as
+`weight * output_scale / sum(weights)`, using `floor` or `nearest_even` and
+clamping to `output_maximum`. For `reciprocal_newton`, the contract additionally
+declares denominator fraction/width, reciprocal fraction/width and iteration
+count. The model discards denominator fractional bits, forms a midpoint-based
+8-region reciprocal seed, applies the declared Newton iterations with each
+reciprocal truncation, then floors the output multiply. This is a particular
+explicit arithmetic algorithm, not a claim to model every reciprocal RTL.
+
+`score_fraction_bits` defines the mathematical score scale for the separate
+60-digit natural-exp characterization model. It does not create a hidden
+tolerance in bit-accurate comparisons. LUT approximation, division rounding
+and output saturation mean the sum of quantized probabilities need not be
+exactly `output_scale`. Floating-point/online softmax, arbitrary reciprocal
+methods and PV fusion are not inferred.

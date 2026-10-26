@@ -1,13 +1,14 @@
 # Assertion / Operation
 
 Code-owned generation of the **one** central golden-result comparison for a
-catalog-recognized operation (currently matrix multiply, QK, scale, binary
-mask, and restricted sparse attention),
+catalog-recognized operation (matrix multiply, QK, scale, binary mask,
+indexed block contraction, softmax, and restricted sparse attention),
 plus the classification comments that attach a catalog feature ID to that
 already-checked transaction. This subfolder does not implement either oracle
 itself (that lives in `pool/operation_metadata/canonical.py` and
-`operation/stimulus/`); it only renders the runtime wrapper that calls the
-oracle comparison and stamps it with taxonomy evidence.
+`operation/stimulus/`). `external.py` additionally implements 20 named external
+tensor invariants across the six attention-related profiles. These use actual
+accepted inputs and outputs, never an expected array or an internal trace.
 
 Read this alongside
 [`../../feature_plans/README.md`](../../pool/feature_plans/README.md), which
@@ -16,9 +17,11 @@ hard-requires every catalog operation concept to share the same three
 defaults: `assertion.checker = central_golden_equivalence`,
 `coverage.sampler = canonical_classifier`,
 `stimulus.strategy = canonical_discriminating_stimuli`. That shared default is
-the reason this subfolder has no per-feature checker dispatch: there is
-structurally only one operation assertion checker, so `generator.py` never
-needs to select among several.
+the reason `generator.py` uses one central comparison rather than duplicating
+it per bin. The ordinary runtime additionally calls
+`assert_external_operation_invariants` before its trusted golden recomputation
+and records exercised IDs in each stimulus record's `external_assertion_checks`.
+This supplementation requires no RTL ports or hierarchical monitors.
 
 ## Two independent catalogs — do not confuse them
 
@@ -110,8 +113,8 @@ silently inserted into the built-in Operation Feature Plan.
      `_contract_normalize_verification_value`).
   2. Emits **one** `assert observed_value == expected_value` under the fixed
      comment `# OPERATION ASSERTION [central_golden_equivalence]` — this is
-     the entire operation correctness check; it is never repeated per
-     feature.
+     the central numerical equivalence check; it is never repeated per feature.
+     The runtime also executes the independent external invariants above.
   3. For each `(operation, features)` pair, emits
      `if <operation> in operations:` followed by one
      `# OPERATION ASSERTION [<feature>] (central comparison; classified evidence)`
@@ -133,11 +136,13 @@ silently inserted into the built-in Operation Feature Plan.
 
 ## `assertions.yaml`
 
-One taxonomy, currently two families (`matrix_multiply` and
-`sparse_attention`), under
-`taxonomy: {name: accelerator_operation_predefined_assertions, version: "0.2", ...}`.
+One taxonomy, currently seven operation families, under
+`taxonomy: {name: accelerator_operation_predefined_assertions, version: "0.5", ...}`.
 Its `required_properties` are prose guidance, not separately executable
 checkers or evidence that an unsupported GEMM option has automatic support.
+`external_invariants` lists actual executable IDs in `external.py`, not new
+Feature Plan dispatch rules. The runtime invocation is code-owned; naming an
+ID in YAML alone does not install a checker.
 The executable concept catalog is the narrowed
 `pool/feature_plans/operation_features.yaml`.
 

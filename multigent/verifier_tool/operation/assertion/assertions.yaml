@@ -1,9 +1,38 @@
 taxonomy:
   name: accelerator_operation_predefined_assertions
-  version: "0.4"
-  scope: reviewer-visible correctness guidance for code-owned integer GEMM, QK-score, fixed-point attention-scale, binary attention-mask, and restricted sparse-attention families; required_properties are not independent executable checkers
+  version: "0.5"
+  scope: reviewer-visible correctness guidance for code-owned GEMM, QK-score, scale, mask, indexed block contraction, fixed-point softmax, and restricted sparse-attention families; required_properties are not independent executable checkers
 
 families:
+  softmax:
+    external_invariants: [softmax.output_range, softmax.excluded_zero, softmax.empty_row_zero, softmax.equal_scores, softmax.score_order, softmax.floor_mass_bound, softmax.equal_rows]
+    feature_checks:
+      row_patterns: [max subtraction and normalization use only the same logical row and exclude masked elements]
+      mask_patterns: [keep is not a zero score; excluded elements contribute neither to row max nor denominator]
+      exp_domain: [delta scale LUT indexing clipping and integer conversion follow the explicit contract]
+      normalization: [probabilities use the declared denominator conversion division rounding and saturation; fully masked rows follow their zero policy]
+    required_properties:
+      oracle_equivalence:
+        applies_when: always
+        check: Every probability matches the independently evaluated fixed-point arithmetic. Floating-point softmax is a separate quality model and cannot silently replace the bit-accurate oracle.
+      stage_boundary:
+        applies_when: only final probabilities are externally observable
+        check: Intermediate reference traces aid diagnosis but do not establish separately observed internal max exp or denominator assertions.
+  block_matmul:
+    external_invariants: [block.padding_zero, block.duplicate_tile_equal]
+    feature_checks:
+      dimensions: [fixed operand and work-slot shapes agree with the declared block geometry]
+      block_selection: [accepted block indices select exactly their declared output tiles; inactive work slots use explicit zero padding]
+      block_mapping: [each result is associated with its work slot and original logical row and column]
+      block_tails: [invalid tail lanes emit the declared zero padding and never read another logical row]
+      block_reduction: [increasing-depth reduction visits every contribution once with the declared per-add conversion; key blocks do not accumulate into each other]
+    required_properties:
+      oracle_equivalence:
+        applies_when: always
+        check: Every output slot and value matches the independent indexed block oracle; stream accounting is owned by the protocol and lifecycle campaign.
+      observation_boundary:
+        applies_when: block tags or addresses are externally visible
+        check: The reusable block-record checker rejects missing duplicate unexpected or mismatched destinations; do not claim internal scheduler observation from final values alone.
   matrix_multiply:
     feature_checks:
       bias: [the one supported per-output-column bias vector is indexed and added at its declared DAG stage]
@@ -44,6 +73,7 @@ families:
         applies_when: illegal encodings or configurations have defined behavior
         check: An illegal job follows its error policy without corrupting preceding or following legal jobs.
   sparse_attention:
+    external_invariants: [sparse.empty_row_zero, sparse.zero_value_column, sparse.equal_value_columns]
     feature_checks:
       stage_handoffs: [each declared stage consumes the previous stage output without recomputing QK or silently changing bypassed scale and normalization values]
     required_properties:
@@ -78,6 +108,7 @@ families:
         applies_when: reset can interrupt work
         check: Reset follows the contract and no partial pre-reset attention job leaks into a later result.
   attention_qk:
+    external_invariants: [qk.zero_operand, qk.equal_queries, qk.equal_keys]
     feature_checks:
       dimensions: [the score tensor contains exactly the declared fixed Q by S coordinates and each dot product reduces exactly D terms]
       operand_values: [Q and K elements are decoded independently using their declared signed widths before multiplication]
@@ -103,6 +134,7 @@ families:
         applies_when: reset can interrupt work
         check: Reset follows the contract and no partial pre-reset QK job leaks into a later score result.
   attention_scale:
+    external_invariants: [scale.zero_preserved, scale.equal_inputs, scale.monotonic]
     feature_checks:
       dimensions: [the scaled score tensor contains exactly the declared fixed Q by S coordinates]
       score_values: [input scores are decoded as signed integers at the declared width, including both extrema]
@@ -132,6 +164,7 @@ families:
         applies_when: reset can interrupt work
         check: Reset discards any pending pre-reset score and no ghost scaled result appears after reset.
   attention_mask:
+    external_invariants: [mask.excluded_zero, mask.kept_value]
     feature_checks:
       dimensions: [the score, binary mask, and masked-score tensors contain exactly the same declared fixed Q by S coordinates]
       score_values: [scaled input scores are decoded independently using their declared signed width, including both extrema]

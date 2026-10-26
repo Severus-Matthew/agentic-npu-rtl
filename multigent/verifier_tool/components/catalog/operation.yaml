@@ -1,5 +1,32 @@
 schema_version: 1
 components:
+  - id: operation.assertion.external_invariants
+    component_type: assertion_checker
+    abi: external_operation_invariants_v1
+    entrypoint: multigent.verifier_tool.operation.assertion.external:assert_external_operation_invariants
+    domains: [operation]
+    execution_owner: pipeline
+    description: Check arithmetic relations directly on accepted external tensors, independently of golden expected arrays. The ordinary runtime invokes this checker and records the exercised IDs.
+    supported_profiles: ['*']
+    capabilities: [black_box_arithmetic_invariants, masked_output_isolation, coordinate_relations]
+    tags: [operation_feature]
+    match_terms: [external arithmetic invariant, masked output, equal rows, padding]
+    limitations: [The runtime enables checks only for its six explicitly supported attention arithmetic profiles. Unsupported arithmetic returns no checks and cannot establish extension coverage. No internal observation or selection-policy proof is inferred.]
+    auto_reuse: false
+  - id: operation.assertion.block_result_records
+    component_type: assertion_checker
+    abi: block_result_records_v1
+    entrypoint: multigent.verifier_tool.pool.operation_metadata.blocks:assert_block_records
+    domains: [operation]
+    execution_owner: verifier_extension
+    description: Compare independently expected and externally captured block slot row column value records; reject duplicates and missing or unexpected destinations.
+    supported_profiles: ['*']
+    capabilities: [block_result_accounting, block_coordinate_mapping]
+    tags: [operation_feature]
+    match_terms: [block tags, block destinations, indexed results, tile coordinate]
+    limitations: [Requires actual external coordinate observations and independent expected records; does not infer internal scheduling or install a monitor.]
+    auto_reuse: false
+
   - id: operation.golden.canonical
     component_type: golden_operation
     abi: canonical_golden_v1
@@ -8,7 +35,7 @@ components:
     execution_owner: pipeline
     description: Evaluate a supported operation from accepted canonical inputs and emit golden output and trace.
     supported_profiles: ['*']
-    capabilities: [golden_output, golden_trace, matrix_multiply, qk_score, sparse_attention, post_operations]
+    capabilities: [golden_output, golden_trace, matrix_multiply, qk_score, sparse_attention, post_operations, block_matmul, softmax]
     tags: [golden_model]
     match_terms: [mathematical result, golden output, golden trace, matrix multiply, qk score, sparse attention]
     limitations: [The operation metadata and every non-scalar stage must be supported by the code-owned evaluator.]

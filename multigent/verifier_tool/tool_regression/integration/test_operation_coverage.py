@@ -72,7 +72,7 @@ def test_operation_catalog_only_advertises_code_owned_families() -> None:
     families = load_operation_coverage_families()["families"]
     assert set(families) == {
         "matrix_multiply", "sparse_attention", "attention_qk", "attention_scale",
-        "attention_mask",
+        "attention_mask", "block_matmul", "softmax",
     }
     assert operation_family("GEMM") == "matrix_multiply"
     assert operation_family("qk_score") == "attention_qk"
@@ -80,6 +80,24 @@ def test_operation_catalog_only_advertises_code_owned_families() -> None:
     assert operation_family("binary_attention_mask") == "attention_mask"
     assert operation_family("depthwise-convolution") is None
     assert operation_family("invented accelerator") is None
+
+
+def test_structured_profiles_are_fully_described_in_the_actual_architect_prompt() -> None:
+    import yaml
+    from multigent.verifier_tool import render_architect_metadata_format
+    from multigent.verifier_tool.pool.operation_metadata.structured import profile_module
+
+    rendered = yaml.safe_load(render_architect_metadata_format())
+    profiles = rendered["arithmetic"]["classifier_profiles"]
+    branches = rendered["operation_arithmetic_schema"]["anyOf"]
+    for name in ("integer_block_matmul", "fixed_point_softmax"):
+        declaration = profiles[name]
+        branch = next(b for b in branches if name in b["properties"]["classifier_profile"]["enum"])
+        assert set(branch["required"]) == set(declaration["required_numeric_declarations"]) | {"classifier_profile"}
+        assert declaration["coverage_family"] == profile_module(name).FAMILY
+        roles = set(declaration["required_object_roles"]) | set(declaration.get("conditional_object_roles", {}))
+        expected = profile_module(name).object_roles({"mask_mode": "binary_keep"})
+        assert roles == set(expected["inputs"]) | set(expected["outputs"])
 
 
 def test_gemm_catalog_exposes_only_executable_optional_features() -> None:

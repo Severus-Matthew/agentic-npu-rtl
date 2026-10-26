@@ -28,7 +28,14 @@ private helpers; it does not replace it.
 ## Files
 
 - `__init__.py` — re-exports the public names below.
-- `stimulus_generator.py` — the entire implementation.
+- `stimulus_generator.py` — public generation/evaluation dispatch and existing arithmetic models.
+- `structured.py` — bounded geometry/row constructors, seeded random inputs and
+  discriminating jobs for indexed block contraction and fixed-point softmax.
+
+The structured profiles use deterministic constructive witnesses, not Z3.
+Every witness is independently reclassified. Only a geometry/domain proof can
+exclude a bin; a constructor that fails to find one reports
+`generation_inconclusive`. The existing Z3-based profiles remain unchanged.
 
 ## `__init__.py`
 

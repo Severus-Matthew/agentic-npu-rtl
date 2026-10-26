@@ -780,6 +780,8 @@ class InterfaceCoverageTracker:
         )
         captured_channels = self.protocol_adapter.snapshot()
         captured_events = self.protocol_adapter.event_snapshot()
+        pending_command_events: dict[str, list[dict[str, Any]]] = {}
+        external_assertion_checks: dict[str, list[str]] = {}
         if operation_metadata is not None and operations:
             metadata_by_name = {
                 str(item.get("operation_name")): item
@@ -839,6 +841,28 @@ class InterfaceCoverageTracker:
                         or int(event.get("payload", event.get("value", -1)))
                         in set(map(int, command["legal_values"]))
                     ]
+                    # A legal next command can handshake immediately after
+                    # result retirement, before the Python recorder observes the
+                    # completion pulse. Associate the retiring job by the real
+                    # output-transfer event boundary, not by reset epoch alone.
+                    # Do not trim operand/result events: extra data must still fail.
+                    outputs = list(item.get("outputs", []))
+                    if len(accepted_commands) > 1 and outputs and all(
+                        output.get("protocol_profile") == "ready_valid"
+                        for output in outputs
+                    ):
+                        output_events = [event for output in outputs for event in captured_events.get(str(output.get("channel", "")), [])]
+                        if output_events:
+                            retirement = max(int(event["acceptance_event_sequence"]) for event in output_events)
+                            for command in command_channels:
+                                channel = str(command.get("channel", ""))
+                                events = captured_events.get(channel, [])
+                                future = [event for event in events if int(event["acceptance_event_sequence"]) > retirement]
+                                if future:
+                                    pending_command_events[channel] = future
+                                    captured_events[channel] = [event for event in events if int(event["acceptance_event_sequence"]) <= retirement]
+                                    captured_channels[channel] = [int(event["value"]) for event in captured_events[channel] if "value" in event]
+                            accepted_commands = [event for event in accepted_commands if int(event["acceptance_event_sequence"]) <= retirement]
                     if len(accepted_commands) != 1:
                         raise CoverageRuntimeError(
                             f"checked job {operation_name} needs exactly one role-bound "
@@ -862,6 +886,10 @@ class InterfaceCoverageTracker:
                     raise CoverageRuntimeError(
                         f"TB stimulus differs from role-bound accepted transfers for {operation_name}"
                     )
+                from multigent.verifier_tool.operation.assertion.external import assert_external_operation_invariants
+                external_assertion_checks[operation_name] = list(
+                    assert_external_operation_invariants(item, accepted_stimulus, accepted_outputs)
+                )
                 trusted_expected = evaluate_canonical_operation(item, accepted_stimulus)
                 selected_expected = {
                     str(binding["data_object"]): expected_value.get(
@@ -991,6 +1019,7 @@ class InterfaceCoverageTracker:
             "job_key": [self.reset_epoch, self._stimulus_sequence],
             "covered_bins": newly_covered,
             "operation_samples": [],
+            "external_assertion_checks": external_assertion_checks,
         }
         self.stimulus_records.append(record)
         self._stimulus_by_id[stimulus_id] = record
@@ -1003,6 +1032,9 @@ class InterfaceCoverageTracker:
         # already completed stimulus evidence.
         self.write_stimulus_ledger()
         self.protocol_adapter.reset()
+        for channel, events in pending_command_events.items():
+            self.protocol_adapter.events[channel] = [dict(event) for event in events]
+            self.protocol_adapter.values[channel] = [int(event["value"]) for event in events if "value" in event]
         return stimulus_id
 
     def _bin_hit_counts(self) -> dict[str, int]:

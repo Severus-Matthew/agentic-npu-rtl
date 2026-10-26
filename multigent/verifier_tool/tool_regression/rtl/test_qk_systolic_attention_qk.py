@@ -30,8 +30,8 @@ def test_qk_systolic_closes_pool_and_kills_every_structural_mutant(tmp_path):
     )
 
     assert summary["status"] == "PASS"
-    assert summary["coverage"]["required_bins"] == 14
-    assert summary["coverage"]["hit_bins"] == 14
+    assert summary["coverage"]["required_bins"] == 17
+    assert summary["coverage"]["hit_bins"] == 17
     assert summary["coverage"]["missing_bins"] == []
     campaign = summary["mutation_campaign"]
     assert campaign["selected"] == mutant_count

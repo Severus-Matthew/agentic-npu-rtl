@@ -718,6 +718,9 @@ def compile_operation_arithmetic(
         )
         raise ArithmeticMetadataError(details)
     assert isinstance(declaration, Mapping)
+    from .structured import STRUCTURED_PROFILES, compile_structured_arithmetic
+    if declaration["classifier_profile"] in STRUCTURED_PROFILES:
+        return compile_structured_arithmetic(operation, architecture, declaration)
     if declaration["classifier_profile"] == "llm_extension":
         if not str(operation.get("semantics", "")).strip():
             raise ArithmeticMetadataError("llm_extension requires explicit operations[].semantics")
@@ -909,6 +912,10 @@ def validate_resolved_arithmetic(metadata: Mapping[str, Any]) -> None:
     """
     arithmetic = metadata.get("arithmetic", {})
     profile = arithmetic.get("classifier_profile")
+    from .structured import STRUCTURED_PROFILES, validate_structured_resolved
+    if profile in STRUCTURED_PROFILES:
+        validate_structured_resolved(metadata)
+        return
     if profile == "llm_extension":
         for field in ("reason", "semantics"):
             if not isinstance(arithmetic.get(field), str) or not arithmetic[field].strip():

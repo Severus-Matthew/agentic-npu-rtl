@@ -1,0 +1,3620 @@
+design_profiles:
+- design_id: quest_bfp8_q64_top2_kpage64_score_bram
+  family: quest_selected_sparse_qk
+  selection: >-
+    Query-dependent Top-2 KV-page selection from per-page minimum/maximum K bounds, identified as Quest in
+    the session
+  query_organization: 64 queries in eight groups of eight
+  key_organization: two selected pages per query, 64 K tokens per page
+  arithmetic: BFP8-style 8x8x64 systolic QK GEMM with fixed-point score and exponent metadata
+  mask_semantics: structural query-row and key-position validity only
+  storage: 8192 x 42-bit addressable score BRAM
+  functional_boundary: QK score generation, filtering, storage, readback, and release
+  excluded_stages:
+  - scale by 1/sqrt(d) is not confirmed
+  - causal or additive attention mask is not confirmed
+  - softmax
+  - V multiplication or reduction
+  evidence_status:
+    functional_simulation: confirmed
+    compute_control_300mhz_ooc: confirmed
+    final_bram_backed_300mhz_ooc: unverified
+- design_id: fixed_stride_int8_q64_kpage64_qk_scores_u55c
+  family: fixed_pattern_block_sparse_qk
+  selection: Hardware selects resident 64-token K blocks 0,4,8,... by striding HBM block addresses
+  query_organization: Dimension-flexible M, tiled in 64-query blocks
+  key_organization: Dimension-flexible N, resident 64-token K blocks, one sampled block per 256-token group
+  arithmetic: Signed INT8 Q/K with signed INT32 dot-product scores on a logical 64x64 QK array
+  mask_semantics: No score, causal, or additive mask in this checkpoint; padded lanes are zero-filled and checked
+  storage: Four 256-bit HBM readers and one 256-bit tile-major INT32 score writer
+  functional_boundary: Hardware block selection and QK score generation only
+  excluded_stages:
+  - scale by 1/sqrt(d) or another score-scale stage
+  - causal or additive attention mask
+  - softmax
+  - V read, P-by-V, normalization, or context output
+  evidence_status:
+    functional_simulation: confirmed
+    full_device_325mhz_route: confirmed
+    u55c_board_oracle: confirmed
+    k_block_size_8_or_16_variant: unverified
+- design_id: fixed_pattern_int8_q64_online_attention_u55c
+  family: fixed_pattern_block_sparse_online_attention
+  selection: Fixed causal schedule over matching contiguous 64-token K/V tiles
+  query_organization: 64-query tiles for one attention head
+  key_organization: Older summary tiles plus all local causal tiles; K and V tile IDs match
+  arithmetic: >-
+    INT8 Q/K/V, INT32 QK, experimental /1024 score scale, Q0.16 softmax state, signed 40-bit value accumulation,
+    Q8.8 output
+  mask_semantics: Causal diagonal masking with fixed block selection
+  storage: Bounded tile-local score/probability/V/value state plus four banked row-statistic BRAMs
+  functional_boundary: QK, online softmax, sampled V accumulation, normalization, and context output
+  excluded_stages:
+  - calibrated model-specific quantization and true 1/sqrt(d_head) validation
+  - runtime-programmable sparse selection
+  - RoPE, multi-head/GQA mapping, and output projection
+  - fully overlapped high-throughput scheduling
+  evidence_status:
+    rtl_regression: confirmed
+    original_full_device_325mhz_route: failed
+    original_board_oracle_at_296_3mhz: confirmed
+    banked_registered_full_device_325mhz_route: confirmed
+    banked_registered_u55c_board_oracle: confirmed
+- design_id: int8_q64_qk_online_softmax_overlap_ooc325
+  family: overlapped_qk_online_softmax_ip
+  selection: All-valid synthetic score flow; no integrated sparse scheduler
+  query_organization: 64-query tiles across four 16-row groups
+  key_organization: 64-key score tiles, three-tile d=128 overlap regression
+  arithmetic: 4x4 grid of 16x16 packed-INT8 QK engines plus four eight-lane online-softmax pipelines
+  mask_semantics: All-valid in confirmed integration test
+  storage: Sixteen score-BRAM bank sets
+  functional_boundary: Overlapped QK and online-softmax state only
+  excluded_stages:
+  - sparse or causal selection and masking
+  - calibrated score scale
+  - V path and context output
+  - CPU, shell, and board integration
+  evidence_status:
+    three_tile_overlap_simulation: confirmed
+    slr0_325mhz_ooc_route: confirmed
+    full_device_route: unverified
+    board_oracle: unverified
+- design_id: centered_window_hls_int8_q64_d64_w16_full_attention_u55c
+  family: fixed_token_window_hls_full_attention
+  selection: Per-query centered token window j=max(0,i-8)..min(63,i+7)
+  query_organization: Fixed 64-token sequence, one 64-channel head
+  key_organization: Fixed positional window, 960 allowed pairs out of a 64x64 connectivity matrix
+  arithmetic: 16-lane grouped INT8 QK dot product, LUT softmax, fixed-point weighted V, shared output normalization
+  mask_semantics: Token-level centered window applied before row-wise softmax
+  storage: Full Q/K/V buffered on chip; three 512-bit AXI-MM HBM pointers for Q, combined K/V, and output
+  functional_boundary: Complete single-head window attention from HBM input through normalized context output
+  excluded_stages:
+  - programmable sequence length, head dimension, or window
+  - input-dependent or score-dependent sparse selection
+  - multi-head, GQA, RoPE, projection, and long-sequence scaling
+  - board-measured accelerator-only cycle counter
+  evidence_status:
+    c_simulation_nine_cases: confirmed
+    rtl_cosimulation_nine_cases: confirmed
+    full_device_300mhz_route: confirmed
+    u55c_board_oracle_six_cases: confirmed
+    accelerator_only_board_throughput: unverified
+- design_id: bf16_tile16_mask_compaction_paged_qk_predecessor
+  family: mask_compacted_bf16_dot_product_substrate
+  selection: Two 4x4 output masks compact work onto sixteen MAC lanes; up to 32 active outputs use two passes.
+  query_organization: Small 4x4 output tiles; four-pair descriptor and operand-router experiments are related
+    variants.
+  key_organization: BF16 dot-product reductions with tested length sweeps from 16 through 256.
+  arithmetic: >-
+    BF16 multiplication and fixed-point/Q31 accumulation; separate FP32 accumulator evaluation was an earlier
+    experiment.
+  mask_semantics: Compute-lane selection and explicit masked-result metadata, not a completed softmax attention
+    mask.
+  storage: Registered lane maps, active/pending configuration, and registered page masks.
+  functional_boundary: Predecessor arithmetic, sparse compaction, mapping, operand routing, and paged dot-product
+    completion.
+  excluded_stages:
+  - Quest page-bound scoring
+  - softmax and V
+  - integrated HBM or board attention proof
+  evidence_status:
+    functional_simulation: confirmed
+    paged_setup_250mhz_ooc: confirmed
+    paged_hold_with_original_io_constraints: failed
+    full_device_or_board: unverified
+error_families:
+- family_id: tool_and_build_flow
+  description: >-
+    Simulator, compiler, generator, parser, process-isolation, or build-directory failures outside DUT function.
+  first_questions:
+  - Which tool and phase emitted the first failure?
+  - Did a PASS or completed artifact exist before the failure?
+  - Can the same source be reproduced in a clean process and directory?
+- family_id: verification_harness_and_oracle
+  description: Testbench stimulus, monitor timing, generated-test, assertion expectation, or golden-model failures.
+  first_questions:
+  - Is the observed event sampled at the contract-defined handshake or edge?
+  - Is the expected result independently derived rather than copied from the DUT structure?
+  - Does the stimulus obey grouping, last-marker, reset, and lifecycle rules?
+- family_id: rtl_protocol_and_lifecycle
+  description: Ready/valid, completion visibility, reset, ownership, occupancy, and reuse-state failures in
+    RTL.
+  first_questions:
+  - Which accepted handshake changes ownership or state?
+  - Is completion exposed before its payload or snapshot is externally valid?
+  - Which state must clear and which metadata is intentionally preserved?
+- family_id: memory_structure_and_inference
+  description: Logical storage is correct in simulation but maps to the wrong FPGA primitive or ownership structure.
+  first_questions:
+  - What primitive and capacity does the architecture require?
+  - What did synthesis actually infer in hierarchy and utilization reports?
+  - Do reset, port, or multidimensional access patterns prevent inference?
+- family_id: physical_timing_and_evidence
+  description: Routed timing failure, congestion, SLR placement, or incorrect promotion of weak physical evidence.
+  first_questions:
+  - Is the report OOC, SLR-constrained, full-device, or board-integrated?
+  - What is the exact startpoint-to-endpoint family of the worst routed path?
+  - Did the proposed change close timing or merely improve negative slack?
+- family_id: hls_architecture_and_resources
+  description: >-
+    HLS scheduling or unrolling creates unintended operator replication, impractical resources, or poor latency.
+  first_questions:
+  - Which operation was replicated and which loop/directive caused it?
+  - Does required throughput justify that replication?
+  - Do post-synthesis and routed reports confirm the intended sharing?
+records:
+- id: SA-QUEST-BFP8-Q64-P64-001
+  title: A second XSim run reports a watchdog after functional PASS
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - scripted_xsim_flow
+    - bounded_testbench
+  status: diagnosed_fix_provided
+  error_family: tool_and_build_flow
+  error_type: SIMULATION_TIMEOUT
+  subtype: duplicate_simulation_run
+  stage: fp32_accumulator_verification
+  tool: Vivado XSim
+  failing_layer: simulation_script
+  symptom_signatures:
+  - Functional PASS messages and $finish appear before a later watchdog timeout.
+  - The Tcl flow invokes launch_simulation and then separately invokes run all.
+  preconditions:
+  - The first run already reached the intended terminal PASS.
+  - The timeout occurs only after the completed run is continued or restarted.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Read the simulation output before the final watchdog and located two passing dot products and $finish
+      at 366 ns.
+    observation_or_result: Outputs 41200000 and 40200000 matched 10.0 and 2.5 before the later 2 us timeout.
+  - step: 2
+    status: observed_action
+    action: Compared that event order with the Tcl commands launch_simulation followed by run all.
+    observation_or_result: The extra run command occurred after the intended test had already terminated.
+  - step: 3
+    status: observed_action
+    action: >-
+      Supplied a script change removing the standalone run all command and left the accumulator RTL and testbench
+      unchanged.
+    observation_or_result: >-
+      The conversation then moved to accumulator synthesis; a separate post-edit simulation log was not shown
+      for this script repair.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Ran launch_simulation followed by an additional run all in the original script.
+    result: A valid functional PASS was followed by a misleading watchdog timeout.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The accumulator never completed its dot products.
+    evidence: Both expected results and the intended $finish were printed before the watchdog.
+  root_cause:
+  - >-
+    launch_simulation had already executed the testbench. A redundant run-all command continued simulation
+    after the successful $finish path and eventually triggered the watchdog.
+  resolution:
+    actions:
+    - Remove only the redundant run all command after launch_simulation in the affected flow.
+    - Recompile or relaunch as needed to confirm one intended execution terminates at its PASS.
+  validation:
+  - evidence: The supplied log proves both functional tests passed before the extra run command.
+    regression_scope: Two accumulator dot products and their back-to-back separation.
+    limitation: >-
+      Removal was supplied as the repair; an isolated post-edit script rerun is not present in the incident
+      excerpt. Do not describe the script repair as independently rerun here.
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not change accumulator RTL to cure a post-PASS timeout.
+  - status: generalized_rule
+    rule: Do not increase the watchdog before checking for duplicate simulation commands.
+  - status: generalized_rule
+    rule: >-
+      This incident does not establish that every launch_simulation flow runs to completion; inspect the actual
+      commands and event order.
+  reuse_rule:
+  - >-
+    Reuse only when a complete PASS precedes the timeout and the flow issues a second simulation command. A
+    timeout before PASS belongs to a different case.
+- id: SA-QUEST-BFP8-Q64-P64-002
+  title: Mapper completion is visible before the pending snapshot
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - double_buffered_configuration
+    - captured_completion_snapshot
+  status: validated
+  error_family: rtl_protocol_and_lifecycle
+  error_type: VALID_READY_PROTOCOL_ERROR
+  subtype: completion_visible_before_snapshot
+  stage: double_buffer_mapper_configuration
+  tool: Vivado XSim
+  failing_layer: rtl_wrapper
+  symptom_signatures:
+  - 'Fatal: Pending mapping not ready'
+  - cfg_done is high while pending_valid is still low.
+  preconditions:
+  - cfg_done is combinationally assigned from engine_done.
+  - pending_valid is set by a nonblocking assignment on the same completion edge.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Traced the failed pending_valid check to combinational cfg_done=engine_done and a clocked pending_valid
+      update.
+    observation_or_result: The inner engine could advertise done one cycle before the wrapper captured its
+      result.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied a wrapper patch declaring cfg_done as logic, clearing it on reset, and assigning cfg_done<=engine_done
+      beside pending snapshot capture.
+    observation_or_result: The proposed external completion event now meant that the snapshot had been captured.
+  - step: 3
+    status: observed_action
+    action: Added !engine_done to engine_ready && !pending_valid in cfg_ready.
+    observation_or_result: Configuration could not reopen during the engine-done-to-capture gap.
+  - step: 4
+    status: observed_action
+    action: >-
+      After a malformed edit caused cfg_ready declaration errors, supplied one complete corrected wrapper and
+      a compile-success-gated rerun.
+    observation_or_result: The subsequent user log reported ALL DOUBLE-BUFFER MAPPER TESTS PASSED and $finish
+      at 590 ns.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Applied the initial wrapper changes incompletely, leaving a redeclared or malformed cfg_ready port.
+    result: >-
+      xvlog rejected the source; the later stale simulation could not validate the handshake fix. The separate
+      stale-snapshot case records this build failure.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The testbench simply sampled a correct same-cycle completion too early.
+    evidence: >-
+      cfg_done was directly driven by engine_done while the wrapper only captured pending_valid on the following
+      edge; externally visible completion really preceded valid payload.
+  root_cause:
+  - >-
+    The wrapper exposed engine completion one cycle before the completed mapping snapshot became externally
+    valid.
+  resolution:
+    actions:
+    - Register cfg_done alongside capture of the pending mapping.
+    - Block cfg_ready during the engine_done-to-capture transition.
+    - Define completion as “result captured,” not merely “inner engine pulsed done.”
+  validation:
+  - evidence: User-provided rerun reported ALL DOUBLE-BUFFER MAPPER TESTS PASSED, terminating at 590 ns.
+    regression_scope: Initial mapping, overlapping configuration, activation, over-capacity rejection, and
+      empty mapping.
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not weaken the testbench check that completion implies a valid snapshot.
+  reuse_rule:
+  - >-
+    Apply when an inner done pulse and an externally consumable captured result occur on different cycles.
+    Do not use when the payload is already stable and valid in the same completion cycle.
+- id: SA-QUEST-BFP8-Q64-P64-003
+  title: Reserved SystemVerilog words prevent testbench compilation
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    - fixed_pattern_int8_q64_online_attention_u55c
+    architecture_traits:
+    - systemverilog_testbench
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: SV_SYNTAX_ERROR
+  subtype: reserved_keyword_identifier
+  stage: testbench_compilation
+  tool: Vivado xvlog
+  failing_layer: testbench
+  symptom_signatures:
+  - keyword 'matches' used in incorrect context
+  - syntax error near matches or packed
+  - Hardware modules compile before the testbench is rejected.
+  - >-
+    Parser errors also occurred for local in a scheduler loop and context in a four-pair operand-router testbench.
+  preconditions:
+  - A testbench local variable is named matches or packed.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Located the first xvlog diagnostics in testbench identifiers matches and later packed.
+    observation_or_result: The hardware modules had been analyzed; testbench parsing failed before numerical
+      simulation.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied identifier renames from matches to match_count and from packed to packed_word, including declarations
+      and uses.
+    observation_or_result: The reserved-word collisions were removed without changing arithmetic or loader
+      behavior.
+  - step: 3
+    status: observed_action
+    action: Requested recompilation and the affected simulation after the rename.
+    observation_or_result: >-
+      Subsequent row-stream integration passed; the operand-loader log explicitly passed both 64-write loads,
+      atomic paired writes, and 37 backpressure stalls.
+  - step: 4
+    status: observed_action
+    action: >-
+      Renamed context to tile_ctx in the BF16 router testbench and local to local_tile in the causal scheduler
+      testbench.
+    observation_or_result: The router passed 1010 cases; the scheduler passed four shape/restart cases including
+      640x640x128.
+  failed_or_insufficient_attempts: []
+  rejected_by_evidence:
+  - hypothesis_or_direction: The numerical RTL or descriptor loader caused this failure.
+    evidence: xvlog named reserved words in the testbench and simulation had not started.
+  root_cause:
+  - SystemVerilog reserved words were used as identifiers in testbench code.
+  resolution:
+    actions:
+    - Rename matches to match_count.
+    - Rename packed to packed_word.
+    - >-
+      For the additional observed collisions, rename context to tile_ctx and local to local_tile, updating
+      all affected references.
+    - Recompile before changing any hardware module.
+  validation:
+  - evidence: >-
+      The operand-loader rerun reported ALL QUEST GEMM8 OPERAND LOADER TESTS PASSED after packed was renamed;
+      the row-stream path also passed subsequent integration after matches was renamed.
+    regression_scope: >-
+      Compilation, row-stream integration, and two-bank loader simulation including partial masks, atomic writes,
+      and backpressure.
+  - evidence: >-
+      The four-pair router reported 1010 tests passed; the causal scheduler reported four shapes passed and
+      ALL TESTS PASSED: causal fixed-pattern addresses and restart.
+    regression_scope: Four-pair operand routing and causal fixed-pattern scheduler compile/simulation.
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not attribute a parser error isolated to the testbench to the accelerator datapath.
+  reuse_rule:
+  - >-
+    Reuse for parser failures whose first diagnostic names a reserved identifier in verification code. Do not
+    infer a datapath defect until compilation reaches RTL semantics.
+- id: SA-QUEST-BFP8-Q64-P64-004
+  title: BFP8 testbench expectation contains only the final group contribution
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - bfp8_group_accumulation
+    - independent_numeric_oracle
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: REFERENCE_MODEL_ERROR
+  subtype: golden_accumulator_overwrite
+  stage: bfp8_row_accumulation
+  tool: Vivado XSim plus independent Python reference
+  failing_layer: testbench_reference
+  symptom_signatures:
+  - got = -17408, expected = -43520
+  - Expected value equals only the final group's contribution.
+  - >-
+    Integrated tile mode 0 reported got=16384 expected=2048, again matching only one of eight expected group
+    contributions.
+  preconditions:
+  - Multiple group partial sums should be accumulated into one output.
+  - The DUT value equals the manually summed and scaled contributions.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Reconstructed the eight mode-0 column-0 partials as 51, -68, 85, -102, 119, -136, 153, and -170.
+    observation_or_result: >-
+      Their sum was -68; alignment from exponent 0 to base -8 multiplied it by 256, giving the DUT value -17408.
+  - step: 2
+    status: observed_action
+    action: Compared the failing expectation -43520 with the individual aligned terms.
+    observation_or_result: >-
+      -43520 equaled only -170*256, identifying an incorrect expected-value path rather than evidence against
+      this DUT result.
+  - step: 3
+    status: observed_action
+    action: >-
+      Supplied an independent Python generator implementing signed power-of-two alignment and ties-to-even
+      rounding across three modes and eight columns.
+    observation_or_result: >-
+      The generator formed independent fixed-point-plus-exponent reference words instead of reading DUT results.
+  - step: 4
+    status: observed_action
+    action: Supplied a separate testbench variant consuming the generated reference and requested a fresh run.
+    observation_or_result: The user log reported Python-reference PASS for all three modes, each with 64 events
+      and eight outputs.
+  - step: 5
+    status: observed_action
+    action: >-
+      For the later integrated-tile recurrence, accumulated aligned_group terms into a scalar expected_total,
+      assigned golden[r][c] once, and added the mode-0 16384*(r+1)*(c+1) sanity check.
+    observation_or_result: >-
+      Three integrated modes then passed 64 outputs each; a subsequent independent Python-reference run also
+      passed all 192 outputs.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Used the original SystemVerilog expected-value calculation for the multi-group comparison.
+    result: It produced -43520 instead of the independently reconstructed -17408 and falsely rejected the DUT.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The DUT dropped or miscomputed the group accumulation in the reported case.
+    evidence: >-
+      The manual full sum equaled the DUT value, and the subsequent independent Python-reference suite passed
+      all three modes.
+  root_cause:
+  - >-
+    The original SystemVerilog expected-value path did not represent the full multi-group sum. For the failing
+    case its value equaled the last term; the exact expression-sizing or update mechanism inside that path
+    was not isolated further.
+  resolution:
+    actions:
+    - >-
+      Generate independent expected values from all eight partials and their exponents, with explicit signed
+      alignment and rounding.
+    - Check the row-lane output and exponent against those generated vectors in a separate testbench variant.
+    - >-
+      Preserve the arithmetic RTL because independent reconstruction supports the observed DUT result for the
+      failing case.
+    - >-
+      In the integrated-tile recurrence, replace compound accumulation into the multidimensional golden array
+      with scalar expected_total, then assign the finished value once and check a closed-form mode-0 result.
+  validation:
+  - evidence: >-
+      User log reported BFP8 ROW LANE PYREF PASS for modes 0, 1, and 2, followed by ALL QUEST BFP8 ROW LANE
+      PYREF TESTS PASSED.
+    regression_scope: >-
+      Three row-lane numerical modes, 64 events and eight outputs per mode, including exponent variation and
+      cancellation patterns.
+    limitation: >-
+      The successful independent replacement does not prove the precise internal cause of the old SystemVerilog
+      oracle's last-term result.
+  - evidence: >-
+      Integrated SystemVerilog and independent Python-reference logs each reported all three tile modes passing,
+      64 outputs per mode.
+    regression_scope: 192 complete tile outputs and their 1536 group contributions.
+    limitation: >-
+      The scalar rewrite and independent model establish the reference correction, not a general XSim defect
+      in all multidimensional array updates.
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not change RTL merely to match a demonstrably incorrect expected value.
+  - status: generalized_rule
+    rule: Do not reuse DUT implementation structure as the replacement oracle.
+  reuse_rule:
+  - >-
+    Use when the DUT matches an independently reconstructed multi-group sum and the expected value matches
+    only one group. Preserve independence between the replacement oracle and DUT implementation structure.
+- id: SA-QUEST-BFP8-Q64-P64-005
+  title: Metadata-ready is sampled in the same timeslot as its input change
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - combinational_ready
+    - metadata_stream
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: TESTBENCH_ERROR
+  subtype: same_timeslot_combinational_sampling
+  stage: metadata_configuration
+  tool: Vivado XSim
+  failing_layer: testbench_monitor
+  symptom_signatures:
+  - 'Fatal: Tile not ready after 192 metadata writes'
+  - meta_valid is deasserted and cfg_ready is checked immediately in the same time slot.
+  preconditions:
+  - cfg_ready depends combinationally on meta_valid.
+  - Compilation and elaboration succeeded.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Inspected the metadata-load task at the failing Tile not ready after 192 metadata writes check.
+    observation_or_result: The task assigned meta_valid=0 and immediately read cfg_ready in the same simulation
+      timeslot.
+  - step: 2
+    status: observed_action
+    action: Traced start_ready, connected as cfg_ready, to its combinational !meta_valid term.
+    observation_or_result: The monitor could still observe the old ready value before combinational evaluation
+      settled.
+  - step: 3
+    status: observed_action
+    action: Supplied a
+    observation_or_result: Subsequent metadata-configured tile tests passed; the RTL and count of 192 writes
+      were unchanged.
+  failed_or_insufficient_attempts: []
+  rejected_by_evidence:
+  - hypothesis_or_direction: The 192 metadata writes failed to make the tile ready.
+    evidence: >-
+      The failing sample immediately followed a change to the input that combinationally gated ready; the corrected
+      observation phase allowed the configured tile to proceed.
+  root_cause:
+  - The testbench sampled ready before combinational logic had settled after its own stimulus update.
+  resolution:
+    actions:
+    - In the affected testbench, insert a
+    - Preserve the exact ready assertion and the metadata write sequence.
+  validation:
+  - evidence: Metadata-buffered and reusable-metadata tile regressions subsequently passed.
+    regression_scope: metadata load, readiness, compute start, and replay
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not insert a functional RTL pipeline merely to satisfy a same-timeslot testbench sample.
+  - status: generalized_rule
+    rule: Choose a settle or monitor phase appropriate to the local timescale; the historical
+  reuse_rule:
+  - >-
+    Reuse when a monitor changes a combinational input and samples its dependent output in the same simulation
+    timeslot. Do not apply to a ready signal that is contractually registered.
+- id: SA-QUEST-BFP8-Q64-P64-006
+  title: Replay stimulus marks a vector end instead of every BFP8 group end
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - grouped_dot_product
+    - per_group_last_marker
+    - systolic_skew
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: TESTBENCH_ERROR
+  subtype: wrong_group_boundary_stimulus
+  stage: bfp8_replay
+  tool: Vivado XSim
+  failing_layer: testbench_stimulus
+  symptom_signatures:
+  - Metadata load completes but the test times out waiting for all 64 outputs.
+  - last is asserted only at the 64th operand.
+  preconditions:
+  - The compute architecture processes eight groups of eight values.
+  - The interface uses last as an end-of-group marker.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Compared the stalled replay task with the grouped compute interface after metadata loading completed.
+    observation_or_result: a_left_last[r]=(t==r+63) and b_top_last[c]=(t==c+63) marked only the final operand
+      of the whole vector.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied replacement predicates ((t-r)%8==7) for A and ((t-c)%8==7) for B within the existing valid windows.
+    observation_or_result: Each row or column now marked all eight groups while retaining the original systolic
+      skew.
+  - step: 3
+    status: observed_action
+    action: >-
+      Supplied diagnostics for valid beats, last markers, group completions, and result_done before further
+      RTL changes.
+    observation_or_result: >-
+      The next run completed the first tile and then failed the separate Result completion flags not cleared
+      reset check.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Generated last only at t=r+63 for A and t=c+63 for B in the replay testbench.
+    result: Metadata loaded, but the first tile timed out waiting for 64 completed results.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The timeout proves metadata reuse is broken.
+    evidence: >-
+      The first computation had not completed, so the test had not yet reached the reuse phase; correcting
+      boundary stimulus enabled the first tile to finish.
+  root_cause:
+  - >-
+    The replay stimulus marked only the global vector endpoint. The accumulator required a boundary pulse after
+    every eight-element group.
+  resolution:
+    actions:
+    - Generate last on every eighth valid operand for each skewed A row and B column.
+    - >-
+      Recheck all group boundaries and the 64 completed outputs before diagnosing later metadata-reuse or reset
+      failures.
+  validation:
+  - evidence: >-
+      After the stimulus correction, the next run completed the first tile and exposed a separate reset-state
+      bug.
+    regression_scope: input framing, all eight group completions, and 64 outputs
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not change compute RTL until legal boundary stimulus is demonstrated.
+  reuse_rule:
+  - >-
+    Reuse when a grouped interface defines last per subgroup and stimulus marks only the global vector end.
+    A new downstream failure after progress resumes must be classified separately rather than folded into this
+    case.
+- id: SA-QUEST-BFP8-Q64-P64-007
+  title: Tile reset and full clear leave different stale compute-completion state
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - metadata_reuse
+    - compute_state_reset
+    - distinct_tile_and_full_clear
+  status: validated
+  error_family: rtl_protocol_and_lifecycle
+  error_type: RESET_ERROR
+  subtype: stale_completion_state
+  stage: reusable_metadata_compute_tile
+  tool: Vivado XSim
+  failing_layer: rtl_reset_wiring
+  symptom_signatures:
+  - 'Fatal: Result completion flags not cleared'
+  - 'Fatal: Full clear did not reset computation'
+  - A second computation sees stale result_done state.
+  preconditions:
+  - Metadata-preserving tile_reset and full clear have intentionally different metadata semantics.
+  - The inner compute core's clear input alone does not reset every completion register.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Followed the replay run past its corrected first tile and inspected why result_done remained set after
+      tile_reset.
+    observation_or_result: The nested compute core's clear path did not clear every completion register.
+  - step: 2
+    status: observed_action
+    action: Supplied compute reset gating for tile_reset while retaining metadata-loaded flags for reuse.
+    observation_or_result: >-
+      Distinct second-tile tests passed, but the later full-clear controller test still reported Full clear
+      did not reset computation.
+  - step: 3
+    status: observed_action
+    action: >-
+      Compared .rst_n(rst_n && !tile_reset) with .clear(clear || tile_reset) and supplied .rst_n(rst_n && !clear
+      && !tile_reset).
+    observation_or_result: Both reset classes reached compute completion state, while only clear invalidated
+      metadata flags.
+  - step: 4
+    status: observed_action
+    action: >-
+      Requested the controller rerun with distinct tiles, invalid-start checks, full invalidation, reserved
+      metadata rejection, and reload.
+    observation_or_result: >-
+      The user log showed tile results 16384 and 98304, preserved metadata reuse, full-clear invalidation,
+      successful reload, and ALL QUEST BFP8 CONTROLLER TESTS PASSED.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Relied on the compute core's clear input alone to clear completion state.
+    result: result_done remained stale after reset.
+  - status: attempted_insufficient
+    action: Added tile_reset to compute reset but initially omitted clear from that reset expression.
+    result: Reuse advanced, but the full-clear controller test still failed.
+  rejected_by_evidence: []
+  root_cause:
+  - >-
+    Reset wiring treated tile_reset and clear inconsistently. Both had to reset compute state, while only full
+    clear was allowed to invalidate preserved metadata.
+  resolution:
+    actions:
+    - In this wrapper, include both clear and tile_reset in the compute core's active-low reset expression.
+    - Keep the separate metadata logic so tile_reset preserves validity and clear invalidates it.
+    - Rerun distinct-data reuse and full-clear/reload tests while retaining completion-clear assertions.
+  validation:
+  - evidence: >-
+      The controller log reported both distinct tile values, metadata reuse, full-clear invalidation, reserved-kind
+      rejection, successful reload computation, and final PASS at 6591 ns.
+    regression_scope: >-
+      First compute, metadata-preserving reset, distinct second compute, full invalidation, premature starts,
+      reserved metadata kind, and reload.
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not remove the completion-clear assertion.
+  - status: generalized_rule
+    rule: Do not erase reusable metadata on tile_reset unless the architecture contract requires it.
+  - status: generalized_rule
+    rule: >-
+      The recorded combinational reset expression is specific to this wrapper; check reset generation and safe
+      deassertion before transferring it to a system-level asynchronous reset network.
+  reuse_rule:
+  - >-
+    Reuse when reset classes intentionally differ for metadata but both must clear compute completion. Do not
+    merge reset semantics until state ownership is explicitly partitioned.
+- id: SA-QUEST-BFP8-Q64-P64-008
+  title: Ping-pong operand arrays map to flip-flops instead of LUTRAM
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - ping_pong_operand_storage
+    - distributed_ram_target
+  status: validated
+  error_family: memory_structure_and_inference
+  error_type: MEMORY_ERROR
+  subtype: lost_distributed_ram_inference
+  stage: ping_pong_operand_storage
+  tool: Vivado synthesis and implementation
+  failing_layer: rtl_memory_structure
+  symptom_signatures:
+  - LUTRAM utilization drops to zero.
+  - Feeder register count rises to approximately 16,911.
+  - Total registers rise to 25,935 and setup WNS becomes -0.207 ns.
+  preconditions:
+  - The design intends 16,384 bits of two-bank operand storage.
+  - Storage is described as multidimensional arrays accessed across generated write/read processes.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Compared the passing ping-pong simulation with routed resource reports and the earlier dual-write baseline.
+    observation_or_result: LUTRAM fell from 160 LUTs to zero, total registers rose to 25935, and WNS fell to
+      -0.207 ns at 300 MHz.
+  - step: 2
+    status: observed_action
+    action: Examined hierarchical utilization and calculated the intended operand capacity.
+    observation_or_result: >-
+      The feeder alone used 16911 registers, close to the 16384 data bits required by two banks, two matrices,
+      eight lanes, 64 entries, and eight bits.
+  - step: 3
+    status: observed_action
+    action: >-
+      Supplied a simple 64x8 RAM module with one synchronous writer, asynchronous read, ram_style=distributed,
+      and no array reset; instantiated it 32 times.
+    observation_or_result: Validity remained in the parent controller and the access structure became explicit
+      to synthesis.
+  - step: 4
+    status: observed_action
+    action: Requested simulation, synthesis inference checks, and route under the existing 300 MHz constraint.
+    observation_or_result: >-
+      The corrected design used 320 LUTRAM LUTs, only 267 feeder registers, +0.108 ns setup slack, +0.031 ns
+      hold slack, 64 DSPs, and zero routing errors.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Used the original multidimensional ping-pong storage description despite passing functional simulation.
+    result: >-
+      Physical implementation inferred no LUTRAM, expanded storage into registers, and missed the 300 MHz setup
+      target.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The new cost is mainly an unavoidable increase in GEMM arithmetic.
+    evidence: >-
+      DSP usage remained 64, while hierarchy localized the extra registers to the operand feeder; explicit
+      RAM instances reduced that feeder cost.
+  root_cause:
+  - >-
+    The intended operand data mapped to flip-flops rather than distributed RAM. The multidimensional, cross-process
+    access structure was the working inference explanation; the explicit per-lane memory rewrite restored RAM
+    inference and removed the register growth.
+  resolution:
+    actions:
+    - Restructure storage as 32 explicit 64x8 single-write distributed-RAM instances.
+    - Use synchronous writes, asynchronous reads, and an appropriate ram_style attribute.
+    - Keep validity/reset state outside the memory so the RAM array itself needs no reset.
+    - Verify inference from utilization and hierarchy reports, not from source attributes alone.
+  validation:
+  - evidence: >-
+      Corrected implementation used 320 LUTRAM LUTs, reduced feeder registers to 267, achieved +0.108 ns WNS
+      and +0.031 ns WHS at 300 MHz, retained 64 DSPs, and had zero routing errors.
+    regression_scope: feeder simulation, integrated tile simulation, synthesis, placement, and routing
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not accept functional simulation as proof of physical memory inference.
+  - status: generalized_rule
+    rule: Do not guess the resource mapping from RTL declarations.
+  reuse_rule:
+  - >-
+    Apply when functional storage behavior is correct but utilization shows the intended FPGA memory primitive
+    is absent. Require post-synthesis hierarchy and routed timing as proof; source attributes alone are insufficient.
+- id: SA-QUEST-BFP8-Q64-P64-009
+  title: Exact-text testbench generation fails on guard shape and occurrence counts
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - generated_scaled_regression
+    - exact_text_transformation
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: TESTBENCH_ERROR
+  subtype: brittle_exact_text_generator
+  stage: query64_regression_generation
+  tool: Python generator
+  failing_layer: testbench_generator
+  symptom_signatures:
+  - 'Expected one occurrence, found 0: ''if (merged_seen >= 3)'''
+  - 'Expected one occurrence, found 2: ''starts_seen != 24 ||'''
+  preconditions:
+  - A larger testbench is generated by exact text replacement from a verified smaller testbench.
+  - Source formatting or repeated guards differ from the generator's assumptions.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Compared the generator's expected if (merged_seen >= 3) fragment with the verified source guard.
+    observation_or_result: >-
+      The source continued with || and metadata predicates, so the complete string ending in a closing parenthesis
+      did not exist.
+  - step: 2
+    status: observed_action
+    action: Supplied matching fragments ending in || for both merged_seen and work_seen, then requested regeneration.
+    observation_or_result: Regeneration progressed but exposed a second failure because starts_seen != 24 ||
+      appeared twice.
+  - step: 3
+    status: observed_action
+    action: >-
+      Inspected the two start-count checks and supplied an expected count of two for that specific replacement
+      while preserving one for other bounds.
+    observation_or_result: >-
+      Both completion and duplicate-execution guards could be updated to 192 without removing strict generator
+      checks.
+  - step: 4
+    status: observed_action
+    action: >-
+      Requested regeneration, inspection of both starts_seen != 192 guards, and the complete generated regression.
+    observation_or_result: >-
+      The user log passed 256 page scores, 128 selections, 24 descriptors, 192 GEMMs, 12288 numerical results,
+      8192 valid scores, and 4096 masked outputs.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Assumed merged_seen and work_seen guards ended immediately after their numeric bounds.
+    result: Generation aborted with zero matches for the expected closed guard.
+  - status: attempted_insufficient
+    action: Corrected the guard fragments but retained a one-occurrence assumption for every replacement.
+    result: Generation then aborted on the two legitimate starts_seen guards.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The scorer, Top-K selector, page union, or GEMM caused the failure.
+    evidence: >-
+      Python generation aborted before the testbench existed or RTL simulation began; repairing generator assumptions
+      enabled the unchanged hardware regression to pass.
+  root_cause:
+  - >-
+    Exact string replacement encoded fragile assumptions about formatting and occurrence counts. One guard
+    continued with additional conditions, while another correctly appeared twice.
+  resolution:
+    actions:
+    - Match the real guard prefix including continued || conditions for merged_seen and work_seen.
+    - >-
+      Require exactly two replacements for the duplicated starts_seen bound and exactly one for the other expected
+      fragments.
+    - Regenerate and inspect both 192-start guards before compiling and running the generated test.
+  validation:
+  - evidence: >-
+      The generated 64-query regression passed 256 page scores, 128 selections, 24 descriptors, 192 GEMMs,
+      12,288 numerical outputs, 8,192 valid scores, and 4,096 masked outputs.
+    regression_scope: generator self-check plus full 64-query regression
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not modify scorer, selector, union, or GEMM RTL for a generator transformation failure.
+  - status: generalized_rule
+    rule: Do not replace all occurrences without first proving how many are expected.
+  reuse_rule:
+  - >-
+    Reuse for generated tests whose exact transformation count is part of correctness. A generator must fail
+    closed when the source shape changes.
+- id: SA-QUEST-BFP8-Q64-P64-010
+  title: Delayed group-done checks count legal work from the next group
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - eight_group_scheduler
+    - delayed_completion_pulse
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: TESTBENCH_ERROR
+  subtype: delayed_completion_pulse_race
+  stage: query64_group_scheduler
+  tool: Vivado XSim
+  failing_layer: testbench_monitor
+  symptom_signatures:
+  - Early groups pass, then exact page/dimension counts fail at group_done_pulse.
+  - The next group's first page may already have been accepted when completion is sampled.
+  preconditions:
+  - group_done_pulse occurs one cycle after the final result handshake.
+  - The scheduler may accept next-group work during that interval.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Examined why groups zero and one passed but the completion check for group two failed.
+    observation_or_result: >-
+      group_done_pulse followed the final accepted result by one cycle, during which a next-group candidate
+      could already advance cumulative counters.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied exact page and dimension checks at the first entry into the waiting-for-group-result drain state.
+    observation_or_result: Counts were checked before a new group's transfers could contaminate that group's
+      expected totals.
+  - step: 3
+    status: observed_action
+    action: >-
+      Kept a separate completion-pulse multiplicity check and requested the scheduler regression with backpressure.
+    observation_or_result: The suite passed eight groups, 64 rows, 256 pages, 16384 dimensions, and one block-done
+      pulse.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Checked exact cumulative per-group totals at the delayed group_done_pulse.
+    result: >-
+      The next group's first accepted page could already be included, falsely reporting an incorrect completed
+      group.
+  rejected_by_evidence:
+  - hypothesis_or_direction: A mismatched counter necessarily means the scheduler issued an extra illegal page.
+    evidence: >-
+      The sample occurred after the scheduler was allowed to accept new-group traffic; moving the exact-count
+      check to drain entry made the unchanged count requirements pass.
+  root_cause:
+  - >-
+    The monitor compared per-group cumulative counts at a delayed pulse, after the next group was legally allowed
+    to advance the counters.
+  resolution:
+    actions:
+    - Check exact cumulative page and dimension totals when the scheduler first enters the drain state.
+    - Retain a separate check for completion-pulse count and group limits.
+    - Rerun the scheduler and integrated regression with the original exact transfer counts.
+  validation:
+  - evidence: >-
+      Scheduler regression passed eight groups, 64 rows, 256 candidate pages, 16,384 scoring dimensions, one
+      block-done pulse, and randomized backpressure.
+    regression_scope: standalone 64-query scheduler plus integrated scheduler regression
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not loosen exact counts or allow an unexplained extra page.
+  - status: generalized_rule
+    rule: Do not change scheduler RTL before correcting the observation point.
+  reuse_rule:
+  - >-
+    Reuse when a delayed completion indication permits the next transaction to advance cumulative monitors.
+    Move exact-count checks to the defining handshake rather than weakening counts.
+- id: SA-QUEST-BFP8-Q64-P64-011
+  title: A FIFO boundary alone does not close the Top-K-to-page-union path
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - topk_to_page_union
+    - 300mhz_ooc
+    - associative_control
+  status: validated
+  error_family: physical_timing_and_evidence
+  error_type: TIMING_FAILURE
+  subtype: topk_to_page_union_control_path
+  stage: query64_physical_implementation
+  tool: Vivado route_design
+  failing_layer: rtl_control_microarchitecture
+  symptom_signatures:
+  - Original 64-query top has WNS -1.524 ns and large negative TNS.
+  - A two-entry registered FIFO improves WNS only to -1.304 ns.
+  - The critical path runs from Top-K selection into associative page-union storage/update logic.
+  preconditions:
+  - Functional regressions pass.
+  - The 300 MHz constraint is real and unchanged.
+  - The numerical 64-D GEMM datapath is already verified.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Routed the functional 64-query baseline and inspected the worst selection-to-page-union path.
+    observation_or_result: At the unchanged 300 MHz target, WNS was -1.524 ns and TNS was -3817.489 ns.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied a two-entry selected-item FIFO boundary and requested functional regression plus a separate
+      route.
+    observation_or_result: >-
+      WNS improved only to -1.304 ns; the new 18-level path started at the FIFO read-pointer register and ended
+      at a page-union entry write enable.
+  - step: 3
+    status: observed_action
+    action: >-
+      Supplied a short shift-register FIFO head and replaced priority-encoded variable-index union updates
+      with parallel entry comparisons and one-hot local writes.
+    observation_or_result: >-
+      The repair directly removed the measured read-pointer mux and associative-update chain while preserving
+      duplicate checks and ready/valid behavior.
+  - step: 4
+    status: observed_action
+    action: Requested focused union tests, the full query64 regression, and another route at the same clock.
+    observation_or_result: >-
+      WNS reached +0.048 ns with TNS zero, zero failing endpoints, zero routing errors, and 64 DSPs; the worst
+      path moved back into BFP8 compute control.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Added only the two-entry registered FIFO boundary.
+    result: >-
+      WNS improved by 0.220 ns but remained -1.304 ns; failing setup endpoints increased from 8243 to 8601,
+      and the union update path remained critical.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The 64-D GEMM arithmetic needs to be changed to solve this specific timing failure.
+    evidence: >-
+      The failing path was in FIFO/selection-to-union control; the control rewrite closed timing without changing
+      the verified arithmetic.
+  root_cause:
+  - >-
+    The selection-to-union path retained deep control, matching, priority, and variable-indexed update logic
+    even after an initial FIFO boundary.
+  resolution:
+    actions:
+    - Replace the FIFO implementation with a short shift-register FIFO that preserves ready/valid semantics.
+    - Replace priority/variable-index union writes with parallel comparisons and one-hot local slot updates.
+    - Run union-level and full 64-query functional regressions before routing.
+    - Preserve the original clock constraint and compare independent implementation checkpoints.
+  validation:
+  - evidence: >-
+      The optimized compute/control top achieved +0.048 ns WNS, TNS 0, zero failing setup endpoints, +0.042
+      ns WHS, zero routing errors, 8,276 LUTs, 13,778 registers, 394 LUTRAM LUTs, and 64 DSPs.
+    regression_scope: page-union regression, full query64 functional regression, and routed timing
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not weaken the 300 MHz constraint.
+  - status: generalized_rule
+    rule: Do not modify the verified GEMM arithmetic without critical-path evidence pointing there.
+  - status: generalized_rule
+    rule: Do not call improved negative slack timing closure.
+  reuse_rule:
+  - >-
+    Reuse when routed paths point from selection into associative union/update control and a simple register
+    boundary still leaves negative slack. Do not transfer the fix to a path dominated by GEMM arithmetic or
+    memory routing.
+- id: SA-QUEST-BFP8-Q64-P64-012
+  title: Compute completion does not free an occupied score BRAM
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - single_score_bram
+    - explicit_release
+    - job_ready_lifecycle
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: TESTBENCH_ERROR
+  subtype: incorrect_job_ready_lifecycle_expectation
+  stage: integrated_score_bram
+  tool: Vivado XSim
+  failing_layer: testbench_assertion
+  symptom_signatures:
+  - 'Fatal: Scheduler counts incorrect: candidates=256 samples=16384 groups=8 blocks=1 busy=0'
+  - All printed counters are correct, but the combined condition still fails.
+  - The hidden additional check expects job_ready high immediately after compute completion.
+  preconditions:
+  - The BRAM score block is full and score_storage_block_ready is high.
+  - Readback and release have not yet completed.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Expanded the failed combined completion assertion beyond its printed candidate, sample, group, block,
+      and busy counters.
+    observation_or_result: >-
+      Those counters were correct; the additional job_ready==1 expectation came from the earlier compute-only
+      testbench.
+  - step: 2
+    status: observed_action
+    action: Compared that expectation with score-buffer ownership after compute, before readback and release.
+    observation_or_result: A sealed block containing 8192 scores must keep job_ready low even after job_busy
+      drops.
+  - step: 3
+    status: observed_action
+    action: >-
+      Supplied a wait for score_storage_block_ready and changed the completion check to require busy low, job_ready
+      low, block-ready high, and written_count=8192.
+    observation_or_result: >-
+      The new check validated occupied storage instead of treating compute completion as permission to overwrite
+      it.
+  - step: 4
+    status: observed_action
+    action: Preserved the later job_ready==1 assertion after release and requested BRAM readback regression.
+    observation_or_result: >-
+      The user log passed all 8192 numerical writes and reads, address mapping, 2729 readback stalls, and clean
+      retirement.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Reused the old compute-only completion assertion expecting job_ready immediately after compute.
+    result: It falsely rejected correct buffer occupancy in the BRAM-backed design.
+  rejected_by_evidence:
+  - hypothesis_or_direction: Correct compute counters require RTL to raise job_ready immediately.
+    evidence: >-
+      Stored scores still owned the single buffer; the full readback-and-release suite passed with readiness
+      low before release and high afterward.
+  root_cause:
+  - >-
+    The assertion reused pre-BRAM lifecycle semantics. In the BRAM-backed design, compute completion clears
+    job_busy but the occupied score buffer must keep job_ready low until readback and release retire the block.
+  resolution:
+    actions:
+    - Wait for completed-block sealing before testing post-compute storage state.
+    - >-
+      Require job_busy=0, job_ready=0, score_storage_block_ready=1, and score_storage_written_count=8192 before
+      readback/release.
+    - Retain the separate post-release job_ready=1 check.
+  validation:
+  - evidence: >-
+      Full BRAM regression passed 8,192 stored and read scores, independent Q/K numerical comparison, page-slot
+      addressing, 2,729 readback stalls, and clean block retirement.
+    regression_scope: full query64 score generation, writeback, BRAM readback, and release
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not change RTL to accept a new job while the single score buffer remains occupied.
+  - status: generalized_rule
+    rule: Do not delete the post-release readiness assertion.
+  reuse_rule:
+  - >-
+    Reuse when compute completion and storage availability are distinct events. The correct ready expectation
+    must follow buffer ownership, not the older compute-only lifecycle.
+- id: SA-QK-SOFTMAX-Q64-001
+  title: Per-row softmax-ready is checked before combinational row selection settles
+  applies_to:
+    design_profiles:
+    - int8_q64_qk_online_softmax_overlap_ooc325
+    architecture_traits:
+    - per_row_combinational_ready
+    - phased_testbench_sampling
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: TESTBENCH_ERROR
+  subtype: same_timeslot_combinational_sampling
+  stage: row_group_online_softmax
+  tool: Vivado XSim
+  failing_layer: testbench_monitor
+  symptom_signatures:
+  - 'Fatal: case 1 row 0 word 0 not prepared'
+  - >-
+    The first case passes, then a later case fails immediately on word zero after the testbench changes row
+    and word inputs.
+  preconditions:
+  - score_ready_o is combinationally selected as row_ready_q[score_row_i].
+  - >-
+    The testbench changes score_row_i and samples score_ready_o without allowing a delta or sub-cycle settle
+    interval.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Compared the passing first case with case 1 failing on row 0 word 0 after introducing per-row ready.
+    observation_or_result: score_ready_o was indexed from row_ready_q by a testbench row input changed in the
+      same timeslot.
+  - step: 2
+    status: observed_action
+    action: Added
+    observation_or_result: The affected code diff changed only the observation phase.
+  - step: 3
+    status: observed_action
+    action: Reran the simulation without reverting per-row readiness.
+    observation_or_result: >-
+      All five exact cases passed, each checking 16 rows and release within 136 cycles; later extensions added
+      eight cases and four-group coverage.
+  failed_or_insufficient_attempts: []
+  rejected_by_evidence:
+  - hypothesis_or_direction: Per-row readiness lost row preparation state between cases.
+    evidence: The same RTL passed all five cases after only a
+  root_cause:
+  - >-
+    The testbench read the old combinational-ready value in the same simulation timeslot in which it changed
+    the selected row. The failing observation was not evidence that the row-preparation RTL had lost state.
+  resolution:
+    actions:
+    - Allow the newly driven row and word inputs to settle before the exact per-row ready assertion.
+    - Preserve the RTL per-row readiness and rerun all numerical and release checks.
+  validation:
+  - evidence: >-
+      After adding a #1 settle before the check, five exact fixed-point cases passed with 16 rows each and
+      release within 136 cycles. Later extensions expanded the same suite to eight cases and a four-group 64-row
+      test.
+    regression_scope: row-group online-softmax unit simulation
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not add an RTL pipeline or revert to global-ready merely to satisfy a same-timeslot sample.
+  - status: generalized_rule
+    rule: Do not delete the readiness check.
+  - status: generalized_rule
+    rule: >-
+      Keep the distinction from real done-before-payload bugs; a monitor-phase repair applies only when the
+      existing interface is combinational and its expected ready value is otherwise correct.
+  reuse_rule:
+  - >-
+    Reuse when a row-select input and its combinational per-row ready output are driven and sampled in one
+    timeslot. Preserve exact readiness checks after fixing the monitor phase.
+- id: SA-ATTN-INT8-Q64-001
+  title: Banked row state and a registered scheduler close full-attention timing
+  applies_to:
+    design_profiles:
+    - fixed_pattern_int8_q64_online_attention_u55c
+    architecture_traits:
+    - online_softmax_row_state
+    - hbm_address_scheduler
+    - full_device_325mhz
+  status: validated
+  error_family: physical_timing_and_evidence
+  error_type: TIMING_FAILURE
+  subtype: wide_row_state_and_scheduler_control_paths
+  stage: full_attention_physical_implementation
+  tool: Vitis and Vivado route_design
+  failing_layer: rtl_control_and_state_microarchitecture
+  symptom_signatures:
+  - >-
+    Original full-attention build has setup WNS -0.297 ns and 4,170 failing setup endpoints at the 325 MHz
+    request.
+  - >-
+    Critical paths include score-tile BRAM output through score selection/arithmetic and scheduler-driven row-state
+    control.
+  - Functional board oracle still passes after Vitis auto-scales the kernel to 296.3 MHz.
+  preconditions:
+  - The seven-shape numerical oracle passes 311,424 context values with zero mismatches.
+  - The requested 325 MHz constraint is retained for the repair build.
+  - Timing evidence comes from the full packaged implementation, not an isolated unit.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Read the original full-device routed report and separated it from the board numerical result.
+    observation_or_result: >-
+      The original image had -0.297 ns WNS and 4170 failing setup endpoints, although seven board workloads
+      passed 311424 context values after the clock was scaled to 296.3 MHz.
+  - step: 2
+    status: observed_action
+    action: Inspected softmax row-state congestion and built a separate four-bank row-state candidate.
+    observation_or_result: >-
+      Four 16x64-bit memories replaced the wide max/sum register network; isolated routing passed with +0.263
+      ns WNS, and integrated smoke simulation checked 512 context beats.
+  - step: 3
+    status: observed_action
+    action: >-
+      Inspected the remaining scheduler-to-HBM-base-address control chain and registered the sparse scheduler
+      choice before address update.
+    observation_or_result: >-
+      The final derivative combined banked row state with the registered scheduler while retaining the original
+      build as the before-state.
+  - step: 4
+    status: observed_action
+    action: >-
+      Completed full packaged route and the seven-shape device oracle for that derivative at the requested
+      325 MHz.
+    observation_or_result: >-
+      Full-design WNS was +0.003 ns, TNS zero, WHS +0.009 ns, and 311424 context values matched; the worst
+      kernel-clock path was +0.024 ns in value normalization.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Retained the original unbanked implementation through physical optimization and board testing.
+    result: >-
+      Functional board results passed at 296.3 MHz, but the official route still missed the requested 325 MHz
+      by 0.297 ns.
+  - status: attempted_insufficient
+    action: Evaluated only the isolated BRAM-banked softmax route as an intermediate candidate check.
+    result: >-
+      +0.263 ns local WNS supported the candidate but did not establish full-kernel timing or board correctness;
+      those required the subsequent packaged build.
+  rejected_by_evidence:
+  - hypothesis_or_direction: Passing the board numerical oracle proves the original design meets 325 MHz.
+    evidence: >-
+      Vitis selected 296.3 MHz for that original image, and its routed report had negative slack at the 325
+      MHz request.
+  - hypothesis_or_direction: After the final fix, softmax must still be the next timing bottleneck.
+    evidence: >-
+      The final kernel-specific worst path moved to value reciprocal/quotient-to-output arithmetic with +0.024
+      ns slack.
+  root_cause:
+  - >-
+    Wide per-row max/sum selection and scheduler/address control limited the full kernel. The original worst
+    route included score-BRAM-to-subtraction logic; local physical optimization did not remove the overall
+    miss. Banked state plus registered scheduler control produced a validated derivative.
+  resolution:
+    actions:
+    - >-
+      Place the 64 row max/sum state pairs in four independent 16x64-bit BRAM banks selected by row modulo
+      four.
+    - Register the sparse scheduler choice before the 64-bit HBM base-address update.
+    - >-
+      Validate the combined derivative with full route, selected clock metadata, and the same numerical device
+      oracle.
+  validation:
+  - evidence: >-
+      The banked-state and registered-scheduler derivative achieved full-design WNS +0.003 ns, TNS zero, zero
+      failing setup endpoints, WHS +0.009 ns, and retained the seven-shape board result of 311,424 context
+      values with zero mismatches. The worst kernel-clock path had +0.024 ns slack.
+    regression_scope: full RTL smoke tests, 325 MHz packaged route, SLR0 verification, and U55C device oracle
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not report the auto-scaled 296.3 MHz board pass as a 325 MHz pass.
+  - status: generalized_rule
+    rule: Do not substitute isolated softmax or scheduler slack for full-device timing.
+  - status: generalized_rule
+    rule: Do not weaken the clock constraint.
+  - status: generalized_rule
+    rule: >-
+      Keep full-design minimum slack separate from kernel-clock slack; this image's +0.003 ns full-design minimum
+      was in platform control, while its 325 MHz kernel minimum was +0.024 ns.
+  reuse_rule:
+  - >-
+    Apply when full-route paths show both wide per-row state selection and a scheduler-to-address chain. A
+    unit-level positive slack result is only a candidate; require full packaged timing and unchanged numerical
+    board output.
+- id: SA-QK-SOFTMAX-Q64-002
+  title: An unconstrained OOC route does not establish SLR0 timing
+  applies_to:
+    design_profiles:
+    - int8_q64_qk_online_softmax_overlap_ooc325
+    architecture_traits:
+    - out_of_context_route
+    - slr_confinement
+    - wide_top_level_ports
+  status: validated
+  error_family: physical_timing_and_evidence
+  error_type: PHYSICAL_EVIDENCE_ERROR
+  subtype: unconstrained_placement_claimed_as_target_slr_timing
+  stage: standalone_softmax_timing
+  tool: Vivado route_design
+  failing_layer: timing_methodology
+  symptom_signatures:
+  - A positive standalone WNS is reported before an SLR pblock is applied.
+  - >-
+    The route can place logic outside the intended SLR or leave wide top-level I/O without platform partition-pin
+    constraints.
+  preconditions:
+  - The intended claim is timing inside U55C SLR0.
+  - The first standalone route lacks an SLR0 containment pblock.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Examined the standalone softmax route's placement scope after positive slack had been reported.
+    observation_or_result: The initial route did not yet constrain the design to the intended SLR0 region.
+  - step: 2
+    status: observed_action
+    action: >-
+      Added an SLR0 pblock, assigned the design cells, and enabled routing containment before rerunning implementation.
+    observation_or_result: The four-group unit passed an SLR0-contained OOC route with +0.293 ns WNS.
+  - step: 3
+    status: observed_action
+    action: >-
+      Kept the constrained unit result separate from the later integrated QK-plus-softmax OOC checkpoint and
+      from full-device board evidence.
+    observation_or_result: >-
+      The integrated original-reader round later passed at +0.016 ns; neither result established shell clock
+      skew or platform port timing.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Used the first unrestricted standalone route as the available timing experiment.
+    result: Its positive slack did not test the intended SLR0 containment requirement.
+  rejected_by_evidence:
+  - hypothesis_or_direction: Positive standalone WNS is sufficient evidence for a board-integrated SLR0 clock.
+    evidence: >-
+      The first route lacked the required containment, and OOC HD.CLK_SRC and HD.PARTPIN_LOCS were absent for
+      shell clock and HBM-port paths.
+  root_cause:
+  - >-
+    Positive slack from unconstrained placement answered a different physical question than the intended SLR0-contained
+    implementation. It could not establish the target placement or a shell-integrated board clock.
+  resolution:
+    actions:
+    - Constrain the standalone implementation to SLR0 and contain routing before reporting an SLR0 result.
+    - >-
+      Report that rerun as constrained OOC evidence and reserve a shell or board claim for a separately integrated
+      build.
+  validation:
+  - evidence: >-
+      The corrected methodology produced an SLR0-contained four-group unit result at +0.293 ns and later a
+      separate full QK-softmax OOC result at +0.016 ns. Both remained explicitly classified as OOC, not board
+      passes.
+    regression_scope: unchanged arithmetic simulation plus constrained OOC implementation
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not promote an unconstrained OOC route to an SLR0 or board-pass claim.
+  - status: generalized_rule
+    rule: Do not treat missing HD.CLK_SRC or HD.PARTPIN_LOCS on OOC ports as shell timing evidence.
+  - status: generalized_rule
+    rule: >-
+      The +0.016 ns integrated OOC timing case is a different repair experiment; consult its reader and checkpoint
+      history before transferring any structural fix.
+  reuse_rule:
+  - >-
+    Reuse whenever a timing claim depends on placement scope. Unconstrained OOC, SLR-contained OOC, full-device
+    route, and board-selected clock are distinct evidence levels even when they use the same RTL.
+- id: SA-HLS-WIN-Q64-001
+  title: HLS output normalization expands into excessive hardware
+  applies_to:
+    design_profiles:
+    - centered_window_hls_int8_q64_d64_w16_full_attention_u55c
+    architecture_traits:
+    - hls_operator_scheduling
+    - shared_normalization
+    - on_chip_input_buffers
+  status: validated
+  error_family: hls_architecture_and_resources
+  error_type: RESOURCE_EXPLOSION
+  subtype: replicated_output_normalization
+  stage: hls_synthesis
+  tool: Vitis HLS
+  failing_layer: hls_microarchitecture
+  symptom_signatures:
+  - First synthesis estimates roughly 243,000 LUTs for a fixed 64x64 attention kernel.
+  - The output-normalization operation is expanded into substantially more hardware than intended.
+  preconditions:
+  - C simulation passes the intended numerical contract.
+  - >-
+    The design requires one correctness-oriented output-normalization path rather than per-output parallel
+    division.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Ran the fixed 64-token centered-window kernel's C tests before evaluating the hardware estimate.
+    observation_or_result: >-
+      All nine invocations passed with worst observed error about 0.001955, but first synthesis estimated roughly
+      243000 LUTs.
+  - step: 2
+    status: observed_action
+    action: >-
+      Identified output-normalization replication and revised normalization sharing and input loading before
+      final RTL validation.
+    observation_or_result: Revised synthesis estimated about 25100 LUTs, 18500 registers, 26 DSPs, and a 2.705
+      ns period.
+  - step: 3
+    status: observed_action
+    action: Checked that generated pointer offsets remained 0x10, 0x1c, and 0x28, then completed RTL co-simulation.
+    observation_or_result: >-
+      The firmware interface remained compatible and all nine RTL invocations passed with worst error 0.00195424.
+  - step: 4
+    status: observed_action
+    action: Continued through physical implementation and the later user-supplied U55C board run.
+    observation_or_result: >-
+      Routed accelerator use was 13719 LUTs, 12640 registers, 41 BRAMs, and 34 DSPs; six board invocations
+      passed.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Synthesized the initial numerically passing HLS implementation with replicated output normalization.
+    result: >-
+      The first estimate was roughly 243000 LUTs, motivating an architecture revision despite passing C simulation.
+  rejected_by_evidence:
+  - hypothesis_or_direction: Passing C simulation proves the first implementation is a practical hardware architecture.
+    evidence: >-
+      The numerically passing first version expanded to roughly 243000 estimated LUTs; resource sharing changed
+      that hardware cost without changing the target algorithm.
+  root_cause:
+  - >-
+    HLS expanded output normalization into more hardware than intended. Sharing normalization and simplifying
+    input loading reduced the estimate substantially; the transcript does not isolate a single pragma as the
+    sole cause.
+  resolution:
+    actions:
+    - Share output normalization across channels instead of retaining the first excessive replication.
+    - Simplify the input-loading structure and preserve the existing three-pointer firmware interface.
+    - Recheck C and RTL numerical behavior, then confirm the resulting routed resources and board output.
+  validation:
+  - evidence: >-
+      Revised HLS estimates fell to about 25,100 LUTs, 18,500 registers, and 26 DSPs with a 2.705 ns estimated
+      period. RTL co-simulation passed all nine cases; final routed accelerator use was 13,719 LUTs, 12,640
+      registers, 41 BRAMs, and 34 DSPs, followed by a passing board oracle.
+    regression_scope: C simulation, HLS synthesis, RTL co-simulation, full route, and U55C board test
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not accept C simulation or an HLS timing estimate as evidence that resource use is practical.
+  - status: generalized_rule
+    rule: Do not preserve full unrolling when the required throughput does not justify replicated division.
+  - status: generalized_rule
+    rule: >-
+      The supplied history reports the successful sharing change but does not include a complete HLS source
+      diff; identify the actual replicated operators and throughput requirement before choosing directives
+      in a new design.
+  reuse_rule:
+  - >-
+    Apply when HLS replicates expensive operators beyond throughput needs. Sharing is accepted only if numerical
+    regression, cycle behavior, and final routed resources remain within the design contract.
+- id: SA-HLS-WIN-Q64-002
+  title: XSim startup and device discovery fail inside the isolated environment
+  applies_to:
+    design_profiles:
+    - centered_window_hls_int8_q64_d64_w16_full_attention_u55c
+    architecture_traits:
+    - hls_rtl_cosimulation
+    - sandboxed_tool_execution
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: TOOL_ENVIRONMENT_ERROR
+  subtype: sandbox_isolation_at_xsim_startup
+  stage: rtl_cosimulation_startup
+  tool: Vivado XSim
+  failing_layer: execution_environment
+  symptom_signatures:
+  - RTL compilation succeeds but XSim exits at startup with an unexpected Tcl exception.
+  - The failure occurs before any RTL transaction or numerical mismatch is reported.
+  - Device discovery inside the sandbox reports no U55C even though the host has one.
+  preconditions:
+  - Compilation and elaboration have completed.
+  - The same generated RTL and testbench can be run in an authorized non-sandboxed tool environment.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Observed a zero-device XRT result and an unexpected Tcl exception at XSim startup after RTL compilation
+      succeeded.
+    observation_or_result: No RTL numerical failure had occurred; the simulator failed before test transactions
+      started.
+  - step: 2
+    status: observed_action
+    action: Retried the co-simulation in the authorized host environment and checked device visibility there.
+    observation_or_result: The U55C was visible outside isolation and XSim started successfully with the generated
+      design.
+  - step: 3
+    status: observed_action
+    action: Let all nine RTL transactions and final C++ checks complete.
+    observation_or_result: >-
+      Co-simulation passed all nine invocations, including boundary and mask checks, with maximum error 0.00195424.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Started device discovery and RTL co-simulation inside the isolated environment.
+    result: >-
+      Discovery reported no devices and XSim failed before transactions; neither observation could establish
+      DUT correctness or physical board absence.
+  rejected_by_evidence:
+  - hypothesis_or_direction: No U55C is present on the host.
+    evidence: Host-environment discovery found the U55C that isolated discovery could not see.
+  - hypothesis_or_direction: The startup exception is a demonstrated attention-datapath numerical bug.
+    evidence: The host run reached all nine transactions and passed their numerical checks using the generated
+      kernel.
+  root_cause:
+  - >-
+    The isolated execution environment caused the device-visibility limitation and was implicated by the startup
+    failure disappearing in the host run. The transcript does not identify the exact missing permission, resource,
+    or Tcl-runtime condition.
+  resolution:
+    actions:
+    - >-
+      Run the existing generated design in the authorized host tool environment to isolate environment-dependent
+      startup behavior.
+    - >-
+      Require the full numerical co-simulation to pass after startup; reaching the simulator prompt alone is
+      insufficient.
+  validation:
+  - evidence: XSim started in the host environment and all nine RTL invocations passed with maximum error 0.00195424.
+    regression_scope: Generated attention RTL and nine-case co-simulation including boundary and mask checks.
+    limitation: >-
+      Exact OS or Tcl-runtime root cause was not recorded; this is an environment workaround supported by the
+      comparative runs.
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not modify a passing C model or generated RTL to repair a pre-transaction environment failure.
+  - status: generalized_rule
+    rule: Do not infer physical board absence from sandboxed device discovery alone.
+  reuse_rule:
+  - >-
+    Reuse only for failures before the first simulated transaction where the same compiled snapshot runs in
+    the authorized host environment. A numerical or protocol failure after startup is not an environment-only
+    case.
+- id: SA-HLS-WIN-Q64-003
+  title: Overlapping hardware links corrupt a shared generated build directory
+  applies_to:
+    design_profiles:
+    - centered_window_hls_int8_q64_d64_w16_full_attention_u55c
+    architecture_traits:
+    - vitis_link
+    - generated_build_directory
+    - concurrent_processes
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: BUILD_STATE_ERROR
+  subtype: concurrent_links_share_build_directory
+  stage: hardware_link
+  tool: Vitis v++ and Vivado
+  failing_layer: build_orchestration
+  symptom_signatures:
+  - A link attempt reports a port or block-design error after another attempt was started.
+  - Two link processes overlap in the same generated build directory.
+  - Previously validated HLS package and interface mapping are unchanged.
+  preconditions:
+  - The first link process has not terminated.
+  - A retry reuses its mutable generated directory.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Started a retry after a sandboxed link reported a port error, while the earlier attempt was still running.
+    observation_or_result: >-
+      Both attempts touched the same generated build directory; the assistant explicitly identified this orchestration
+      mistake.
+  - step: 2
+    status: observed_action
+    action: >-
+      Restarted the hardware link in a separate sparse300_hw directory while retaining the validated sparse300_final
+      HLS package.
+    observation_or_result: >-
+      Connectivity generation passed and the fresh block design completed the phase where the overlapping attempts
+      had failed.
+  - step: 3
+    status: observed_action
+    action: Checked the generated Q, combined K/V, and output HBM connections.
+    observation_or_result: >-
+      The fresh design reported the intended HBM[0], HBM[1], and HBM[2] connections and proceeded to synthesis
+      and implementation.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Retried hardware link in the original generated directory before the first process exited.
+    result: The runs overlapped and the shared generated state produced a failed link/block-design attempt.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The failed overlapping attempt requires changing the validated kernel's Q/K/V
+      ports.
+    evidence: >-
+      The fresh-directory run passed block-design creation and generated the intended HBM connections using
+      the existing package.
+  root_cause:
+  - >-
+    The recorded retry overlapped a still-running link in the same mutable generated directory. A fresh-directory
+    link using the validated package removed the block-design failure; the history does not independently explain
+    the first sandboxed port error before overlap.
+  resolution:
+    actions:
+    - Isolate the retry in a distinct generated link directory and build tag.
+    - Reuse the validated HLS package and recheck generated HBM connectivity.
+    - Allow the new link to complete without a second process writing the same directory.
+  validation:
+  - evidence: >-
+      The fresh sparse300_hw link passed block-design creation with the expected HBM[0], HBM[1], and HBM[2]
+      connections and later produced the routed, packaged, board-passing image.
+    regression_scope: fresh hardware link through packaging and board execution
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not patch kernel ports based on an error produced by overlapping build processes.
+  - status: generalized_rule
+    rule: Do not reuse a partially mutated link directory as clean evidence.
+  - status: generalized_rule
+    rule: >-
+      Wait for or explicitly end a prior attempt before retrying in any directory it still owns; the recorded
+      successful repair used a fresh directory.
+  reuse_rule:
+  - >-
+    Apply when multiple implementation processes overlap in one generated directory and a clean-directory retry
+    removes the structural error without source changes. Preserve the contaminated directory only as failure
+    evidence.
+- id: SA-HLS-WIN-Q64-004
+  title: Resume implementation without the BUFG optimization pass that crashed
+  applies_to:
+    design_profiles:
+    - centered_window_hls_int8_q64_d64_w16_full_attention_u55c
+    architecture_traits:
+    - vitis_generated_implementation
+    - checkpoint_resume
+    - bufg_optimization
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: TOOL_CRASH
+  subtype: vivado_bufg_optimizer_crash
+  stage: physical_implementation_optimization
+  tool: Vivado
+  failing_layer: implementation_tool
+  symptom_signatures:
+  - Vivado crashes during BUFG clock-buffer optimization.
+  - C simulation, RTL co-simulation, packaging, and synthesis have already passed.
+  - The crash stack points to the implementation optimizer rather than user RTL diagnostics.
+  preconditions:
+  - A usable synthesized checkpoint exists.
+  - The generated flow permits an explicit optimization-pass list and implementation resume.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Located the crash in the Vivado BUFG clock-buffer optimization pass after C/RTL validation and synthesis
+      had completed.
+    observation_or_result: >-
+      The crash stack identified an implementation optimizer phase rather than a reported HDL compile or numerical
+      failure.
+  - step: 2
+    status: observed_action
+    action: >-
+      Added an explicit optimization-pass list excluding BUFG optimization and a resume target for the existing
+      synthesized design.
+    observation_or_result: The retry could reuse completed synthesis instead of rebuilding the attention source.
+  - step: 3
+    status: observed_action
+    action: >-
+      Corrected a Tcl property-setting error in the first resume helper and inspected the generated implementation
+      script.
+    observation_or_result: >-
+      Vitis accepted resume; the generated script showed the intended pass exclusion and reloaded synthesis
+      checkpoints and constraints.
+  - step: 4
+    status: observed_action
+    action: >-
+      Followed the retry past optimizer finalization, placement, route, frequency checks, and xclbin generation.
+    observation_or_result: >-
+      The routed report met 300 MHz with +0.003 ns setup slack, +0.009 ns hold slack, and zero failing endpoints.
+  - step: 5
+    status: observed_action
+    action: >-
+      Incorporated the user's later board-test output after automated board permission had initially been declined.
+    observation_or_result: Six centered-window invocations passed; the maximum board error was 0.00195424.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Ran the generated implementation flow with its original optimizer pass selection.
+    result: Vivado crashed in BUFG optimization.
+  - status: attempted_insufficient
+    action: Used the first version of the new resume helper.
+    result: >-
+      A Tcl property-setting error required correction before Vitis accepted resume. The exact failing property
+      syntax is not included in the supplied history.
+  rejected_by_evidence: []
+  root_cause:
+  - >-
+    The observed crash was isolated to Vivado's BUFG optimization pass. Excluding that pass allowed the same
+    synthesized design to progress; the internal Vivado defect was not identified.
+  resolution:
+    actions:
+    - Configure an explicit optimization-pass selection that excludes the identified crashing BUFG pass.
+    - >-
+      Correct the helper's property assignment and verify the generated script actually contains that selection.
+    - Resume implementation from the valid synthesized design and reload its constraints.
+    - Complete final route, selected-frequency checks, packaging, and functional board validation.
+  validation:
+  - evidence: >-
+      The retry passed optimizer finalization, completed routing at 300 MHz with WNS +0.003 ns and WHS +0.009
+      ns, produced the xclbin, and the later user board log passed six invocations with maximum error 0.00195424.
+    regression_scope: Resumed implementation, routed setup/hold, clock metadata, firmware packaging, and six
+      board invocations.
+    limitation: >-
+      The history states that the pass list and Tcl helper were corrected, but does not contain their complete
+      command diff; do not invent the missing exact optimizer options.
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not call the workaround successful when optimization merely advances past the crash.
+  - status: generalized_rule
+    rule: Do not skip final route or board validation.
+  - status: generalized_rule
+    rule: Do not generalize this workaround to unrelated Vivado crashes without the same stack location.
+  reuse_rule:
+  - >-
+    Reuse only when the crash is isolated to the same optional optimizer pass and a valid earlier checkpoint
+    exists. The workaround is accepted only after full timing and functional validation, not merely after tool
+    progress.
+- id: SA-HLS-WIN-Q64-005
+  title: The post-package clock checker does not recognize Scalable Clocks metadata
+  applies_to:
+    design_profiles:
+    - centered_window_hls_int8_q64_d64_w16_full_attention_u55c
+    architecture_traits:
+    - xclbin_clock_metadata
+    - timing_gate_parser
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: REPORT_PARSER_ERROR
+  subtype: scalable_clocks_metadata_format
+  stage: post_package_frequency_check
+  tool: project timing-check helper
+  failing_layer: report_parser
+  symptom_signatures:
+  - Firmware packaging succeeds and produces the final xclbin.
+  - The frequency checker rejects or cannot parse metadata labeled Scalable Clocks.
+  preconditions:
+  - The routed timing report already passes.
+  - The image's metadata represents clocks in the Scalable Clocks format.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Checked the image after make firmware completed and produced the final 46 MB xclbin.
+    observation_or_result: >-
+      Clock metadata showed 300 MHz, but the timing-check helper did not handle the Scalable Clocks representation.
+  - step: 2
+    status: observed_action
+    action: Corrected the helper's handling of that metadata format while retaining the routed timing check.
+    observation_or_result: The corrected check reported 300 MHz achieved and routed timing met.
+  - step: 3
+    status: observed_action
+    action: Kept packaging, clock verification, and board execution as separate observed results.
+    observation_or_result: >-
+      Board execution was initially declined, then the user supplied a later successful six-case run of the
+      image.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Applied the original clock-metadata parser to the new image.
+    result: >-
+      The parser did not recognize its Scalable Clocks format despite successful packaging and passing routed
+      timing.
+  rejected_by_evidence:
+  - hypothesis_or_direction: A metadata parse failure alone proves the xclbin or RTL is invalid.
+    evidence: >-
+      Packaging had produced the final artifact, routed timing passed, and the corrected checker recognized
+      its 300 MHz clock without a reported RTL change.
+  root_cause:
+  - >-
+    The helper recognized only the reference image's prior clock-metadata layout and did not handle the generated
+    image's Scalable Clocks section.
+  resolution:
+    actions:
+    - Extend the helper to accept the image's Scalable Clocks representation.
+    - Recheck both the selected 300 MHz metadata and final routed timing before accepting the image.
+  validation:
+  - evidence: >-
+      The session reported the corrected helper passing both the 300 MHz achieved-frequency check and the routed
+      timing gate.
+    regression_scope: Final xclbin clock metadata and final routed timing report.
+    limitation: The exact parser source diff is not included in the supplied transcript.
+  derived_guidance:
+  - status: generalized_rule
+    rule: Do not rebuild or change RTL solely because a successful image uses a different metadata layout.
+  - status: generalized_rule
+    rule: Do not accept clock metadata without routed slack, or routed slack without the selected image clock.
+  reuse_rule:
+  - >-
+    Apply when the artifact is valid and the parser rejects only an alternate documented metadata layout. Continue
+    requiring both selected-clock metadata and nonnegative routed timing.
+- id: SA-QUEST-BFP8-Q64-P64-013
+  title: XSim runs an old snapshot after xvlog rejects the new wrapper
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - incremental_xsim_build
+    - reused_work_library
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: BUILD_STATE_ERROR
+  subtype: stale_snapshot_after_compile_failure
+  stage: mapper_recompilation
+  tool: Vivado xvlog, xelab, and XSim
+  failing_layer: simulation_build_orchestration
+  symptom_signatures:
+  - xvlog reports redeclaration of ANSI port cfg_ready and invalid initialization in declaration.
+  - xelab and xsim still run afterward and repeat the old Pending mapping not ready failure.
+  preconditions:
+  - A previously compiled work library or snapshot exists in the reused simulation directory.
+  - The command sequence does not stop when source compilation fails.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Read the first compile diagnostics before interpreting the later repeated simulation failure.
+    observation_or_result: >-
+      The new wrapper had been ignored after syntax errors, so the later simulation was not evidence about
+      the intended patch.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied a complete corrected wrapper with one cfg_ready port declaration and its assignment outside
+      the port list.
+    observation_or_result: The repair preserved registered completion and blocked readiness during pending-result
+      capture.
+  - step: 3
+    status: observed_action
+    action: Supplied a clean simulation-build rerun that stopped on compile failure before elaboration or simulation.
+    observation_or_result: The next user output reported ALL DOUBLE-BUFFER MAPPER TESTS PASSED at 590 ns.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Continued to elaboration and simulation after xvlog returned errors.
+    result: The previous compiled design repeated its original fatal, making the new patch appear ineffective.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The repeated runtime fatal disproves the registered-completion repair.
+    evidence: >-
+      Compilation of the revised source had already failed; the clean successful rebuild subsequently passed
+      the mapper suite.
+  root_cause:
+  - >-
+    The build sequence continued after failed source compilation in a directory containing prior compiled artifacts.
+    The stale simulation result was attributed to the new source even though that source was rejected.
+  resolution:
+    actions:
+    - Repair the wrapper declaration error first.
+    - Build in a clean dedicated simulation directory or invalidate only the affected generated snapshot.
+    - Gate elaboration and simulation on successful compilation, preserving each tool's exit status.
+  validation:
+  - evidence: The subsequent user log reported the full double-buffer mapper suite passing at 590 ns.
+    regression_scope: Compile, elaborate, and simulate the corrected wrapper with the five directed mapper
+      tests.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      A test result is relevant only when the source intended for that test compiled successfully; repeated
+      old failures after compile errors are build evidence first.
+  reuse_rule:
+  - >-
+    Apply when a failed compile is followed by simulation using reusable generated state. If compilation succeeds
+    and artifact identity is current, investigate the runtime failure on its own evidence.
+- id: SA-QK-SOFTMAX-Q64-003
+  title: Reader timing repair requires physical sweeps and correct checkpoint attribution
+  applies_to:
+    design_profiles:
+    - int8_q64_qk_online_softmax_overlap_ooc325
+    architecture_traits:
+    - hbm_reader_enable_fanout
+    - slr0_ooc
+    - checkpoint_strategy_sweep
+  status: validated
+  error_family: physical_timing_and_evidence
+  error_type: TIMING_FAILURE
+  subtype: reader_enable_fanout_and_checkpoint_identity
+  stage: integrated_qk_softmax_physical_implementation
+  tool: Vivado route_design
+  failing_layer: reader_control_and_physical_implementation
+  symptom_signatures:
+  - A legal SLR0 route misses 325 MHz by 0.210 ns despite passing integrated functional simulation.
+  - The worst path is a high-fanout HBM-reader next-round enable rather than the softmax pipeline.
+  - A later positive route belongs to an older checkpoint while the current source contains a reader rewrite.
+  preconditions:
+  - >-
+    The integrated IP contains a 4x4 grid of 16x16 packed-INT8 QK engines, sixteen score-bank sets, and four
+    row-group softmax pipelines.
+  - Runs use the U55C part, a 3.076923 ns clock, and SLR0 routing containment.
+  - Candidate sources, synthesis checkpoints, strategy rounds, and metrics can be distinguished.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Ran both 8- and 16-lane integrated three-tile d=128 simulations before diagnosing the route.
+    observation_or_result: Both passed with zero GEMM-buffer and softmax stalls and a 177-cycle QK tile-drain
+      interval.
+  - step: 2
+    status: observed_action
+    action: >-
+      Inspected the default route's critical endpoints and implemented a predecoded-reader candidate in a separate
+      synthesis flow.
+    observation_or_result: >-
+      Original-reader WNS was -0.210 ns; the candidate's default-route WNS improved to -0.071 ns but still
+      failed.
+  - step: 3
+    status: observed_action
+    action: >-
+      Ran separate physical-strategy sweeps for the original checkpoint and the reader candidate while keeping
+      the clock and SLR scope unchanged.
+    observation_or_result: >-
+      Explore opt/place, AggressiveExplore physopt, and Explore route on the original-reader checkpoint reached
+      +0.016 ns.
+  - step: 4
+    status: observed_action
+    action: Compared the passing metrics with checkpoint identity and current source state.
+    observation_or_result: >-
+      The pass belonged to the original reader, while the working source contained the predecoded version;
+      the reported proof remained an OOC result.
+  - step: 5
+    status: observed_action
+    action: Read the later completed strategy tables for both original and predecoded-reader checkpoints.
+    observation_or_result: >-
+      The original reader finished at -0.210, +0.016, and +0.028 ns across rounds 0-2. The predecoded reader
+      finished at -0.071, +0.034, and +0.024 ns. Both closed timing with later strategies; the best reported
+      predecoded result used Explore opt/place, AggressiveExplore physopt, and Explore route.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Routed the original-reader checkpoint with the default physical strategy.
+    result: WNS was -0.210 ns at 325 MHz.
+  - status: attempted_insufficient
+    action: Routed the predecoded-reader candidate with the default strategy after it passed simulation.
+    result: >-
+      WNS improved to -0.071 ns but still failed; that candidate did not produce the +0.016 ns pass recorded
+      here.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The softmax lane count is the first repair lever for the initial timing miss.
+    evidence: >-
+      The reported worst path was an HBM-reader enable path; both tested lane counts already passed the same
+      zero-stall simulation.
+  - hypothesis_or_direction: The current predecoded-reader source is proven at +0.016 ns.
+    evidence: >-
+      The +0.016 ns round used the original reader. The predecoded source had its own separate results, initially
+      -0.071 ns and later +0.034 and +0.024 ns; those are its candidate-specific claims.
+  root_cause:
+  - >-
+    The original route was limited by reader control/fanout under its physical strategy. Predecoding improved
+    but did not close the default candidate route; later physical strategies closed both checkpoints. The first
+    +0.016 ns pass and the later +0.034 ns candidate pass belong to different source artifacts.
+  resolution:
+    actions:
+    - >-
+      Preserve the original checkpoint and the separate reader candidate so each physical result has an unambiguous
+      source identity.
+    - >-
+      Evaluate Explore opt/place, AggressiveExplore physopt, and Explore route against the identified reader
+      checkpoint; this combination produced +0.016 ns for the original and +0.034 ns for the predecoded candidate.
+    - >-
+      Compare the later Explore opt, ExtraNetDelay_high place, and Explore physopt/route round separately;
+      it produced +0.028 ns for the original and +0.024 ns for the predecoded candidate.
+    - >-
+      Associate every timing claim with its actual checkpoint and preserve integrated simulation and OOC scope
+      qualifications when selecting a result.
+  validation:
+  - evidence: >-
+      Completed SLR0 OOC tables show original-reader rounds at -0.210, +0.016, and +0.028 ns and predecoded-reader
+      rounds at -0.071, +0.034, and +0.024 ns at 325 MHz. Integrated three-tile d=128 simulations passed with
+      zero buffer or softmax stalls; the original +0.016 ns round's worst path moved into GEMM control/array
+      logic.
+    regression_scope: >-
+      Integrated overlap simulation and separate SLR0-contained OOC synthesis/route sweeps for both identified
+      reader checkpoints.
+    limitation: >-
+      These are narrow OOC margins, with no shell-integrated or board proof. The final tables establish results
+      for these two checkpoints, not a universal ranking of physical strategies.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      Reinspect the worst path after each structural or physical change; a useful control rewrite may still
+      fail timing, and a later strategy pass may belong to a different source checkpoint.
+  reuse_rule:
+  - >-
+    Reuse the investigation when timing points to high-fanout reader control and multiple checkpoints are being
+    swept. The exact physical strategy is an experiment to retest on a new design, not a guaranteed repair;
+    an arithmetic-dominated path requires a different investigation.
+- id: SA-BF16-COMPACT-001
+  title: XSim elaboration rejects inconsistent timescale declarations
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - systemverilog_simulation
+    - mixed_module_timescales
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: ELABORATION_ERROR
+  subtype: missing_module_timescale
+  stage: bf16_multiplier_elaboration
+  tool: Vivado XSim
+  failing_layer: simulation_source_configuration
+  symptom_signatures:
+  - XSIM 43-4099 reports that bf16_mul has no timescale while another design module has one.
+  preconditions:
+  - xvlog succeeded, but the testbench and multiplier used inconsistent explicit time declarations.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Identified the timescale diagnostic at elaboration, after successful source analysis.
+    observation_or_result: The testbench declared 1ns/1ps while the multiplier did not.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied the same timescale declaration at the start of the multiplier and requested compile, elaboration,
+      and simulation again.
+    observation_or_result: The user log reported ALL TESTS PASSED (10 vectors), terminating at 200 ns.
+  failed_or_insufficient_attempts: []
+  rejected_by_evidence:
+  - hypothesis_or_direction: The diagnostic proves the BF16 arithmetic is incorrect.
+    evidence: The failure preceded numerical simulation; the rebuilt design passed the ten-vector suite.
+  root_cause:
+  - Mixed timescale handling blocked elaboration before the arithmetic tests could run.
+  resolution:
+    actions:
+    - Apply consistent time declarations to the affected simulation modules and rebuild the snapshot.
+  validation:
+  - evidence: Ten BF16 multiplier test vectors passed after elaboration succeeded.
+    regression_scope: Source analysis, elaboration, and multiplier smoke simulation.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      A simulation time unit determines delay interpretation; it does not establish an FPGA clock-frequency
+      result.
+  reuse_rule:
+  - >-
+    Apply to an explicit elaboration diagnostic about inconsistent time declarations; numerical failures after
+    successful elaboration need their own investigation.
+- id: SA-BF16-COMPACT-002
+  title: A dash-prefixed Tcl property value and malformed edits prevent simulation launch
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - vivado_project_simulation
+    - xsim_plusargs
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: TCL_ARGUMENT_ERROR
+  subtype: leading_dash_property_value_and_corrupted_script
+  stage: fp32_accumulator_accuracy_simulation_launch
+  tool: Vivado Tcl and XSim
+  failing_layer: simulation_script
+  symptom_signatures:
+  - Common 17-170 reports Unknown option '-testplusarg VECTORS=...'.
+  - A retry log still prints the original positional set_property statement.
+  - The edited file contains duplicated snippets and a malformed -objects $fsset vectors sequence.
+  preconditions:
+  - >-
+    The desired property value starts with -testplusarg and is passed through positional set_property arguments.
+  - The subsequent manual edit was unsaved or mixed into existing Tcl statements.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Traced the first failure to the dash-prefixed more_options value and supplied explicit -name, -value,
+      and -objects arguments.
+    observation_or_result: The next log still executed the old positional statement, so it did not test the
+      proposed correction.
+  - step: 2
+    status: observed_action
+    action: >-
+      Inspected the supplied editor contents and identified duplicate pasted replacements and broken launch_simulation
+      text.
+    observation_or_result: The script needed a clean replacement rather than another insertion into the corrupted
+      text.
+  - step: 3
+    status: observed_action
+    action: >-
+      Supplied one complete Tcl script, preserved vector-file checks and a single simulation launch, and requested
+      verification of the saved contents before rerunning.
+    observation_or_result: The user then obtained ACCUM_ACCURACY_COMPLETED dots=12 and completed the Python
+      error analysis.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Set the dash-prefixed property value using the original positional statement.
+    result: Vivado interpreted the value as an option and stopped.
+  - status: attempted_insufficient
+    action: Retried after a malformed or unsaved manual edit.
+    result: The same original command ran again; the proposed syntax had not been cleanly applied.
+  rejected_by_evidence: []
+  root_cause:
+  - >-
+    Tcl option parsing rejected the positional dash-prefixed value; duplicated and unsaved edits then prevented
+    the replacement from being tested.
+  resolution:
+    actions:
+    - >-
+      Use set_property -name xsim.simulate.xsim.more_options -value "-testplusarg VECTORS=$vectors" -objects
+      $fs in a clean Tcl script.
+    - Check the actual saved script before launch, then run the numerical analysis on the completed simulation.
+  validation:
+  - evidence: >-
+      All 12 dot products completed across lengths 64, 128, and 256; the Python analysis reported maximum absolute
+      error 2.384185791e-07.
+    regression_scope: Simulation launch, vector-file delivery, and four numeric patterns at each of three reduction
+      lengths.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      A repeated error is not a failed repair experiment when the log proves the corrected command was never
+      executed.
+  reuse_rule:
+  - >-
+    Apply when the first diagnostic is command parsing and the logged command matches this argument shape.
+    Do not change arithmetic RTL to repair a simulation-script option error.
+- id: SA-BF16-COMPACT-003
+  title: Serial-mapper watchdog still assumes the older short scan
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - serial_lane_mapper
+    - changed_configuration_latency
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: TESTBENCH_ERROR
+  subtype: watchdog_shorter_than_contractual_latency
+  stage: serial_mapper_configuration
+  tool: Vivado XSim
+  failing_layer: testbench_watchdog
+  symptom_signatures:
+  - Fatal Mapper configuration timeout occurs before the new serial scan can complete.
+  preconditions:
+  - The new mapper scans 32 positions in 32 cycles; the reused watchdog still aborts after 12 cycles.
+  - The test already has an independent exact scan_cycles==32 assertion.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Compared the inherited timeout against the new one-position-per-cycle mapping contract.
+    observation_or_result: The watchdog expired before the required 32-cycle latency.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied a change from scan_cycles>12 to scan_cycles>40 and kept scan_cycles!=32 as a separate fatal
+      condition.
+    observation_or_result: All 104 mapper tests passed in the next user log.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Reused the short mapper's watchdog after changing the scan architecture.
+    result: The new mapper was falsely declared stalled before its specified completion time.
+  rejected_by_evidence: []
+  root_cause:
+  - The testbench timeout was not updated with the architecture's configuration latency.
+  resolution:
+    actions:
+    - >-
+      Increase the watchdog enough to allow the specified scan, while retaining the exact 32-cycle completion
+      assertion.
+  validation:
+  - evidence: REGISTERED SPARSE LANE MAPPER reported 104 tests passed and ALL LANE MAPPER TESTS PASSED.
+    regression_scope: Directed and randomized mapping tests with exact configuration latency.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      Increasing a timeout is justified here by the explicit latency contract; a controller that already missed
+      its legal completion event is a different case.
+  reuse_rule:
+  - >-
+    Reuse only when the watchdog is demonstrably shorter than legal latency. Missing completion despite legal
+    stimulus and sufficient time requires event/state investigation.
+- id: SA-BF16-COMPACT-004
+  title: Paged-executor testbench misses a one-cycle completion while still driving operands
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - two_pass_execution
+    - pulsed_completion
+    - asymmetric_block_lengths
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: TESTBENCH_ERROR
+  subtype: missed_completion_pulse_during_stimulus_task
+  stage: paged_compacted_dot_product_completion
+  tool: Vivado XSim
+  failing_layer: testbench_completion_monitor
+  symptom_signatures:
+  - Pair completion timeout occurs although all 20 expected outputs were seen.
+  - done_seen, core_issued_last, and core_done_seen are all 11 at timeout.
+  preconditions:
+  - pair_done is asserted for the one-cycle S_COMPLETE state.
+  - The testbench over-drives a short page using a length based on blocks that are not required on that page.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Initially considered missing completion for an empty block and added state, synthetic-handshake, result,
+      and completion diagnostics.
+    observation_or_result: The trace showed both blocks completed and the observed result mask exactly matched
+      the expected mask.
+  - step: 2
+    status: observed_action
+    action: >-
+      Reinterpreted the timeout as a missed notification and inspected the stimulus task against the one-cycle
+      S_COMPLETE state.
+    observation_or_result: The task was still streaming a nominal 24-cycle sequence when the shorter page finished.
+  - step: 3
+    status: observed_action
+    action: >-
+      Supplied a per-page length calculation using only required_blocks, plus a continuous clocked completion
+      latch that captured done and mask metadata.
+    observation_or_result: The case runner could observe completion after leaving its stimulus loop and check
+      the saved metadata.
+  - step: 4
+    status: observed_action
+    action: Requested a clean rebuild after the separate patch-script failure was corrected.
+    observation_or_result: Four paged cases passed, covering 20, 32, 16, and zero active results, for 68 computed
+      outputs total.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Waited for live pair_done only after finishing a stimulus loop that was too long for the page.
+    result: The legal completion pulse passed unnoticed and the test timed out.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The controller deadlocked because a block with no work never completed.
+    evidence: Both sticky core completion flags were set and all expected results had already arrived.
+  root_cause:
+  - >-
+    Incorrect per-page stream length allowed the testbench to miss a transient completion event and its transient
+    metadata.
+  resolution:
+    actions:
+    - Derive each page's maximum stream length only from its required blocks.
+    - >-
+      Capture pair_done and associated result masks continuously, clearing that capture at the next accepted
+      job.
+    - Let the case runner wait on captured completion and confirm readiness before starting another job.
+  validation:
+  - evidence: PAGED EXECUTOR TESTS PASSED 4 and ALL PAGED SPARSE MAC TESTS PASSED at 1720 ns.
+    regression_scope: Empty, one-pass, and two-pass masks; source tags, result completeness, and background
+      configuration.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      Capture the notification and the metadata that belongs to it together; latching only a done bit can still
+      leave the final checker reading a later transaction's metadata.
+  reuse_rule:
+  - >-
+    Apply when accepted results and internal completion prove progress finished but the procedural monitor
+    missed a pulse. It does not repair an RTL interface that exposes completion before its payload is valid.
+- id: SA-BF16-COMPACT-005
+  title: An overescaped patch regex never finds the intended assignment
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - scripted_testbench_transform
+    - guarded_file_update
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: SOURCE_GENERATOR_ERROR
+  subtype: overescaped_regex_in_patch_script
+  stage: completion_monitor_testbench_patch
+  tool: Python patch script
+  failing_layer: source_transformation
+  symptom_signatures:
+  - AssertionError Could not find maximum_length assignment.
+  preconditions:
+  - A raw regex uses doubled backslashes where whitespace matching was intended.
+  - The script asserts before writing the output file and a pre-edit backup exists.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Inspected the failed regex and identified literal-backslash matching instead of whitespace matching.
+    observation_or_result: The assertion stopped the first patch before the testbench file was written.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied a replacement patch reading the saved pre-fix source and locating the single maximum_length
+      assignment with plain string boundaries through its semicolon.
+    observation_or_result: >-
+      Expected occurrence checks were retained, and the completion-latch and required-block-length changes
+      could be applied together.
+  - step: 3
+    status: observed_action
+    action: Requested recompilation and the paged-executor test.
+    observation_or_result: The user reported all four paged cases passing after the corrected patch.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Used the overescaped raw regex in the first source patch.
+    result: The assignment was present but the pattern did not match, so no patch was written.
+  rejected_by_evidence: []
+  root_cause:
+  - The patch encoded regex escaping incorrectly; the source transformation failed before any RTL experiment.
+  resolution:
+    actions:
+    - Start from the preserved pre-edit source and identify the assignment with verified string boundaries.
+    - Verify every target and final modification before performing the single output write.
+  validation:
+  - evidence: The resulting testbench compiled and the four-case paged suite passed.
+    regression_scope: Source transformation followed by compile, elaborate, and paged simulation.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      A failed transformation assertion is useful evidence about the patch, not evidence that the DUT rejected
+      the intended fix.
+  reuse_rule:
+  - >-
+    Apply when the intended fragment exists but escaping prevents the patch from locating it. Preserve fail-before-write
+    behavior rather than silently skipping a missing replacement.
+- id: SA-BF16-COMPACT-006
+  title: Adjacent format-string literals prevent descriptor-test compilation
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - systemverilog_testbench
+    - split_fatal_format_strings
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: SV_SYNTAX_ERROR
+  subtype: adjacent_string_literals_without_concatenation
+  stage: four_pair_descriptor_packer_testbench_compile
+  tool: Vivado xvlog
+  failing_layer: testbench_source
+  symptom_signatures:
+  - Parser errors point to the second quoted fragment in two split $fatal format messages.
+  preconditions:
+  - The testbench places adjacent quoted strings without a legal SystemVerilog concatenation expression.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Inspected the two failing diagnostic statements rather than changing descriptor logic.
+    observation_or_result: Both statements used C-style adjacent string literals.
+  - step: 2
+    status: observed_action
+    action: Supplied single complete format strings for the tag-mismatch and descriptor-count diagnostics.
+    observation_or_result: Recompilation succeeded and 1007 packer cases passed.
+  failed_or_insufficient_attempts: []
+  rejected_by_evidence:
+  - hypothesis_or_direction: Descriptor ordering or packer datapath behavior caused the compiler failure.
+    evidence: >-
+      The compiler stopped on testbench format-string syntax before simulation; unchanged packer RTL passed
+      after that syntax repair.
+  root_cause:
+  - The generated testbench used invalid string syntax in its own failure messages.
+  resolution:
+    actions:
+    - >-
+      Merge each split format message into one legal literal while preserving arguments and assertion predicates.
+  validation:
+  - evidence: FOUR-PAIR PACKER TESTS PASSED 1007 and ALL FOUR-PAIR DESCRIPTOR TESTS PASSED at 422880 ns.
+    regression_scope: Seven directed and 1000 random descriptor cases including ordering, backpressure, and
+      batch boundaries.
+  derived_guidance: []
+  reuse_rule:
+  - >-
+    Apply to parser diagnostics at adjacent diagnostic literals; do not change assertion meaning merely because
+    its reporting string is malformed.
+- id: SA-BF16-COMPACT-007
+  title: Preserving equivalent registers fixes fanout that physical fanout optimization did not change
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - replicated_pe_control
+    - synthesis_register_merging
+  status: validated
+  error_family: physical_timing_and_evidence
+  error_type: CONTROL_FANOUT_BOTTLENECK
+  subtype: equivalent_control_register_merging
+  stage: sixteen_mac_tile_implementation
+  tool: Vivado synthesis and physical optimization
+  failing_layer: synthesis_control_distribution
+  symptom_signatures:
+  - Shared out_valid, exponent, and out_last control nets each drive more than 800 loads.
+  - AggressiveFanoutOpt leaves fanout and routed slack unchanged.
+  preconditions:
+  - Sixteen similar PEs allow synthesis to merge equivalent control registers.
+  - The baseline already passes 250 MHz setup; the issue is control locality and scaling margin.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Compared baseline and AggressiveFanoutOpt reports under the same implementation flow.
+    observation_or_result: >-
+      Both had 6232 LUTs, WNS +0.523 ns, and out_valid fanout 834; the attempted physical optimization made
+      no change.
+  - step: 2
+    status: observed_action
+    action: Supplied a separate synthesis experiment with -keep_equivalent_registers while preserving other
+      settings.
+    observation_or_result: The original and modified flows could be compared without a simultaneous hierarchy
+      or clock change.
+  - step: 3
+    status: observed_action
+    action: Compared the routed fanout, setup/hold, resources, and routing status.
+    observation_or_result: >-
+      Maximum listed internal fanout fell to 81, WNS rose to +0.986 ns, LUTs rose by 54, and registers rose
+      by 354; DSP count stayed 16 and routing errors stayed zero.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Applied AggressiveFanoutOpt to the original merged-control implementation.
+    result: It left the relevant fanout and WNS unchanged.
+  rejected_by_evidence: []
+  root_cause:
+  - >-
+    Shared control created by equivalent-register merging drove many PE loads; preserving local registers removed
+    the observed shared-net bottleneck in this experiment.
+  resolution:
+    actions:
+    - Preserve the comparison baseline and test -keep_equivalent_registers as a targeted synthesis-flow change.
+    - >-
+      Validate actual post-route locality, resource cost, and both setup and hold before adopting that flow
+      for the tile.
+  validation:
+  - evidence: >-
+      Routed WNS improved from +0.523 to +0.986 ns; internal fanout fell from 834 to 81, with WHS +0.045 ns
+      and zero route errors.
+    regression_scope: Controlled sixteen-MAC implementation comparison at 250 MHz.
+    limitation: >-
+      External reset fanout remained 1563; this result did not solve full-system reset distribution or prove
+      larger-array timing.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      Apply synthesis preservation only where measured merging harms locality; its extra registers are a tradeoff,
+      not a universal requirement.
+  reuse_rule:
+  - >-
+    Reuse when equivalent PE control is merged and physical fanout optimization is ineffective. Associative
+    lookup depth, arithmetic depth, or failed RAM inference require different repairs.
+- id: SA-BF16-COMPACT-008
+  title: A serial configuration map removes the combinational compactor setup path but hold remains open
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - mask_compaction
+    - registered_lane_mapping
+    - ooc_io_timing
+  status: partially_validated
+  error_family: physical_timing_and_evidence
+  error_type: TIMING_FAILURE
+  subtype: combinational_mask_routing_and_unresolved_input_hold
+  stage: compacted_two_block_tile_implementation
+  tool: Vivado route_design
+  failing_layer: mask_routing_architecture_and_io_timing
+  symptom_signatures:
+  - The combinational compactor uses 24706 LUTs and has setup WNS -4.252 ns at 250 MHz.
+  - A registered mapper fixes setup but retains negative hold slack under the original input constraints.
+  preconditions:
+  - Mask-dependent mapping and operand routing sit directly in the constrained data path.
+  - The original minimum input delay is zero and some hold paths begin at mask input ports.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Localized the failed setup path to mask-dependent compaction rather than the previously timed BF16
+      MACs.
+    observation_or_result: The combined design had 1198 setup failures and a large LUT increase.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied an eight-cycle configuration mapper that registered lane-source tags before shallow operand
+      selection.
+    observation_or_result: >-
+      The routed implementation fell to 9502 LUTs and setup WNS became +0.854 ns, but 596 hold endpoints failed
+      at WHS -0.080 ns.
+  - step: 3
+    status: observed_action
+    action: Tried post-route hold optimization from the saved checkpoint and rechecked minimum-delay paths.
+    observation_or_result: >-
+      Failing hold endpoints fell to 546, yet worst hold stayed -0.080 ns and representative paths ran directly
+      from mask ports into mapper registers.
+  - step: 4
+    status: observed_action
+    action: >-
+      Identified the zero-minimum input constraint and proposed classifying input versus internal hold paths
+      before any constraint change.
+    observation_or_result: >-
+      The supplied results did not establish justified upstream minimum arrival delays or full hold closure
+      for this checkpoint.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Used combinational mask compaction on the per-cycle operand path.
+    result: Setup missed by 4.252 ns and used 24706 LUTs.
+  - status: attempted_insufficient
+    action: Applied the recorded post-route hold repair.
+    result: It reduced endpoint count at an extra 50 LUTs but did not improve worst hold slack.
+  rejected_by_evidence: []
+  root_cause:
+  - >-
+    Deep mask-routing logic caused the setup failure. The residual reported hold problem was on direct input
+    paths under the OOC minimum-delay model; whether the real upstream interface would satisfy it remained
+    unproven.
+  resolution:
+    actions:
+    - >-
+      Move mask-to-lane mapping into a registered configuration phase and keep per-cycle operand selection
+      shallow.
+    - Preserve the original constraints and report setup recovery separately from residual hold failures.
+  validation:
+  - evidence: >-
+      The registered mapper recovered setup to +0.854 ns and reduced LUTs to 9502; the subsequent hold experiment
+      still reported WHS -0.080 ns and 546 failing endpoints.
+    regression_scope: Functional compaction tests and OOC setup/hold/resource reports.
+    limitation: This is a validated setup repair and incomplete hold investigation, not a full timing or board
+      pass.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      A diagnostic minimum-delay sensitivity experiment cannot justify changing the interface contract merely
+      to remove a red timing report.
+  - status: generalized_rule
+    rule: >-
+      Obtain actual upstream timing evidence or a justified interface boundary before declaring the remaining
+      hold problem resolved.
+  reuse_rule:
+  - >-
+    Apply the mapping split when the measured setup path is combinational compaction; transfer any hold conclusion
+    only after matching clock and I/O timing assumptions.
+- id: SA-BF16-COMPACT-009
+  title: Registering pager flags helps but page-mask routing needs its own stage
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - two_pass_mask_paging
+    - registered_status
+    - registered_page_masks
+  status: partially_validated
+  error_family: physical_timing_and_evidence
+  error_type: TIMING_FAILURE
+  subtype: mask_pager_to_router_combinational_chain
+  stage: paged_tile_implementation
+  tool: Vivado route_design
+  failing_layer: pagination_control_microarchitecture
+  symptom_signatures:
+  - The functional paged design misses 250 MHz setup by 0.866 ns.
+  - Registering total_active and needs_second_pass improves WNS only to -0.617 ns.
+  preconditions:
+  - Pager logic influences status and lane routing through a long mask-dependent dependency chain.
+  - The two-pass execution and mask semantics have passing functional tests.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Inspected the original mask-through-pager-to-background_ready path and preserved the functional
+      baseline.
+    observation_or_result: Original WNS was -0.866 ns with 165 failing setup endpoints.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied direct population-count calculation and registered total_active and needs_second_pass at acceptance.
+    observation_or_result: WNS improved to -0.617 ns with 35 failures, but a 19-level mask-to-router lane_last
+      path remained.
+  - step: 3
+    status: observed_action
+    action: Supplied a separate registered page-mask preparation stage and reran functional and physical checks.
+    observation_or_result: Setup reached +1.058 ns with zero setup failures; the worst path moved back into
+      the BF16 converter.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Registered only the pager's status flags.
+    result: The remaining page-mask-to-router path still violated setup timing.
+  rejected_by_evidence: []
+  root_cause:
+  - Status registration removed one dependency but left the computed page masks on the operand-routing path.
+  resolution:
+    actions:
+    - Capture page masks and associated metadata in a preparation stage before routing operands.
+    - Preserve the tested page identities and completion semantics through the additional internal cycle.
+  validation:
+  - evidence: >-
+      Registered page masks produced 9288 LUTs, 5071 registers, 16 DSPs, and WNS +1.058 ns with no setup failures.
+    regression_scope: >-
+      Paged execution simulation and OOC physical comparison across original, flag-only, and page-register
+      variants.
+    limitation: >-
+      The final shown report still had WHS -0.080 ns and 544 hold failures under the original I/O constraints;
+      it is a setup pass only.
+  derived_guidance:
+  - status: generalized_rule
+    rule: After a partial pipeline repair, inspect the new worst path before adding registers elsewhere.
+  reuse_rule:
+  - >-
+    Reuse when masks still drive a deep router path after status flags are registered. Positive setup slack
+    does not discharge remaining hold or interface obligations.
+- id: SA-RTL-BUILD-001
+  title: Source lookup fails because the command or Tcl script uses the wrong directory base
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    - int8_q64_qk_online_softmax_overlap_ooc325
+    architecture_traits:
+    - relative_source_paths
+    - copied_build_scripts
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: SOURCE_PATH_ERROR
+  subtype: incorrect_relative_path_or_repository_root
+  stage: compilation_or_route_source_loading
+  tool: Vivado xvlog and Tcl read_verilog
+  failing_layer: source_resolution
+  symptom_signatures:
+  - Cannot find file at rtl/sparse/bf16/bf16_pair_lane_mapper_opt.sv although the source is under rtl/sparse.
+  - >-
+    A copied route script resolves a sibling baseline repository underneath the new repository instead of beside
+    it.
+  preconditions:
+  - The intended source exists, but its location is computed from the wrong path base.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Compared the BF16 compilation path with the known source location and removed the extra bf16 directory
+      component.
+    observation_or_result: The length-sweep simulation passed all paged tests, including reductions through
+      256.
+  - step: 2
+    status: observed_action
+    action: >-
+      Inspected the later standalone route script's here and repo variables after read_verilog could not locate
+      the baseline exponent module.
+    observation_or_result: The sibling baseline was incorrectly joined relative to the bench directory.
+  - step: 3
+    status: observed_action
+    action: >-
+      Changed the sibling baseline path from file join $here .. baseline_name to file join $repo .. baseline_name.
+    observation_or_result: The subsequent route proceeded beyond source loading, and later contained OOC routes
+      were obtained.
+  failed_or_insufficient_attempts: []
+  rejected_by_evidence: []
+  root_cause:
+  - >-
+    The command and copied script encoded incorrect directory relationships; the source modules themselves
+    were present.
+  resolution:
+    actions:
+    - >-
+      Resolve each source relative to its actual project or script root and verify the resulting path before
+      invoking the tool.
+    - >-
+      In the standalone route case, resolve the sibling repository from the repository root, not its bench
+      subdirectory.
+  validation:
+  - evidence: >-
+      The BF16 path correction was followed by ALL PAGED SPARSE MAC TESTS PASSED over the length sweep; the
+      corrected route script advanced through source loading into implementation.
+    regression_scope: Source resolution, BF16 length-sweep simulation, and standalone route startup.
+    limitation: >-
+      A successful path fix does not validate the newly loaded design's timing; the separate physical records
+      describe those results.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      Check existence before recreating code; a present file at a different path calls for a command repair,
+      while an absent generated artifact calls for its prerequisite step.
+  reuse_rule:
+  - >-
+    Apply when source existence is confirmed at a different resolved path. Do not invent or replace RTL to
+    satisfy a mistaken file path.
+- id: SA-RTL-BUILD-002
+  title: Compilation starts before a required source or generated testbench exists
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - generated_testbench_dependency
+    - staged_source_creation
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: MISSING_BUILD_INPUT
+  subtype: omitted_source_creation_or_generator_prerequisite
+  stage: compile_input_preparation
+  tool: Vivado xvlog and Python source generator
+  failing_layer: build_dependency_sequence
+  symptom_signatures:
+  - Cannot find bf16_fourpair_operand_router_group4.sv at its intended source location.
+  - Cannot find tb_quest_query64_scored_gemm_execution.sv before its generator has completed.
+  preconditions:
+  - The compilation command names an artifact from an earlier creation or generation step.
+  - No successful generation result has established that artifact's existence.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Asked for explicit existence checks for the missing grouped-router RTL and testbench before changing
+      compilation logic.
+    observation_or_result: >-
+      The intended router source-creation step was missing or its output was elsewhere; the assistant supplied
+      the intended complete module again.
+  - step: 2
+    status: observed_action
+    action: >-
+      For the missing query64 testbench, identified make_query64_regression.py as the prerequisite and requested
+      generation before compilation.
+    observation_or_result: >-
+      The user then exposed the generator's zero-match and duplicate-match errors, which were repaired separately.
+  - step: 3
+    status: observed_action
+    action: >-
+      Required artifact existence before rerunning compilation rather than interpreting absent input as a DUT
+      failure.
+    observation_or_result: After the generator repairs, the full query64 simulation passed 192 GEMMs and 12288
+      numerical outputs.
+  failed_or_insufficient_attempts: []
+  rejected_by_evidence: []
+  root_cause:
+  - >-
+    Compilation was invoked without a required created or generated build input; generator failures were separate
+    upstream causes of continued absence.
+  resolution:
+    actions:
+    - >-
+      Locate the exact prerequisite output; restore the supplied intended source or run its generator if that
+      output is absent.
+    - >-
+      Resolve any generator failure before compiling and confirm the artifact exists at the command's expected
+      path.
+  validation:
+  - evidence: The generated query64 suite ultimately reported all numerical and descriptor checks passing.
+    regression_scope: Generation dependency, compile input existence, and query64 integration simulation.
+    limitation: >-
+      The immediate grouped-router source recreation does not by itself prove its function; later source-specific
+      tests remain necessary.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      A missing generated file can be a consequence of an earlier generator exception; fixing only the compile
+      command leaves the actual dependency broken.
+  reuse_rule:
+  - >-
+    Apply to absent prerequisite artifacts. If the artifact exists at another location, use the source-path
+    case instead.
+- id: SA-QUEST-BFP8-Q64-P64-014
+  title: A clock query executes before Vivado has an open design
+  applies_to:
+    design_profiles:
+    - bf16_tile16_mask_compaction_paged_qk_predecessor
+    architecture_traits:
+    - nonproject_synthesis
+    - clock_constraints
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: TCL_DESIGN_STATE_ERROR
+  subtype: get_ports_before_open_design
+  stage: bf16_pe_synthesis_setup
+  tool: Vivado Tcl
+  failing_layer: synthesis_script
+  symptom_signatures:
+  - Common 17-53 reports No open design while the synthesis script is loading RTL.
+  preconditions:
+  - create_clock calls get_ports before synth_design has opened an elaborated or synthesized design.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Located the premature create_clock -period 3.333 [get_ports clk] expression in the supplied nonproject
+      script.
+    observation_or_result: The design query ran before a design was open, so it could not resolve the clock
+      port.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied a clock.xdc containing the clock constraint and replaced the early expression with read_xdc
+      for synthesis-managed processing.
+    observation_or_result: The next user log reached BF16 PE BASELINE SYNTHESIS COMPLETE.
+  - step: 3
+    status: observed_action
+    action: Checked the reported synthesized resource and constrained timing results separately from routing.
+    observation_or_result: The baseline used 454 LUTs, 250 registers, one DSP, and synthesis WNS +1.111 ns.
+  failed_or_insufficient_attempts: []
+  rejected_by_evidence: []
+  root_cause:
+  - The Tcl script evaluated a design-dependent query before a design context existed.
+  resolution:
+    actions:
+    - >-
+      Load the clock constraint through the XDC flow used by synthesis, or otherwise execute port queries only
+      after opening the relevant design.
+    - Recheck successful synthesis and the actual clock constraint before interpreting timing.
+  validation:
+  - evidence: The rerun completed synthesis and reported constrained baseline resources and WNS +1.111 ns.
+    regression_scope: Nonproject source loading, XDC processing, and OOC synthesis.
+    limitation: The quoted +1.111 ns is synthesis timing, not routed or board evidence.
+  derived_guidance: []
+  reuse_rule:
+  - >-
+    Reuse when No open design is caused by an early design query; a genuinely missing port in an open design
+    needs a different diagnosis.
+- id: SA-QUEST-BFP8-Q64-P64-015
+  title: Updating one BFP8 exponent invalidates the unchanged output base
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - partial_metadata_update
+    - bounded_alignment_distance
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: INVALID_STIMULUS
+  subtype: exponent_update_exceeds_alignment_window
+  stage: metadata_reuse_partial_update
+  tool: Vivado XSim
+  failing_layer: testbench_metadata_configuration
+  symptom_signatures:
+  - >-
+    Row serializer or lane protocol error occurs only after the third computation starts following a single
+    exponent update.
+  - The first two distinct tiles and metadata reuse already passed.
+  preconditions:
+  - >-
+    Output base exponent remains -8 and the tested lane supports the relevant left-alignment window through
+    eight bits.
+  - The test changes one B exponent from zero to +1 while A exponent remains zero.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Computed the alignment distance before and after the partial update instead of treating every protocol
+      flag as a metadata-reuse defect.
+    observation_or_result: Delta changed from 0+0-(-8)=8 to 0+1-(-8)=9, outside this configuration's supported
+      window.
+  - step: 2
+    status: observed_action
+    action: >-
+      Considered raising the output base as part of a coordinated metadata change, then selected a 0-to--1
+      B update to keep the intended one-entry-update experiment.
+    observation_or_result: The chosen update made delta seven without rewriting any output-base entries.
+  - step: 3
+    status: observed_action
+    action: >-
+      Supplied -10'sd1 and its packed 10-bit 3ff expectation, changed column-zero expected output to 15360,
+      and kept columns one through seven at 16384.
+    observation_or_result: The user log passed partial-update checks with only one metadata entry rewritten.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Updated B[0,0] from zero to +1 while holding the base at -8.
+    result: The third compute used delta nine and triggered a protocol error.
+  rejected_by_evidence:
+  - hypothesis_or_direction: Partial metadata writes are inherently broken or reused compute state is stale.
+    evidence: >-
+      Two distinct prior tiles passed, and a legal one-entry exponent update produced the independently calculated
+      changed column with other columns unchanged.
+  root_cause:
+  - >-
+    The directed stimulus changed one member of a coupled exponent/base configuration without preserving its
+    alignment invariant. The exact serializer-versus-lane flag was not separately instrumented in the failing
+    run.
+  resolution:
+    actions:
+    - For this one-entry-update test, use B exponent -1 so the unchanged base remains legal.
+    - Recalculate the numerical expectation as (8*0.5+56)*256=15360 for column zero.
+    - Preserve unchanged-metadata assertions and verify the remaining columns stay at 16384.
+  validation:
+  - evidence: >-
+      ALL QUEST BFP8 PARTIAL METADATA UPDATE TESTS PASSED; column zero was 15360, columns one through seven
+      were 16384, and only one metadata entry was rewritten.
+    regression_scope: Distinct-tile reuse followed by one legal exponent update and another complete computation.
+    limitation: >-
+      This test does not prove that the wrapper rejects all illegal exponent/base combinations at configuration
+      time; the source explicitly left that validation obligation open.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      A maximum group-exponent increase may require updating the output base too; a valid partial-write mechanism
+      does not make every partial metadata combination legal.
+  reuse_rule:
+  - >-
+    Apply when the actual alignment equation exceeds the configured lane window after a metadata change. A
+    legal delta with wrong data or an explicitly required illegal-input rejection is a different case.
+- id: SA-QUEST-BFP8-Q64-P64-016
+  title: An automatic scheduler testbench still names the old manual reset and bank port
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - automatic_pingpong_scheduler
+    - interface_migration
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: TESTBENCH_INTEGRATION_ERROR
+  subtype: obsolete_signal_and_removed_port
+  stage: automatic_pingpong_testbench_compile_and_elaboration
+  tool: Vivado xvlog and xelab
+  failing_layer: testbench_dut_binding
+  symptom_signatures:
+  - tile_reset is not declared in the new testbench.
+  - After that correction, elaboration cannot find port run_bank on the automatic top.
+  preconditions:
+  - Reset and operand-bank selection moved from manual external controls into the automatic scheduler.
+  - The testbench was derived from the older manually controlled wrapper.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Traced the undeclared reset guard to the removed manual tile_reset variable.
+    observation_or_result: The correct monitor gate was the wrapper's actual dut.scheduled_tile_reset.
+  - step: 2
+    status: observed_action
+    action: Supplied that monitor update and requested compilation again.
+    observation_or_result: Compilation advanced but elaboration then exposed the obsolete .run_bank(run_bank)
+      connection.
+  - step: 3
+    status: observed_action
+    action: >-
+      Removed the obsolete top-level bank connection and checked the automatic scheduler's internal ownership
+      of bank selection.
+    observation_or_result: >-
+      The next simulation passed three tiles across bank 0, bank 1, and bank 0 again, with 93-cycle start intervals
+      in that backpressured test.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Adapted the manual testbench but retained the old reset reference and run_bank port connection.
+    result: Source analysis and then elaboration stopped before runtime verification.
+  rejected_by_evidence: []
+  root_cause:
+  - Testbench bindings were not migrated with the wrapper's new internally scheduled controls.
+  resolution:
+    actions:
+    - Gate the monitor with the actual scheduled reset in this testbench.
+    - Remove the no-longer-exposed manual bank-selection connection and rerun the automatic sequence.
+  validation:
+  - evidence: >-
+      ALL QUEST AUTO PINGPONG TILE TESTS PASSED, including three distinct modes, load/compute overlap, held
+      results until acknowledgement, and full-clear invalidation.
+    regression_scope: Current top-level elaboration and automatic bank scheduling with repeated bank reuse.
+    limitation: >-
+      The reported 93-cycle start interval includes deliberate result holding; it is not an unbackpressured
+      throughput claim.
+  derived_guidance: []
+  reuse_rule:
+  - >-
+    Apply when deterministic compile/elaboration errors identify an obsolete binding after an interface migration.
+    If the bindings are current and simulation fails, diagnose that runtime evidence separately.
+- id: SA-QUEST-BFP8-Q64-P64-017
+  title: Generated score-writeback backpressure logic uses cycles before its declaration
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - generated_testbench
+    - independent_write_backpressure
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: SV_DECLARATION_ERROR
+  subtype: declaration_after_generated_process_use
+  stage: query64_score_writeback_testbench_compile
+  tool: Vivado xvlog
+  failing_layer: generated_testbench_source
+  symptom_signatures:
+  - VRFC 10-3380 reports cycles used before its declaration in the writeback testbench.
+  preconditions:
+  - >-
+    The generated negedge process computes score_wr_ready from cycles before the existing int cycles declaration
+    appears.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Compared the generated score-writeback backpressure block with the cycles declaration.
+    observation_or_result: The process had been inserted above the declaration it depended on.
+  - step: 2
+    status: observed_action
+    action: Supplied a patch moving the whole backpressure process below the unique existing declaration.
+    observation_or_result: Backpressure behavior and numerical assertions were preserved.
+  - step: 3
+    status: observed_action
+    action: >-
+      Warned that rerunning the unchanged generator would recreate the ordering defect and requested the corrected
+      testbench run first.
+    observation_or_result: The user log passed 8192 numerical score writes and 1349 memory-backpressure stalls.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Compiled the original generated declaration order.
+    result: xvlog rejected the testbench before any RTL simulation.
+  rejected_by_evidence: []
+  root_cause:
+  - The generator inserted a process before the declaration of its counter dependency.
+  resolution:
+    actions:
+    - >-
+      Place the backpressure process after the unique cycles declaration without changing the process expression.
+    - Correct the corresponding insertion point before relying on future regeneration.
+  validation:
+  - evidence: >-
+      ALL QUEST QUERY64 SCORE WRITEBACK TESTS PASSED, with 128 Top-K bindings, 8192 unique writes, 4096 discarded
+      masked outputs, and 1349 memory stalls.
+    regression_scope: Current generated-testbench compile and complete numerical score-writeback simulation.
+    limitation: >-
+      The successful run validates the patched testbench; the excerpt does not show the generator itself being
+      repaired and then regenerated successfully.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      Distinguish a working generated artifact from a repaired generator; the former may regress on regeneration
+      until the source transformation is updated.
+  reuse_rule:
+  - >-
+    Apply to an actual declaration-order diagnostic in generated verification code. A counter-value failure
+    after compilation is a separate timing or arithmetic question.
+- id: SA-QUEST-BFP8-Q64-P64-018
+  title: Parallel rank comparisons replace a timing-critical Top-4 insertion cascade
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - streaming_topk
+    - fixed_four_rank_selector
+    - deterministic_ties
+  status: validated
+  error_family: physical_timing_and_evidence
+  error_type: TIMING_FAILURE
+  subtype: serial_topk_insertion_dependency
+  stage: standalone_top4_selector_implementation
+  tool: Vivado synthesis and route_design
+  failing_layer: ranking_microarchitecture
+  symptom_signatures:
+  - The selector passes 1005 functional tests but synthesis WNS is -1.466 ns at 300 MHz.
+  - The ranking-register path has eighteen logic levels.
+  preconditions:
+  - Insertion is implemented as an iterative cascade through four stored ranks.
+  - Signed score order and page-ID tie breaking are part of the required behavior.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Inspected the failed ranking path and kept the successful 1005-case functional suite as the behavioral
+      baseline.
+    observation_or_result: The problem was comparator/update dependency depth, not DSP capacity or a demonstrated
+      ordering error.
+  - step: 2
+    status: observed_action
+    action: >-
+      Supplied independent rank-slot comparisons and one-hot earliest-insertion detection, followed by local
+      register shifts.
+    observation_or_result: >-
+      The new structure preserved empty-slot handling, tie order, and reset while removing the serial comparison
+      chain.
+  - step: 3
+    status: observed_action
+    action: Requested functional rerun, synthesis, and OOC routing under the same 300 MHz constraint.
+    observation_or_result: >-
+      The final route used 297 LUTs and 199 registers, with WNS +1.292 ns, WHS +0.057 ns, and zero routing
+      errors.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Used cascaded insertion logic for the functional prototype.
+    result: Although its 1005 functional cases passed, its synthesized critical path missed 300 MHz.
+  rejected_by_evidence: []
+  root_cause:
+  - Serial rank comparisons and updates created an eighteen-level path between ranking registers.
+  resolution:
+    actions:
+    - >-
+      Compare the incoming candidate with rank slots in parallel and derive the earliest qualifying insertion
+      point.
+    - >-
+      Use local insert/shift register updates while preserving signed comparison and deterministic ID tie behavior.
+    - Repeat numerical/order tests and route the rewritten selector.
+  validation:
+  - evidence: >-
+      Optimized Top-4 passed its functional suite and the OOC route at 300 MHz with WNS +1.292 ns and WHS +0.057
+      ns; all 232 routable nets were routed.
+    regression_scope: Standalone four-rank selection and constrained OOC timing.
+    limitation: >-
+      This is a Top-4 prototype; the final Quest profile uses Top-2. The case supports a ranking-depth repair
+      pattern, not untested arbitrary K scaling.
+  derived_guidance: []
+  reuse_rule:
+  - >-
+    Apply when a measured path cascades through rank comparisons. The later Top-K-to-page-union FIFO case concerns
+    a different path and needs its own repair.
+- id: SA-QUEST-BFP8-Q64-P64-019
+  title: Streaming and staged exponent alignment remove the buffered BFP8 accumulator bottleneck
+  applies_to:
+    design_profiles:
+    - quest_bfp8_q64_top2_kpage64_score_bram
+    architecture_traits:
+    - group_scaled_accumulation
+    - common_base_exponent
+    - staged_rounding
+  status: validated
+  error_family: physical_timing_and_evidence
+  error_type: TIMING_AND_RESOURCE_FAILURE
+  subtype: dynamic_group_select_align_round_add_chain
+  stage: standalone_group_accumulator_implementation
+  tool: Vivado route_design
+  failing_layer: arithmetic_storage_and_pipeline_architecture
+  symptom_signatures:
+  - A functionally passing accumulator uses 576 LUTs and has WNS -0.390 ns at 300 MHz.
+  - >-
+    A fifteen-level path selects a stored partial sum, aligns and rounds it, then accumulates in the same cycle.
+  preconditions:
+  - >-
+    The prototype stores eight group partials and performs dynamic group selection and common-exponent search
+    locally.
+  - All 128 numerical tests pass, so the repair must preserve the tested arithmetic and rounding contract.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Read the routed group-index-to-accumulator path and calculated the cost of replicating 576 LUTs across
+      4096 PEs.
+    observation_or_result: Both the -0.390 ns setup miss and projected accumulator area were unacceptable for
+      the proposed array.
+  - step: 2
+    status: observed_action
+    action: Supplied a streamed accumulator receiving a precomputed common exponent and partial sums directly.
+    observation_or_result: >-
+      This removed the eight-entry storage, repeated dynamic selection, and local maximum-exponent search;
+      128 tests passed, LUTs fell to 378, and routed WNS became +0.048 ns.
+  - step: 3
+    status: observed_action
+    action: Inspected the new worst base-exponent-to-aligned-value path instead of stopping at the narrow first
+      pass.
+    observation_or_result: >-
+      Exponent subtraction, shift, ties-to-even rounding, and sign application still occupied one alignment
+      cycle.
+  - step: 4
+    status: observed_action
+    action: >-
+      Supplied an extra registered boundary between exponent-difference calculation and alignment and reran
+      the numerical and physical checks.
+    observation_or_result: >-
+      The two-stage variant retained all 128 test results, used 288 LUTs, and reached WNS +0.432 ns with WHS
+      +0.064 ns and zero route errors.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Retained buffered dynamic group selection, alignment, rounding, and addition in one critical cycle.
+    result: >-
+      Setup failed at -0.390 ns and the architecture could not be replicated unchanged at the intended array
+      size.
+  - status: attempted_insufficient
+    action: Evaluated the first streamed implementation as a full array replication candidate.
+    result: >-
+      Its +0.048 ns standalone pass was narrow and 378 LUTs per lane would still exceed the full-device budget
+      at 4096 instances; shared/tiled alignment remained necessary.
+  rejected_by_evidence: []
+  root_cause:
+  - >-
+    Dynamic stored-group selection and arithmetic alignment were combined on the critical path; per-PE duplication
+    also made the prototype's local resource cost unsuitable for array scaling.
+  resolution:
+    actions:
+    - Supply a common exponent before the stream so the accumulator need not buffer and rescan all groups.
+    - >-
+      Separate exponent difference and magnitude calculation from the shift/round stage, preserving the numerical
+      contract.
+    - >-
+      Treat the 288-LUT block as a validated alignment reference and evaluate scheduled shared alignment before
+      large-array replication.
+  validation:
+  - evidence: >-
+      All 128 numerical tests passed across the tested variants; WNS progressed from -0.390 to +0.048 to +0.432
+      ns, while LUTs fell from 576 to 378 to 288.
+    regression_scope: Standalone group-scaled accumulator arithmetic and 300 MHz OOC routing.
+    limitation: >-
+      Even 4096 copies of the final 288-LUT aligner plus MAC would consume about 91.4 percent of device LUT
+      capacity before system logic; no full-array scalability proof follows.
+  derived_guidance: []
+  reuse_rule:
+  - >-
+    Apply when the measured path combines group selection and exponent alignment. Confirm upstream exponent
+    availability and tested partial-sum ranges before changing the input contract or sharing schedule.
+- id: SA-ATTN-INT8-Q64-002
+  title: Staging RTL files is insufficient when the packaged kernel source list omits them
+  applies_to:
+    design_profiles:
+    - fixed_pattern_int8_q64_online_attention_u55c
+    architecture_traits:
+    - rtl_kernel_packaging
+    - generated_import_directory
+    - explicit_source_manifest
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: MISSING_RTL_MODULE
+  subtype: staged_but_unregistered_kernel_sources
+  stage: packaged_kernel_synthesis
+  tool: Vitis linker and Vivado synthesis
+  failing_layer: kernel_package_source_manifest
+  symptom_signatures:
+  - Synthesis reports sparse_online_softmax_stats not found and cascades through the kernel wrapper modules.
+  - >-
+    prepare_sources copies the module into imports, but package_xo has a separate explicit custom_sources list.
+  preconditions:
+  - New softmax and exponent modules were introduced after the original GEMM packaging list was written.
+  - The required source exists but is not registered in the packaged project's synthesis sources.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Read the first missing-module diagnostic instead of treating the final v++ link-failed summary as the
+      root cause.
+    observation_or_result: sparse_online_softmax_stats was absent from the synthesis source closure of the
+      packaged kernel.
+  - step: 2
+    status: observed_action
+    action: >-
+      Compared prepare_sources staging with package_xo's explicit custom_sources list for both score-only and
+      full-V builds.
+    observation_or_result: Copying the files into imports had not added them to that separate list.
+  - step: 3
+    status: observed_action
+    action: >-
+      Added the exponent and online-softmax sources to both package lists and the value-stage source to the
+      full-attention list, then rebuilt new packaged candidates.
+    observation_or_result: >-
+      Both integrated kernel RTL syntheses later completed without missing-module or RTL errors and advanced
+      toward implementation.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Added the new sources to staging but retained the old explicit package manifest.
+    result: The generated package was missing instantiated modules even though the source files existed on
+      disk.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The missing-module error requires redesigning online softmax arithmetic.
+    evidence: >-
+      The source module existed; registering it in the package's actual source set allowed synthesis to proceed.
+  root_cause:
+  - >-
+    The source-copy step and source-registration step had independent lists; only the former had been updated
+    for the added functional stages.
+  resolution:
+    actions:
+    - >-
+      Include every instantiated exponent, softmax, and applicable value-stage source in the actual packaged
+      synthesis manifest.
+    - Regenerate the package and verify the synthesized imported-source set before retrying full link.
+  validation:
+  - evidence: >-
+      The session subsequently reported both integrated kernel RTL syntheses completing without missing-module
+      or RTL errors.
+    regression_scope: Source staging, kernel packaging, and integrated kernel synthesis for score-only and
+      full-V variants.
+    limitation: This closes source inclusion only; timing and board gates were separate later experiments.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      An implementation must be tested from the packaged source closure, not merely from a standalone simulation
+      command with a more complete source list.
+  reuse_rule:
+  - >-
+    Apply when a known source is omitted from the build's actual manifest. If the module is registered but
+    its declaration is rejected, investigate that earlier source diagnostic instead.
+- id: SA-ATTN-INT8-Q64-003
+  title: A post-transfer ready check falsely rejects the last captured score beat
+  applies_to:
+    design_profiles:
+    - fixed_pattern_int8_q64_online_attention_u55c
+    architecture_traits:
+    - single_score_tile_capture
+    - ready_state_transition
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: TESTBENCH_ERROR
+  subtype: ready_checked_after_accepted_final_beat
+  stage: online_softmax_score_tile_capture
+  tool: Vivado XSim
+  failing_layer: testbench_handshake_observation
+  symptom_signatures:
+  - Fatal capture backpressure at beat 511 occurs at the final beat of a 512-beat tile.
+  preconditions:
+  - The testbench checks score_ready at the negedge after the intervening rising-edge transfer.
+  - The receiver may legally lower ready after accepting the final tile beat and changing state.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Inspected the final-beat stimulus loop and its post-edge readiness assertion.
+    observation_or_result: >-
+      The checker read the next state's ready instead of the readiness that allowed the just-completed transfer.
+  - step: 2
+    status: observed_action
+    action: >-
+      Moved the existing readiness check before the next negedge wait while preserving all beat data and count
+      requirements.
+    observation_or_result: The unchanged RTL passed first-key, continuation, final-key, and diagonal causal
+      online-softmax cases.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Sampled readiness after each beat had already been accepted.
+    result: The legal final-beat state transition was reported as capture backpressure.
+  rejected_by_evidence: []
+  root_cause:
+  - The testbench confused transfer-time readiness with readiness after the receiver had consumed the tile.
+  resolution:
+    actions:
+    - >-
+      Sample or capture readiness at the defining handshake phase, before the final transfer changes receiver
+      state.
+    - Keep exact capture counts and subsequent row-statistic checks intact.
+  validation:
+  - evidence: >-
+      Five online tile transitions passed and the log reported ALL TESTS PASSED: one score tile and online
+      normalizer state.
+    regression_scope: Score-tile capture and online normalizer state across causal and multiple-key-tile sequences.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      This repair moves an observation to the accepted transfer; it is different from waiting for initial readiness
+      or allowing combinational row selection to settle.
+  reuse_rule:
+  - >-
+    Reuse when only the final post-transfer ready sample fails and accepted-beat evidence is correct. A receiver
+    that drops ready before an unaccepted beat requires a different investigation.
+- id: SA-ATTN-INT8-Q64-004
+  title: V response data is driven before the read-address transfer advances the reader
+  applies_to:
+    design_profiles:
+    - fixed_pattern_int8_q64_online_attention_u55c
+    architecture_traits:
+    - axi_read_address_handshake
+    - behavioral_memory_driver
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: INVALID_STIMULUS
+  subtype: read_response_started_before_address_acceptance
+  stage: value_stage_unit_test
+  tool: Vivado XSim
+  failing_layer: testbench_memory_response_driver
+  symptom_signatures:
+  - Fatal V reader backpressure at beat zero while the reader is still in state two.
+  preconditions:
+  - >-
+    The testbench observes v_arvalid and begins V response data without waiting through the rising-edge address
+    handshake.
+  - The test memory's address-ready condition allows that next edge to accept the request.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Added beat number and reader state to the failure message and reran the failing case.
+    observation_or_result: The failure was specifically beat zero in the pre-response reader state.
+  - step: 2
+    status: observed_action
+    action: >-
+      Inserted an intervening posedge after checking the address request and before the negedge that starts
+      the response loop.
+    observation_or_result: The reader advanced through the address handshake before the first response beat.
+  - step: 3
+    status: observed_action
+    action: Reran the value-stage numerical test without changing its RTL.
+    observation_or_result: The 64x128 causal-context test passed all 512 output beats.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Began V response stimulus after seeing the address-valid indication but before the accepting edge.
+    result: v_rready was still low for beat zero.
+  rejected_by_evidence: []
+  root_cause:
+  - >-
+    The behavioral memory driver skipped the address-acceptance event required before the reader entered its
+    receive state.
+  resolution:
+    actions:
+    - In this always-address-ready test environment, wait through the accepting posedge before driving V data.
+    - >-
+      In a general backpressured memory model, wait for an actual ARVALID && ARREADY handshake rather than
+      assuming one elapsed edge is sufficient.
+  validation:
+  - evidence: >-
+      PASS value stage 64x128 causal context, 512 output beats appeared after the testbench-only phase correction.
+    regression_scope: One value-stage causal numerical case and V read-burst response sequence.
+    limitation: >-
+      This case does not establish coverage of arbitrary AXI address backpressure; the historical driver used
+      the stated readiness assumption.
+  derived_guidance: []
+  reuse_rule:
+  - >-
+    Reuse when the response driver outruns address acceptance. A current-address handshake followed by persistent
+    low response readiness needs a separate state-machine diagnosis.
+- id: SA-ATTN-INT8-Q64-005
+  title: A BRAM-banked softmax test assumes capture readiness immediately after start
+  applies_to:
+    design_profiles:
+    - fixed_pattern_int8_q64_online_attention_u55c
+    architecture_traits:
+    - banked_row_state
+    - initialization_latency
+    - ready_valid_input
+  status: validated
+  error_family: verification_harness_and_oracle
+  error_type: INVALID_STIMULUS
+  subtype: missing_wait_for_capture_ready_after_start
+  stage: banked_softmax_unit_test
+  tool: Vivado XSim
+  failing_layer: testbench_input_driver
+  symptom_signatures:
+  - Fatal capture backpressure at beat zero appears after replacing flip-flop row state with BRAM banks.
+  preconditions:
+  - The banked implementation performs preparation before score capture becomes ready.
+  - The old testbench sends the first score immediately after deasserting start.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: >-
+      Inspected the banked candidate's first-beat failure and compared the testbench's start-to-capture sequence.
+    observation_or_result: The input loop made no allowance for the interface's ready signal during preparation.
+  - step: 2
+    status: observed_action
+    action: Added while (!score_ready) @(negedge clk) before both the ordinary-tile and sloped-score input
+      loops.
+    observation_or_result: The driver now waited for capture readiness instead of assuming a fixed startup
+      latency.
+  - step: 3
+    status: observed_action
+    action: Reran the existing online-state and sloped causal numerical checks.
+    observation_or_result: All tile transitions and the sloped row-max/Q16-sum case passed.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Reused the immediate-capture stimulus sequence with the banked implementation.
+    result: The first beat was presented while preparation still held score_ready low.
+  rejected_by_evidence: []
+  root_cause:
+  - >-
+    The testbench assumed old startup timing instead of honoring the existing readiness contract after the
+    memory architecture changed.
+  resolution:
+    actions:
+    - >-
+      Wait for score_ready before starting each capture sequence, retaining all per-beat and row-statistic
+      checks.
+  validation:
+  - evidence: >-
+      PASS sloped causal scores: row maxima and Q16 sums and ALL TESTS PASSED: one score tile and online normalizer
+      state followed the patch.
+    regression_scope: >-
+      Banked-state softmax unit tests, continuation/rescaling across key tiles, and nonzero sloped causal logits.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      Readiness may be legally delayed by a memory preparation phase; adding a tiny settle delay is not a substitute
+      for the actual ready handshake.
+  reuse_rule:
+  - >-
+    Apply when an existing ready-valid contract permits preparation latency. If the frozen contract instead
+    specifies exact immediate acceptance, investigate an RTL latency violation.
+- id: SA-ATTN-INT8-Q64-006
+  title: The exp approximation test passes only after its absolute-error bound is widened
+  applies_to:
+    design_profiles:
+    - fixed_pattern_int8_q64_online_attention_u55c
+    architecture_traits:
+    - exchangeable_exp_approximations
+    - q0_16_output
+    - numerical_error_budget
+  status: validation_change_requires_review
+  error_family: verification_harness_and_oracle
+  error_type: NUMERICAL_ACCEPTANCE_CHANGE
+  subtype: approximation_tolerance_relaxed_without_recorded_contract_justification
+  stage: standalone_exponential_approximation_test
+  tool: Vivado XSim
+  failing_layer: numerical_acceptance_criterion
+  symptom_signatures:
+  - >-
+    exp kind two at x=1 returns 65362 against the real-valued reference 65358.794332 and fails the original
+    absolute-error bound.
+  - The rerun passes after kind two's allowed absolute error is increased from 2.1 to 24.0 output LSB.
+  preconditions:
+  - >-
+    The suite compares direct, bipartite, and piecewise-linear exponent implementations against a floating-point
+    reference.
+  - An additional relative-error limit of 0.002 is checked only when the expected output is at least 1024.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Ran the three-implementation test and observed the kind-two error exceed the shared absolute threshold.
+    observation_or_result: The first reported error was about 3.206 LSB, above the original 2.1 bound.
+  - step: 2
+    status: observed_action
+    action: >-
+      Changed only the kind-two absolute threshold to 24.0, retaining 2.1 for the other implementations and
+      the existing conditional relative bound.
+    observation_or_result: No corresponding exp-datapath repair appeared in that diff.
+  - step: 3
+    status: observed_action
+    action: Reran the suite with the modified acceptance criterion and added textual Fatal detection to the
+      script.
+    observation_or_result: >-
+      Kind two reported maximum absolute error 14.709855 LSB and maximum checked relative error 0.000756, and
+      the modified suite passed.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: Tested the original kind-two approximation against the original 2.1-LSB bound.
+    result: It failed; the later threshold change did not make that original requirement pass.
+  rejected_by_evidence:
+  - hypothesis_or_direction: The passing rerun proves the original numerical requirement was repaired.
+    evidence: >-
+      The observed change widened the allowed error, and the measured maximum 14.709855 LSB still exceeded
+      the original 2.1-LSB bound.
+  root_cause:
+  - >-
+    The kind-two approximation and original absolute bound were inconsistent. The supplied record does not
+    establish whether the implementation or the original error budget should change.
+  resolution:
+    actions:
+    - >-
+      The historical change set the kind-two absolute threshold to 24.0 LSB while retaining the other thresholds;
+      no validated repair of the original 2.1-LSB requirement is recorded.
+  validation:
+  - evidence: >-
+      The modified suite passed with kind-two maximum absolute error 14.709855 LSB and checked relative error
+      0.000756.
+    regression_scope: The tested standalone exp input sweep under the changed threshold.
+    limitation: >-
+      The transcript contains no independent justification for selecting 24.0 LSB and no proof that the original
+      2.1-LSB requirement was satisfied. Do not treat this record as a validated numerical repair.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      Preserve which implementation, reference, units, absolute threshold, and conditional relative threshold
+      produced a PASS; changing the acceptance criterion changes what was established.
+  - status: generalized_rule
+    rule: >-
+      Establish an independently supported error budget before adopting 24.0 LSB; if 2.1 LSB remains contractual,
+      improve or replace the approximation and rerun that original criterion.
+  reuse_rule:
+  - >-
+    Retrieve this case to recognize an unproven tolerance relaxation. Apply the historical threshold only when
+    the new design's numerical contract independently supports it; otherwise investigate the approximation.
+- id: SA-RTL-BUILD-003
+  title: XSim prints a fatal test failure while the command still appears successful
+  applies_to:
+    design_profiles:
+    - fixed_pattern_int8_q64_online_attention_u55c
+    architecture_traits:
+    - xsim_shell_runner
+    - log_based_failure_detection
+  status: validated
+  error_family: tool_and_build_flow
+  error_type: FALSE_SUCCESS_REPORT
+  subtype: simulator_fatal_not_reflected_in_runner_exit_status
+  stage: unit_simulation_result_collection
+  tool: Vivado XSim and shell test runner
+  failing_layer: verification_result_orchestration
+  symptom_signatures:
+  - >-
+    A command is marked successful even though its output includes Fatal and $finish before the intended PASS.
+  preconditions:
+  - The orchestration relies on the process or pipeline status alone to decide whether simulation passed.
+  - The simulator invocation can return normally after a testbench fatal terminates simulation.
+  action_trace:
+  - step: 1
+    status: observed_action
+    action: Observed the failing exp test print Fatal while the enclosing command was reported as successful.
+    observation_or_result: Tool termination status alone did not encode this test's assertion outcome.
+  - step: 2
+    status: observed_action
+    action: >-
+      Changed the exp runner to capture XSim output with tee and exit nonzero when the log matched a Fatal
+      line.
+    observation_or_result: Subsequent tests distinguished successful simulator execution from successful verification.
+  failed_or_insufficient_attempts:
+  - status: attempted_insufficient
+    action: >-
+      Executed the original runner without an explicit check translating a textual Fatal into a nonzero runner
+      status.
+    result: >-
+      The failed simulation was marked as a successful command even though the assertion failure remained visible
+      in its log.
+  rejected_by_evidence: []
+  root_cause:
+  - The runner did not translate the simulator's textual assertion failure into its own failure status.
+  resolution:
+    actions:
+    - >-
+      Capture the complete simulation log and make the runner fail on a testbench Fatal diagnostic as in the
+      recorded fix.
+    - Require the intended terminal PASS as well as absence of failures before accepting a regression result.
+  validation:
+  - evidence: >-
+      The source diff adds log capture and an explicit exit-one branch for Fatal; the following complete run
+      printed the expected per-implementation PASS results without Fatal.
+    regression_scope: Simulation log collection and runner result classification.
+    limitation: >-
+      The transcript shows the failure-detection implementation but not a deliberate injected-Fatal rerun of
+      the updated wrapper. The numerical tolerance issue in that same run remains a separate record.
+  derived_guidance:
+  - status: generalized_rule
+    rule: >-
+      Preserve the simulator's own failure state through output pipelines, and avoid accepting partial PASS
+      messages when a later fatal exists.
+  reuse_rule:
+  - >-
+    Apply when process status contradicts the actual test log. Fix result collection first, then diagnose the
+    underlying assertion independently.

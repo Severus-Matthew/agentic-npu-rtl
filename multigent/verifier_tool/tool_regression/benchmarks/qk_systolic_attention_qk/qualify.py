@@ -729,9 +729,7 @@ def _apply_mutation(source_dir: Path, destination: Path, mutation: Mutation) -> 
     path.write_text(text.replace(mutation.anchor, mutation.replacement, 1))
 
 
-def _diagnostic(stdout: str, stderr: str) -> str:
-    combined = f"{stdout}\n{stderr}"
-    for marker in (
+_DUT_FAILURE_MARKERS = (
         "output_mismatch",
         "done_latency",
         "completion_timeout",
@@ -739,7 +737,12 @@ def _diagnostic(stdout: str, stderr: str) -> str:
         "ghost_done",
         "done_not_zero_in_reset",
         "result_accounting",
-    ):
+)
+
+
+def _diagnostic(stdout: str, stderr: str) -> str:
+    combined = f"{stdout}\n{stderr}"
+    for marker in _DUT_FAILURE_MARKERS:
         if marker in combined:
             return marker
     return "simulation_failure"
@@ -842,8 +845,16 @@ def _run_mutant(
             "stderr_tail": "",
         }
     compile_valid = result["compile_status"] == "PASS"
-    killed = compile_valid and result["simulation_status"] == "FAIL"
-    return {**asdict(mutation), **result, "compile_valid": compile_valid, "killed": killed}
+    killed = (
+        compile_valid and result["simulation_status"] == "FAIL"
+        and result["diagnostic"] in _DUT_FAILURE_MARKERS
+    )
+    infrastructure_failure = (
+        compile_valid and result["simulation_status"] != "PASS"
+        and result["diagnostic"] not in _DUT_FAILURE_MARKERS
+    )
+    return {**asdict(mutation), **result, "compile_valid": compile_valid, "killed": killed,
+            "infrastructure_failure": infrastructure_failure}
 
 
 def run_qualification(
@@ -925,6 +936,8 @@ def run_qualification(
             ),
             "survivor_names": [item["name"] for item in survivors],
             "invalid_names": [item["name"] for item in invalid],
+            "simulation_infrastructure_errors": sum(item["infrastructure_failure"] for item in results),
+            "simulation_infrastructure_error_names": [item["name"] for item in results if item["infrastructure_failure"]],
             "equivalent_exclusions": _equivalent_exclusions(),
             "by_domain": {
                 domain: {

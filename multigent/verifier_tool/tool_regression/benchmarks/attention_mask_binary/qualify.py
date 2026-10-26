@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 import hashlib
 import json
 from pathlib import Path
+from ..mutation_outcomes import cpp_dut_failure
 import random
 import subprocess
 import tempfile
@@ -642,7 +643,9 @@ def run_qualification(
             total=len(scores),
             seed=seed,
         )
-        return {**asdict(mutation), **result, "killed": not result["passed"]}
+        killed = cpp_dut_failure("mask", result)
+        return {**asdict(mutation), **result, "killed": killed,
+                "infrastructure_failure": bool(result["compile_valid"] and not result["passed"] and not killed)}
 
     mutation_results: list[dict[str, Any]] = []
     if selected:

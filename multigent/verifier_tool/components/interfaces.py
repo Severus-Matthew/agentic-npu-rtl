@@ -43,6 +43,8 @@ KNOWN_ABIS = frozenset({
     "contract_event_trace_v1",
     "contract_event_traces_v1",
     "transaction_completion_payload_v1",
+    "block_result_records_v1",
+    "external_operation_invariants_v1",
     "axi4_protocol_responder_v1",
     "axi4_memory_job_v1",
     "axi4_lite_memory_job_v1",
@@ -72,6 +74,8 @@ KNOWN_ABIS = frozenset({
 # Optional tuning parameters may grow without invalidating a component. A new
 # incompatible execution shape receives a new ABI rather than a resolver branch.
 ABI_REQUIRED_PARAMETERS = {
+    "block_result_records_v1": ("expected_records", "observed_records"),
+    "external_operation_invariants_v1": ("operation_metadata", "stimulus", "observed"),
     "role_bound_channel_source_v1": ("dut", "clock_name", "channel", "beats"),
     "role_bound_channel_sink_v1": ("dut", "clock_name", "channel"),
     "contract_event_source_v1": ("dut", "profile", "transaction", "beats"),

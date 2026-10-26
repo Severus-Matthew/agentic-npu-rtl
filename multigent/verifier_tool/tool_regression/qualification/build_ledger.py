@@ -1,9 +1,9 @@
 """Generate/refresh `ledger.json`: the machine-readable qualification ledger.
 
-Enumerates the exact 232 runtime verification targets (31 standard protocol rules + 1
+Enumerates the exact 301 runtime verification targets (31 standard protocol rules + 1
 explicit generic-channel reset rule + 1 protocol driver invariant + 77 protocol
 feature/bin rows + 32 lifecycle feature/bin rows
-+ 90 operation bins) and 91
++ 139 operation bins + 20 external operation invariants) and 91
 metadata/configuration entries (71 verification tags + 6 selectable protocol profiles + 14
 lifecycle policy choices) named in the qualification task, transcribed 1:1 from
 the pool YAML sources and the existing ledger. Running this script never simulates anything. It preserves
@@ -118,7 +118,7 @@ POLICY_CHOICES = [
 assert len(POLICY_CHOICES) == 14, len(POLICY_CHOICES)
 
 # ---------------------------------------------------------------------------
-# 166 runtime verification targets
+# Runtime verification targets
 # ---------------------------------------------------------------------------
 
 STANDARD_RULES = {
@@ -234,10 +234,10 @@ assert sum(len(b) for _, b in SPARSE_ATTENTION_BINS) == 21
 QK_SCORE_BINS = [
     ("dimensions", ["fixed_shape"]),
     ("operand_values", ["zero", "positive", "negative", "minimum", "maximum"]),
-    ("accumulation", ["ordinary", "positive_boundary", "negative_boundary", "positive_overflow", "negative_overflow"]),
+    ("accumulation", ["ordinary", "positive_boundary", "negative_boundary", "positive_overflow", "negative_overflow", "cancellation", "mixed_sign_terms", "last_term_only"]),
     ("attention_scores", ["zero_score", "positive_score", "negative_score"]),
 ]
-assert sum(len(b) for _, b in QK_SCORE_BINS) == 14
+assert sum(len(b) for _, b in QK_SCORE_BINS) == 17
 
 ATTENTION_SCALE_BINS = [
     ("dimensions", ["fixed_shape"]),
@@ -254,16 +254,54 @@ ATTENTION_MASK_BINS = [
     ("mask_values", ["drop", "keep"]),
     ("sparsity_patterns", ["empty_row", "singleton_row", "partial_row", "dense_row"]),
     ("masked_values", ["zero_masked", "positive_masked", "negative_masked"]),
-    ("mask_effects", ["active_score_preserved", "inactive_nonzero_zeroed"]),
+    ("mask_effects", ["active_score_preserved", "inactive_nonzero_zeroed", "active_zero_preserved", "inactive_positive_zeroed", "inactive_negative_zeroed"]),
 ]
-assert sum(len(b) for _, b in ATTENTION_MASK_BINS) == 17
+assert sum(len(b) for _, b in ATTENTION_MASK_BINS) == 20
 
 OPERATION_FAMILY_BINS = {
+    "block_matmul": [
+        ("dimensions", ["fixed_shape"]),
+        ("block_selection", ["empty", "singleton", "multiple", "nonadjacent", "reordered", "duplicate"]),
+        ("block_mapping", ["origin", "nonzero_row", "nonzero_column", "distinct_tile_results"]),
+        ("block_tails", ["full_tile", "row_tail", "column_tail", "reduction_tail"]),
+        ("block_reduction", ["single_chunk", "multiple_chunks", "zero_result", "positive_result", "negative_result", "nonzero_reduction_tail"]),
+    ],
+    "softmax": [
+        ("dimensions", ["fixed_shape"]),
+        ("row_patterns", ["uniform", "tied_maximum", "unique_maximum", "all_negative", "mixed_sign", "distinct_rows"]),
+        ("mask_patterns", ["unmasked", "singleton", "partial", "fully_masked", "masked_maximum", "masked_zero"]),
+        ("exp_domain", ["zero_delta", "interior_delta", "last_lut_entry", "clipped_delta"]),
+        ("normalization", ["zero_probability", "positive_probability", "rounded_division", "exact_division", "tiny_positive_weight_zero"]),
+    ],
     "matrix_multiply": OPERATION_BINS,
     "sparse_attention": SPARSE_ATTENTION_BINS,
     "attention_qk": QK_SCORE_BINS,
     "attention_scale": ATTENTION_SCALE_BINS,
     "attention_mask": ATTENTION_MASK_BINS,
+}
+
+# New semantic crosses do not inherit qualification of their older parent
+# concept. Historical reports are not evidence that these targets were sampled.
+BLACK_BOX_ADDITION_IDS = {
+    f"ofeat:{family}.{concept}.{name}"
+    for family, concept, names in (
+        ("attention_qk", "accumulation", ("cancellation", "mixed_sign_terms", "last_term_only")),
+        ("attention_mask", "mask_effects", ("active_zero_preserved", "inactive_positive_zeroed", "inactive_negative_zeroed")),
+        ("block_matmul", "block_mapping", ("distinct_tile_results",)),
+        ("block_matmul", "block_reduction", ("nonzero_reduction_tail",)),
+        ("softmax", "row_patterns", ("distinct_rows",)),
+        ("softmax", "mask_patterns", ("masked_maximum", "masked_zero")),
+        ("softmax", "normalization", ("tiny_positive_weight_zero",)),
+    ) for name in names
+}
+
+EXTERNAL_OPERATION_INVARIANTS = {
+    "attention_qk": ["qk.zero_operand", "qk.equal_queries", "qk.equal_keys"],
+    "attention_scale": ["scale.zero_preserved", "scale.equal_inputs", "scale.monotonic"],
+    "attention_mask": ["mask.excluded_zero", "mask.kept_value"],
+    "block_matmul": ["block.padding_zero", "block.duplicate_tile_equal"],
+    "softmax": ["softmax.output_range", "softmax.excluded_zero", "softmax.empty_row_zero", "softmax.equal_scores", "softmax.score_order", "softmax.floor_mass_bound", "softmax.equal_rows"],
+    "sparse_attention": ["sparse.empty_row_zero", "sparse.zero_value_column", "sparse.equal_value_columns"],
 }
 
 
@@ -316,6 +354,9 @@ def build_all_rows() -> list[dict[str, Any]]:
                     concept=concept,
                     bin=bin_name,
                 ))
+    for family, names in EXTERNAL_OPERATION_INVARIANTS.items():
+        for name in names:
+            rows.append(_row(f"oinvariant:{name}", "operation_invariant", "operation", family=family, invariant=name))
     return rows
 
 
@@ -327,19 +368,20 @@ def main() -> None:
         "protocol_feature_bin",
         "lifecycle_feature_bin",
         "operation_bin",
+        "operation_invariant",
     }
     metadata_categories = {"tag", "protocol_profile", "lifecycle_policy_choice"}
     runtime_count = sum(1 for r in rows if r["category"] in runtime_categories)
     metadata_count = sum(1 for r in rows if r["category"] in metadata_categories)
-    if runtime_count != 232:
-        raise AssertionError(f"expected 232 runtime targets, got {runtime_count}")
+    if runtime_count != 301:
+        raise AssertionError(f"expected 301 runtime targets, got {runtime_count}")
     if metadata_count != 91:
         raise AssertionError(f"expected 91 metadata entries, got {metadata_count}")
     if len(rows) != len({r["id"] for r in rows}):
         raise AssertionError("duplicate row id generated")
 
     for row in rows:
-        if row.get("family") != "attention_scale":
+        if row.get("family") != "attention_scale" or row["category"] != "operation_bin":
             continue
         row.update(
             {
@@ -365,7 +407,7 @@ def main() -> None:
         )
 
     for row in rows:
-        if row.get("family") != "attention_mask":
+        if row.get("family") != "attention_mask" or row["category"] != "operation_bin" or row["id"] in BLACK_BOX_ADDITION_IDS:
             continue
         row.update(
             {
@@ -685,6 +727,69 @@ def main() -> None:
     removed = [rid for rid in existing if rid not in {r["id"] for r in rows}]
     if removed:
         raise AssertionError(f"rows present in ledger.json but not in the current catalog: {removed}")
+
+    # Positive generated-campaign evidence is intentionally weaker than strict
+    # per-bin qualification. Never upgrade it because a few semantic faults were
+    # detected, and never overwrite a future STRICT_PASS record with this report.
+    structured_root = HERE.parent / "benchmarks" / "block_softmax_external"
+    structured_evidence = structured_root / "evidence.json"
+    if structured_evidence.is_file():
+        evidence = json.loads(structured_evidence.read_text())
+        campaigns = evidence["local_generated_campaigns"]
+        for row in merged:
+            family = row.get("family")
+            if row["category"] != "operation_bin" or family not in {"block_matmul", "softmax"} or row["status"] not in {"NOT_STARTED", "POSITIVE_ONLY"}:
+                continue
+            selected = [value for name, value in campaigns.items()
+                        if (name == "masked_softmax") == (family == "softmax")]
+            if not selected or any(value["status"] != "PASS" for value in selected):
+                raise AssertionError("Structured qualification needs passing real generated campaigns")
+            suffix = f".{row['concept']}.{row['bin']}"
+            hits = sum(count for value in selected for key, count in value["operation_hits"].items()
+                       if key.endswith(suffix))
+            if hits <= 0:
+                if row["id"] in BLACK_BOX_ADDITION_IDS:
+                    continue
+                raise AssertionError(f"No observed positive evidence for {row['id']}")
+            row.update(
+                status="POSITIVE_ONLY",
+                contract=f"Explicit fixed {family} contracts in fixtures/structured_operations.py",
+                compliant_rtl="Independent local streaming RTL fixtures; pinned external arithmetic cores evaluated separately",
+                detection_mechanism="central_golden_equivalence+accepted_transfer_accounting+canonical_classifier",
+                required_coverage=f"At least one checked DUT job in {row['concept']}.{row['bin']}",
+                actual_coverage=f"{hits} observed checked-job hits across applicable generated campaigns",
+                deterministic_seed="generated campaign 19; external canonical suite 0xB10C5",
+                evidence_paths=[
+                    "multigent/verifier_tool/tool_regression/benchmarks/block_softmax_external/evidence.json",
+                    "multigent/verifier_tool/tool_regression/benchmarks/block_softmax_external/RESULT.md",
+                    "multigent/verifier_tool/tool_regression/rtl/test_structured_generated_campaign.py",
+                    "multigent/verifier_tool/tool_regression/rtl/test_block_softmax_external.py",
+                ],
+                notes="Positive-only per-bin evidence. Four semantic RTL faults are detected, but exhaustive or individual per-bin strict qualification is not claimed. No internal signals are monitored.",
+            )
+
+    audit_path = HERE.parent / "benchmarks" / "attention_source_audit" / "evidence.json"
+    if audit_path.is_file():
+        audit = json.loads(audit_path.read_text())
+        if audit.get("status") != "PASS":
+            raise AssertionError("Black-box audit evidence must come from passing RTL campaigns")
+        for row in merged:
+            if row["id"] in BLACK_BOX_ADDITION_IDS:
+                hits = audit["new_bin_hits"].get(row["id"], 0)
+            elif row["category"] == "operation_invariant":
+                hits = audit["external_invariant_hits"].get(row["invariant"], 0)
+            else:
+                continue
+            if not hits:
+                raise AssertionError(f"No black-box RTL evidence for {row['id']}")
+            if row["status"] == "STRICT_PASS":
+                continue
+            row.update(status="POSITIVE_ONLY", contract="Explicit external tensor contracts in the source-audit generated RTL campaigns",
+                       actual_coverage=f"{hits} observed checked-job hits in passing external-I/O RTL campaigns",
+                       detection_mechanism="external_tensor_invariants+central_golden_equivalence+canonical_classifier",
+                       evidence_paths=["multigent/verifier_tool/tool_regression/benchmarks/attention_source_audit/evidence.json",
+                                       "multigent/verifier_tool/tool_regression/benchmarks/attention_source_audit/README.md"],
+                       notes="No internal monitors. Positive evidence does not establish individual strict fault/fix qualification.")
 
     doc = {
         "schema_version": 1,

@@ -18,6 +18,9 @@ def load_operation_assertion_catalog() -> dict[str, Any]:
     if not isinstance(raw, dict) or not isinstance(raw.get("families"), dict):
         raise ValueError("Operation assertion taxonomy must contain families")
     for family, spec in raw["families"].items():
+        executable = spec.get("external_invariants", [])
+        if not isinstance(executable, list) or not all(isinstance(name, str) and name for name in executable):
+            raise ValueError(f"Operation assertion family {family!r} has invalid external_invariants")
         if not isinstance(spec.get("feature_checks", {}), dict):
             raise ValueError(f"Operation assertion family {family!r} has invalid feature_checks")
         for feature, checks in spec.get("feature_checks", {}).items():
@@ -37,6 +40,8 @@ def render_operation_assertion_catalog() -> str:
     lines: list[str] = []
     for family, spec in load_operation_assertion_catalog()["families"].items():
         lines.append(f"- {family} predefined assertions:")
+        if spec.get("external_invariants"):
+            lines.append("  - executable external invariants: " + ", ".join(spec["external_invariants"]))
         for feature, checks in spec.get("feature_checks", {}).items():
             lines.append(f"  - {feature}: checks={' | '.join(checks)}")
         for name, property_spec in spec.get("required_properties", {}).items():

@@ -61,3 +61,23 @@ multigent/verifier_tool/tool_regression/benchmarks/external_feature_benchmarks/.
 multigent/verifier_tool/tool_regression/benchmarks/external_feature_benchmarks/results/
 multigent/verifier_tool/tool_regression/benchmarks/external_feature_benchmarks/private_holdouts/
 multigent/verifier_tool/tool_regression/benchmarks/external_feature_benchmarks/local_results/
+
+# Local attention qualification experiments: external RTL, mutations, and proofs
+/.codex_artifacts/
+/multigent/verifier_tool/tool_regression/benchmarks/attention_open_source/
+/multigent/verifier_tool/tool_regression/benchmarks/attention_source_audit/
+/multigent/verifier_tool/tool_regression/benchmarks/block_softmax_external/
+
+# Local-only tests and fixtures for the attention qualification experiments
+# Keep existing tracked regressions and their shared benchmark helpers versioned.
+/multigent/verifier_tool/tool_regression/fixtures/structured_operations.py
+/multigent/verifier_tool/tool_regression/rtl/test_block_softmax_external.py
+/multigent/verifier_tool/tool_regression/rtl/test_external_attention_generated_campaign.py
+/multigent/verifier_tool/tool_regression/rtl/test_pulp_ita_generated_campaign.py
+/multigent/verifier_tool/tool_regression/rtl/test_structured_generated_campaign.py
+/multigent/verifier_tool/tool_regression/unit/test_attention_black_box_gaps.py
+/multigent/verifier_tool/tool_regression/unit/test_attention_formal_proofs.py
+/multigent/verifier_tool/tool_regression/unit/test_attention_open_source_campaign.py
+/multigent/verifier_tool/tool_regression/unit/test_block_dataflow_operation.py
+/multigent/verifier_tool/tool_regression/unit/test_softmax_operation.py
+/multigent/verifier_tool/tool_regression/unit/test_structured_retirement_boundary.py
